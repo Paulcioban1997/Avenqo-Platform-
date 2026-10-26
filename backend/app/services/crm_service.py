@@ -31,7 +31,12 @@ from backend.app.models.crm import (
     CRMService as CRMServiceModel,
 )
 from backend.app.models.company import Company
-from backend.app.services.calendar.base import CalendarEventData, CalendarProviderError
+from backend.app.services.calendar.base import (
+    CalendarEventData,
+    CalendarProviderError,
+    CalendarTokenRevokedError,
+    CalendarTokenTransientError,
+)
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
 from backend.app.services.crm_availability_service import AvailabilityUnavailable, CRMAvailabilityService
@@ -920,10 +925,20 @@ class CRMService:
                 refresh_token = credentials.get("refresh_token")
                 if "401" not in str(exc) or not refresh_token:
                     raise
-                refreshed = await provider.refresh_access_token(str(refresh_token))
-                credentials = {**credentials, **refreshed, "refresh_token": refresh_token}
-                conn.encrypted_credentials = self._cipher.encrypt(credentials)
-                events = await provider.list_events(credentials, start_time, end_time, conn.calendar_id)
+                try:
+                    refreshed = await provider.refresh_access_token(str(refresh_token))
+                    credentials = {**credentials, **refreshed, "refresh_token": refresh_token}
+                    conn.encrypted_credentials = self._cipher.encrypt(credentials)
+                    events = await provider.list_events(credentials, start_time, end_time, conn.calendar_id)
+                except CalendarTokenRevokedError:
+                    conn.sync_status = "error"
+                    conn.sync_error = "Google token expired or revoked. Please reconnect."
+                    self._session.commit()
+                    logger.warning(
+                        "Google Calendar token revoked during sync_from_google. Reconnection required.",
+                        extra={"company_id": str(company_id), "provider": "google"},
+                    )
+                    raise
 
             stats = {"fetched": len(events), "created": 0, "updated": 0, "cancelled": 0, "skipped": 0}
             await self._acquire_appointment_lock(company_id)
@@ -1181,11 +1196,16 @@ class CRMService:
                             conn.sync_error = None
                             self._session.commit()
                             return await _perform_op(creds)
-                        except Exception as refresh_err:
+                        except CalendarTokenRevokedError:
                             conn.sync_status = "error"
                             conn.sync_error = "Google token expired or revoked. Please reconnect."
                             self._session.commit()
-                            return "failed", f"Synchronisation Google Calendar impossible (token expiré): {refresh_err}"
+                            return "failed", "Synchronisation Google Calendar impossible (token révoqué). Reconnectez Google Calendar pour reprendre les réservations."
+                        except Exception as refresh_err:
+                            conn.sync_status = "error"
+                            conn.sync_error = "Disponibilités externes temporairement inaccessibles."
+                            self._session.commit()
+                            return "failed", f"Synchronisation Google Calendar impossible: {refresh_err}"
                     raise
             return "skipped", None
         except Exception as exc:

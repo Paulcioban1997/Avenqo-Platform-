@@ -102,6 +102,7 @@ export function DashboardView({
   const [conversion, setConversion] = useState<DashboardConversion>({ available: false, value: null });
   const [currency, setCurrency] = useState("CAD");
   const [hoveredTrendIdx, setHoveredTrendIdx] = useState<number | null>(null);
+  const [calendarReconnectNeeded, setCalendarReconnectNeeded] = useState(false);
   const session = useSession();
   const loadRevision = useRef(0);
   const userFirstName = session.identity?.user.first_name ?? userName;
@@ -130,6 +131,21 @@ export function DashboardView({
     setConversion({ available: false, value: null });
     try {
       const headers = getAuthHeaders();
+      void apiFetch("/api/v1/crm/calendar/connection", { headers })
+        .then(async (cRes) => {
+          if (!cRes.ok) return;
+          const cData = await cRes.json();
+          const isStaleToken = Boolean(
+            cData.requires_reconnect ||
+            (!cData.connected && cData.provider === "google") ||
+            cData.sync_status === "error" ||
+            cData.sync_status === "revoked" ||
+            (cData.last_synced_at && (Date.now() - new Date(cData.last_synced_at).getTime()) >= 6 * 86400000)
+          );
+          setCalendarReconnectNeeded(isStaleToken);
+        })
+        .catch(() => {});
+
       const periodKey = {
         all: "all",
         "7d": "last_7_days",
@@ -273,6 +289,35 @@ export function DashboardView({
           </button>
         </div>
       </div>
+
+      {calendarReconnectNeeded && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-amber-950 dark:text-amber-200">
+                {locale.startsWith("fr")
+                  ? "Reconnectez Google Calendar pour reprendre les réservations"
+                  : "Reconnect Google Calendar to resume appointment booking"}
+              </p>
+              <p className="text-xs text-amber-800/90 dark:text-amber-300/80">
+                {locale.startsWith("fr")
+                  ? "Le jeton Google Calendar a expiré. Les disponibilités externes ne peuvent pas être vérifiées, suspendant la prise de rendez-vous."
+                  : "Google Calendar token expired. External availability cannot be confirmed, pausing bookings."}
+              </p>
+            </div>
+          </div>
+          <a
+            href="/crm?tab=connections"
+            className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition shrink-0 flex items-center gap-1.5 shadow-sm"
+          >
+            <span>{locale.startsWith("fr") ? "Reconnecter" : "Reconnect"}</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </a>
+        </div>
+      )}
 
       {/* KPI Grid (5 Metrics) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">

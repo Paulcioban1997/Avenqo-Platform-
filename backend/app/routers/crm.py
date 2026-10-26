@@ -909,13 +909,27 @@ def get_calendar_connection(
 ) -> dict[str, Any]:
     conn = service.get_calendar_connection(tenant.company_id)
     if not conn:
-        return {"connected": False, "provider": None, "account_email": None}
+        return {
+            "connected": False,
+            "provider": None,
+            "account_email": None,
+            "requires_reconnect": False,
+            "reconnect_message": None,
+        }
+    requires_reconnect = conn.sync_status == "error"
     return {
         "connected": conn.sync_status == "connected",
         "provider": conn.provider,
         "account_email": conn.account_email,
         "calendar_id": conn.calendar_id,
         "sync_status": conn.sync_status,
+        "sync_error": conn.sync_error,
+        "requires_reconnect": requires_reconnect,
+        "reconnect_message": (
+            "Reconnectez Google Calendar pour reprendre les réservations"
+            if requires_reconnect
+            else None
+        ),
         "last_synced_at": conn.last_synced_at.isoformat() if conn.last_synced_at else None,
     }
 

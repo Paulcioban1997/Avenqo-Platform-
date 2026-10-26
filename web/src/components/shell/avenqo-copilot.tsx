@@ -451,15 +451,14 @@ export function AvenqoCopilot({
       const hasSpeechRec = Boolean(speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition);
       if (hasSpeechRec) {
         setIsFallbackMode(true);
-        setLiveState("connected");
         startFallbackRecognition(voiceSessionId);
         return;
       }
       setLiveState("error");
       setLiveErrorMessage(
         locale === "fr"
-          ? "L'accès au microphone est requis. Veuillez autoriser le microphone dans les paramètres de votre navigateur pour converser avec Central AI."
-          : "Microphone permission is required. Please allow microphone access in your browser settings to speak with Central AI."
+          ? "L'accès au microphone est requis. Veuillez autoriser le microphone dans votre navigateur pour converser avec Central AI."
+          : "Microphone permission is required. Please allow microphone access in your browser to speak with Central AI."
       );
       return;
     }
@@ -545,21 +544,11 @@ export function AvenqoCopilot({
         userStream.getTracks().forEach((track) => track.stop());
         void playbackRef.current?.context.close();
         playbackRef.current = null;
-        const hasSpeech = "SpeechRecognition" in window || "webkitSpeechRecognition" in window;
-        if (hasSpeech) {
-          setIsFallbackMode(true);
-          setLiveState("connected");
-          setTimeout(() => {
-            setLiveState("listening");
-            startFallbackRecognition(sessionId);
-          }, 400);
-          return;
-        }
         setLiveState("error");
         setLiveErrorMessage(
           locale === "fr"
-            ? "Le flux audio temps réel (WebRTC/WebSocket) n'est pas activé sur cet environnement. Utilisez le mode texte ou dictez votre message."
-            : "Real-time audio streaming is not enabled in this environment. Please use text mode or dictation."
+            ? "Le flux audio temps réel (WebRTC/WebSocket) n'est pas activé sur cet environnement. Utilisez le mode texte ou le bouton de dictée."
+            : "Real-time audio streaming is not enabled in this environment. Please use text mode or dictation button."
         );
         return;
       }
@@ -674,7 +663,12 @@ export function AvenqoCopilot({
       socket.onclose = () => {
         if (voiceSocketRef.current === socket && captureRef.current) {
           stopVoice();
-          startFallbackRecognition(sessionId);
+          setLiveState("error");
+          setLiveErrorMessage(
+            locale === "fr"
+              ? "La session vocale temps réel s'est terminée."
+              : "Real-time voice session disconnected."
+          );
         }
       };
 

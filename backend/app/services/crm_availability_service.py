@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta, timezone
+import logging
 from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -14,9 +15,16 @@ from backend.app.config.settings import get_settings
 from backend.app.models.company import Company
 from backend.app.models.crm import CRMAppointment, CRMCalendarConnection, CRMEmployee, CRMService
 from backend.app.models.voice import VoiceBusinessConfig
-from backend.app.services.calendar.base import BusySlot, CalendarProviderError
+from backend.app.services.calendar.base import (
+    BusySlot,
+    CalendarProviderError,
+    CalendarTokenRevokedError,
+    CalendarTokenTransientError,
+)
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
+
+logger = logging.getLogger(__name__)
 
 
 class AvailabilityUnavailable(CalendarProviderError):
@@ -153,10 +161,20 @@ class CRMAvailabilityService:
                             connection.sync_error = None
                         self._session.commit()
                         periods = await provider.check_busy_slots(credentials, start, end, connection.calendar_id)
-                    except Exception as refresh_exc:
+                    except CalendarTokenRevokedError as rev_exc:
                         connection.sync_status = "error"
                         if hasattr(connection, "sync_error"):
                             connection.sync_error = "Google token expired or revoked. Please reconnect."
+                        self._session.commit()
+                        logger.warning(
+                            "Google Calendar OAuth token revoked for tenant. Reconnection required.",
+                            extra={"company_id": str(company_id), "provider": "google"},
+                        )
+                        raise AvailabilityUnavailable("EXTERNAL_AVAILABILITY_UNAVAILABLE") from rev_exc
+                    except Exception as refresh_exc:
+                        connection.sync_status = "error"
+                        if hasattr(connection, "sync_error"):
+                            connection.sync_error = "Disponibilités externes temporairement inaccessibles."
                         self._session.commit()
                         raise AvailabilityUnavailable("EXTERNAL_AVAILABILITY_UNAVAILABLE") from refresh_exc
                 busy.extend(periods)
