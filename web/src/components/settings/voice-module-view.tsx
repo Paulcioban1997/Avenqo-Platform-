@@ -1279,10 +1279,10 @@ export function VoiceModuleView() {
             </section>
 
             {/* CALL POLICY, PROVISIONING & PERMISSIONS */}
-            {enabled && <VoiceBusinessOnboarding key={tenantId} tenantId={tenantId} canManage={canManageVoice} />}
+            {enabled && <VoiceBusinessOnboarding key={`onboarding-${tenantId}`} tenantId={tenantId} canManage={canManageVoice} />}
             {enabled && <VoiceCustomizationSection tenantId={tenantId} />}
             {enabled && <VoiceProvisioningSection tenantId={tenantId} canManage={canManageVoice} crmEnabled={Boolean(context?.enabled_modules.includes("crm"))} />}
-            {enabled && <VoiceCallPolicy key={tenantId} tenantId={tenantId} canManage={canManageVoice} />}
+            {enabled && <VoiceCallPolicy key={`call-policy-${tenantId}`} tenantId={tenantId} canManage={canManageVoice} />}
             {enabled && <VoiceModulePermissionsSection tenantId={tenantId} canManage={canManageVoice} />}
           </div>
         )}
