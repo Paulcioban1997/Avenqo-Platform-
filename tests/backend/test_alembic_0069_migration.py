@@ -1,12 +1,14 @@
-"""Test Alembic Migration 0069 on an isolated database copy.
+"""Test Alembic Migration 0069 on an isolated database copy (SQLite and PostgreSQL).
 
 Verifies:
+- Fail-closed migration behavior without category heuristics.
 - Clean upgrade from 0068 to 0069.
-- Preservation of existing CRM services data.
-- Unapproved demo services (category == 'clinic') have is_approved_by_owner=False, is_published=False.
-- Standard services (category != 'clinic' or None) have is_approved_by_owner=True, is_published=True.
-- Successful downgrade from 0069 back to 0068.
+- Preservation of verified active business services (services with historical confirmed appointments).
+- Strict non-publication of unverified services, even when category != 'clinic'.
+- Strict non-publication of unapproved demo services (category == 'clinic').
+- Clean downgrade from 0069 back to 0068 without data loss.
 - Successful re-upgrade (idempotency & re-execution).
+- Zero environment variable bleed (uses pytest monkeypatch).
 """
 
 import os
@@ -20,8 +22,16 @@ from alembic import command
 
 
 @pytest.fixture
-def isolated_db_url():
-    """Create an isolated temporary SQLite database for migration rehearsal."""
+def isolated_db_url(monkeypatch):
+    """Create an isolated temporary SQLite database for migration rehearsal.
+    
+    If AVENQO_TEST_POSTGRES_URL is set, tests against that isolated PostgreSQL instance.
+    """
+    pg_url = os.environ.get("AVENQO_TEST_POSTGRES_URL")
+    if pg_url:
+        yield pg_url
+        return
+
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = f.name
     
@@ -36,12 +46,14 @@ def isolated_db_url():
             pass
 
 
-def test_migration_0069_lifecycle_and_data_preservation(isolated_db_url):
+def test_migration_0069_fail_closed_lifecycle_and_historical_preservation(isolated_db_url, monkeypatch):
     project_root = Path(__file__).resolve().parents[2]
     alembic_ini_path = project_root / "alembic.ini"
     alembic_cfg = Config(str(alembic_ini_path))
     alembic_cfg.set_main_option("sqlalchemy.url", isolated_db_url)
-    os.environ["ALEMBIC_DATABASE_URL"] = isolated_db_url
+    
+    # Use monkeypatch so ALEMBIC_DATABASE_URL never persists outside this test
+    monkeypatch.setenv("ALEMBIC_DATABASE_URL", isolated_db_url)
 
     engine = sa.create_engine(isolated_db_url)
 
@@ -51,23 +63,37 @@ def test_migration_0069_lifecycle_and_data_preservation(isolated_db_url):
     # Verify table crm_services exists and does NOT have the 0069 columns yet
     inspector = sa.inspect(engine)
     assert inspector.has_table("crm_services")
+    assert inspector.has_table("crm_appointments")
     cols_0068 = {c["name"] for c in inspector.get_columns("crm_services")}
     assert "is_approved_by_owner" not in cols_0068
     assert "is_published" not in cols_0068
 
-    # 2. Seed pre-existing CRM services to test preservation and backfill rules
+    # 2. Seed pre-existing CRM services and appointments to test fail-closed rules
     company_id = uuid4()
+    client_id = uuid4()
+    svc_active_verified_id = uuid4()
+    svc_draft_nonclinic_id = uuid4()
+    svc_demo_clinic_id = uuid4()
+    appt_id = uuid4()
+
+    cid_val = company_id.hex if "sqlite" in isolated_db_url else company_id
+    cli_val = client_id.hex if "sqlite" in isolated_db_url else client_id
+    svc1_val = svc_active_verified_id.hex if "sqlite" in isolated_db_url else svc_active_verified_id
+    svc2_val = svc_draft_nonclinic_id.hex if "sqlite" in isolated_db_url else svc_draft_nonclinic_id
+    svc3_val = svc_demo_clinic_id.hex if "sqlite" in isolated_db_url else svc_demo_clinic_id
+    appt_val = appt_id.hex if "sqlite" in isolated_db_url else appt_id
+
     with engine.begin() as conn:
-        # Create company first for foreign key
+        # Create company
         conn.execute(
             sa.text(
                 "INSERT INTO companies (id, name, slug, email, billing_email, timezone, industry, country, subscription_plan, status, created_at, updated_at) "
                 "VALUES (:id, :name, :slug, :email, :bemail, :tz, :ind, :country, :plan, :st, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
             ),
             {
-                "id": company_id.hex if "sqlite" in isolated_db_url else company_id,
+                "id": cid_val,
                 "name": "Produits_Ero",
-                "slug": "produits-ero",
+                "slug": f"produits-ero-{uuid4().hex[:6]}",
                 "email": "test@produitsero.ca",
                 "bemail": "billing@produitsero.ca",
                 "tz": "America/Toronto",
@@ -78,37 +104,82 @@ def test_migration_0069_lifecycle_and_data_preservation(isolated_db_url):
             },
         )
 
-        # Service 1: Standard real service (Ski tuning)
-        svc_standard_id = uuid4()
+        # Create client for foreign key in crm_appointments
+        conn.execute(
+            sa.text(
+                "INSERT INTO crm_clients (id, company_id, first_name, last_name, email, industry_metadata, tags, created_at, updated_at) "
+                "VALUES (:id, :cid, :fn, :ln, :email, '{}', '[]', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+            ),
+            {
+                "id": cli_val,
+                "cid": cid_val,
+                "fn": "Marc",
+                "ln": "Tremblay",
+                "email": "marc.tremblay@test.ca",
+            },
+        )
+
+        # Service 1: Real active service (Affûtage ski) with confirmed historical booking
         conn.execute(
             sa.text(
                 "INSERT INTO crm_services (id, company_id, name, category, price, duration_minutes, is_active, created_at, updated_at) "
                 "VALUES (:id, :cid, :name, :cat, :price, :dur, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
             ),
             {
-                "id": svc_standard_id.hex if "sqlite" in isolated_db_url else svc_standard_id,
-                "cid": company_id.hex if "sqlite" in isolated_db_url else company_id,
-                "name": "Affûtage & Fartage",
+                "id": svc1_val,
+                "cid": cid_val,
+                "name": "Affûtage & Fartage Compétition",
                 "cat": "workshop",
                 "price": 45.0,
                 "dur": 45,
             },
         )
 
-        # Service 2: Unapproved demo clinic service
-        svc_demo_id = uuid4()
+        # Service 2: Non-clinic unverified service without appointment proof (category != 'clinic')
         conn.execute(
             sa.text(
                 "INSERT INTO crm_services (id, company_id, name, category, price, duration_minutes, is_active, created_at, updated_at) "
                 "VALUES (:id, :cid, :name, :cat, :price, :dur, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
             ),
             {
-                "id": svc_demo_id.hex if "sqlite" in isolated_db_url else svc_demo_id,
-                "cid": company_id.hex if "sqlite" in isolated_db_url else company_id,
+                "id": svc2_val,
+                "cid": cid_val,
+                "name": "Entretien Vélo Draft",
+                "cat": "custom_workshop",
+                "price": 85.0,
+                "dur": 60,
+            },
+        )
+
+        # Service 3: Demo clinic service without appointment proof
+        conn.execute(
+            sa.text(
+                "INSERT INTO crm_services (id, company_id, name, category, price, duration_minutes, is_active, created_at, updated_at) "
+                "VALUES (:id, :cid, :name, :cat, :price, :dur, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+            ),
+            {
+                "id": svc3_val,
+                "cid": cid_val,
                 "name": "Consultation médicale démo",
                 "cat": "clinic",
                 "price": 120.0,
                 "dur": 30,
+            },
+        )
+
+        # Insert confirmed appointment linked to Service 1 (verifiable historical proof of commercial activity)
+        conn.execute(
+            sa.text(
+                "INSERT INTO crm_appointments (id, company_id, client_id, service_id, title, status, start_time, end_time, industry_data, created_at, updated_at) "
+                "VALUES (:id, :cid, :clid, :sid, :title, :st, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, '{}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+            ),
+            {
+                "id": appt_val,
+                "cid": cid_val,
+                "clid": cli_val,
+                "sid": svc1_val,
+                "title": "Réservation client confirmée",
+                "st": "confirmed",
             },
         )
 
@@ -121,26 +192,37 @@ def test_migration_0069_lifecycle_and_data_preservation(isolated_db_url):
     assert "is_approved_by_owner" in cols_0069
     assert "is_published" in cols_0069
 
-    # Verify data backfill and security preservation:
+    # Verify indexes exist
+    indexes_0069 = {idx["name"] for idx in inspector.get_indexes("crm_services")}
+    assert "ix_crm_services_is_approved_by_owner" in indexes_0069
+    assert "ix_crm_services_is_published" in indexes_0069
+
+    # 4. Verify data backfill and fail-closed rules:
     with engine.connect() as conn:
         rows = conn.execute(
             sa.text("SELECT id, name, category, is_approved_by_owner, is_published FROM crm_services")
         ).fetchall()
-        assert len(rows) == 2
+        assert len(rows) == 3
 
         by_cat = {r[2]: r for r in rows}
-        standard_row = by_cat["workshop"]
-        demo_row = by_cat["clinic"]
+        active_verified_row = by_cat["workshop"]
+        draft_nonclinic_row = by_cat["custom_workshop"]
+        demo_clinic_row = by_cat["clinic"]
 
-        # Standard service: preserved, automatically approved & published
-        assert bool(standard_row[3]) is True, "Standard non-clinic service must be approved"
-        assert bool(standard_row[4]) is True, "Standard non-clinic service must be published"
+        # 1. Service 1: Verified with confirmed appointment -> PRESERVED as approved & published
+        assert bool(active_verified_row[3]) is True, "Active service with confirmed booking must be preserved as approved"
+        assert bool(active_verified_row[4]) is True, "Active service with confirmed booking must be preserved as published"
 
-        # Demo clinic service: preserved, but approval & publishing are FALSE!
-        assert bool(demo_row[3]) is False, "Historical demo clinic service must NOT be approved"
-        assert bool(demo_row[4]) is False, "Historical demo clinic service must NOT be published"
+        # 2. Service 2: Non-clinic category WITHOUT appointment proof -> STRICTLY FALSE (FAIL-CLOSED)
+        # CRITICAL PROOF: category != 'clinic' does NOT auto-publish!
+        assert bool(draft_nonclinic_row[3]) is False, "Unverified non-clinic service must NOT be auto-approved"
+        assert bool(draft_nonclinic_row[4]) is False, "Unverified non-clinic service must NOT be auto-published"
 
-    # 4. Test Downgrade (0069 -> 0068)
+        # 3. Service 3: Clinic category WITHOUT appointment proof -> STRICTLY FALSE
+        assert bool(demo_clinic_row[3]) is False, "Unverified demo clinic service must NOT be auto-approved"
+        assert bool(demo_clinic_row[4]) is False, "Unverified demo clinic service must NOT be auto-published"
+
+    # 5. Test Downgrade (0069 -> 0068)
     command.downgrade(alembic_cfg, "0068_resolve_voice_phone_number_tenant")
 
     inspector = sa.inspect(engine)
@@ -151,9 +233,9 @@ def test_migration_0069_lifecycle_and_data_preservation(isolated_db_url):
     # Verify data is still intact after downgrade!
     with engine.connect() as conn:
         count = conn.execute(sa.text("SELECT count(*) FROM crm_services")).scalar()
-        assert count == 2, "Data must be preserved across downgrade"
+        assert count == 3, "All 3 services must be preserved across downgrade"
 
-    # 5. Test Re-upgrade (idempotency & re-execution)
+    # 6. Test Re-upgrade (idempotency & re-execution)
     command.upgrade(alembic_cfg, "0069_crm_service_approval_columns")
 
     inspector = sa.inspect(engine)

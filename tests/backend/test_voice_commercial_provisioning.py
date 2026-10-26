@@ -56,7 +56,7 @@ def setup(tmp_path):
   company,user,_=AuthService(db,notifier).register(RegisterRequest(company_name='Fixture '+n,company_email=n+'-company@example.com',first_name='Fixture',last_name=n,email=n+'@example.com',password=secrets.token_urlsafe(24)+'Aa1!',country='CA',industry='Garage',selected_modules=['crm','voice'],preferred_language='fr',plan_code='base'))
   company.business_hours={'weekly':{day:[{'open':'09:00','close':'17:00'}] for day in ('monday','tuesday','wednesday','thursday','friday')}}
   acc=db.scalar(select(BillingAccount).where(BillingAccount.company_id==company.id));acc.status='active';acc.stripe_customer_id='cus_'+str(company.id);acc.stripe_subscription_id='sub_'+str(company.id)
-  db.add(CRMService(company_id=company.id,name='Test appointment',duration_minutes=30,price=0,currency='CAD',is_active=True))
+  db.add(CRMService(company_id=company.id,name='Test appointment',duration_minutes=30,price=0,currency='CAD',is_active=True,is_approved_by_owner=True,is_published=True))
   tenants.append(TenantContext(company.id,user.id))
  db.add(VoiceNumberTariff(country='CA',number_type='local',currency='CAD',monthly_amount=499,stripe_price_id='price_voice',provider_cost_limits={'USD':'1.00'},approved=True));db.commit()
  from unittest.mock import AsyncMock

@@ -1,4 +1,4 @@
-"""Add explicit owner approval and publishing columns to CRM services.
+"""Add explicit owner approval and publishing columns to CRM services (fail-closed).
 
 Revision ID: 0069_crm_service_approval_columns
 Revises: 0068_resolve_voice_phone_number_tenant
@@ -23,6 +23,7 @@ def upgrade() -> None:
     existing_columns = {col["name"] for col in inspector.get_columns("crm_services")}
     existing_indexes = {idx["name"] for idx in inspector.get_indexes("crm_services")}
 
+    # 1. Add columns with strict fail-closed server_default = FALSE
     with op.batch_alter_table("crm_services") as batch_op:
         if "is_approved_by_owner" not in existing_columns:
             batch_op.add_column(
@@ -30,7 +31,7 @@ def upgrade() -> None:
                     "is_approved_by_owner",
                     sa.Boolean(),
                     nullable=False,
-                    server_default=sa.text("true"),
+                    server_default=sa.text("false"),
                 )
             )
 
@@ -40,25 +41,39 @@ def upgrade() -> None:
                     "is_published",
                     sa.Boolean(),
                     nullable=False,
-                    server_default=sa.text("true"),
+                    server_default=sa.text("false"),
                 )
             )
 
-    # Data preservation and security rule:
-    # Historical demo clinic preset services must NOT be published automatically.
-    # Existing standard services remain approved and published.
+    # 2. FAIL-CLOSED MIGRATION RULE:
+    # No heuristic based on category != 'clinic'. A category is NOT commercial consent.
+    # By default, all existing services are unapproved and unpublished (fail-closed).
+    # ONLY services with verifiable proof of active/historical confirmed customer appointments
+    # in crm_appointments are preserved as approved & published so legitimate operating
+    # businesses do not suffer silent appointment disruption.
+    # Unverified drafts, presets, and unconfirmed services remain strictly unapproved.
     op.execute(
         sa.text(
-            "UPDATE crm_services SET is_approved_by_owner = false, is_published = false WHERE category = 'clinic'"
+            "UPDATE crm_services SET is_approved_by_owner = false, is_published = false"
         )
     )
-    op.execute(
-        sa.text(
-            "UPDATE crm_services SET is_approved_by_owner = true, is_published = true WHERE category != 'clinic' OR category IS NULL"
+    if inspector.has_table("crm_appointments"):
+        op.execute(
+            sa.text(
+                """
+                UPDATE crm_services
+                SET is_approved_by_owner = true, is_published = true
+                WHERE id IN (
+                    SELECT DISTINCT a.service_id
+                    FROM crm_appointments a
+                    WHERE a.service_id IS NOT NULL
+                      AND a.status IN ('confirmed', 'completed')
+                )
+                """
+            )
         )
-    )
 
-    # Add indexes if not present
+    # 3. Add indexes
     if "ix_crm_services_is_approved_by_owner" not in existing_indexes:
         op.create_index(
             "ix_crm_services_is_approved_by_owner",

@@ -45,6 +45,7 @@ from backend.app.models.company import Company
 from backend.app.services.crm_intelligence_service import CRMIntelligenceService
 from backend.app.services.crm_search_service import CRMSearchService
 from backend.app.services.crm_service import CRMService
+from backend.app.services.audit_log_service import AuditLogService
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.ai.request_identity import resolve_ai_request_id
 from shared.ai_engine.contracts import TenantContext
@@ -780,16 +781,8 @@ def list_services(
             "currency": s.currency,
             "category": s.category,
             "color_hex": s.color_hex,
-            "is_approved_by_owner": (
-                getattr(s, "is_approved_by_owner", False)
-                if s.category == "clinic"
-                else getattr(s, "is_approved_by_owner", True)
-            ),
-            "is_published": (
-                getattr(s, "is_published", False)
-                if s.category == "clinic"
-                else getattr(s, "is_published", True)
-            ),
+            "is_approved_by_owner": bool(getattr(s, "is_approved_by_owner", False)),
+            "is_published": bool(getattr(s, "is_published", False)),
         }
         for s in services
     ]
@@ -813,8 +806,8 @@ def create_service(
         "id": str(svc.id),
         "name": svc.name,
         "price": svc.price,
-        "is_approved_by_owner": getattr(svc, "is_approved_by_owner", True),
-        "is_published": getattr(svc, "is_published", True),
+        "is_approved_by_owner": bool(getattr(svc, "is_approved_by_owner", False)),
+        "is_published": bool(getattr(svc, "is_published", False)),
     }
 
 
@@ -834,16 +827,28 @@ def toggle_service_approval(
     svc = service.toggle_service_approval(tenant.company_id, service_id)
     if not svc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Prestation introuvable.")
-    is_approved = (
-        getattr(svc, "is_approved_by_owner", False)
-        if svc.category == "clinic"
-        else getattr(svc, "is_approved_by_owner", True)
+
+    is_approved = bool(getattr(svc, "is_approved_by_owner", False))
+    is_published = bool(getattr(svc, "is_published", False))
+
+    AuditLogService(service._session).record(
+        actor_user_id=identity.user.id,
+        action="crm_service_approval_toggled",
+        target_type="crm_service",
+        target_id=str(svc.id),
+        company_id=tenant.company_id,
+        metadata={
+            "service_name": svc.name,
+            "is_approved_by_owner": is_approved,
+            "is_published": is_published,
+        },
     )
+
     return {
         "id": str(svc.id),
         "name": svc.name,
         "is_approved_by_owner": is_approved,
-        "is_published": is_approved,
+        "is_published": is_published,
     }
 
 

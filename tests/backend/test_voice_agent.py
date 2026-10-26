@@ -549,7 +549,7 @@ def _voice_database(tmp_path):
     from backend.app.models.crm import CRMService
     from backend.app.services.module_entitlement_service import ModuleEntitlementService
     ModuleEntitlementService(session).activate_module(TenantContext(company.id), "crm", auto_init_voice=False)
-    session.add(CRMService(company_id=company.id, name="Consultation", duration_minutes=30, price=80, currency="CAD", is_active=True))
+    session.add(CRMService(company_id=company.id, name="Consultation", duration_minutes=30, price=80, currency="CAD", is_active=True, is_approved_by_owner=True, is_published=True))
     session.commit()
     service = VoiceOrchestrator(
         session,
