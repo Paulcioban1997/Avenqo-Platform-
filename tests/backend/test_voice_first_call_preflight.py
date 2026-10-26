@@ -58,6 +58,7 @@ def scenarios(tmp_path):
             )
             db.add(service); db.flush()
             config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company.id))
+            assert config is not None
             config.services = [{"name": name, "crm_service_id": str(service.id)}]
         db.commit()
         yield db,companies
@@ -97,3 +98,46 @@ async def test_garage_tomorrow_1400_booking_without_external_calendar(scenarios)
 def test_fixture_writer_refuses_production(scenarios):
     db,_=scenarios
     with pytest.raises(ValueError):prepare_scenarios(db,environment="production")
+
+
+def test_unapproved_service_denies_voice_tool_booking(scenarios):
+    """P10.3: Test négatif distinct.
+    Une prestation non approuvée par l'OWNER (is_approved_by_owner=False) ou non publiée
+    doit être STRICTEMENT refusée par le VoiceToolGuard (fail-closed).
+    """
+    db, companies = scenarios
+    company, owner = companies["garage-montreal"]
+    tenant = TenantContext(company.id, owner.id)
+    perms = permissions_for(UserRole.OWNER)
+
+    # Création d'une prestation unapproved / non publiée
+    unapproved_svc = CRMServiceRecord(
+        company_id=company.id,
+        name="Prestation Brouillon Refusée",
+        duration_minutes=45,
+        currency=company.currency_code,
+        price=100,
+        is_active=True,
+        is_approved_by_owner=False,
+        is_published=False,
+    )
+    db.add(unapproved_svc)
+    db.commit()
+
+    config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company.id))
+    assert config is not None
+    # Sauvegarde des services précédents
+    prev_services = list(config.services or [])
+    # Configuration du catalogue voice avec UNIQUEMENT le service non approuvé
+    config.services = [{"name": unapproved_svc.name, "crm_service_id": str(unapproved_svc.id)}]
+    db.commit()
+
+    guard = VoiceToolGuard(db)
+    with pytest.raises(VoiceToolDenied) as exc_info:
+        guard.authorize(tenant, "check_availability", perms, user_id=owner.id)
+    assert "no verified bookable service" in str(exc_info.value).lower()
+
+    # Restauration
+    config.services = prev_services
+    db.commit()
+
