@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime, timezone
+from typing import Generator
 from uuid import UUID, uuid4
 
 import pytest
@@ -58,7 +59,7 @@ from shared.ai_engine.contracts import TenantContext
 # ==============================================================================
 
 @pytest.fixture
-def db_session() -> Session:
+def db_session() -> Generator[Session, None, None]:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
