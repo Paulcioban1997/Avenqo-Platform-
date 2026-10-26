@@ -393,3 +393,91 @@ def test_google_freebusy_malformed_response_fails_closed(monkeypatch, payload):
     now = datetime.now(timezone.utc)
     with pytest.raises(CalendarProviderError, match="EXTERNAL_AVAILABILITY_UNAVAILABLE"):
         asyncio.run(GoogleCalendarProvider().check_busy_slots({"access_token": "test"}, now, now + timedelta(hours=1)))
+
+
+def test_google_refresh_token_revoked_raises_token_revoked_error(monkeypatch):
+    import urllib.error
+    from io import BytesIO
+    from backend.app.services.calendar.base import CalendarTokenRevokedError
+
+    def fake_urlopen(req, timeout=15):
+        raise urllib.error.HTTPError(
+            req.full_url,
+            400,
+            "Bad Request",
+            {},
+            BytesIO(b'{"error": "invalid_grant", "error_description": "Token has been expired or revoked."}'),
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    provider = GoogleCalendarProvider("client_id", "client_secret", "https://api.avenqo.ca/callback")
+    with pytest.raises(CalendarTokenRevokedError, match="expiré ou révoqué"):
+        asyncio.run(provider.refresh_access_token("revoked_refresh_token"))
+
+
+def test_google_refresh_token_transient_error_raises_transient_error(monkeypatch):
+    import urllib.error
+    from io import BytesIO
+    from backend.app.services.calendar.base import CalendarTokenTransientError
+
+    def fake_urlopen(req, timeout=15):
+        raise urllib.error.HTTPError(
+            req.full_url,
+            503,
+            "Service Unavailable",
+            {},
+            BytesIO(b'{"error": "backend_error"}'),
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    provider = GoogleCalendarProvider("client_id", "client_secret", "https://api.avenqo.ca/callback")
+    with pytest.raises(CalendarTokenTransientError, match="Échec temporaire"):
+        asyncio.run(provider.refresh_access_token("transient_refresh_token"))
+
+
+def test_google_refresh_token_success(monkeypatch):
+    from io import BytesIO
+
+    class SuccessResponse:
+        status = 200
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return None
+        def read(self):
+            return json.dumps({
+                "access_token": "new-access-token-123",
+                "expires_in": 3600,
+                "token_type": "Bearer",
+            }).encode("utf-8")
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout=15: SuccessResponse())
+    provider = GoogleCalendarProvider("client_id", "client_secret", "https://api.avenqo.ca/callback")
+    result = asyncio.run(provider.refresh_access_token("valid_refresh_token"))
+    assert result["access_token"] == "new-access-token-123"
+    assert result["expires_in"] == 3600
+
+
+def test_crm_get_calendar_connection_returns_reconnect_status_when_error():
+    from backend.app.routers.crm import get_calendar_connection
+    from backend.app.models.crm import CRMCalendarConnection
+
+    fake_conn = CRMCalendarConnection(
+        company_id=UUID("9c97cb94-e9f9-46fb-afd4-8a1d21019cff"),
+        provider="google",
+        account_email="owner@avenqo.ca",
+        calendar_id="primary",
+        sync_status="error",
+        sync_error="Google token expired or revoked. Please reconnect.",
+    )
+
+    class FakeService:
+        def get_calendar_connection(self, company_id):
+            return fake_conn
+
+    tenant = SimpleNamespace(company_id=UUID("9c97cb94-e9f9-46fb-afd4-8a1d21019cff"))
+    res = get_calendar_connection(tenant=tenant, service=FakeService())
+    assert res["connected"] is False
+    assert res["sync_status"] == "error"
+    assert res["requires_reconnect"] is True
+    assert res["reconnect_message"] == "Reconnectez Google Calendar pour reprendre les réservations"

@@ -18,7 +18,12 @@ from backend.app.services.calendar.base import (
     CalendarEventData,
     CalendarProvider,
     CalendarProviderError,
+    CalendarTokenRevokedError,
+    CalendarTokenTransientError,
 )
+
+GoogleTokenRevokedError = CalendarTokenRevokedError
+GoogleTokenTransientError = CalendarTokenTransientError
 
 logger = logging.getLogger(__name__)
 
@@ -36,10 +41,20 @@ CALENDAR_SCOPES = [
 async def _open_response(request, *, timeout):
     """Keep blocking urllib I/O off the API event loop, including body reads."""
     def read_response():
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            return response.read(), response.status
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return response.read(), response.status, None
+        except urllib.error.HTTPError as err:
+            try:
+                body = err.read()
+            except Exception:
+                body = b""
+            return body, err.code, err
 
-    body, status = await asyncio.to_thread(read_response)
+    body, status, err = await asyncio.to_thread(read_response)
+    if err is not None:
+        err._cached_body = body
+        raise err
     with BytesIO(body) as response:
         response.status = status
         yield response
@@ -170,8 +185,31 @@ class GoogleCalendarProvider(CalendarProvider):
         try:
             async with _open_response(req, timeout=15) as resp:
                 return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            raw_body = getattr(exc, "_cached_body", b"").decode("utf-8", errors="replace")
+            try:
+                err_data = json.loads(raw_body)
+            except Exception:
+                err_data = {}
+            error_code = str(err_data.get("error") or "").strip().lower()
+            if error_code == "invalid_grant" or exc.code in {400, 401}:
+                logger.warning(
+                    "Google OAuth refresh token expired or revoked by Google (invalid_grant). Reconnection required.",
+                    extra={"provider": "google", "http_status": exc.code},
+                )
+                raise CalendarTokenRevokedError(
+                    "Le jeton Google Calendar est expiré ou révoqué. Reconnexion requise."
+                ) from exc
+            logger.warning(
+                "Google OAuth refresh failed with HTTP error",
+                extra={"provider": "google", "http_status": exc.code},
+            )
+            raise CalendarTokenTransientError(
+                f"Échec temporaire du rafraîchissement du token Google ({exc.code})."
+            ) from exc
         except Exception as exc:
-            raise CalendarProviderError("Échec du rafraîchissement du token Google.") from exc
+            logger.warning("Google token refresh network failure", extra={"provider": "google"})
+            raise CalendarTokenTransientError("Échec du rafraîchissement du token Google.") from exc
 
     def _auth_headers(self, credentials: dict[str, Any]) -> dict[str, str]:
         token = credentials.get("access_token", "")

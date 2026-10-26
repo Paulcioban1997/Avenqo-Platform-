@@ -234,6 +234,8 @@ class CRMService(TimestampMixin, Base):
     buffer_before_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     buffer_after_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+    is_approved_by_owner: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+    is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
 
 
 class CRMCustomFieldDefinition(TimestampMixin, Base):

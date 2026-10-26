@@ -34,6 +34,7 @@ import { CRMPipelinesView } from "./crm-pipelines-view";
 import { CRMAutomationsView } from "./crm-automations-view";
 import { CRMCalendarConnectionCard } from "./crm-calendar-connection-card";
 import { BusinessHoursSettings } from "./business-hours-settings";
+import { CRMServicesSettings } from "./crm-services-settings";
 import { finiteMetric, validDate } from "./crm-format";
 import { CRMCampaignsView } from "./crm-campaigns-view";
 import { CRMReportsView } from "./crm-reports-view";
@@ -60,7 +61,20 @@ interface CRMViewProps {
 export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
   const { locale } = useLocale();
   const t = propT || getAppTranslations(locale);
-  const [currentTab, setCurrentTab] = useState<CRMSubTab>(activeSubTab);
+  const [currentTab, setCurrentTab] = useState<CRMSubTab>(() => {
+    if (typeof window !== "undefined") {
+      const p = new URLSearchParams(window.location.search).get("tab");
+      if (p) return p as CRMSubTab;
+    }
+    return activeSubTab;
+  });
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const p = new URLSearchParams(window.location.search).get("tab");
+      if (p) setCurrentTab(p as CRMSubTab);
+    }
+  }, []);
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [kpis, setKpis] = useState<CRMKpis>({});
   const loadRevision = useRef(0);
@@ -456,7 +470,13 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
 
         {currentTab === "reports" && <CRMReportsView t={t} />}
 
-        {currentTab === "connections" && <><BusinessHoursSettings /><CRMCalendarConnectionCard t={t} /></>}
+        {currentTab === "connections" && (
+          <div className="space-y-6">
+            <CRMCalendarConnectionCard t={t} />
+            <CRMServicesSettings />
+            <BusinessHoursSettings />
+          </div>
+        )}
       </div>
 
       {/* RIGHT: PERMANENT AVENQO COPILOT PANEL (Item 10, 11, 12) */}

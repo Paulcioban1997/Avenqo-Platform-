@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta, timezone
+import logging
 from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -14,9 +15,16 @@ from backend.app.config.settings import get_settings
 from backend.app.models.company import Company
 from backend.app.models.crm import CRMAppointment, CRMCalendarConnection, CRMEmployee, CRMService
 from backend.app.models.voice import VoiceBusinessConfig
-from backend.app.services.calendar.base import BusySlot, CalendarProviderError
+from backend.app.services.calendar.base import (
+    BusySlot,
+    CalendarProviderError,
+    CalendarTokenRevokedError,
+    CalendarTokenTransientError,
+)
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
+
+logger = logging.getLogger(__name__)
 
 
 class AvailabilityUnavailable(CalendarProviderError):
@@ -51,9 +59,14 @@ class CRMAvailabilityService:
             value = local
         return value.astimezone(timezone.utc)
 
-    def _resource(self, model, company_id: UUID, resource_id: UUID | None):
+    def _resource(self, model, company_id: UUID, resource_id: UUID | str | None):
         if resource_id is None:
             return None
+        if isinstance(resource_id, str):
+            try:
+                resource_id = UUID(resource_id)
+            except Exception:
+                pass
         resource = self._session.get(model, resource_id)
         if resource is None or resource.company_id != company_id or not resource.is_active:
             raise AvailabilityUnavailable("RESOURCE_NOT_AUTHORIZED")
@@ -153,10 +166,34 @@ class CRMAvailabilityService:
                             connection.sync_error = None
                         self._session.commit()
                         periods = await provider.check_busy_slots(credentials, start, end, connection.calendar_id)
-                    except Exception as refresh_exc:
+                    except CalendarTokenRevokedError as rev_exc:
                         connection.sync_status = "error"
                         if hasattr(connection, "sync_error"):
                             connection.sync_error = "Google token expired or revoked. Please reconnect."
+                        self._session.commit()
+                        logger.warning(
+                            "Google Calendar OAuth token revoked for tenant. Reconnection required.",
+                            extra={"company_id": str(company_id), "provider": "google"},
+                        )
+                        raise AvailabilityUnavailable("EXTERNAL_AVAILABILITY_UNAVAILABLE") from rev_exc
+                    except Exception as refresh_exc:
+                        connection.sync_status = "error"
+                        err_str = str(refresh_exc).lower()
+                        cause = getattr(refresh_exc, "__cause__", None)
+                        cause_code = getattr(cause, "code", None)
+                        is_revoked = (
+                            isinstance(refresh_exc, CalendarTokenRevokedError)
+                            or "invalid_grant" in err_str
+                            or "revoked" in err_str
+                            or "reconnect" in err_str
+                            or cause_code in (400, 401)
+                        )
+                        if hasattr(connection, "sync_error"):
+                            connection.sync_error = (
+                                "Google token expired or revoked. Please reconnect."
+                                if is_revoked
+                                else "Disponibilités externes temporairement inaccessibles."
+                            )
                         self._session.commit()
                         raise AvailabilityUnavailable("EXTERNAL_AVAILABILITY_UNAVAILABLE") from refresh_exc
                 busy.extend(periods)

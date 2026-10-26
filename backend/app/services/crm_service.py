@@ -31,7 +31,12 @@ from backend.app.models.crm import (
     CRMService as CRMServiceModel,
 )
 from backend.app.models.company import Company
-from backend.app.services.calendar.base import CalendarEventData, CalendarProviderError
+from backend.app.services.calendar.base import (
+    CalendarEventData,
+    CalendarProviderError,
+    CalendarTokenRevokedError,
+    CalendarTokenTransientError,
+)
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
 from backend.app.services.crm_availability_service import AvailabilityUnavailable, CRMAvailabilityService
@@ -205,6 +210,11 @@ class CRMService:
     def _owned(self, model: Any, record_id: Any, company_id: UUID) -> Any:
         if record_id is None:
             return None
+        if isinstance(record_id, str):
+            try:
+                record_id = UUID(record_id)
+            except Exception:
+                pass
         record = self._session.get(model, record_id)
         return record if record is not None and record.company_id == company_id else None
 
@@ -559,6 +569,25 @@ class CRMService:
         if reference_error:
             return None, reference_error
 
+        if service_id:
+            try:
+                svc_uuid = UUID(str(service_id))
+                svc_obj = self._session.scalar(
+                    select(CRMServiceModel).where(
+                        CRMServiceModel.company_id == company_id,
+                        CRMServiceModel.id == svc_uuid,
+                        CRMServiceModel.is_active.is_(True),
+                    )
+                )
+                if svc_obj:
+                    is_approved = getattr(svc_obj, "is_approved_by_owner", True)
+                    if svc_obj.category == "clinic" and not getattr(svc_obj, "is_approved_by_owner", False):
+                        is_approved = False
+                    if not is_approved:
+                        return None, "Ce service de démonstration n'a pas été approuvé par le propriétaire pour la réservation publique."
+            except Exception:
+                pass
+
         idempotency_key = str(data.get("idempotency_key") or "").strip() or None
         if idempotency_key:
             existing = self._session.scalar(
@@ -601,7 +630,11 @@ class CRMService:
         price = data.get("price", 0.0)
         title = data.get("title")
         if data.get("service_id"):
-            svc = self._session.get(CRMServiceModel, data["service_id"])
+            try:
+                svc_id = UUID(str(data["service_id"]))
+            except Exception:
+                svc_id = None
+            svc = self._session.get(CRMServiceModel, svc_id) if svc_id else None
             if svc and svc.company_id == company_id:
                 if price == 0.0:
                     price = svc.price
@@ -614,9 +647,9 @@ class CRMService:
         raw_industry_data = data.get("industry_data")
         appointment = CRMAppointment(
             company_id=company_id,
-            client_id=data["client_id"],
-            service_id=data.get("service_id"),
-            employee_id=employee_id,
+            client_id=UUID(str(data["client_id"])) if isinstance(data.get("client_id"), (str, UUID)) else data.get("client_id"),
+            service_id=UUID(str(data["service_id"])) if data.get("service_id") and isinstance(data["service_id"], (str, UUID)) else None,
+            employee_id=UUID(str(employee_id)) if employee_id and isinstance(employee_id, (str, UUID)) else None,
             title=title,
             start_time=start_time,
             end_time=end_time,
@@ -920,10 +953,20 @@ class CRMService:
                 refresh_token = credentials.get("refresh_token")
                 if "401" not in str(exc) or not refresh_token:
                     raise
-                refreshed = await provider.refresh_access_token(str(refresh_token))
-                credentials = {**credentials, **refreshed, "refresh_token": refresh_token}
-                conn.encrypted_credentials = self._cipher.encrypt(credentials)
-                events = await provider.list_events(credentials, start_time, end_time, conn.calendar_id)
+                try:
+                    refreshed = await provider.refresh_access_token(str(refresh_token))
+                    credentials = {**credentials, **refreshed, "refresh_token": refresh_token}
+                    conn.encrypted_credentials = self._cipher.encrypt(credentials)
+                    events = await provider.list_events(credentials, start_time, end_time, conn.calendar_id)
+                except CalendarTokenRevokedError:
+                    conn.sync_status = "error"
+                    conn.sync_error = "Google token expired or revoked. Please reconnect."
+                    self._session.commit()
+                    logger.warning(
+                        "Google Calendar token revoked during sync_from_google. Reconnection required.",
+                        extra={"company_id": str(company_id), "provider": "google"},
+                    )
+                    raise
 
             stats = {"fetched": len(events), "created": 0, "updated": 0, "cancelled": 0, "skipped": 0}
             await self._acquire_appointment_lock(company_id)
@@ -1181,11 +1224,16 @@ class CRMService:
                             conn.sync_error = None
                             self._session.commit()
                             return await _perform_op(creds)
-                        except Exception as refresh_err:
+                        except CalendarTokenRevokedError:
                             conn.sync_status = "error"
                             conn.sync_error = "Google token expired or revoked. Please reconnect."
                             self._session.commit()
-                            return "failed", f"Synchronisation Google Calendar impossible (token expiré): {refresh_err}"
+                            return "failed", "Synchronisation Google Calendar impossible (token révoqué). Reconnectez Google Calendar pour reprendre les réservations."
+                        except Exception as refresh_err:
+                            conn.sync_status = "error"
+                            conn.sync_error = "Disponibilités externes temporairement inaccessibles."
+                            self._session.commit()
+                            return "failed", f"Synchronisation Google Calendar impossible: {refresh_err}"
                     raise
             return "skipped", None
         except Exception as exc:
@@ -1208,6 +1256,8 @@ class CRMService:
         )
 
     def create_service(self, company_id: UUID, data: dict[str, Any]) -> CRMServiceModel:
+        category = data.get("category")
+        is_clinic_preset = category == "clinic"
         svc = CRMServiceModel(
             company_id=company_id,
             name=data["name"].strip(),
@@ -1215,12 +1265,37 @@ class CRMService:
             duration_minutes=data.get("duration_minutes", 60),
             price=data.get("price", 0.0),
             currency=data.get("currency", "CAD"),
-            category=data.get("category"),
+            category=category,
             color_hex=data.get("color_hex", "#0076FF"),
             buffer_before_minutes=data.get("buffer_before_minutes", 0),
             buffer_after_minutes=data.get("buffer_after_minutes", 0),
+            is_approved_by_owner=data.get("is_approved_by_owner", not is_clinic_preset),
+            is_published=data.get("is_published", not is_clinic_preset),
         )
         self._session.add(svc)
+        self._session.commit()
+        return svc
+
+    def toggle_service_approval(self, company_id: UUID, service_id: UUID) -> CRMServiceModel | None:
+        svc = self._session.scalar(
+            select(CRMServiceModel).where(
+                CRMServiceModel.company_id == company_id,
+                CRMServiceModel.id == service_id,
+                CRMServiceModel.is_active.is_(True),
+            )
+        )
+        if not svc:
+            return None
+        current_state = bool(
+            getattr(svc, "is_approved_by_owner", False)
+            if svc.category == "clinic"
+            else getattr(svc, "is_approved_by_owner", True)
+        )
+        new_state = not current_state
+        if hasattr(svc, "is_approved_by_owner"):
+            svc.is_approved_by_owner = new_state
+        if hasattr(svc, "is_published"):
+            svc.is_published = new_state
         self._session.commit()
         return svc
 

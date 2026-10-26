@@ -30,6 +30,16 @@ class CalendarProviderError(Exception):
     pass
 
 
+class CalendarTokenRevokedError(CalendarProviderError):
+    """Raised when external OAuth refresh token is permanently revoked or expired."""
+    pass
+
+
+class CalendarTokenTransientError(CalendarProviderError):
+    """Raised on transient network or 5xx provider failures during token refresh."""
+    pass
+
+
 class CalendarProvider(ABC):
     """Abstract interface supporting multi-provider calendar integration."""
 

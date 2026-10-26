@@ -16,6 +16,7 @@ import {
 import type { AppTranslations } from "@/lib/i18n/app-dictionary";
 import { validDate, metricText } from "./crm-format";
 import { getAuthHeaders } from "@/lib/api-headers";
+import { apiFetch } from "@/lib/api-request";
 import { useLocale } from "@/lib/i18n/locale-context";
 import type { AppointmentItem } from "./appointment-details-drawer";
 
@@ -80,6 +81,9 @@ interface ServiceOption {
   name: string;
   duration_minutes: number;
   price: number;
+  category?: string | null;
+  is_approved_by_owner?: boolean;
+  is_published?: boolean;
 }
 
 interface EmployeeOption {
@@ -109,6 +113,14 @@ export function NewAppointmentModal({
   const [services, setServices] = useState<ServiceOption[]>([]);
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
+  const [requiresReconnect, setRequiresReconnect] = useState(false);
+
+  // Custom Service inline creation state
+  const [isCreatingService, setIsCreatingService] = useState(false);
+  const [newServiceName, setNewServiceName] = useState("");
+  const [newServiceDuration, setNewServiceDuration] = useState(60);
+  const [newServicePrice, setNewServicePrice] = useState(75);
+  const [isSavingService, setIsSavingService] = useState(false);
 
   // Form State
   const [clientId, setClientId] = useState("");
@@ -178,6 +190,7 @@ export function NewAppointmentModal({
       setDurationMinutes(60);
       setPrice(0);
       setIsCreatingClient(false);
+      setIsCreatingService(false);
     }
     setError(null);
     setConflictWarning(null);
@@ -188,10 +201,11 @@ export function NewAppointmentModal({
     try {
       const headers = getAuthHeaders();
 
-      const [cRes, sRes, eRes] = await Promise.all([
-        fetch("/api/v1/crm/clients?limit=100", { headers }),
-        fetch("/api/v1/crm/services", { headers }),
-        fetch("/api/v1/crm/employees", { headers }),
+      const [cRes, sRes, eRes, calRes] = await Promise.all([
+        apiFetch("/api/v1/crm/clients?limit=100", { headers }),
+        apiFetch("/api/v1/crm/services", { headers }),
+        apiFetch("/api/v1/crm/employees", { headers }),
+        apiFetch("/api/v1/crm/calendar/connection", { headers }).catch(() => null),
       ]);
 
       if (cRes.ok) {
@@ -209,6 +223,17 @@ export function NewAppointmentModal({
         const eData = await eRes.json();
         setEmployees(eData || []);
       }
+      if (calRes && calRes.ok) {
+        const calData = await calRes.json();
+        const needsReconnect = Boolean(
+          calData.requires_reconnect ||
+          calData.sync_status === "error" ||
+          calData.sync_status === "revoked" ||
+          (!calData.connected && calData.provider === "google") ||
+          (calData.last_synced_at && (Date.now() - new Date(calData.last_synced_at).getTime()) >= 6 * 86400000)
+        );
+        setRequiresReconnect(needsReconnect);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : t.crm.actions.mutationError);
     } finally {
@@ -216,9 +241,59 @@ export function NewAppointmentModal({
     }
   };
 
+  const handleCreateCustomService = async () => {
+    if (!newServiceName.trim()) return;
+    setIsSavingService(true);
+    try {
+      const res = await apiFetch("/api/v1/crm/services", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({
+          name: newServiceName.trim(),
+          duration_minutes: Number(newServiceDuration) || 60,
+          price: Number(newServicePrice) || 0,
+          currency: "CAD",
+          category: "retail",
+        }),
+      });
+      if (res.ok) {
+        const created = await res.json();
+        const fullService = {
+          id: created.id,
+          name: created.name,
+          duration_minutes: Number(newServiceDuration) || 60,
+          price: created.price,
+        };
+        setServices((prev) => [...prev, fullService]);
+        setServiceId(created.id);
+        setDurationMinutes(fullService.duration_minutes);
+        setPrice(fullService.price);
+        if (!title) setTitle(fullService.name);
+        setIsCreatingService(false);
+        setNewServiceName("");
+      }
+    } catch {
+      // ignore
+    } finally {
+      setIsSavingService(false);
+    }
+  };
+
   const handleServiceChange = (sid: string) => {
-    setServiceId(sid);
     const selected = services.find((s) => s.id === sid);
+    if (selected) {
+      const isApproved = selected.is_approved_by_owner ?? (selected.category !== "clinic");
+      if (!isApproved) {
+        setError(
+          locale.startsWith("fr")
+            ? "Ce service de démonstration n'a pas été approuvé par le propriétaire pour la réservation publique."
+            : "This demo service has not been approved by the owner for public booking."
+        );
+        return;
+      }
+    }
+    setError(null);
+    setServiceId(sid);
     if (selected) {
       setDurationMinutes(selected.duration_minutes);
       setPrice(selected.price);
@@ -232,6 +307,21 @@ export function NewAppointmentModal({
     e.preventDefault();
     setError(null);
     setConflictWarning(null);
+
+    if (serviceId) {
+      const selected = services.find((s) => s.id === serviceId);
+      if (selected) {
+        const isApproved = selected.is_approved_by_owner ?? (selected.category !== "clinic");
+        if (!isApproved) {
+          setError(
+            locale.startsWith("fr")
+              ? "Ce service de démonstration n'a pas été approuvé par le propriétaire pour la réservation publique."
+              : "This demo service has not been approved by the owner for public booking."
+          );
+          return;
+        }
+      }
+    }
 
     if (!startDate || !startTime) {
       setError(t.crm.modal.dateRequired || "Date et heure requises.");
@@ -254,7 +344,7 @@ export function NewAppointmentModal({
           setIsSubmitting(false);
           return;
         }
-        const clientRes = await fetch("/api/v1/crm/clients", {
+        const clientRes = await apiFetch("/api/v1/crm/clients", {
           method: "POST",
           headers,
           body: JSON.stringify({
@@ -319,7 +409,7 @@ export function NewAppointmentModal({
         method = "PUT";
       }
 
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method,
         headers,
         body: JSON.stringify(payload),
@@ -369,21 +459,21 @@ export function NewAppointmentModal({
           </button>
         </div>
 
-        {/* 4-STEP BOOKING PROGRESSION */}
+        {/* 4-STEP BOOKING PROGRESSION: Service -> Disponibilité -> Coordonnées -> Confirmation */}
         <div className="px-6 py-2.5 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-100 dark:border-white/[0.04] flex items-center justify-between text-[11px] font-bold text-slate-500 overflow-x-auto">
           <div className="flex items-center gap-1.5 text-[#0076FF]">
             <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-950 text-[#0076FF] flex items-center justify-center text-[10px]">1</span>
-            <span>{locale.startsWith("fr") ? "Client" : "Client"}</span>
-          </div>
-          <span className="text-slate-300">→</span>
-          <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
-            <span className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center text-[10px]">2</span>
             <span>{locale.startsWith("fr") ? "Prestation" : "Service"}</span>
           </div>
           <span className="text-slate-300">→</span>
           <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
-            <span className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center text-[10px]">3</span>
+            <span className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center text-[10px]">2</span>
             <span>{locale.startsWith("fr") ? "Disponibilité" : "Time Slot"}</span>
+          </div>
+          <span className="text-slate-300">→</span>
+          <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+            <span className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center text-[10px]">3</span>
+            <span>{locale.startsWith("fr") ? "Coordonnées" : "Contact Details"}</span>
           </div>
           <span className="text-slate-300">→</span>
           <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
@@ -394,6 +484,18 @@ export function NewAppointmentModal({
 
         {/* Content */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5">
+          {requiresReconnect && (
+            <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs flex items-start gap-2.5 shadow-xs">
+              <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">Reconnectez Google Calendar pour reprendre les réservations</p>
+                <p className="text-[11px] text-amber-800 dark:text-amber-300/80 mt-0.5 leading-relaxed">
+                  La synchronisation externe avec Google Calendar est actuellement indisponible. Pour protéger votre planning et empêcher toute double réservation, la création de créneaux est suspendue jusqu'à reconnexion.
+                </p>
+              </div>
+            </div>
+          )}
+
           {error && (
             <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/40 text-rose-700 dark:text-rose-300 text-xs flex items-start gap-2.5">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -408,25 +510,208 @@ export function NewAppointmentModal({
             </div>
           )}
 
-          {/* Client Selection */}
-          <div className="space-y-2">
+          {/* SECTION 1: PRESTATION & COLLABORATEUR */}
+          <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 space-y-3">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                <User className="w-3.5 h-3.5 text-[#0076FF]" />
-                {t.crm.clients.client} *
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <Wrench className="w-3.5 h-3.5 text-[#0076FF]" />
+                <span>1. {locale.startsWith("fr") ? "Prestation & Service" : "Service & Pricing"}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsCreatingService(!isCreatingService)}
+                className="text-xs text-[#0076FF] hover:underline flex items-center gap-1 font-semibold"
+              >
+                <Plus className="w-3 h-3" />
+                <span>{isCreatingService ? (locale.startsWith("fr") ? "Annuler l'ajout" : "Cancel") : (locale.startsWith("fr") ? "+ Nouvelle prestation" : "+ Add Service")}</span>
+              </button>
+            </div>
+
+            {isCreatingService ? (
+              <div className="p-3 rounded-xl bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-900/50 space-y-3">
+                <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                  {locale.startsWith("fr") ? "Configurer une prestation pour votre boutique" : "Configure a custom service"}
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="sm:col-span-2">
+                    <label className="text-[10px] text-slate-500 font-semibold">{locale.startsWith("fr") ? "Nom de la prestation *" : "Service Name *"}</label>
+                    <input
+                      type="text"
+                      value={newServiceName}
+                      onChange={(e) => setNewServiceName(e.target.value)}
+                      placeholder={locale.startsWith("fr") ? "Ex: Entretien équipement & fixations" : "e.g. Gear maintenance"}
+                      className="w-full mt-1 px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-semibold">{locale.startsWith("fr") ? "Tarif (CAD) *" : "Price (CAD) *"}</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={newServicePrice}
+                      onChange={(e) => setNewServicePrice(parseFloat(e.target.value) || 0)}
+                      className="w-full mt-1 px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between pt-1">
+                  <div className="flex items-center gap-2">
+                    <label className="text-[10px] text-slate-500 font-semibold">{locale.startsWith("fr") ? "Durée :" : "Duration:"}</label>
+                    <select
+                      value={newServiceDuration}
+                      onChange={(e) => setNewServiceDuration(parseInt(e.target.value) || 60)}
+                      className="px-2 py-1 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white"
+                    >
+                      <option value={30}>30 min</option>
+                      <option value={45}>45 min</option>
+                      <option value={60}>60 min</option>
+                      <option value={90}>90 min</option>
+                      <option value={120}>120 min</option>
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCreateCustomService}
+                    disabled={isSavingService || !newServiceName.trim()}
+                    className="px-3 py-1.5 text-xs font-bold rounded-lg bg-[#0076FF] text-white hover:bg-blue-600 disabled:opacity-50 transition"
+                  >
+                    {isSavingService ? (locale.startsWith("fr") ? "Enregistrement..." : "Saving...") : (locale.startsWith("fr") ? "Enregistrer prestation" : "Save service")}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1 block">
+                    {t.crm.filters.service} *
+                  </label>
+                  <select
+                    value={serviceId}
+                    onChange={(e) => handleServiceChange(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
+                  >
+                    <option value="">{locale.startsWith("fr") ? "Sélectionner une prestation..." : "Select a service..."}</option>
+                    {services.map((s) => {
+                      const isApproved = s.is_approved_by_owner ?? (s.category !== "clinic");
+                      return (
+                        <option
+                          key={s.id}
+                          value={s.id}
+                          disabled={!isApproved}
+                          className={!isApproved ? "text-slate-400 italic" : ""}
+                        >
+                          {s.name} ({metricText(s.duration_minutes, locale, t.common.insufficientData)} min — {metricText(s.price, locale, t.common.insufficientData, 2)} $)
+                          {!isApproved
+                            ? (locale.startsWith("fr") ? " [Démo non approuvée — Réservation bloquée]" : " [Unapproved Demo — Booking Blocked]")
+                            : ""}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1 block">
+                    {t.crm.filters.employee} ({locale.startsWith("fr") ? "optionnel" : "optional"})
+                  </label>
+                  <select
+                    value={employeeId}
+                    onChange={(e) => setEmployeeId(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
+                  >
+                    <option value="">{locale.startsWith("fr") ? "Tous les collaborateurs disponibles" : "Any available staff"}</option>
+                    {employees.map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.first_name} {emp.last_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* SECTION 2: DISPONIBILITÉ & CRÉNEAU HORAIRE */}
+          <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 space-y-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-[#0076FF]" />
+              <span>2. {locale.startsWith("fr") ? "Date & Créneau horaire" : "Date & Time Slot"}</span>
+            </h3>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1 block">
+                  {t.crm.calendar.day} *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1 block">
+                  {t.crm.calendar.agenda} *
+                </label>
+                <input
+                  type="time"
+                  required
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1 block">
+                  {locale.startsWith("fr") ? "Durée (minutes)" : "Duration (minutes)"}
+                </label>
+                <input
+                  type="number"
+                  min="5"
+                  step="5"
+                  value={durationMinutes}
+                  onChange={(e) => setDurationMinutes(parseInt(e.target.value) || 30)}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1 block">
+                {locale.startsWith("fr") ? "Objet du rendez-vous" : "Appointment Subject"}
               </label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder={locale.startsWith("fr") ? "Ex: Ajustement matériel ski / snowboard" : "e.g. Consultation"}
+                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
+              />
+            </div>
+          </div>
+
+          {/* SECTION 3: COORDONNÉES CLIENT */}
+          <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-[#0076FF]" />
+                <span>3. {locale.startsWith("fr") ? "Coordonnées du client" : "Client Contact Details"}</span>
+              </h3>
               <button
                 type="button"
                 onClick={() => setIsCreatingClient(!isCreatingClient)}
-                className="text-xs text-[#0076FF] hover:underline flex items-center gap-1 font-medium"
+                className="text-xs text-[#0076FF] hover:underline flex items-center gap-1 font-semibold"
               >
                 <Plus className="w-3 h-3" />
-                {isCreatingClient ? (locale.startsWith("fr") ? "Sélectionner un client existant" : "Select existing client") : (locale.startsWith("fr") ? "+ Nouveau client" : "+ New client")}
+                <span>{isCreatingClient ? (locale.startsWith("fr") ? "Sélectionner existant" : "Select existing") : (locale.startsWith("fr") ? "+ Nouveau client" : "+ New Client")}</span>
               </button>
             </div>
 
             {isCreatingClient ? (
-              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 grid grid-cols-2 gap-3">
+              <div className="p-3.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-[11px] text-slate-500 font-semibold">{locale.startsWith("fr") ? "Prénom *" : "First Name *"}</label>
                   <input
@@ -435,7 +720,7 @@ export function NewAppointmentModal({
                     value={newClientFirst}
                     onChange={(e) => setNewClientFirst(e.target.value)}
                     placeholder={locale.startsWith("fr") ? "Ex: Jean" : "e.g. John"}
-                    className="w-full mt-1 px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
+                    className="w-full mt-1 px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
                   />
                 </div>
                 <div>
@@ -446,7 +731,7 @@ export function NewAppointmentModal({
                     value={newClientLast}
                     onChange={(e) => setNewClientLast(e.target.value)}
                     placeholder={locale.startsWith("fr") ? "Ex: Tremblay" : "e.g. Smith"}
-                    className="w-full mt-1 px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
+                    className="w-full mt-1 px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
                   />
                 </div>
                 <div>
@@ -456,7 +741,7 @@ export function NewAppointmentModal({
                     value={newClientPhone}
                     onChange={(e) => setNewClientPhone(e.target.value)}
                     placeholder="514-555-0199"
-                    className="w-full mt-1 px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
+                    className="w-full mt-1 px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
                   />
                 </div>
                 <div>
@@ -466,7 +751,7 @@ export function NewAppointmentModal({
                     value={newClientEmail}
                     onChange={(e) => setNewClientEmail(e.target.value)}
                     placeholder="client@exemple.com"
-                    className="w-full mt-1 px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
+                    className="w-full mt-1 px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
                   />
                 </div>
               </div>
@@ -475,179 +760,96 @@ export function NewAppointmentModal({
                 value={clientId}
                 onChange={(e) => setClientId(e.target.value)}
                 required
-                className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
+                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
               >
-                <option value="">{t.crm.clients.client}</option>
+                <option value="">{locale.startsWith("fr") ? "Sélectionner un dossier client existant..." : "Select existing client..."}</option>
                 {clients.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.first_name} {c.last_name} {c.phone ? `(${c.phone})` : ""}
+                    {c.first_name} {c.last_name} {c.phone ? `(${c.phone})` : ""} {c.email ? `— ${c.email}` : ""}
                   </option>
                 ))}
               </select>
             )}
           </div>
 
-          {/* Service & Employee */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
-                <Wrench className="w-3.5 h-3.5 text-[#00D4FF]" />
-                {t.crm.filters.service}
-              </label>
-              <select
-                value={serviceId}
-                onChange={(e) => handleServiceChange(e.target.value)}
-                className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
+          {/* SECTION 4: CONFIRMATION & TARIFICATION */}
+          <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 space-y-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-[#0076FF]" />
+              <span>4. {locale.startsWith("fr") ? "Tarif & Confirmation finale" : "Pricing & Final Confirmation"}</span>
+            </h3>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1">
+                  <DollarSign className="w-3 h-3 text-emerald-500" />
+                  <span>{locale.startsWith("fr") ? "Montant facturé (CAD)" : "Price (CAD)"}</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={price}
+                  onChange={(e) => setPrice(parseFloat(e.target.value) || 0)}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1 flex items-center gap-1">
+                  <FileText className="w-3 h-3 text-slate-400" />
+                  <span>{locale.startsWith("fr") ? "Notes & Instructions" : "Notes"}</span>
+                </label>
+                <input
+                  type="text"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder={locale.startsWith("fr") ? "Ex: Matériel apporté en magasin" : "e.g. Specific instructions"}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Form Actions */}
+          <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-800">
+            <span className="text-[11px] text-slate-400">
+              {requiresReconnect
+                ? (locale.startsWith("fr") ? "Réservations suspendues (Google Calendar révoqué)" : "Bookings paused (Google Calendar revoked)")
+                : (locale.startsWith("fr") ? "Vérification stricte de disponibilité appliquée" : "Strict availability checks applied")}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-xs font-semibold rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
               >
-                <option value="">{t.crm.filters.service}</option>
-                {services.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({metricText(s.duration_minutes, locale, t.common.insufficientData)} — {metricText(s.price, locale, t.common.insufficientData, 2)})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
-                <User className="w-3.5 h-3.5 text-violet-500" />
-                {t.crm.filters.employee}
-              </label>
-              <select
-                value={employeeId}
-                onChange={(e) => setEmployeeId(e.target.value)}
-                className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
+                {t.common.cancel}
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting || requiresReconnect}
+                className={`px-5 py-2 text-xs font-bold rounded-xl transition flex items-center gap-2 shadow-sm ${
+                  requiresReconnect
+                    ? "bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed"
+                    : "bg-[#0076FF] hover:bg-blue-600 text-white"
+                }`}
               >
-                <option value="">{t.crm.filters.employee}</option>
-                {employees.map((emp) => (
-                  <option key={emp.id} value={emp.id}>
-                    {emp.first_name} {emp.last_name}
-                  </option>
-                ))}
-              </select>
+                {isSubmitting ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>{locale.startsWith("fr") ? "Chargement..." : "Loading..."}</span>
+                  </>
+                ) : requiresReconnect ? (
+                  <span>{locale.startsWith("fr") ? "Reconnexion requise" : "Reconnect required"}</span>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>{initialAppointment ? (locale.startsWith("fr") ? "Mettre à jour" : "Update") : (locale.startsWith("fr") ? "Confirmer la réservation" : "Confirm booking")}</span>
+                  </>
+                )}
+              </button>
             </div>
-          </div>
-
-          {/* Title / Purpose */}
-          <div>
-            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
-              <FileText className="w-3.5 h-3.5 text-slate-400" />
-              {t.crm.modal.newAppointmentTitle}
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder={t.crm.modal.subtitle}
-              className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
-            />
-          </div>
-
-          {/* Date, Time & Duration */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
-                <Calendar className="w-3.5 h-3.5 text-[#0076FF]" />
-                {t.crm.calendar.day} *
-              </label>
-              <input
-                type="date"
-                required
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
-                <Clock className="w-3.5 h-3.5 text-[#00D4FF]" />
-                {t.crm.calendar.agenda} *
-              </label>
-              <input
-                type="time"
-                required
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
-                <Clock className="w-3.5 h-3.5 text-slate-400" />
-                {t.crm.calendar.week}
-              </label>
-              <input
-                type="number"
-                min="5"
-                step="5"
-                value={durationMinutes}
-                onChange={(e) => setDurationMinutes(parseInt(e.target.value) || 30)}
-                className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
-              />
-            </div>
-          </div>
-
-          {/* Price */}
-          <div>
-            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
-              <DollarSign className="w-3.5 h-3.5 text-emerald-500" />
-              {t.crm.kpis.revenueGenerated}
-            </label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={price}
-              onChange={(e) => setPrice(parseFloat(e.target.value) || 0)}
-              className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
-            />
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 mb-1.5">
-              <FileText className="w-3.5 h-3.5 text-slate-400" />
-              {t.crm.actions.addNote}
-            </label>
-            <textarea
-              rows={2}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder={t.crm.modal.subtitle}
-              className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
-            />
-          </div>
-
-          {/* Actions */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition"
-            >
-              {t.common.cancel}
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-5 py-2 text-xs font-medium rounded-xl bg-gradient-to-r from-[#0076FF] to-[#00D4FF] text-white shadow-md hover:opacity-90 disabled:opacity-50 transition flex items-center gap-2"
-            >
-              {isSubmitting ? (
-                <>
-                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>{t.crm.actions.save}</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>
-                    {initialAppointment
-                      ? "Enregistrer les modifications"
-                      : "Créer le rendez-vous"}
-                  </span>
-                </>
-              )}
-            </button>
           </div>
         </form>
       </div>
