@@ -775,8 +775,8 @@ export function VoiceOnboardingWizard({
                       </div>
                       <p className="text-xs text-blue-900/80 dark:text-blue-200/80 leading-relaxed">
                         {fr
-                          ? "Votre réceptionniste IA répond au téléphone en tout temps (nuit, fins de semaine et jours fériés). Elle renseigne les appelants sur votre entreprise, vos tarifs, vos services et vos fiches produits, tout en prenant des réservations exclusivement pendant vos heures d'ouverture réelles configurées ci-dessus."
-                          : "Your AI receptionist answers callers at any hour (nights, weekends, holidays). It answers inquiries about your company, pricing, services, and catalog, while scheduling bookings strictly during the actual open business hours configured above."}
+                          ? "Sous réserve d'une ligne téléphonique active et d'un solde de crédits suffisant, votre réceptionniste IA répond au téléphone en tout temps (24h/24, nuits et fins de semaine). Elle renseigne les appelants sur votre entreprise, vos tarifs et produits, tout en calant les rendez-vous exclusivement sur vos plages d'ouverture physique définies ci-dessus."
+                          : "Subject to an active telephone line and sufficient credit balance, your AI receptionist answers calls 24/7 (including nights and weekends). It answers inquiries about your business, pricing, and catalog, while scheduling appointments strictly during your physical opening hours configured above."}
                       </p>
                     </div>
                   </div>

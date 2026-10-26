@@ -35,9 +35,9 @@ interface VoiceModulePermissions {
 
 interface CapabilityDefinition {
   id: string;
-  title: { fr: string; en: string };
-  description: { fr: string; en: string };
-  explanation: { fr: string; en: string };
+  title: Record<string, string>;
+  description: Record<string, string>;
+  explanation: Record<string, string>;
   icon: typeof Store;
   actionCodes: string[];
   moduleCodes: string[];
@@ -50,14 +50,23 @@ const CAPABILITIES: CapabilityDefinition[] = [
     title: {
       fr: "Produits et stocks",
       en: "Products and inventory",
+      ro: "Produse și stocuri",
+      es: "Productos y existencias",
+      de: "Produkte und Lagerbestände",
     },
     description: {
       fr: "Votre IA peut renseigner les clients sur votre catalogue et les disponibilités.",
       en: "Your AI can answer customer questions about your catalog and stock availability.",
+      ro: "Inteligența artificială poate oferi detalii clienților despre catalog și stocuri.",
+      es: "Su IA puede informar a los clientes sobre su catálogo y disponibilidad.",
+      de: "Ihre KI kann Kunden über Ihren Katalog und die Verfügbarkeit informieren.",
     },
     explanation: {
       fr: "Permet à l'assistante de vérifier les fiches produits, prix et niveaux de stock pour répondre aux appelants en direct.",
       en: "Allows the assistant to check product listings, prices, and stock levels to answer callers directly.",
+      ro: "Permite asistentei să verifice fișele produselor, prețurile și stocurile pentru a răspunde apelanților în direct.",
+      es: "Permite a la asistente consultar fichas de productos, precios y existencias para responder a las llamadas en directo.",
+      de: "Ermöglicht dem Assistenten, Produktdetails, Preise und Lagerbestände abzurufen, um Anrufer direkt zu informieren.",
     },
     icon: Store,
     actionCodes: ["read_products", "read_inventory", "retail.products.query"],
@@ -68,14 +77,23 @@ const CAPABILITIES: CapabilityDefinition[] = [
     title: {
       fr: "Rendez-vous et réservations",
       en: "Appointments and bookings",
+      ro: "Programări și rezervări",
+      es: "Citas y reservas",
+      de: "Termine und Buchungen",
     },
     description: {
       fr: "Votre IA peut trouver des créneaux et gérer des réservations.",
       en: "Your AI can check available slots and book appointments in your calendar.",
+      ro: "Inteligența artificială poate găsi intervale libere și gestiona rezervări.",
+      es: "Su IA puede encontrar huecos disponibles y gestionar reservas.",
+      de: "Ihre KI kann Zeitfenster finden und Buchungen verwalten.",
     },
     explanation: {
       fr: "Permet de vérifier les disponibilités, créer, modifier ou annuler des rendez-vous selon vos horaires d'ouverture réels.",
       en: "Allows checking open slots, creating, modifying, or cancelling appointments according to your actual business hours.",
+      ro: "Permite verificarea disponibilităților, crearea, modificarea sau anularea programărilor conform programului real.",
+      es: "Permite comprobar disponibilidad, crear, modificar o cancelar citas según sus horarios comerciales reales.",
+      de: "Ermöglicht die Prüfung von Verfügbarkeiten sowie Erstellung und Verwaltung von Terminen gemäß Ihren Öffnungszeiten.",
     },
     icon: Calendar,
     actionCodes: [
@@ -94,14 +112,23 @@ const CAPABILITIES: CapabilityDefinition[] = [
     title: {
       fr: "Service clientèle et accueil",
       en: "Customer service and company info",
+      ro: "Relații cu clienții și recepție",
+      es: "Atención al cliente e información",
+      de: "Kundenservice und Auskunft",
     },
     description: {
       fr: "Votre IA répond aux questions sur votre entreprise.",
       en: "Your AI answers questions about your business, hours, and contact details.",
+      ro: "Inteligența artificială răspunde la întrebări despre compania dumneavoastră.",
+      es: "Su IA responde a preguntas sobre su empresa.",
+      de: "Ihre KI beantwortet Fragen zu Ihrem Unternehmen.",
     },
     explanation: {
       fr: "Renseigne les clients sur votre secteur, vos horaires d'ouverture physiques, vos coordonnées et vos politiques commerciales.",
       en: "Informs callers about your domain, physical store hours, contact information, and business policies.",
+      ro: "Informează apelanții despre domeniu, programul de lucru fizic, date de contact și politici comerciale.",
+      es: "Informa a los usuarios sobre su actividad, horarios de apertura, datos de contacto y condiciones comerciales.",
+      de: "Informiert Anrufer über Branche, Öffnungszeiten, Kontaktdaten und Geschäftsrichtlinien.",
     },
     icon: Users,
     actionCodes: ["read_client_self", "business.info.query", "read"],
@@ -112,14 +139,23 @@ const CAPABILITIES: CapabilityDefinition[] = [
     title: {
       fr: "Informations internes (Sécurisé par NIP)",
       en: "Internal business insights (PIN secured)",
+      ro: "Informații interne (Securizat prin PIN)",
+      es: "Información interna (Protegida por PIN)",
+      de: "Interne Unternehmensdaten (PIN-geschützt)",
     },
     description: {
       fr: "Vos employés autorisés peuvent consulter certaines informations privées.",
       en: "Your authorized staff can consult select private business summaries.",
+      ro: "Angajații autorizați pot consulta anumite informații interne private.",
+      es: "Sus empleados autorizados pueden consultar resúmenes internos privados.",
+      de: "Ihre autorisierten Mitarbeiter können ausgewählte private Unternehmensberichte abrufen.",
     },
     explanation: {
       fr: "Réservé exclusivement aux employés et gestionnaires munis de leur code NIP personnel. Vos clients et appelants externes n'y ont jamais accès.",
       en: "Restricted strictly to employees with their personal voice PIN. Callers and customers never have access to this information.",
+      ro: "Rezervat exclusiv angajaților dotați cu propriul cod PIN. Clienții și apelanții externi nu au niciodată acces.",
+      es: "Reservado exclusivamente a empleados con código PIN personal. Los clientes externos nunca tienen acceso.",
+      de: "Ausschließlich für Mitarbeiter mit persönlicher Sprach-PIN zugänglich. Externe Anrufer haben niemals Zugriff.",
     },
     icon: Lock,
     actionCodes: ["read_sales_summary", "read_cashflow", "read_business_health", "read_crm_metrics", "read_unpaid_invoices"],
@@ -137,6 +173,7 @@ export function VoiceModulePermissionsSection({
 }) {
   const { locale } = useLocale();
   const fr = locale.startsWith("fr");
+  const getLocText = (map: Record<string, string>) => map[locale] || (fr ? map.fr : map.en);
   const copy = VOICE_PERMISSIONS_COPY[locale];
   const [data, setData] = useState<VoiceModulePermissions | null>(null);
   const [busy, setBusy] = useState(false);
@@ -315,7 +352,7 @@ export function VoiceModulePermissionsSection({
                     </div>
                     <div>
                       <h4 className="text-xs font-bold text-slate-900 dark:text-white">
-                        {fr ? cap.title.fr : cap.title.en}
+                        {getLocText(cap.title)}
                       </h4>
                       {cap.isSensitive && (
                         <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-400 mt-0.5">
@@ -342,12 +379,12 @@ export function VoiceModulePermissionsSection({
 
                 {/* PRIMARY BUSINESS STATEMENT */}
                 <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 mt-3 leading-snug">
-                  {fr ? cap.description.fr : cap.description.en}
+                  {getLocText(cap.description)}
                 </p>
 
                 {/* DETAILED EXPLANATION */}
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
-                  {fr ? cap.explanation.fr : cap.explanation.en}
+                  {getLocText(cap.explanation)}
                 </p>
               </div>
 
