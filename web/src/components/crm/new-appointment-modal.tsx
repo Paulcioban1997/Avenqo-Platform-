@@ -82,6 +82,8 @@ interface ServiceOption {
   duration_minutes: number;
   price: number;
   category?: string | null;
+  is_approved_by_owner?: boolean;
+  is_published?: boolean;
 }
 
 interface EmployeeOption {
@@ -278,8 +280,20 @@ export function NewAppointmentModal({
   };
 
   const handleServiceChange = (sid: string) => {
-    setServiceId(sid);
     const selected = services.find((s) => s.id === sid);
+    if (selected) {
+      const isApproved = selected.is_approved_by_owner ?? (selected.category !== "clinic");
+      if (!isApproved) {
+        setError(
+          locale.startsWith("fr")
+            ? "Ce service de démonstration n'a pas été approuvé par le propriétaire pour la réservation publique."
+            : "This demo service has not been approved by the owner for public booking."
+        );
+        return;
+      }
+    }
+    setError(null);
+    setServiceId(sid);
     if (selected) {
       setDurationMinutes(selected.duration_minutes);
       setPrice(selected.price);
@@ -293,6 +307,21 @@ export function NewAppointmentModal({
     e.preventDefault();
     setError(null);
     setConflictWarning(null);
+
+    if (serviceId) {
+      const selected = services.find((s) => s.id === serviceId);
+      if (selected) {
+        const isApproved = selected.is_approved_by_owner ?? (selected.category !== "clinic");
+        if (!isApproved) {
+          setError(
+            locale.startsWith("fr")
+              ? "Ce service de démonstration n'a pas été approuvé par le propriétaire pour la réservation publique."
+              : "This demo service has not been approved by the owner for public booking."
+          );
+          return;
+        }
+      }
+    }
 
     if (!startDate || !startTime) {
       setError(t.crm.modal.dateRequired || "Date et heure requises.");
@@ -564,11 +593,18 @@ export function NewAppointmentModal({
                   >
                     <option value="">{locale.startsWith("fr") ? "Sélectionner une prestation..." : "Select a service..."}</option>
                     {services.map((s) => {
-                      const isHistoricalClinic = s.category === "clinic";
+                      const isApproved = s.is_approved_by_owner ?? (s.category !== "clinic");
                       return (
-                        <option key={s.id} value={s.id}>
+                        <option
+                          key={s.id}
+                          value={s.id}
+                          disabled={!isApproved}
+                          className={!isApproved ? "text-slate-400 italic" : ""}
+                        >
                           {s.name} ({metricText(s.duration_minutes, locale, t.common.insufficientData)} min — {metricText(s.price, locale, t.common.insufficientData, 2)} $)
-                          {isHistoricalClinic ? " [Préréglage démo — non approuvé]" : ""}
+                          {!isApproved
+                            ? (locale.startsWith("fr") ? " [Démo non approuvée — Réservation bloquée]" : " [Unapproved Demo — Booking Blocked]")
+                            : ""}
                         </option>
                       );
                     })}

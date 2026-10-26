@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from backend.app.config.settings import get_settings
 from backend.app.core.security import hash_token
 from backend.app.core.permissions import permissions_for
+from backend.app.models.base import UserRole
 from backend.app.database import get_db
 from backend.app.services.tenant_rls import apply_tenant_rls
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
@@ -179,10 +180,13 @@ def _verify_google_oauth_state(state: str, secret: str) -> dict[str, str]:
         raise HTTPException(status_code=400, detail="État OAuth Google invalide ou expiré.") from exc
 
 
-def _google_redirect_uri(settings) -> str:
-    return settings.google_calendar_redirect_uri or (
-        "https://api.avenqo.ca/api/v1/crm/calendar/google/callback"
-    )
+def _google_redirect_uri(settings, request: Request | None = None) -> str:
+    if settings.google_calendar_redirect_uri:
+        return settings.google_calendar_redirect_uri
+    if request:
+        base = str(request.base_url).rstrip("/")
+        return f"{base}/api/v1/crm/calendar/google/callback"
+    return "https://api.avenqo.ca/api/v1/crm/calendar/google/callback"
 
 
 def _outlook_oauth_state(tenant_id: UUID, user_id: UUID, secret: str) -> str:
@@ -776,6 +780,16 @@ def list_services(
             "currency": s.currency,
             "category": s.category,
             "color_hex": s.color_hex,
+            "is_approved_by_owner": (
+                getattr(s, "is_approved_by_owner", False)
+                if s.category == "clinic"
+                else getattr(s, "is_approved_by_owner", True)
+            ),
+            "is_published": (
+                getattr(s, "is_published", False)
+                if s.category == "clinic"
+                else getattr(s, "is_published", True)
+            ),
         }
         for s in services
     ]
@@ -785,10 +799,52 @@ def list_services(
 def create_service(
     payload: CreateServiceRequest,
     tenant: TenantContext = Depends(get_tenant_context),
+    identity: CurrentIdentity = Depends(get_current_identity),
     service: CRMService = Depends(_get_crm_service),
 ) -> dict[str, Any]:
+    perms = permissions_for(identity.user.role)
+    if "company:manage" not in perms and "data:manage" not in perms:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission insuffisante pour créer une prestation.",
+        )
     svc = service.create_service(tenant.company_id, payload.model_dump())
-    return {"id": str(svc.id), "name": svc.name, "price": svc.price}
+    return {
+        "id": str(svc.id),
+        "name": svc.name,
+        "price": svc.price,
+        "is_approved_by_owner": getattr(svc, "is_approved_by_owner", True),
+        "is_published": getattr(svc, "is_published", True),
+    }
+
+
+@router.post("/services/{service_id}/toggle-approval")
+def toggle_service_approval(
+    service_id: UUID,
+    tenant: TenantContext = Depends(get_tenant_context),
+    identity: CurrentIdentity = Depends(get_current_identity),
+    service: CRMService = Depends(_get_crm_service),
+) -> dict[str, Any]:
+    perms = permissions_for(identity.user.role)
+    if "company:manage" not in perms and identity.user.role != UserRole.OWNER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Seul le propriétaire peut approuver ou publier un service.",
+        )
+    svc = service.toggle_service_approval(tenant.company_id, service_id)
+    if not svc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Prestation introuvable.")
+    is_approved = (
+        getattr(svc, "is_approved_by_owner", False)
+        if svc.category == "clinic"
+        else getattr(svc, "is_approved_by_owner", True)
+    )
+    return {
+        "id": str(svc.id),
+        "name": svc.name,
+        "is_approved_by_owner": is_approved,
+        "is_published": is_approved,
+    }
 
 
 @router.get("/employees")
@@ -936,27 +992,23 @@ def get_calendar_connection(
 
 @router.get("/calendar/google/auth-url")
 def get_google_calendar_auth_url(
+    request: Request,
     response: Response,
     tenant: TenantContext = Depends(get_tenant_context),
     identity=Depends(get_current_identity),
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
     settings = get_settings()
-    if not all(
-        (
-            settings.google_calendar_client_id,
-            settings.google_calendar_client_secret,
-            settings.google_calendar_redirect_uri,
-        )
-    ):
+    redirect_uri = _google_redirect_uri(settings, request)
+    if not (settings.google_calendar_client_id and settings.google_calendar_client_secret):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Google OAuth non configuré sur ce serveur.",
+            detail="Google OAuth non configuré sur cet environnement Sandbox (identifiants client manquants).",
         )
     provider = GoogleCalendarProvider(
         client_id=settings.google_calendar_client_id,
         client_secret=settings.google_calendar_client_secret,
-        redirect_uri=_google_redirect_uri(settings),
+        redirect_uri=redirect_uri,
     )
     state = _google_oauth_state(
         tenant.company_id,
@@ -1028,7 +1080,7 @@ async def google_calendar_callback(
     provider = GoogleCalendarProvider(
         client_id=settings.google_calendar_client_id,
         client_secret=settings.google_calendar_client_secret,
-        redirect_uri=_google_redirect_uri(settings),
+        redirect_uri=_google_redirect_uri(settings, request),
     )
     tokens = await provider.exchange_code(code)
     encrypted_creds = cipher.encrypt(tokens)
