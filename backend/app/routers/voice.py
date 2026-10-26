@@ -1472,6 +1472,8 @@ def activate_voice_lifecycle(
 ) -> VoiceLifecycleStatusResponse:
     from backend.app.services.voice_lifecycle_service import VoiceLifecycleService
     _ensure_voice_access(db, identity.user.company_id)
+    if payload is not None and not payload.confirmed:
+        raise HTTPException(status_code=400, detail="Confirmation explicite requise pour activer le numéro vocal.")
     service = VoiceLifecycleService(db)
     try:
         status_dict = service.activate(identity.user.company_id, identity.user.id)

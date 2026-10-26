@@ -111,6 +111,7 @@ export function AvenqoCopilot({
   const [voiceSessionId, setVoiceSessionId] = useState<string | null>(null);
   const [liveTranscriptUser, setLiveTranscriptUser] = useState("");
   const [liveTranscriptAssistant, setLiveTranscriptAssistant] = useState("");
+  const [isFallbackMode, setIsFallbackMode] = useState(false);
 
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const voiceSocketRef = useRef<WebSocket | null>(null);
@@ -353,6 +354,7 @@ export function AvenqoCopilot({
     void playbackRef.current?.context.close();
     playbackRef.current = null;
     setIsDictating(false);
+    setIsFallbackMode(false);
     setLiveState("idle");
     setLiveTranscriptUser("");
     setLiveTranscriptAssistant("");
@@ -382,6 +384,7 @@ export function AvenqoCopilot({
     }
     const recognition = new Recognition();
     fallbackVoiceRef.current = true;
+    setIsFallbackMode(true);
     recognition.interimResults = true;
     recognition.continuous = false;
     let transcript = "";
@@ -447,6 +450,7 @@ export function AvenqoCopilot({
       const speechWindow = typeof window !== "undefined" ? (window as any) : {};
       const hasSpeechRec = Boolean(speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition);
       if (hasSpeechRec) {
+        setIsFallbackMode(true);
         setLiveState("connected");
         startFallbackRecognition(voiceSessionId);
         return;
@@ -543,6 +547,7 @@ export function AvenqoCopilot({
         playbackRef.current = null;
         const hasSpeech = "SpeechRecognition" in window || "webkitSpeechRecognition" in window;
         if (hasSpeech) {
+          setIsFallbackMode(true);
           setLiveState("connected");
           setTimeout(() => {
             setLiveState("listening");
@@ -677,6 +682,7 @@ export function AvenqoCopilot({
         const timeout = window.setTimeout(() => reject(new Error(locale === "fr" ? "Délai de connexion dépassé" : "Voice connection timed out")), 15000);
         socket.onopen = () => {
           window.clearTimeout(timeout);
+          setIsFallbackMode(false);
           setLiveState("connected");
           resolve();
         };
@@ -1218,7 +1224,11 @@ export function AvenqoCopilot({
                   }`}
                 />
                 <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                  {liveState === "idle"
+                  {isFallbackMode
+                    ? locale === "fr"
+                      ? "Mode Dictée Vocale (Web Speech)"
+                      : "Voice Dictation Mode (Web Speech)"
+                    : liveState === "idle"
                     ? locale === "fr"
                       ? "Session vocale prête"
                       : "Voice session ready"
@@ -1252,10 +1262,32 @@ export function AvenqoCopilot({
                 </span>
               </div>
 
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-200/70 dark:bg-white/[0.08] text-slate-600 dark:text-slate-400">
-                {locale.toUpperCase()} · 24 kHz
+              <span
+                className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${
+                  isFallbackMode
+                    ? "bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800"
+                    : "bg-slate-200/70 dark:bg-white/[0.08] text-slate-600 dark:text-slate-400"
+                }`}
+              >
+                {isFallbackMode
+                  ? locale === "fr"
+                    ? "DICTÉE (NON-REALTIME)"
+                    : "DICTATION (NON-REALTIME)"
+                  : `${locale.toUpperCase()} · 24 kHz (REALTIME)`}
               </span>
             </div>
+
+            {/* Warning banner when in dictation fallback */}
+            {isFallbackMode && (
+              <div className="my-2 p-3 rounded-2xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs flex items-center gap-2 z-10 animate-in fade-in">
+                <Mic className="w-4 h-4 text-amber-600 shrink-0" />
+                <span className="leading-relaxed">
+                  {locale === "fr"
+                    ? "Mode dictée vocale locale actif : transcription via le microphone de votre navigateur (sans conversation audio bidirectionnelle temps réel)."
+                    : "Local dictation active: transcription via browser microphone (without duplex Realtime streaming)."}
+                </span>
+              </div>
+            )}
 
             {/* Error Message Alert Card */}
             {liveState === "error" && liveErrorMessage && (
@@ -1352,7 +1384,11 @@ export function AvenqoCopilot({
 
               <div className="mt-6 text-center">
                 <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  {liveState === "idle"
+                  {isFallbackMode
+                    ? locale === "fr"
+                      ? "Parlez pour dicter votre message · Transcription en direct"
+                      : "Speak to dictate your message · Live transcription"
+                    : liveState === "idle"
                     ? locale === "fr"
                       ? "Touchez 'Démarrer la session' pour parler naturellement"
                       : "Touch 'Start session' to speak naturally"
@@ -1362,7 +1398,7 @@ export function AvenqoCopilot({
                       : "Initializing microphone and audio stream..."
                     : liveState === "connected"
                     ? locale === "fr"
-                      ? "Connexion établie avec succès"
+                      ? "Connexion au flux établie avec succès"
                       : "Connection established successfully"
                     : liveState === "error"
                     ? locale === "fr"

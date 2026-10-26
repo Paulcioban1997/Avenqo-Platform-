@@ -326,9 +326,20 @@ class VoiceLifecycleStatusResponse(BaseModel):
 
 class VoiceLifecycleActionRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
-    confirmed: bool = True
-    confirm: bool | None = None
-    model_config = ConfigDict(extra="ignore")
+    confirmed: bool = Field(default=True, description="Confirmation explicite pour l'action du cycle de vie.")
+    confirm: bool | None = Field(default=None, description="Alias déprécié pour confirmed (compatibilité ascendante).")
+
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="before")
+    @classmethod
+    def resolve_confirmed_alias(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            data_copy = dict(data)
+            if "confirmed" not in data_copy and "confirm" in data_copy:
+                data_copy["confirmed"] = bool(data_copy.get("confirm"))
+            return data_copy
+        return data
 
 
 class VoiceIvrSettingsRequest(BaseModel):
