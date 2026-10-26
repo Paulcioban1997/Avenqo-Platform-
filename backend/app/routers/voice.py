@@ -1466,11 +1466,16 @@ def get_voice_lifecycle_status(
 
 @router.post("/lifecycle/activate", response_model=VoiceLifecycleStatusResponse, dependencies=[Depends(require_active_subscription)])
 def activate_voice_lifecycle(
-    payload: VoiceLifecycleActionRequest | None = None,
+    payload: VoiceLifecycleActionRequest,
     identity: CurrentIdentity = Depends(manage_voice),
     db: Session = Depends(get_db),
 ) -> VoiceLifecycleStatusResponse:
     from backend.app.services.voice_lifecycle_service import VoiceLifecycleService
+    if not payload.confirmed:
+        raise HTTPException(
+            status_code=400,
+            detail="Confirmation explicite requise (confirmed=True) pour activer le numéro vocal.",
+        )
     _ensure_voice_access(db, identity.user.company_id)
     service = VoiceLifecycleService(db)
     try:

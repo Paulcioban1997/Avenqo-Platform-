@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Consultation équipement & snowboard",
+    "description": "Séance personnalisée pour choisir la taille, le cambre et les fixations adaptés à votre niveau.",
+    "duration_minutes": 30,
+    "price": 0.0,
+    "currency": "CAD",
+    "category": "sports_retail",
+    "is_active": false,
+    "note": "Fixture de test non publiée. Requiert validation explicite du propriétaire avant toute activation commerciale."
+  },
+  {
+    "name": "Ajustement de fixations & fartage",
+    "description": "Préparation des carres, nettoyage de la semelle et fartage haute performance.",
+    "duration_minutes": 45,
+    "price": 40.0,
+    "currency": "CAD",
+    "category": "sports_retail",
+    "is_active": false,
+    "note": "Fixture de test non publiée. Requiert validation explicite du propriétaire avant toute activation commerciale."
+  },
+  {
+    "name": "Entretien & réparation de planche",
+    "description": "Réparation de semelle, affûtage des carres et remise à neuf.",
+    "duration_minutes": 60,
+    "price": 75.0,
+    "currency": "CAD",
+    "category": "sports_retail",
+    "is_active": false,
+    "note": "Fixture de test non publiée. Requiert validation explicite du propriétaire avant toute activation commerciale."
+  }
+]

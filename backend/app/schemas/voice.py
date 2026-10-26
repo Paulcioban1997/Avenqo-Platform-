@@ -309,7 +309,8 @@ class CompanyRoutingNipResponse(BaseModel):
     revoked_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
-
+
+
 
 class VoiceLifecycleStatusResponse(BaseModel):
     status: str
@@ -325,8 +326,29 @@ class VoiceLifecycleStatusResponse(BaseModel):
 
 class VoiceLifecycleActionRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
-    confirmed: bool = True
+    confirmed: bool = Field(default=False, description="Confirmation explicite requise pour l'action du cycle de vie.")
+    confirm: bool | None = Field(default=None, description="Alias déprécié pour confirmed (compatibilité ascendante).")
+
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="before")
+    @classmethod
+    def resolve_and_validate_confirmation(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            data_copy = dict(data)
+            has_confirmed = "confirmed" in data_copy
+            has_confirm = "confirm" in data_copy
+
+            if has_confirmed and has_confirm:
+                val_confirmed = bool(data_copy["confirmed"])
+                val_confirm = bool(data_copy["confirm"])
+                if val_confirmed != val_confirm:
+                    raise ValueError("Valeurs contradictoires entre 'confirmed' et 'confirm'.")
+            elif not has_confirmed and has_confirm:
+                data_copy["confirmed"] = bool(data_copy["confirm"])
+
+            return data_copy
+        return data
 
 
 class VoiceIvrSettingsRequest(BaseModel):

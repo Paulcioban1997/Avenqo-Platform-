@@ -20,6 +20,8 @@ import {
   Square,
   RadioTower,
   ChevronDown,
+  ShieldAlert,
+  AlertCircle,
 } from "lucide-react";
 import type { AppTranslations } from "@/lib/i18n/app-dictionary";
 import { useLocale } from "@/lib/i18n/locale-context";
@@ -70,7 +72,15 @@ interface ChatMessage {
 }
 
 export type CopilotMode = "text" | "mic" | "live";
-export type LiveVoiceState = "idle" | "connecting" | "listening" | "thinking" | "speaking" | "interrupted";
+export type LiveVoiceState =
+  | "idle"
+  | "connecting"
+  | "connected"
+  | "listening"
+  | "thinking"
+  | "speaking"
+  | "interrupted"
+  | "error";
 
 export function AvenqoCopilot({
   isOpen,
@@ -96,10 +106,12 @@ export function AvenqoCopilot({
 
   // Live Voice Real-Time state (Mode 3)
   const [liveState, setLiveState] = useState<LiveVoiceState>("idle");
+  const [liveErrorMessage, setLiveErrorMessage] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [voiceSessionId, setVoiceSessionId] = useState<string | null>(null);
   const [liveTranscriptUser, setLiveTranscriptUser] = useState("");
   const [liveTranscriptAssistant, setLiveTranscriptAssistant] = useState("");
+  const [isFallbackMode, setIsFallbackMode] = useState(false);
 
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const voiceSocketRef = useRef<WebSocket | null>(null);
@@ -342,6 +354,7 @@ export function AvenqoCopilot({
     void playbackRef.current?.context.close();
     playbackRef.current = null;
     setIsDictating(false);
+    setIsFallbackMode(false);
     setLiveState("idle");
     setLiveTranscriptUser("");
     setLiveTranscriptAssistant("");
@@ -371,6 +384,7 @@ export function AvenqoCopilot({
     }
     const recognition = new Recognition();
     fallbackVoiceRef.current = true;
+    setIsFallbackMode(true);
     recognition.interimResults = true;
     recognition.continuous = false;
     let transcript = "";
@@ -406,18 +420,51 @@ export function AvenqoCopilot({
     startFallbackRecognition(voiceSessionId);
   };
 
-  // Mode 3: Live Real-Time Voice over WebSocket
+  // Mode 3: Live Real-Time Voice over WebSocket with State Machine
   const startLiveVoiceSession = async () => {
-    if (liveState !== "idle") {
+    if (liveState !== "idle" && liveState !== "error") {
       stopVoice();
       return;
     }
 
     const generation = ++voiceGenerationRef.current;
+    setLiveErrorMessage(null);
     setLiveState("connecting");
     const ensureActive = () => {
       if (voiceGenerationRef.current !== generation) throw new Error("Voice start cancelled");
     };
+
+    // 1. Verify microphone support (WebRTC MediaDevices or Web Speech API)
+    let userStream: MediaStream | null = null;
+    if (navigator.mediaDevices?.getUserMedia) {
+      try {
+        userStream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        });
+      } catch {
+        // MediaStream permission denied or device not found
+      }
+    }
+
+    if (!userStream) {
+      const speechWindow = typeof window !== "undefined" ? (window as any) : {};
+      const hasSpeechRec = Boolean(speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition);
+      if (hasSpeechRec) {
+        setIsFallbackMode(true);
+        setLiveState("connected");
+        startFallbackRecognition(voiceSessionId);
+        return;
+      }
+      setLiveState("error");
+      setLiveErrorMessage(
+        locale === "fr"
+          ? "L'accès au microphone est requis. Veuillez autoriser le microphone dans les paramètres de votre navigateur pour converser avec Central AI."
+          : "Microphone permission is required. Please allow microphone access in your browser settings to speak with Central AI."
+      );
+      return;
+    }
+
+    ensureActive();
 
     const playbackContext = new AudioContext({ sampleRate: 24000 });
     void playbackContext.resume();
@@ -461,10 +508,16 @@ export function AvenqoCopilot({
       }
       ensureActive();
 
-      if (!sessionId || !navigator.mediaDevices?.getUserMedia) {
+      if (!sessionId) {
+        userStream.getTracks().forEach((track) => track.stop());
         void playbackRef.current?.context.close();
         playbackRef.current = null;
-        startFallbackRecognition(sessionId);
+        setLiveState("error");
+        setLiveErrorMessage(
+          locale === "fr"
+            ? "Impossible d'initialiser la session vocale sur le serveur Avenqo."
+            : "Failed to initialize voice session on Avenqo server."
+        );
         return;
       }
 
@@ -472,14 +525,42 @@ export function AvenqoCopilot({
         method: "POST",
         headers: getAuthHeaders(),
       });
-      if (!ticketResponse.ok) throw new Error("Voice ticket unavailable");
+      if (!ticketResponse.ok) {
+        userStream.getTracks().forEach((track) => track.stop());
+        void playbackRef.current?.context.close();
+        playbackRef.current = null;
+        setLiveState("error");
+        setLiveErrorMessage(
+          locale === "fr"
+            ? "Le jeton d'accès au flux temps réel est indisponible. Vérifiez votre abonnement et vos crédits IA."
+            : "Voice stream ticket is unavailable. Please verify your subscription and AI credits."
+        );
+        return;
+      }
+
       const { ticket, realtime: available, stream_url: streamUrl } = await ticketResponse.json();
       ensureActive();
 
       if (!available) {
+        userStream.getTracks().forEach((track) => track.stop());
         void playbackRef.current?.context.close();
         playbackRef.current = null;
-        startFallbackRecognition(sessionId);
+        const hasSpeech = "SpeechRecognition" in window || "webkitSpeechRecognition" in window;
+        if (hasSpeech) {
+          setIsFallbackMode(true);
+          setLiveState("connected");
+          setTimeout(() => {
+            setLiveState("listening");
+            startFallbackRecognition(sessionId);
+          }, 400);
+          return;
+        }
+        setLiveState("error");
+        setLiveErrorMessage(
+          locale === "fr"
+            ? "Le flux audio temps réel (WebRTC/WebSocket) n'est pas activé sur cet environnement. Utilisez le mode texte ou dictez votre message."
+            : "Real-time audio streaming is not enabled in this environment. Please use text mode or dictation."
+        );
         return;
       }
 
@@ -598,29 +679,23 @@ export function AvenqoCopilot({
       };
 
       await new Promise<void>((resolve, reject) => {
-        const timeout = window.setTimeout(() => reject(new Error("Voice connection timed out")), 15000);
+        const timeout = window.setTimeout(() => reject(new Error(locale === "fr" ? "Délai de connexion dépassé" : "Voice connection timed out")), 15000);
         socket.onopen = () => {
           window.clearTimeout(timeout);
+          setIsFallbackMode(false);
+          setLiveState("connected");
           resolve();
         };
         socket.onerror = () => {
           window.clearTimeout(timeout);
-          reject(new Error("Voice stream unavailable"));
+          reject(new Error(locale === "fr" ? "Flux vocal temps réel indisponible" : "Voice stream unavailable"));
         };
       });
 
       ensureActive();
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      });
-
-      if (voiceGenerationRef.current !== generation) {
-        stream.getTracks().forEach((track) => track.stop());
-        return;
-      }
 
       const context = new AudioContext({ sampleRate: 24000 });
-      const source = context.createMediaStreamSource(stream);
+      const source = context.createMediaStreamSource(userStream);
       const processor = context.createScriptProcessor(2048, 1, 1);
 
       processor.onaudioprocess = (event) => {
@@ -643,12 +718,19 @@ export function AvenqoCopilot({
 
       source.connect(processor);
       processor.connect(context.destination);
-      captureRef.current = { stream, context, source, processor };
+      captureRef.current = { stream: userStream, context, source, processor };
       setLiveState("listening");
-    } catch {
+    } catch (err) {
       if (voiceGenerationRef.current !== generation) return;
       stopVoice();
-      startFallbackRecognition(voiceSessionId);
+      setLiveState("error");
+      setLiveErrorMessage(
+        err instanceof Error && err.message
+          ? err.message
+          : locale === "fr"
+          ? "Échec de connexion au flux vocal temps réel. Veuillez réessayer."
+          : "Failed to connect to real-time voice stream. Please try again."
+      );
     }
   };
 
@@ -1127,174 +1209,281 @@ export function AvenqoCopilot({
         <div className="flex-1 flex flex-col justify-between p-6 bg-gradient-to-b from-slate-50 to-blue-50/30 dark:from-[#060B13] dark:to-[#0B132B] relative overflow-hidden">
           {/* Top Status Badge */}
           <div className="flex items-center justify-between z-10">
-            <div className="flex items-center gap-2">
-              <RadioTower className={`w-4 h-4 ${liveState !== "idle" ? "text-emerald-500 animate-pulse" : "text-slate-400"}`} />
-              <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                {liveState === "idle"
+              <div className="flex items-center gap-2">
+                <RadioTower
+                  className={`w-4 h-4 ${
+                    liveState === "listening" || liveState === "speaking"
+                      ? "text-emerald-500 animate-pulse"
+                      : liveState === "connected"
+                      ? "text-cyan-500 animate-pulse"
+                      : liveState === "connecting"
+                      ? "text-[#0076FF] animate-spin"
+                      : liveState === "error"
+                      ? "text-rose-500"
+                      : "text-slate-400"
+                  }`}
+                />
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  {isFallbackMode
+                    ? locale === "fr"
+                      ? "Mode Dictée Vocale (Web Speech)"
+                      : "Voice Dictation Mode (Web Speech)"
+                    : liveState === "idle"
+                    ? locale === "fr"
+                      ? "Session vocale prête"
+                      : "Voice session ready"
+                    : liveState === "connecting"
+                    ? locale === "fr"
+                      ? "Connexion au flux temps réel..."
+                      : "Connecting real-time stream..."
+                    : liveState === "connected"
+                    ? locale === "fr"
+                      ? "Connecté · En attente de parole"
+                      : "Connected · Waiting for speech"
+                    : liveState === "listening"
+                    ? locale === "fr"
+                      ? "Central AI vous écoute..."
+                      : "Central AI is listening..."
+                    : liveState === "thinking"
+                    ? locale === "fr"
+                      ? "Analyse de vos données d'entreprise..."
+                      : "Analyzing business data..."
+                    : liveState === "speaking"
+                    ? locale === "fr"
+                      ? "Central AI vous répond..."
+                      : "Central AI is answering..."
+                    : liveState === "interrupted"
+                    ? locale === "fr"
+                      ? "Interrompu (Barge-in)"
+                      : "Interrupted (Barge-in)"
+                    : locale === "fr"
+                    ? "Connexion audio interrompue"
+                    : "Audio connection failed"}
+                </span>
+              </div>
+
+              <span
+                className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${
+                  isFallbackMode
+                    ? "bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800"
+                    : "bg-slate-200/70 dark:bg-white/[0.08] text-slate-600 dark:text-slate-400"
+                }`}
+              >
+                {isFallbackMode
                   ? locale === "fr"
-                    ? "Session vocale prête"
-                    : "Voice session ready"
-                  : liveState === "connecting"
-                  ? locale === "fr"
-                    ? "Connexion au flux temps réel..."
-                    : "Connecting real-time stream..."
-                  : liveState === "listening"
-                  ? locale === "fr"
-                    ? "Central AI vous écoute..."
-                    : "Central AI is listening..."
-                  : liveState === "thinking"
-                  ? locale === "fr"
-                    ? "Analyse de vos données d'entreprise..."
-                    : "Analyzing business data..."
-                  : liveState === "speaking"
-                  ? locale === "fr"
-                    ? "Central AI vous répond..."
-                    : "Central AI is answering..."
-                  : locale === "fr"
-                  ? "Interrompu (Barge-in)"
-                  : "Interrupted (Barge-in)"}
+                    ? "DICTÉE (NON-REALTIME)"
+                    : "DICTATION (NON-REALTIME)"
+                  : `${locale.toUpperCase()} · 24 kHz (REALTIME)`}
               </span>
             </div>
 
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-200/70 dark:bg-white/[0.08] text-slate-600 dark:text-slate-400">
-              {locale.toUpperCase()} · 24 kHz
-            </span>
-          </div>
+            {/* Warning banner when in dictation fallback */}
+            {isFallbackMode && (
+              <div className="my-2 p-3 rounded-2xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs flex items-center gap-2 z-10 animate-in fade-in">
+                <Mic className="w-4 h-4 text-amber-600 shrink-0" />
+                <span className="leading-relaxed">
+                  {locale === "fr"
+                    ? "Mode dictée vocale locale actif : transcription via le microphone de votre navigateur (sans conversation audio bidirectionnelle temps réel)."
+                    : "Local dictation active: transcription via browser microphone (without duplex Realtime streaming)."}
+                </span>
+              </div>
+            )}
 
-          {/* Interactive Animated AI Orb */}
-          <div className="my-auto flex flex-col items-center justify-center relative py-6">
-            {/* Outermost breathing pulse rings */}
-            <div
-              className={`absolute w-64 h-64 rounded-full transition-all duration-700 pointer-events-none ${
-                liveState === "listening"
-                  ? "bg-cyan-500/15 animate-ping"
-                  : liveState === "speaking"
-                  ? "bg-blue-500/20 animate-pulse"
-                  : liveState === "thinking"
-                  ? "bg-purple-500/20 animate-spin"
-                  : liveState === "interrupted"
-                  ? "bg-amber-500/30 scale-110"
-                  : "bg-blue-400/5"
-              }`}
-            />
+            {/* Error Message Alert Card */}
+            {liveState === "error" && liveErrorMessage && (
+              <div className="my-2 p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 text-xs flex flex-col gap-2 z-10 animate-in fade-in">
+                <div className="flex items-start gap-2">
+                  <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span className="font-semibold leading-relaxed">{liveErrorMessage}</span>
+                </div>
+                <div className="flex items-center gap-2 self-end mt-1">
+                  <button
+                    type="button"
+                    onClick={() => setMode("text")}
+                    className="px-3 py-1 rounded-lg bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 font-bold text-[11px] hover:bg-rose-100 dark:hover:bg-rose-900/40 transition"
+                  >
+                    {locale === "fr" ? "Mode texte" : "Text mode"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void startLiveVoiceSession()}
+                    className="px-3.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] transition shadow-xs flex items-center gap-1.5"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>{locale === "fr" ? "Réessayer" : "Retry"}</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
-            <div
-              className={`absolute w-52 h-52 rounded-full transition-all duration-500 pointer-events-none ${
-                liveState === "listening"
-                  ? "bg-cyan-400/20 scale-105"
-                  : liveState === "speaking"
-                  ? "bg-emerald-400/20 scale-110"
-                  : liveState === "thinking"
-                  ? "bg-purple-500/25 scale-100"
-                  : "bg-slate-400/5"
-              }`}
-            />
+            {/* Interactive Animated AI Orb */}
+            <div className="my-auto flex flex-col items-center justify-center relative py-6">
+              {/* Outermost breathing pulse rings */}
+              <div
+                className={`absolute w-64 h-64 rounded-full transition-all duration-700 pointer-events-none ${
+                  liveState === "listening"
+                    ? "bg-cyan-500/15 animate-ping"
+                    : liveState === "speaking"
+                    ? "bg-blue-500/20 animate-pulse"
+                    : liveState === "thinking"
+                    ? "bg-purple-500/20 animate-spin"
+                    : liveState === "interrupted"
+                    ? "bg-amber-500/30 scale-110"
+                    : liveState === "error"
+                    ? "bg-rose-500/10"
+                    : "bg-blue-400/5"
+                }`}
+              />
 
-            {/* Core Interactive Glowing Orb Sphere */}
-            <div
-              className={`relative w-36 h-36 rounded-full flex items-center justify-center shadow-2xl transition-all duration-500 ${
-                liveState === "listening"
-                  ? "bg-gradient-to-tr from-[#00D4FF] via-[#0076FF] to-[#00F0FF] shadow-[0_0_50px_rgba(0,212,255,0.5)] scale-105"
-                  : liveState === "speaking"
-                  ? "bg-gradient-to-tr from-[#10B981] via-[#0076FF] to-[#00D4FF] shadow-[0_0_60px_rgba(16,185,129,0.5)] scale-110"
-                  : liveState === "thinking"
-                  ? "bg-gradient-to-tr from-[#8B5CF6] via-[#EC4899] to-[#3B82F6] shadow-[0_0_50px_rgba(139,92,246,0.5)] animate-pulse"
-                  : liveState === "interrupted"
-                  ? "bg-gradient-to-tr from-[#F59E0B] to-[#EF4444] shadow-[0_0_50px_rgba(245,158,11,0.5)]"
-                  : liveState === "connecting"
-                  ? "bg-gradient-to-tr from-[#0076FF] to-[#8B5CF6] shadow-xl animate-spin"
-                  : "bg-gradient-to-tr from-slate-200 via-blue-100 to-slate-300 dark:from-[#111D3D] dark:via-[#0076FF]/30 dark:to-[#0B132B] shadow-lg"
-              }`}
-            >
-              {liveState === "thinking" ? (
-                <RefreshCw className="w-12 h-12 text-white animate-spin" />
-              ) : liveState === "speaking" ? (
-                <Volume2 className="w-12 h-12 text-white animate-bounce" />
-              ) : liveState === "listening" ? (
-                <Mic className="w-12 h-12 text-white" />
+              <div
+                className={`absolute w-52 h-52 rounded-full transition-all duration-500 pointer-events-none ${
+                  liveState === "listening"
+                    ? "bg-cyan-400/20 scale-105"
+                    : liveState === "speaking"
+                    ? "bg-emerald-400/20 scale-110"
+                    : liveState === "thinking"
+                    ? "bg-purple-500/25 scale-100"
+                    : liveState === "error"
+                    ? "bg-rose-500/15 scale-95"
+                    : "bg-slate-400/5"
+                }`}
+              />
+
+              {/* Core Interactive Glowing Orb Sphere */}
+              <div
+                className={`relative w-36 h-36 rounded-full flex items-center justify-center shadow-2xl transition-all duration-500 ${
+                  liveState === "listening"
+                    ? "bg-gradient-to-tr from-[#00D4FF] via-[#0076FF] to-[#00F0FF] shadow-[0_0_50px_rgba(0,212,255,0.5)] scale-105"
+                    : liveState === "speaking"
+                    ? "bg-gradient-to-tr from-[#10B981] via-[#0076FF] to-[#00D4FF] shadow-[0_0_60px_rgba(16,185,129,0.5)] scale-110"
+                    : liveState === "thinking"
+                    ? "bg-gradient-to-tr from-[#8B5CF6] via-[#EC4899] to-[#3B82F6] shadow-[0_0_50px_rgba(139,92,246,0.5)] animate-pulse"
+                    : liveState === "interrupted"
+                    ? "bg-gradient-to-tr from-[#F59E0B] to-[#EF4444] shadow-[0_0_50px_rgba(245,158,11,0.5)]"
+                    : liveState === "connecting"
+                    ? "bg-gradient-to-tr from-[#0076FF] to-[#8B5CF6] shadow-xl animate-spin"
+                    : liveState === "connected"
+                    ? "bg-gradient-to-tr from-[#0076FF] to-[#00D4FF] shadow-[0_0_40px_rgba(0,118,255,0.4)] animate-pulse"
+                    : liveState === "error"
+                    ? "bg-gradient-to-tr from-rose-600 to-amber-600 shadow-xl"
+                    : "bg-gradient-to-tr from-slate-200 via-blue-100 to-slate-300 dark:from-[#111D3D] dark:via-[#0076FF]/30 dark:to-[#0B132B] shadow-lg"
+                }`}
+              >
+                {liveState === "thinking" ? (
+                  <RefreshCw className="w-12 h-12 text-white animate-spin" />
+                ) : liveState === "speaking" ? (
+                  <Volume2 className="w-12 h-12 text-white animate-bounce" />
+                ) : liveState === "listening" ? (
+                  <Mic className="w-12 h-12 text-white" />
+                ) : liveState === "error" ? (
+                  <AlertCircle className="w-12 h-12 text-white" />
+                ) : (
+                  <Sparkles className="w-12 h-12 text-slate-400 dark:text-blue-300" />
+                )}
+              </div>
+
+              <div className="mt-6 text-center">
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  {isFallbackMode
+                    ? locale === "fr"
+                      ? "Parlez pour dicter votre message · Transcription en direct"
+                      : "Speak to dictate your message · Live transcription"
+                    : liveState === "idle"
+                    ? locale === "fr"
+                      ? "Touchez 'Démarrer la session' pour parler naturellement"
+                      : "Touch 'Start session' to speak naturally"
+                    : liveState === "connecting"
+                    ? locale === "fr"
+                      ? "Initialisation du microphone et du flux audio..."
+                      : "Initializing microphone and audio stream..."
+                    : liveState === "connected"
+                    ? locale === "fr"
+                      ? "Connexion au flux établie avec succès"
+                      : "Connection established successfully"
+                    : liveState === "error"
+                    ? locale === "fr"
+                      ? "Une action est requise pour rétablir la communication"
+                      : "Action required to restore communication"
+                    : isMuted
+                    ? locale === "fr"
+                      ? "Microphone coupé (en pause)"
+                      : "Microphone muted (paused)"
+                    : locale === "fr"
+                    ? "Posez vos questions ventes, stocks ou rendez-vous en continu"
+                    : "Ask questions on sales, inventory or bookings continuously"}
+                </span>
+              </div>
+            </div>
+
+            {/* Live Subtitle Transcript overlay */}
+            <div className="min-h-[85px] max-h-28 overflow-y-auto p-3.5 rounded-2xl bg-white/80 dark:bg-[#111D3D]/80 backdrop-blur-md border border-slate-200/80 dark:border-white/[0.08] text-xs shadow-sm mb-4">
+              {liveTranscriptAssistant ? (
+                <div className="text-slate-900 dark:text-[#F4F7FB]">
+                  <span className="font-bold text-[#0076FF] mr-1.5">Central AI:</span>
+                  {liveTranscriptAssistant}
+                </div>
+              ) : liveTranscriptUser ? (
+                <div className="text-slate-700 dark:text-slate-300 italic">
+                  <span className="font-bold text-slate-500 mr-1.5">Vous:</span>
+                  {liveTranscriptUser}
+                </div>
               ) : (
-                <Sparkles className="w-12 h-12 text-slate-400 dark:text-blue-300" />
+                <div className="text-slate-400 italic text-center py-2">
+                  {locale === "fr"
+                    ? "Les sous-titres et réponses de votre conversation s'affichent ici en direct."
+                    : "Live subtitles and spoken responses appear here in real time."}
+                </div>
               )}
             </div>
 
-            <div className="mt-6 text-center">
-              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                {liveState === "idle"
-                  ? locale === "fr"
-                    ? "Touchez 'Démarrer la session' pour parler naturellement"
-                    : "Touch 'Start session' to speak naturally"
-                  : isMuted
-                  ? locale === "fr"
-                    ? "Microphone coupé (en pause)"
-                    : "Microphone muted (paused)"
-                  : locale === "fr"
-                  ? "Posez vos questions ventes, stocks ou KPI en continu"
-                  : "Ask questions on sales, inventory or KPIs continuously"}
-              </span>
+            {/* Bottom Dock Controls */}
+            <div className="flex items-center justify-center gap-3 z-10">
+              {liveState === "idle" || liveState === "error" ? (
+                <button
+                  type="button"
+                  onClick={() => void startLiveVoiceSession()}
+                  className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-[#0076FF] to-[#00D4FF] hover:from-[#005bd3] hover:to-[#00b2d6] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25 transition-all"
+                >
+                  <Radio className="w-4 h-4" />
+                  <span>
+                    {liveState === "error"
+                      ? locale === "fr"
+                        ? "Réessayer la connexion LIVE"
+                        : "Retry LIVE conversation"
+                      : locale === "fr"
+                      ? "Démarrer la conversation LIVE"
+                      : "Start LIVE conversation"}
+                  </span>
+                </button>
+              ) : (
+                <>
+                  {/* Mute toggle button */}
+                  <button
+                    type="button"
+                    onClick={() => setIsMuted((prev) => !prev)}
+                    className={`h-11 px-4 rounded-xl font-semibold text-xs border flex items-center gap-2 transition-colors ${
+                      isMuted
+                        ? "border-amber-400 bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
+                        : "border-slate-200 dark:border-white/[0.1] bg-white dark:bg-[#111D3D] text-slate-700 dark:text-slate-200 hover:border-[#0076FF]"
+                    }`}
+                  >
+                    {isMuted ? <MicOff size={15} /> : <Mic size={15} />}
+                    <span>{isMuted ? (locale === "fr" ? "Micro coupé" : "Muted") : (locale === "fr" ? "Couper micro" : "Mute")}</span>
+                  </button>
+
+                  {/* End Session button */}
+                  <button
+                    type="button"
+                    onClick={stopVoice}
+                    className="flex-1 py-3 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-rose-600/25 transition-all"
+                  >
+                    <Square className="w-3.5 h-3.5 fill-current" />
+                    <span>{locale === "fr" ? "Terminer la session" : "End session"}</span>
+                  </button>
+                </>
+              )}
             </div>
           </div>
-
-          {/* Live Subtitle Transcript overlay */}
-          <div className="min-h-[85px] max-h-28 overflow-y-auto p-3.5 rounded-2xl bg-white/80 dark:bg-[#111D3D]/80 backdrop-blur-md border border-slate-200/80 dark:border-white/[0.08] text-xs shadow-sm mb-4">
-            {liveTranscriptAssistant ? (
-              <div className="text-slate-900 dark:text-[#F4F7FB]">
-                <span className="font-bold text-[#0076FF] mr-1.5">Central AI:</span>
-                {liveTranscriptAssistant}
-              </div>
-            ) : liveTranscriptUser ? (
-              <div className="text-slate-700 dark:text-slate-300 italic">
-                <span className="font-bold text-slate-500 mr-1.5">Vous:</span>
-                {liveTranscriptUser}
-              </div>
-            ) : (
-              <div className="text-slate-400 italic text-center py-2">
-                {locale === "fr"
-                  ? "Les sous-titres et réponses de votre conversation s'affichent ici en direct."
-                  : "Live subtitles and spoken responses appear here in real time."}
-              </div>
-            )}
-          </div>
-
-          {/* Bottom Dock Controls */}
-          <div className="flex items-center justify-center gap-3 z-10">
-            {liveState === "idle" ? (
-              <button
-                type="button"
-                onClick={() => void startLiveVoiceSession()}
-                className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-[#0076FF] to-[#00D4FF] hover:from-[#005bd3] hover:to-[#00b2d6] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25 transition-all"
-              >
-                <Radio className="w-4 h-4" />
-                <span>{locale === "fr" ? "Démarrer la conversation LIVE" : "Start LIVE conversation"}</span>
-              </button>
-            ) : (
-              <>
-                {/* Mute toggle button */}
-                <button
-                  type="button"
-                  onClick={() => setIsMuted((prev) => !prev)}
-                  className={`h-11 px-4 rounded-xl font-semibold text-xs border flex items-center gap-2 transition-colors ${
-                    isMuted
-                      ? "border-amber-400 bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
-                      : "border-slate-200 dark:border-white/[0.1] bg-white dark:bg-[#111D3D] text-slate-700 dark:text-slate-200 hover:border-[#0076FF]"
-                  }`}
-                >
-                  {isMuted ? <MicOff size={15} /> : <Mic size={15} />}
-                  <span>{isMuted ? (locale === "fr" ? "Micro coupé" : "Muted") : (locale === "fr" ? "Couper micro" : "Mute")}</span>
-                </button>
-
-                {/* End Session button */}
-                <button
-                  type="button"
-                  onClick={stopVoice}
-                  className="flex-1 py-3 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-rose-600/25 transition-all"
-                >
-                  <Square className="w-3.5 h-3.5 fill-current" />
-                  <span>{locale === "fr" ? "Terminer la session" : "End session"}</span>
-                </button>
-              </>
-            )}
-          </div>
-        </div>
       )}
     </div>
   );

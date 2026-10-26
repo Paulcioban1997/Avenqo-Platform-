@@ -22,6 +22,7 @@ import {
   Scissors,
   UtensilsCrossed,
   Landmark,
+  ShoppingBag,
 } from "lucide-react";
 import type { AppTranslations } from "@/lib/i18n/app-dictionary";
 import { useLocale } from "@/lib/i18n/locale-context";
@@ -37,6 +38,7 @@ interface CRMSetupWizardProps {
 }
 
 const BUSINESS_TYPES = [
+  { id: "retail_sports", label: "Commerce & Équipement sportif", icon: ShoppingBag, defaultService: "Séance conseil & équipement", defaultDuration: 30 },
   { id: "clinic", label: "Clinique & Santé", icon: Stethoscope, defaultService: "Consultation générale", defaultDuration: 30 },
   { id: "garage", label: "Garage & Mécanique", icon: Wrench, defaultService: "Changement de pneus & Inspection", defaultDuration: 60 },
   { id: "salon", label: "Salon de beauté & Coiffure", icon: Scissors, defaultService: "Coupe & Coiffage", defaultDuration: 45 },
@@ -69,7 +71,7 @@ export function CRMSetupWizard({
   const [error, setError] = useState<string | null>(null);
 
   // Form states
-  const [businessType, setBusinessType] = useState("clinic");
+  const [businessType, setBusinessType] = useState("retail_sports");
   const [timezone, setTimezone] = useState(currentTimezone || "America/Montreal");
 
   // Weekly opening schedule
@@ -85,8 +87,8 @@ export function CRMSetupWizard({
 
   // Services offered
   const [services, setServices] = useState<{ name: string; duration: number; price: number }[]>([
-    { name: "Consultation initiale", duration: 60, price: 90 },
-    { name: "Suivi de traitement", duration: 30, price: 50 },
+    { name: "Consultation équipement & snowboard", duration: 30, price: 0 },
+    { name: "Ajustement de fixations & fartage", duration: 45, price: 40 },
   ]);
   const [newServiceName, setNewServiceName] = useState("");
   const [newServiceDuration, setNewServiceDuration] = useState(45);

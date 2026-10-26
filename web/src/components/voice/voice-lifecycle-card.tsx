@@ -132,7 +132,7 @@ export function VoiceLifecycleCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           reason: "Activation manuelle par administrateur",
-          confirm: true,
+          confirmed: true,
         }),
       });
       if (!res.ok) {
@@ -168,7 +168,7 @@ export function VoiceLifecycleCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           reason: "Suspension manuelle par administrateur",
-          confirm: true,
+          confirmed: true,
         }),
       });
       if (!res.ok) {
