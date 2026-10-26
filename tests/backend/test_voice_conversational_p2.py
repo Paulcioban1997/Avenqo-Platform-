@@ -488,24 +488,62 @@ def test_multi_tenant_isolation_credential_access(
 
 
 def test_voice_lifecycle_action_request_confirmed_contract_strict():
-    """Vérifie le contrat Pydantic strict : confirmed obligatoire, alias confirm supporté, extra interdit."""
+    """Vérifie le contrat Pydantic strict : default=False (fail-closed), alias supporté, contradiction rejetée, extra interdit."""
     from pydantic import ValidationError
     from backend.app.schemas.voice import VoiceLifecycleActionRequest
 
-    # 1. Payload canonique standard avec confirmed=True
+    # 1. Par défaut, confirmed doit STRICTEMENT être False (sécurité fail-closed)
+    req_default = VoiceLifecycleActionRequest()
+    assert req_default.confirmed is False
+
+    # 2. Payload canonique standard avec confirmed=True explicite
     req1 = VoiceLifecycleActionRequest(confirmed=True, reason="Activation standard")
     assert req1.confirmed is True
     assert req1.reason == "Activation standard"
 
-    # 2. Payload avec alias rétrocompatible confirm=True (converti en confirmed=True)
+    # 3. Payload avec alias rétrocompatible confirm=True (converti en confirmed=True)
     req2 = VoiceLifecycleActionRequest.model_validate({"confirm": True, "reason": "Alias test"})
     assert req2.confirmed is True
     assert req2.confirm is True
 
-    # 3. Payload explicite avec confirmed=False
+    # 4. Payload avec alias confirm=False
+    req_alias_false = VoiceLifecycleActionRequest.model_validate({"confirm": False})
+    assert req_alias_false.confirmed is False
+
+    # 5. Payload explicite avec confirmed=False
     req3 = VoiceLifecycleActionRequest(confirmed=False)
     assert req3.confirmed is False
 
-    # 4. Refus strict de tout champ non contractuel (extra="forbid")
+    # 6. Rejet STRICT des valeurs contradictoires entre confirmed et confirm
+    with pytest.raises(ValidationError, match="Valeurs contradictoires"):
+        VoiceLifecycleActionRequest.model_validate({"confirmed": True, "confirm": False})
+
+    with pytest.raises(ValidationError, match="Valeurs contradictoires"):
+        VoiceLifecycleActionRequest.model_validate({"confirmed": False, "confirm": True})
+
+    # 7. Refus strict de tout champ non contractuel (extra="forbid")
     with pytest.raises(ValidationError):
         VoiceLifecycleActionRequest.model_validate({"confirmed": True, "unexpected_field": "hacked"})
+
+
+def test_activate_voice_lifecycle_endpoint_requires_explicit_confirmed():
+    """Vérifie que l'endpoint d'activation refuse strictement toute requête non confirmée avec HTTP 400."""
+    from unittest.mock import MagicMock
+    from fastapi import HTTPException
+    from backend.app.routers.voice import activate_voice_lifecycle
+    from backend.app.schemas.voice import VoiceLifecycleActionRequest
+
+    mock_identity = MagicMock()
+    mock_identity.user.company_id = uuid4()
+    mock_identity.user.id = uuid4()
+    mock_db = MagicMock()
+
+    # Tentative avec confirmed=False
+    with pytest.raises(HTTPException) as exc_info:
+        activate_voice_lifecycle(
+            payload=VoiceLifecycleActionRequest(confirmed=False),
+            identity=mock_identity,
+            db=mock_db,
+        )
+    assert exc_info.value.status_code == 400
+    assert "Confirmation explicite requise" in exc_info.value.detail
