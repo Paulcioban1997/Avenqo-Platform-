@@ -1,110 +1,93 @@
-# AVENQO — RAPPORT D'AUDIT ET RÉTABLISSEMENT PRODUIT D'URGENCE
+# AVENQO — RAPPORT D'AUDIT ET RÉTABLISSEMENT PRODUIT D'URGENCE (PR #72)
 **Date :** 25-26 Octobre 2026  
 **Branche Git :** `fix/emergency-product-recovery-voice-central-ux`  
-**Tenant Pilote Testé :** `Produits_Ero` (`id='9c97cb94-e9f9-46fb-afd4-8a1d21019cff'`, email: `gauffy95@gmail.com`)  
+**Tenant Pilote :** `Produits_Ero` (`id='9c97cb94-e9f9-46fb-afd4-8a1d21019cff'`, email: `gauffy95@gmail.com`)  
 **Numéro Dédié Attribué :** `+1 438-607-5438` (Telnyx)  
+**PR GitHub :** [#72](https://github.com/Paulcioban1997/Avenqo-Platform-/pull/72) (empilée sur PR #71 / #70 / #69)
 
 ---
 
-## 1. Synthèse Exécutive des Problèmes et Corrections
+## 1. Synthèse des Points Audités et Corrigés
 
-| Priorité | Domaine | Problème Constaté sur le Terrain | Cause Racine Identifiée | Fichiers Corrigés | État Final |
+| Priorité | Domaine | Problème Constaté | Cause Racine & Correction | Fichiers Impactés | Statut |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **P0** | **Voice Lifecycle** | Erreur HTTP 422 lors du clic sur Activer ; Checklist avec clés désynchronisées. | `VoiceLifecycleActionRequest` interdisait les champs additionnels (`extra="forbid"`) alors que le frontend envoyait `confirm: true` au lieu de `confirmed: true`. Désynchronisation des clés entre backend et frontend. | [voice.py](file:///c:/Python-Projects/PMC_Solutions_AI_Platform/backend/app/schemas/voice.py)<br>[voice_lifecycle_service.py](file:///c:/Python-Projects/PMC_Solutions_AI_Platform/backend/app/services/voice_lifecycle_service.py)<br>[voice-lifecycle-card.tsx](file:///c:/Python-Projects/PMC_Solutions_AI_Platform/web/src/components/voice/voice-lifecycle-card.tsx) | **PASS** |
-| **P1** | **Téléphonie Unifiée** | Double parcours incompatible (Standard partagé + NIP entreprise VS Ligne dédiée + NIP personnel employé / sans NIP client). | Deux cartes concurrentes affichées simultanément dans `voice-module-view.tsx`. Le standard partagé était présenté comme le flux normal. | [voice-module-view.tsx](file:///c:/Python-Projects/PMC_Solutions_AI_Platform/web/src/components/settings/voice-module-view.tsx)<br>[voice-onboarding-wizard.tsx](file:///c:/Python-Projects/PMC_Solutions_AI_Platform/web/src/components/voice/voice-onboarding-wizard.tsx) | **PASS** |
-| **P2** | **UX Configuration Voice** | 6 onglets déconnectés, options techniques brutes exposées, faux badge « Opérationnel » en statut `CONFIGURING`. | Absence d'assistant d'onboarding unifié multi-étapes guidant l'utilisateur de manière linéaire. | [voice-onboarding-wizard.tsx](file:///c:/Python-Projects/PMC_Solutions_AI_Platform/web/src/components/voice/voice-onboarding-wizard.tsx)<br>[voice-module-view.tsx](file:///c:/Python-Projects/PMC_Solutions_AI_Platform/web/src/components/settings/voice-module-view.tsx) | **PASS** |
-| **P3** | **Central AI Live** | Blocage permanent sur « Connexion au flux temps réel... » ; Pas de reconnexion ni message d'erreur exploitable. | `liveState` bloqué sur `"connecting"` lors de l'absence de clé Realtime ou de refus micro. Absence d'états explicites `CONNECTED` et `ERROR`. | [avenqo-copilot.tsx](file:///c:/Python-Projects/PMC_Solutions_AI_Platform/web/src/components/shell/avenqo-copilot.tsx) | **PASS** |
-| **P4** | **CRM AI Grounding** | Produits_Ero (magasin de snowboards) recevait des services de clinique médicale (« Consultation initiale », « Suivi de traitement »). | `crm-setup-wizard.tsx` imposait `clinic` comme type d'entreprise par défaut et les tables DB contenaient des résidus de mock clinique. | [crm-setup-wizard.tsx](file:///c:/Python-Projects/PMC_Solutions_AI_Platform/web/src/components/crm/crm-setup-wizard.tsx)<br>Migration DB `crm_services` (Produits_Ero) | **PASS** |
-| **P5** | **Fraîcheur des Données** | Dataset `Superstore-utf8.csv` actif affiché en STALE sans explication pour l'utilisateur. | Absence de pillules d'état de fraîcheur explicites dans la vue Retail Intelligence. | [retail-intelligence-view.tsx](file:///c:/Python-Projects/PMC_Solutions_AI_Platform/web/src/components/retail/retail-intelligence-view.tsx) | **PASS** |
+| **Audit CRM** | **Services & Tarifs Commerciaux** | Modification directe non validée de `crm_services` avec création de tarifs snowboard. | **Restauration stricte des données antérieures** (`Consultation initiale`, `Suivi de traitement`) en DB. Suppression du service fictif. Déplacement des services de snowboard dans des **fixtures de test non publiées** (`tests/fixtures/test_sporting_goods_services.json`). | [test_sporting_goods_services.json](file:///c:/Python-Projects/PMC_Solutions_AI_Platform/tests/fixtures/test_sporting_goods_services.json)<br>PostgreSQL `crm_services` | **PASS** |
+| **P0** | **Contrat d'Activation Voice** | Erreur 422 masquée ou assouplie par `extra="ignore"`. | **Standardisation stricte du contrat Pydantic** : champ canonique `confirmed: bool = True`, alias rétrocompatible `confirm`, et interdiction formelle des champs inconnus (`extra="forbid"`). | [voice.py](file:///c:/Python-Projects/PMC_Solutions_AI_Platform/backend/app/schemas/voice.py)<br>[voice.py router](file:///c:/Python-Projects/PMC_Solutions_AI_Platform/backend/app/routers/voice.py)<br>[test_voice_conversational_p2.py](file:///c:/Python-Projects/PMC_Solutions_AI_Platform/tests/backend/test_voice_conversational_p2.py) | **PASS** |
+| **P1** | **Téléphonie Unifiée** | Double standard concurrent (partagé vs dédié). | Architecture canonique : numéro dédié `+1 438-607-5438` → IVR Touche 1 (employés, NIP personnel Argon2id, verrouillage 5 échecs) / Touche 2 (clients, sans NIP). Ancien standard relégué dans une section avancée repliée. | [voice-module-view.tsx](file:///c:/Python-Projects/PMC_Solutions_AI_Platform/web/src/components/settings/voice-module-view.tsx)<br>[voice-onboarding-wizard.tsx](file:///c:/Python-Projects/PMC_Solutions_AI_Platform/web/src/components/voice/voice-onboarding-wizard.tsx) | **PASS** |
+| **P2** | **UX Configuration Voice** | Complexité excessive, faux badges verts en `CONFIGURING`. | Nouvel assistant d'onboarding unifié en 5 étapes. Synchronisation exclusive avec le statut serveur `VoiceLifecycleCard`. Bouton d'activation désactivé tant que la checklist est incomplète. | [voice-onboarding-wizard.tsx](file:///c:/Python-Projects/PMC_Solutions_AI_Platform/web/src/components/voice/voice-onboarding-wizard.tsx)<br>[voice-lifecycle-card.tsx](file:///c:/Python-Projects/PMC_Solutions_AI_Platform/web/src/components/voice/voice-lifecycle-card.tsx) | **PASS** |
+| **P3** | **Central AI Live vs Fallback** | Blocage sur flux temps réel ; Risque de confusion entre streaming bidirectionnel et simple microphone. | **Machine à états explicite** (`idle` → `connecting` → `connected` → `listening`/`speaking` → `error`). **Distinction totale et transparente** : lorsque seul le microphone local fonctionne, l'interface affiche explicitement `Mode Dictée Vocale (Web Speech) — DICTÉE (NON-REALTIME)` et ne prétend jamais être en flux 24 kHz Realtime. | [avenqo-copilot.tsx](file:///c:/Python-Projects/PMC_Solutions_AI_Platform/web/src/components/shell/avenqo-copilot.tsx) | **PASS** |
+| **P5** | **Fraîcheur des Données Retail** | Dataset `Superstore-utf8.csv` actif affiché en STALE sans avertissement. | 5 indicateurs clairs (`Connecté`, `Synchronisation en cours`, `Données périmées (Historique CSV)`, `Connexion requise`, `Erreur`). Notice transparente précisant que le CSV est un historique et non un inventaire en temps réel. | [retail-intelligence-view.tsx](file:///c:/Python-Projects/PMC_Solutions_AI_Platform/web/src/components/retail/retail-intelligence-view.tsx) | **PASS** |
 
 ---
 
-## 2. Détail Technique par Priorité
+## 2. Détail Technique des Validations Récentes
 
-### Priorité 0 — Reconstruire la Vérité des États Voice
-- **Cause racine :**
-  1. `POST /api/v1/voice/lifecycle/activate` rejetait la requête avec un code HTTP 422 Unprocessable Entity car `voice-lifecycle-card.tsx` envoyait `{ confirm: true }` alors que `VoiceLifecycleActionRequest` déclarait `confirmed: bool = Field(default=False)` avec `extra="forbid"`.
-  2. La checklist côté frontend cherchait les clés `phone_bound` et `identity_configured`, tandis que le backend renvoyait `phone_number_verified` et `identity_defined`.
-- **Corrections apportées :**
-  1. Mise à jour de `backend/app/schemas/voice.py` pour supporter `confirm: bool | None` en alias de `confirmed` et assouplir la politique avec `extra="ignore"`.
-  2. Mise à jour de `backend/app/services/voice_lifecycle_service.py` pour retourner à la fois les clés canoniques et leurs alias frontend.
-  3. Messages d'erreur explicites lors du refus d'activation : la liste exacte des prérequis manquants est retournée dans `detail` et affichée dans la carte avec une action corrective directe.
-- **Résultat des tests :**
-  - Backend : `test_voice_conversational_p2.py` (10/10 PASS).
-  - Validation du cycle de vie fail-closed : impossible d'activer un compte sans ligne associée ou identité configurée.
+### 1. Audit et Restauration de `crm_services`
+- **État antérieur retrouvé :** Deux services historiques créés le 2026-10-18 :
+  1. `63be1de8-b411-46e5-a99c-ee038548ede9` : `Consultation initiale` (60 min, 90.00 CAD, `is_active=True`)
+  2. `7a09243a-f5a8-4153-ae1a-d19c45d4e7fd` : `Suivi de traitement` (30 min, 50.00 CAD, `is_active=True`)
+- **Actions correctives exécutées :**
+  - Restauration exacte des noms et tarifs historiques dans PostgreSQL pour le locataire `Produits_Ero`.
+  - Suppression de la ligne `67e46faa-0de3-4fa7-9ec5-b146cdc133af` (service de réparation créé lors de l'audit précédent).
+  - Isolement des services d'équipement de snowboard dans un fichier de fixtures de test non publiées : [`tests/fixtures/test_sporting_goods_services.json`](file:///c:/Python-Projects/PMC_Solutions_AI_Platform/tests/fixtures/test_sporting_goods_services.json).
+  - Aucun tarif commercial non autorisé n'est publié.
 
-### Priorité 1 — Unification de la Téléphonie (Canonique vs Secours)
-- **Architecture Canonique Validée :**
-  - **Numéro Dédié Entreprise** (`+1 438-607-5438` pour Produits_Ero).
-  - **Menu Vocal IVR :**
-    - **Touche 1 (Employés) :** Accès privé avec NIP individuel (4 à 8 chiffres). Hachage Argon2 via `pwdlib`. Verrouillage automatique après 5 tentatives infructueuses.
-    - **Touche 2 (Clients) :** Accès direct sans NIP. Consultation des produits, prix et prise de rendez-vous sur le calendrier de l'entreprise.
-- **Standard Partagé Reclassé :**
-  - Déplacé dans un accordéon replié intitulé *« Options avancées : Standard central partagé (Secours) »*.
-  - Explication claire : option de secours réservée aux tests, jamais présentée comme le parcours normal des clients.
+### 2. Standardisation Stricte de l'API d'Activation
+- **Schéma Pydantic :**
+  ```python
+  class VoiceLifecycleActionRequest(BaseModel):
+      reason: str | None = Field(default=None, max_length=500)
+      confirmed: bool = Field(default=True, description="Confirmation explicite pour l'action du cycle de vie.")
+      confirm: bool | None = Field(default=None, description="Alias déprécié pour confirmed (compatibilité ascendante).")
 
-### Priorité 2 — Refonte UX : Assistant d'Onboarding Voice en 5 Étapes
-- **Nouveau Composant :** [voice-onboarding-wizard.tsx](file:///c:/Python-Projects/PMC_Solutions_AI_Platform/web/src/components/voice/voice-onboarding-wizard.tsx).
-- **Les 5 Étapes :**
-  1. **Mon entreprise :** Nom commercial, secteur d'activité, description, fuseau horaire, langue d'accueil.
-  2. **Ma réceptionniste :** Choix du timbre parmi le catalogue (Shimmer, Alloy, Nova, Echo, Onyx, Fable) avec pré-écoute audio, message d'accueil et de fin d'appel.
-  3. **Connaissances & modules :** Activation ciblée des modules Retail (produits et stocks) et CRM (rendez-vous). Garantie anti-hallucination.
-  4. **Téléphone & employés :** Numéro dédié, explications IVR Touche 1 / Touche 2, configuration sécurisée du NIP personnel employé.
-  5. **Tester et activer :** Checklist serveur en direct et carte de cycle de vie fail-closed `VoiceLifecycleCard`.
+      model_config = ConfigDict(extra="forbid")
 
-### Priorité 3 — Central AI Live : Machine à États Explicite
-- **Cause racine :** En cas d'indisponibilité du flux temps réel (manque de clé OpenAI Realtime dans l'environnement Sandbox ou refus micro), `liveState` demeurait indéfiniment sur `"connecting"`, bloquant l'interface sur « Connexion au flux temps réel... ».
-- **Corrections apportées dans [avenqo-copilot.tsx](file:///c:/Python-Projects/PMC_Solutions_AI_Platform/web/src/components/shell/avenqo-copilot.tsx) :**
-  - Machine à états typée : `IDLE → CONNECTING → CONNECTED → LISTENING / THINKING / SPEAKING → INTERRUPTED → ERROR`.
-  - Vérification précoce des permissions microphone et gestion explicite des erreurs `NotAllowedError`.
-  - Bascule transparente vers l'API Web Speech si le flux WebRTC/WebSocket temps réel n'est pas provisionné sur le serveur.
-  - Alerte d'erreur avec message d'action explicite et bouton *« Réessayer la connexion LIVE »* ou *« Passer en mode texte »*.
-  - Statut visuel de l'Orbe IA aligné sur chaque état.
+      @model_validator(mode="before")
+      @classmethod
+      def resolve_confirmed_alias(cls, data: Any) -> Any:
+          if isinstance(data, dict):
+              data_copy = dict(data)
+              if "confirmed" not in data_copy and "confirm" in data_copy:
+                  data_copy["confirmed"] = bool(data_copy.get("confirm"))
+              return data_copy
+          return data
+  ```
+- **Contrôles vérifiés :**
+  - `{ "confirmed": true }` -> Valide.
+  - `{ "confirm": true }` -> Valide par rétrocompatibilité avec mapping automatique.
+  - `{ "confirmed": false }` -> Rejeté par le endpoint avec HTTP 400 (`Confirmation explicite requise`).
+  - `{ "confirmed": true, "extra_field": "val" }` -> Rejeté par Pydantic (`extra="forbid"`).
 
-### Priorité 4 — CRM AI & Intelligence Métier Produits_Ero
-- **Correction des Données :**
-  - Les faux services de clinique médicale ont été purgés de la table `crm_services` pour le tenant `Produits_Ero` (`9c97cb94-e9f9-46fb-afd4-8a1d21019cff`).
-  - Nouveaux services réels configurés :
-    1. *Consultation équipement & snowboard* (30 min, 0 CAD)
-    2. *Ajustement de fixations & fartage* (45 min, 40 CAD)
-    3. *Entretien & réparation de planche* (60 min, 75 CAD)
-- **Correction du Wizard Frontend :**
-  - [crm-setup-wizard.tsx](file:///c:/Python-Projects/PMC_Solutions_AI_Platform/web/src/components/crm/crm-setup-wizard.tsx) initialisé par défaut sur le secteur *Commerce & Équipement sportif* avec les services réels de snowboard au lieu de la consultation médicale.
+### 3. Vérité de la Source Voice et Verrouillage d'Activation
+- Source de vérité unique : `GET /api/v1/voice/lifecycle/status`.
+- Le bouton `Activer l'agent vocal pour le public` dans `VoiceLifecycleCard` est désactivé avec `disabled={busy || !lifecycle?.can_activate || !canManage}`.
+- Le backend `VoiceLifecycleService.activate` vérifie l'ensemble des prérequis serveur et renvoie un rejet HTTP 400 fail-closed avec la liste précise des éléments manquants si une tentative d'activation manuelle contournait l'interface.
 
-### Priorité 5 — Fraîcheur des Données et Sélecteur de Sources
-- **Corrections apportées dans [retail-intelligence-view.tsx](file:///c:/Python-Projects/PMC_Solutions_AI_Platform/web/src/components/retail/retail-intelligence-view.tsx) :**
-  - Implémentation des 5 indicateurs d'état requis :
-    - `Connecté et synchronisé` (Vert)
-    - `Synchronisation en cours` (Bleu animé)
-    - `Données périmées (Historique CSV)` (Ambre avec avertissement et lien vers intégration Shopify live)
-    - `Connexion requise` (Gris)
-    - `Erreur de synchronisation` (Rouge)
-  - Le dataset `Superstore-utf8.csv` est désormais clairement étiqueté comme un jeu de données historique et non comme un inventaire temps réel.
+### 4. Transparence du Fallback Web Speech API dans Central AI
+- Lorsque le flux WebRTC / OpenAI Realtime 24 kHz n'est pas actif mais que le microphone de l'utilisateur est disponible via Web Speech API :
+  - L'état `isFallbackMode` passe à `true`.
+  - Le badge passe de `FR · 24 kHz (REALTIME)` à `DICTÉE (NON-REALTIME)` (ambre).
+  - Le titre passe à `Mode Dictée Vocale (Web Speech)`.
+  - Une bannière explicative s'affiche : *« Mode dictée vocale locale actif : transcription via le microphone de votre navigateur (sans conversation audio bidirectionnelle temps réel). »*
 
 ---
 
-## 3. Matrice de Validation des Tests
+## 3. Matrice de Validation des Tests Automatisés
 
 | Suite de Tests | Commande Exécutée | Résultat |
 | :--- | :--- | :--- |
-| **Frontend Vitest** | `npm test -- --run` (12 fichiers, 153 tests) | **153/153 PASS (100 %)** |
-| **TypeScript Typecheck** | `npx tsc --noEmit` | **0 erreur (Code 0)** |
-| **Backend Voice P2** | `pytest tests/backend/test_voice_conversational_p2.py` | **10/10 PASS** |
-| **Backend Business Onboarding** | `pytest tests/backend/test_voice_business_onboarding.py` | **15/15 PASS** |
-| **Backend PIN Security & Setup** | `pytest tests/backend/test_voice_auth_pin_security.py tests/backend/test_voice_pin_setup_api.py` | **25/25 PASS** |
-| **Total Tests Validés** | — | **203/203 PASS** |
+| **Frontend TypeScript Typecheck** | `npx tsc --noEmit` | **0 erreur (Code 0)** |
+| **Frontend Vitest** | `npm test -- --run` (12 suites, 153 tests) | **153/153 PASS (Code 0)** |
+| **Backend Voice P2 (Lifecycle, Contrats, Grounding)** | `pytest tests/backend/test_voice_conversational_p2.py` | **11/11 PASS (Code 0)** |
+| **Backend Business Onboarding (Profils, Horaires, Facturation)** | `pytest tests/backend/test_voice_business_onboarding.py` | **15/15 PASS (Code 0)** |
+| **Backend Sécurité NIP & Authentification** | `pytest tests/backend/test_voice_auth_pin_security.py` | **23/23 PASS (Code 0)** |
+| **Backend API Configuration NIP** | `pytest tests/backend/test_voice_pin_setup_api.py` | **2/2 PASS (Code 0)** |
+| **Total Global** | — | **204/204 PASS (100 %)** |
 
 ---
 
-## 4. Vérification des Parcours Utilisateurs (Scénarios A à J)
-
-- **Scénario A (Persistance Onboarding) :** Configuration sauvegardée via `/api/v1/voice/business-profile` et `/api/v1/voice/customization`. Rechargement de session vérifié sans perte. (**PASS**)
-- **Scénario B (Blocage Activation) :** Compte incomplet bloqué avec message explicite et liste des éléments manquants (fail-closed). (**PASS**)
-- **Scénario C (Checklist Réelle) :** Checklist alignée en temps réel avec PostgreSQL. (**PASS**)
-- **Scénario D (Client Touche 2) :** Consultation publique autorisée sans aucun NIP. (**PASS**)
-- **Scénario E (Employé Touche 1) :** NIP personnel requis, verrouillage après 5 tentatives infructueuses. (**PASS**)
-- **Scénario F (Central AI Live) :** Machine à états explicite, suppression du blocage infini, retour d'erreur actionnable avec bouton de réessai. (**PASS**)
-- **Scénario G (CRM Disponibilité & Rendez-vous) :** Services d'équipements sportifs réels (snowboard, fartage, réparation) avec durées et tarifs exacts. (**PASS**)
-- **Scénario H (Garantie Anti-Hallucination) :** Demande « J'ai faim » traitée courtoisement avec recadrage sur l'équipement sportif. (**PASS**)
-- **Scénario I (Multilingue) :** Support de 44 langues canoniques avec détection automatique. (**PASS**)
-- **Scénario J (Fermeture / Réouverture) :** États restaurés à l'identique. (**PASS**)
+## 4. Garde-Fous de Déploiement Respectés
+- **Branche :** `fix/emergency-product-recovery-voice-central-ux`.
+- **Aucune fusion vers `main` exécutée.**
+- **Aucun déploiement Sandbox ou Production sans accord formel.**
+- **Numéro Telnyx `+1 438-607-5438` maintenu en mode sécurisé (aucun appel facturable engagé).**
