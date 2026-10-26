@@ -11,7 +11,10 @@ from backend.app.models.voice_provisioning import VoiceNumberTariff,VoiceProvisi
 from backend.app.services.auth_service import AuthService
 from backend.app.schemas.auth import RegisterRequest
 from backend.app.services.voice_provisioning_service import VoiceProvisioningService,VoiceProvisioningError,now
+from typing import Any, cast
+from backend.app.services.stripe_gateway import BillingProvider
 from backend.app.services.billing_service import BillingService
+from backend.app.services.account_notifications import LoggingAccountNotifier
 from backend.app.config.settings import Settings
 from shared.ai_engine.contracts import TenantContext
 
@@ -50,12 +53,12 @@ def setup(tmp_path):
  settings.telnyx_voice_connection_id='test-connection';settings.telnyx_media_stream_base_url='wss://voice.example.test/api/v1/voice/telnyx/media'
  settings.voice_approved_realtime_models=['gpt-realtime-2.1'];settings.voice_certified_realtime_locales=['fr'];settings.openai_api_key='explicitly-nonsensitive-fixture';settings.telnyx_media_enabled=True;settings.telnyx_media_inbound_enabled=True
  settings.stripe_webhook_secret=secrets.token_urlsafe(32)
- notifier=SimpleNamespace(email_delivery_configured=False,send_new_company=lambda *a,**k:None,send_invoice_paid=lambda *a,**k:None)
+ notifier=LoggingAccountNotifier()
  tenants=[]
  for n in ('alpha','beta'):
   company,user,_=AuthService(db,notifier).register(RegisterRequest(company_name='Fixture '+n,company_email=n+'-company@example.com',first_name='Fixture',last_name=n,email=n+'@example.com',password=secrets.token_urlsafe(24)+'Aa1!',country='CA',industry='Garage',selected_modules=['crm','voice'],preferred_language='fr',plan_code='base'))
   company.business_hours={'weekly':{day:[{'open':'09:00','close':'17:00'}] for day in ('monday','tuesday','wednesday','thursday','friday')}}
-  acc=db.scalar(select(BillingAccount).where(BillingAccount.company_id==company.id));acc.status='active';acc.stripe_customer_id='cus_'+str(company.id);acc.stripe_subscription_id='sub_'+str(company.id)
+  acc=db.scalar(select(BillingAccount).where(BillingAccount.company_id==company.id));assert acc is not None;acc.status='active';acc.stripe_customer_id='cus_'+str(company.id);acc.stripe_subscription_id='sub_'+str(company.id)
   db.add(CRMService(company_id=company.id,name='Test appointment',duration_minutes=30,price=0,currency='CAD',is_active=True,is_approved_by_owner=True,is_published=True))
   tenants.append(TenantContext(company.id,user.id))
  db.add(VoiceNumberTariff(country='CA',number_type='local',currency='CAD',monthly_amount=499,stripe_price_id='price_voice',provider_cost_limits={'USD':'1.00'},approved=True));db.commit()
@@ -72,7 +75,7 @@ async def paid_order(env,index=0,*,disable_sales_during_callback=False):
  class SignedProvider:
   def construct_event(self,payload,signature,secret):return stripe.Webhook.construct_event(payload,signature,secret).to_dict()
  payload=json.dumps(event).encode();stamp=str(int(time.time()));signature=hmac.new(env.settings.stripe_webhook_secret.encode(),stamp.encode()+b'.'+payload,hashlib.sha256).hexdigest()
- billing=BillingService(env.db,SignedProvider(),env.settings,None,env.notifier)
+ billing=BillingService(env.db,cast(BillingProvider,SignedProvider()),env.settings,cast(Any,None),env.notifier)
  if disable_sales_during_callback:env.settings.voice_commercial_enabled=False
  assert billing.process_webhook(payload,'t='+stamp+',v1='+signature)
  assert not billing.process_webhook(payload,'t='+stamp+',v1='+signature)
@@ -195,7 +198,7 @@ async def test_registered_paid_agent_signed_inbound_books_only_own_crm(setup,mon
  class Calls:
   async def answer_call(self,*a,**kw):commands.append('answer')
   async def start_media_stream(self,*a,**kw):commands.append('stream')
- provider=Calls();svc=VoiceOrchestrator(e.db,e.settings,SimpleNamespace(),provider)
+ provider=Calls();svc=VoiceOrchestrator(e.db,e.settings,cast(Any,SimpleNamespace()),cast(Any,provider))
  monkeypatch.setattr(vr,'_orchestrator',lambda *a:svc)
  app=FastAPI();app.include_router(vr.router,prefix='/api/v1');app.dependency_overrides[get_db]=lambda:e.db;app.dependency_overrides[get_settings]=lambda:e.settings
  with TestClient(app) as c:

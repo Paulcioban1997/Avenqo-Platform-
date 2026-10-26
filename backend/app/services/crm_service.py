@@ -889,8 +889,8 @@ class CRMService:
         sync_error: str | None,
     ) -> None:
         """Record calendar sync on the instance / return path — never in industry_data."""
-        appointment._calendar_sync = calendar_sync
-        appointment._calendar_sync_error = sync_error
+        setattr(appointment, "_calendar_sync", calendar_sync)
+        setattr(appointment, "_calendar_sync_error", sync_error)
 
     @staticmethod
     def calendar_sync_state(appointment: CRMAppointment) -> tuple[str, str | None]:
@@ -1245,12 +1245,19 @@ class CRMService:
 
     # --- Services & Employees ---
 
-    def list_services(self, company_id: UUID) -> list[CRMServiceModel]:
+    def list_services(self, company_id: UUID, published_only: bool = False) -> list[CRMServiceModel]:
+        query = select(CRMServiceModel).where(
+            CRMServiceModel.company_id == company_id,
+            CRMServiceModel.is_active.is_(True),
+        )
+        if published_only:
+            query = query.where(
+                CRMServiceModel.is_approved_by_owner.is_(True),
+                CRMServiceModel.is_published.is_(True),
+            )
         return list(
             self._session.scalars(
-                select(CRMServiceModel)
-                .where(CRMServiceModel.company_id == company_id, CRMServiceModel.is_active.is_(True))
-                .order_by(CRMServiceModel.name.asc())
+                query.order_by(CRMServiceModel.name.asc())
             ).all()
         )
 

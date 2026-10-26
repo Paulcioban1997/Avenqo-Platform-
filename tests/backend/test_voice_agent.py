@@ -918,8 +918,9 @@ def _seed_retell_call(session, config, retell_call_id, *, caller_phone="+1514555
 
 def _authenticated_booking_calls(session, company, config, service, call_ids):
     from backend.app.services.module_entitlement_service import ModuleEntitlementService
+    phone = "+15145550123"
     owner = User(company_id=company.id, first_name="Verified", last_name="Scheduler", email="scheduler@example.com",
-        password_hash="test", phone="+15145550123", role=UserRole.OWNER, is_active=True)
+        password_hash="test", phone=phone, role=UserRole.OWNER, is_active=True)
     session.add(owner); session.flush()
     session.add_all([CompanyMembership(company_id=company.id, user_id=owner.id, role=UserRole.OWNER, is_active=True),
         _test_billing_account(session, company)])
@@ -927,7 +928,7 @@ def _authenticated_booking_calls(session, company, config, service, call_ids):
     ModuleEntitlementService(session).activate_module(TenantContext(company.id), "crm")
     _grant_voice_actions(session, company.id, (("crm", "create_appointment"),))
     for call_id in call_ids:
-        call = _seed_retell_call(session, config, call_id, caller_phone=owner.phone)
+        call = _seed_retell_call(session, config, call_id, caller_phone=phone)
         call.caller_type = "OWNER"; call.authenticated_user_id = owner.id; call.caller_verified_at = datetime.now(timezone.utc)
         VoiceCallerAuth(session, Settings()).establish(call)
     session.commit()

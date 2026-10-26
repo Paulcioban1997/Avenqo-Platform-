@@ -7,6 +7,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import re
 import secrets
 from typing import Any
@@ -49,6 +50,8 @@ from backend.app.services.audit_log_service import AuditLogService
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.ai.request_identity import resolve_ai_request_id
 from shared.ai_engine.contracts import TenantContext
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/crm", tags=["crm"])
 google_oauth_callback_router = APIRouter(prefix="/crm", tags=["crm-oauth"])

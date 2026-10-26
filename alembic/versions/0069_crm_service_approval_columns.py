@@ -45,33 +45,17 @@ def upgrade() -> None:
                 )
             )
 
-    # 2. FAIL-CLOSED MIGRATION RULE:
-    # No heuristic based on category != 'clinic'. A category is NOT commercial consent.
-    # By default, all existing services are unapproved and unpublished (fail-closed).
-    # ONLY services with verifiable proof of active/historical confirmed customer appointments
-    # in crm_appointments are preserved as approved & published so legitimate operating
-    # businesses do not suffer silent appointment disruption.
-    # Unverified drafts, presets, and unconfirmed services remain strictly unapproved.
+    # 2. FAIL-CLOSED MIGRATION RULE (P10.2):
+    # A historical appointment (even confirmed or completed) does NOT constitute explicit owner commercial consent.
+    # Neither category heuristics nor historical appointment inferences grant commercial approval.
+    # By default, all existing services are set to strictly unapproved and unpublished (fail-closed).
+    # All historical services and appointments are preserved intact in the database.
+    # Owners must explicitly approve and publish services via the authenticated Owner interface with audit logging.
     op.execute(
         sa.text(
             "UPDATE crm_services SET is_approved_by_owner = false, is_published = false"
         )
     )
-    if inspector.has_table("crm_appointments"):
-        op.execute(
-            sa.text(
-                """
-                UPDATE crm_services
-                SET is_approved_by_owner = true, is_published = true
-                WHERE id IN (
-                    SELECT DISTINCT a.service_id
-                    FROM crm_appointments a
-                    WHERE a.service_id IS NOT NULL
-                      AND a.status IN ('confirmed', 'completed')
-                )
-                """
-            )
-        )
 
     # 3. Add indexes
     if "ix_crm_services_is_approved_by_owner" not in existing_indexes:

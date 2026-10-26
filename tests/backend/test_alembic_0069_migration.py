@@ -209,12 +209,11 @@ def test_migration_0069_fail_closed_lifecycle_and_historical_preservation(isolat
         draft_nonclinic_row = by_cat["custom_workshop"]
         demo_clinic_row = by_cat["clinic"]
 
-        # 1. Service 1: Verified with confirmed appointment -> PRESERVED as approved & published
-        assert bool(active_verified_row[3]) is True, "Active service with confirmed booking must be preserved as approved"
-        assert bool(active_verified_row[4]) is True, "Active service with confirmed booking must be preserved as published"
+        # 1. Service 1: Even with historical confirmed appointment, NOT auto-approved! (P10.2 pure fail-closed)
+        assert bool(active_verified_row[3]) is False, "Historical appointment does NOT constitute owner commercial consent"
+        assert bool(active_verified_row[4]) is False, "Historical appointment must NOT auto-publish service"
 
         # 2. Service 2: Non-clinic category WITHOUT appointment proof -> STRICTLY FALSE (FAIL-CLOSED)
-        # CRITICAL PROOF: category != 'clinic' does NOT auto-publish!
         assert bool(draft_nonclinic_row[3]) is False, "Unverified non-clinic service must NOT be auto-approved"
         assert bool(draft_nonclinic_row[4]) is False, "Unverified non-clinic service must NOT be auto-published"
 
@@ -222,7 +221,27 @@ def test_migration_0069_fail_closed_lifecycle_and_historical_preservation(isolat
         assert bool(demo_clinic_row[3]) is False, "Unverified demo clinic service must NOT be auto-approved"
         assert bool(demo_clinic_row[4]) is False, "Unverified demo clinic service must NOT be auto-published"
 
-    # 5. Test Downgrade (0069 -> 0068)
+        # 4. Verify historical appointments and services are preserved 100% without data loss
+        appt_count = conn.execute(sa.text("SELECT count(*) FROM crm_appointments")).scalar()
+        assert appt_count == 1, "Historical customer appointments must be preserved intact"
+        svc_count = conn.execute(sa.text("SELECT count(*) FROM crm_services")).scalar()
+        assert svc_count == 3, "Historical services must be preserved intact"
+
+    # 5. Verify the Read-Only Inventory Script on this database
+    from scripts.crm_migration_services_inventory import run_inventory
+    inventory = run_inventory(isolated_db_url)
+    assert inventory["status"] == "AUDIT_COMPLETE"
+    assert inventory["total_services"] == 3
+    assert inventory["services_with_historical_appointments"] == 1
+    assert inventory["services_requiring_owner_review"] == 1
+    assert inventory["companies"][0]["name"] == "Produits_Ero"
+    # Verify Produits_Ero clinic demo service is explicitly unapproved
+    clinic_svc = next(s for s in inventory["companies"][0]["services"] if s["category"] == "clinic")
+    assert clinic_svc["is_approved_by_owner"] is False
+    assert clinic_svc["is_published"] is False
+    assert clinic_svc["status_flag"] == "UNPUBLISHED_INACTIVE_OR_DRAFT"
+
+    # 6. Test Downgrade (0069 -> 0068)
     command.downgrade(alembic_cfg, "0068_resolve_voice_phone_number_tenant")
 
     inspector = sa.inspect(engine)
@@ -234,11 +253,19 @@ def test_migration_0069_fail_closed_lifecycle_and_historical_preservation(isolat
     with engine.connect() as conn:
         count = conn.execute(sa.text("SELECT count(*) FROM crm_services")).scalar()
         assert count == 3, "All 3 services must be preserved across downgrade"
+        appt_count = conn.execute(sa.text("SELECT count(*) FROM crm_appointments")).scalar()
+        assert appt_count == 1, "Appointment must be preserved across downgrade"
 
-    # 6. Test Re-upgrade (idempotency & re-execution)
+    # 7. Test Re-upgrade (idempotency & re-execution)
     command.upgrade(alembic_cfg, "0069_crm_service_approval_columns")
 
     inspector = sa.inspect(engine)
     cols_reupgraded = {c["name"] for c in inspector.get_columns("crm_services")}
     assert "is_approved_by_owner" in cols_reupgraded
     assert "is_published" in cols_reupgraded
+
+    with engine.connect() as conn:
+        all_unapproved = conn.execute(
+            sa.text("SELECT count(*) FROM crm_services WHERE is_approved_by_owner = true OR is_published = true")
+        ).scalar()
+        assert all_unapproved == 0, "All services must remain strictly fail-closed after re-upgrade"

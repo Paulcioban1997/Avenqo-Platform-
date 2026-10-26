@@ -24,7 +24,12 @@ from shared.ai_engine.contracts import TenantContext
 
 @pytest.fixture
 def db_session():
-    engine = create_engine("sqlite:///:memory:", echo=False)
+    import os
+    pg_url = os.environ.get("AVENQO_TEST_POSTGRES_URL")
+    if pg_url:
+        engine = create_engine(pg_url, echo=False)
+    else:
+        engine = create_engine("sqlite:///:memory:", echo=False)
     Base.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
     session = session_factory()
@@ -32,6 +37,8 @@ def db_session():
         yield session
     finally:
         session.close()
+        if not pg_url:
+            engine.dispose()
 
 
 def _make_company() -> Company:
@@ -331,3 +338,212 @@ async def test_voice_agent_and_central_ai_cannot_book_unapproved_service(db_sess
     )
     assert appt is None
     assert "approuv" in (error or "").lower()
+
+
+@pytest.mark.asyncio
+async def test_historical_confirmed_appointment_does_not_permit_booking_without_owner_approval(db_session: Session):
+    """P10.2: Un ancien rendez-vous confirmé ou complété NE constitue PAS une preuve d'approbation commerciale.
+    La réservation d'un nouveau créneau sur ce service reste STRICTEMENT bloquée jusqu'à validation explicite de l'OWNER.
+    """
+    company = _make_company()
+    db_session.add(company)
+    db_session.commit()
+
+    crm = CRMService(db_session)
+    client = crm.create_client(company.id, {"first_name": "Ancien", "last_name": "Client", "email": "ancien@test.ca"})
+
+    # Prestation historique avec ancien rendez-vous confirmé
+    service = CRMServiceModel(
+        company_id=company.id,
+        name="Prestation Historique Réparations",
+        duration_minutes=60,
+        price=95.0,
+        category="workshop",
+        is_active=True,
+        is_approved_by_owner=False,  # Non approuvé explicitement par OWNER
+        is_published=False,          # Non publié
+    )
+    db_session.add(service)
+    db_session.commit()
+
+    # Ancien rendez-vous confirmé présent dans la base de données
+    past_time = datetime.now(timezone.utc) - timedelta(days=60)
+    historical_appt = CRMAppointment(
+        company_id=company.id,
+        client_id=client.id,
+        service_id=service.id,
+        title="Ancien rendez-vous confirmé 2025",
+        status="confirmed",
+        start_time=past_time,
+        end_time=past_time + timedelta(minutes=60),
+    )
+    db_session.add(historical_appt)
+    db_session.commit()
+
+    # Tentative de nouvelle réservation : doit être STRICTEMENT rejetée (fail-closed)
+    start = datetime.now(timezone.utc) + timedelta(days=2)
+    appt, err = await crm.create_appointment(
+        company.id,
+        {
+            "start_time": start,
+            "service_id": str(service.id),
+            "client_id": client.id,
+            "customer_name": "Nouveau Client 2026",
+        },
+    )
+    assert appt is None, "La réservation doit être bloquée malgré l'existence d'un ancien rendez-vous confirmé"
+    assert "approuv" in (err or "").lower()
+
+    # Préservation historique : l'ancien rendez-vous reste intact
+    preserved = db_session.get(CRMAppointment, historical_appt.id)
+    assert preserved is not None
+    assert preserved.status == "confirmed"
+
+
+@pytest.mark.asyncio
+async def test_new_service_creation_defaults_to_unapproved_and_fails_booking(db_session: Session):
+    """Vérifie qu'un nouveau service créé par défaut est unapproved/unpublished et ne peut être réservé."""
+    company = _make_company()
+    db_session.add(company)
+    db_session.commit()
+
+    crm = CRMService(db_session)
+    new_svc = crm.create_service(company.id, {
+        "name": "Nouveau Service Électrique",
+        "duration_minutes": 45,
+        "price": 75.0,
+        "category": "diagnostic",
+    })
+    assert new_svc.is_approved_by_owner is False
+    assert new_svc.is_published is False
+
+    client = crm.create_client(company.id, {"first_name": "Test", "last_name": "Client", "email": "test@test.ca"})
+    start = datetime.now(timezone.utc) + timedelta(days=2)
+    appt, err = await crm.create_appointment(
+        company.id,
+        {
+            "start_time": start,
+            "service_id": str(new_svc.id),
+            "client_id": client.id,
+            "customer_name": "Test Client",
+        },
+    )
+    assert appt is None
+    assert "approuv" in (err or "").lower()
+
+
+def test_multi_tenant_isolation_on_service_approval(db_session: Session):
+    """Vérifie l'étanchéité multi-tenant : l'OWNER du tenant A ne peut PAS approuver un service du tenant B."""
+    company_a = _make_company()
+    company_b = _make_company()
+    db_session.add_all([company_a, company_b])
+    db_session.commit()
+
+    user_owner_a = User(
+        id=uuid4(),
+        company_id=company_a.id,
+        email="owner_a@tenant-a.ca",
+        first_name="Proprio",
+        last_name="A",
+        password_hash="hashed",
+        role=UserRole.OWNER,
+    )
+    db_session.add(user_owner_a)
+    db_session.commit()
+
+    now = datetime.now(timezone.utc)
+    auth_sess_a = AuthSession(
+        id=uuid4(),
+        user_id=user_owner_a.id,
+        token_hash="dummy_a",
+        created_at=now,
+        expires_at=now + timedelta(hours=1),
+    )
+    identity_a = CurrentIdentity(auth_session=auth_sess_a, user=user_owner_a, raw_token="dummy_a")
+
+    crm = CRMService(db_session)
+    # Service appartenant au Tenant B
+    svc_b = CRMServiceModel(
+        company_id=company_b.id,
+        name="Prestation Privée Tenant B",
+        duration_minutes=30,
+        price=50.0,
+        category="workshop",
+        is_active=True,
+        is_approved_by_owner=False,
+        is_published=False,
+    )
+    db_session.add(svc_b)
+    db_session.commit()
+
+    # Tentative d'approbation par le Tenant A sur le service du Tenant B via le router
+    with pytest.raises(HTTPException) as exc_info:
+        toggle_service_approval(
+            service_id=svc_b.id,
+            tenant=TenantContext(company_id=company_a.id),
+            identity=identity_a,
+            service=crm,
+        )
+    assert exc_info.value.status_code == 404
+    assert "introuvable" in str(exc_info.value.detail).lower()
+
+    # Vérifie que le service B est resté strictement non approuvé
+    svc_b_refreshed = db_session.get(CRMServiceModel, svc_b.id)
+    assert svc_b_refreshed is not None
+    assert svc_b_refreshed.is_approved_by_owner is False
+    assert svc_b_refreshed.is_published is False
+
+
+def test_central_ai_and_voice_catalog_hides_unapproved_services(db_session: Session):
+    """Vérifie que CompanyIntelligenceService ne présente jamais de prestations non approuvées/non publiées."""
+    from backend.app.services.company_intelligence_service import CompanyIntelligenceService, CompanyOfferingUnavailable
+    from backend.app.services.module_entitlement_service import ModuleEntitlementService
+
+    company = _make_company()
+    db_session.add(company)
+    db_session.commit()
+
+    tenant = TenantContext(company.id)
+    entitlements = ModuleEntitlementService(db_session)
+    entitlements.activate_module(tenant, "crm", auto_init_voice=False)
+
+    # 1 service approuvé, 1 service non approuvé
+    approved_svc = CRMServiceModel(
+        company_id=company.id,
+        name="Service Officiel Approuvé",
+        duration_minutes=30,
+        price=50.0,
+        category="workshop",
+        is_active=True,
+        is_approved_by_owner=True,
+        is_published=True,
+    )
+    unapproved_svc = CRMServiceModel(
+        company_id=company.id,
+        name="Service Non Approuvé Draft",
+        duration_minutes=45,
+        price=80.0,
+        category="workshop",
+        is_active=True,
+        is_approved_by_owner=False,
+        is_published=False,
+    )
+    db_session.add_all([approved_svc, unapproved_svc])
+    db_session.commit()
+
+    ci_service = CompanyIntelligenceService(db_session)
+    profile = ci_service.get_profile(company.id)
+
+    # Seul le service approuvé doit figurer dans les offres configurées
+    offered_ids = {s["id"] for s in profile.configured_crm_services}
+    assert str(approved_svc.id) in offered_ids
+    assert str(unapproved_svc.id) not in offered_ids
+
+    # require_service réussit pour le service approuvé
+    matched = ci_service.require_service(company.id, service_id=str(approved_svc.id))
+    assert matched["name"] == approved_svc.name
+
+    # require_service échoue pour le service non approuvé
+    with pytest.raises(CompanyOfferingUnavailable):
+        ci_service.require_service(company.id, service_id=str(unapproved_svc.id))
+

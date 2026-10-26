@@ -68,7 +68,14 @@ class CompanyIntelligenceService:
         from backend.app.services.voice_onboarding_service import stored_business_profile
         business = stored_business_profile(self._session, company_id)
         active = tuple(ModuleEntitlementService(self._session).get_active_modules(TenantContext(company_id)))
-        services = self._session.scalars(select(CRMService).where(CRMService.company_id == company_id, CRMService.is_active.is_(True)).order_by(CRMService.name, CRMService.id).execution_options(populate_existing=True)).all() if "crm" in active else []
+        services = self._session.scalars(
+            select(CRMService).where(
+                CRMService.company_id == company_id,
+                CRMService.is_active.is_(True),
+                CRMService.is_approved_by_owner.is_(True),
+                CRMService.is_published.is_(True),
+            ).order_by(CRMService.name, CRMService.id).execution_options(populate_existing=True)
+        ).all() if "crm" in active else []
         # CRM is the source of service IDs/durations/prices. A non-empty Voice
         # catalog is an explicit allowlist, never authority to create services.
         configured = [s for s in (config.services or []) if isinstance(s, dict) and s.get("name")] if config else []
