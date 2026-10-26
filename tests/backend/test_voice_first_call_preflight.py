@@ -46,7 +46,16 @@ def scenarios(tmp_path):
         # activation alone is deliberately insufficient to offer appointments.
         for key, name in (("garage-montreal", "Entretien vehicule QA"), ("empresa-espanola", "Reunion QA")):
             company, _ = companies[key]
-            service = CRMServiceRecord(company_id=company.id, name=name, duration_minutes=60, currency=company.currency_code, price=0, is_active=True)
+            service = CRMServiceRecord(
+                company_id=company.id,
+                name=name,
+                duration_minutes=60,
+                currency=company.currency_code,
+                price=0,
+                is_active=True,
+                is_approved_by_owner=True,
+                is_published=True,
+            )
             db.add(service); db.flush()
             config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company.id))
             config.services = [{"name": name, "crm_service_id": str(service.id)}]
