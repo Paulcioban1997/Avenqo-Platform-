@@ -322,6 +322,8 @@ def test_appointment_crud_and_conflict_detection(db_session):
             "name": "Changement de Pneus",
             "duration_minutes": 60,
             "price": 89.99,
+            "is_approved_by_owner": True,
+            "is_published": True,
         },
     )
 
