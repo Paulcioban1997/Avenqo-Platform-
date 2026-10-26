@@ -29,6 +29,7 @@ import {
   Copy,
   Sliders,
   ExternalLink,
+  Clock,
 } from "lucide-react";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { apiFetch } from "@/lib/api-request";
@@ -108,6 +109,9 @@ export function VoiceOnboardingWizard({
     communication_style: "professionnel",
   });
 
+  // Step 1: Real Business Hours Schedule State (Not pre-selected!)
+  const [openingHours, setOpeningHours] = useState<Record<string, { open: string; close: string } | null>>({});
+
   // Step 2: Receptionist Customization State
   const [voices, setVoices] = useState<VoiceItem[]>([]);
   const [customization, setCustomization] = useState<CustomizationConfig>({
@@ -120,9 +124,11 @@ export function VoiceOnboardingWizard({
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Step 3: Knowledge & Modules State
+  // Step 3: 4 Business Capabilities State (Zero Technical Clutter)
   const [retailEnabled, setRetailEnabled] = useState<boolean>(true);
   const [crmEnabled, setCrmEnabled] = useState<boolean>(true);
+  const [customerServiceEnabled, setCustomerServiceEnabled] = useState<boolean>(true);
+  const [internalInsightsEnabled, setInternalInsightsEnabled] = useState<boolean>(false);
 
   // Step 4: Telephony & Employees (Canonical Architecture)
   const [assignedNumber, setAssignedNumber] = useState<string>("+1 438-607-5438");
@@ -155,6 +161,16 @@ export function VoiceOnboardingWizard({
             ...data.profile,
             business_name: data.profile.business_name || businessName,
           }));
+          if (data.profile.opening_hours && typeof data.profile.opening_hours === "object") {
+            setOpeningHours(data.profile.opening_hours);
+          }
+          if (Array.isArray(data.profile.allowed_actions)) {
+            const acts = data.profile.allowed_actions;
+            setRetailEnabled(acts.some((a: string) => a.startsWith("retail") || a.includes("product")));
+            setCrmEnabled(acts.some((a: string) => a.startsWith("crm") || a.includes("appointment")));
+            setCustomerServiceEnabled(acts.length === 0 || acts.some((a: string) => a.includes("client") || a.includes("business.info")));
+            setInternalInsightsEnabled(acts.some((a: string) => a.includes("sales_summary") || a.includes("cashflow") || a.includes("business_health")));
+          }
         }
       }
 
@@ -239,15 +255,35 @@ export function VoiceOnboardingWizard({
     setSaveFeedback(null);
     try {
       const allowedActions: string[] = [];
+      if (retailEnabled) {
+        allowedActions.push("retail.products.query");
+      }
       if (crmEnabled) {
         allowedActions.push("crm.appointments.view", "crm.appointments.create");
       }
-      if (retailEnabled) {
-        allowedActions.push("retail.products.query");
+      if (customerServiceEnabled) {
+        allowedActions.push("read_client_self", "business.info.query");
+      }
+      if (internalInsightsEnabled) {
+        allowedActions.push("read_sales_summary", "read_cashflow", "read_business_health");
+      }
+
+      // Clean and validate real business hours
+      const cleanOpeningHours: Record<string, { open: string; close: string }> = {};
+      const validDays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+      for (const day of validDays) {
+        const period = openingHours[day];
+        if (period && period.open && period.close) {
+          cleanOpeningHours[day] = {
+            open: period.open.trim(),
+            close: period.close.trim(),
+          };
+        }
       }
 
       const payload = {
         ...profile,
+        opening_hours: cleanOpeningHours,
         allowed_actions: allowedActions,
       };
 
@@ -264,7 +300,7 @@ export function VoiceOnboardingWizard({
 
       setSaveFeedback({
         type: "success",
-        message: fr ? "Profil d'entreprise sauvegardé." : "Business profile saved.",
+        message: fr ? "Profil d'entreprise et horaires réels sauvegardés." : "Business profile and hours saved.",
       });
       onRefreshStatus?.();
       return true;
@@ -551,6 +587,202 @@ export function VoiceOnboardingWizard({
                 </div>
               </div>
 
+              {/* REAL BUSINESS HOURS SCHEDULE (CUSTOMIZABLE PER BUSINESS) */}
+              <div className="pt-4 border-t border-slate-100 dark:border-white/[0.06] space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-[#0076FF]" />
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                        {fr ? "Horaires d'ouverture réels de vos locaux / boutique" : "Actual Physical Business Opening Hours"}
+                      </h4>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {fr
+                        ? "Définissez les heures réelles où vos portes sont ouvertes pour recevoir vos clients ou exécuter vos services."
+                        : "Set the actual hours when your doors are open to greet customers or perform services."}
+                    </p>
+                  </div>
+
+                  {/* QUICK PRESETS */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const standard: Record<string, { open: string; close: string }> = {
+                          monday: { open: "09:00", close: "17:00" },
+                          tuesday: { open: "09:00", close: "17:00" },
+                          wednesday: { open: "09:00", close: "17:00" },
+                          thursday: { open: "09:00", close: "17:00" },
+                          friday: { open: "09:00", close: "17:00" },
+                        };
+                        setOpeningHours(standard);
+                      }}
+                      className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[11px] font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 transition"
+                    >
+                      {fr ? "Lun – Ven (9h – 17h)" : "Mon – Fri (9am – 5pm)"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allDays: Record<string, { open: string; close: string }> = {
+                          monday: { open: "08:00", close: "18:00" },
+                          tuesday: { open: "08:00", close: "18:00" },
+                          wednesday: { open: "08:00", close: "18:00" },
+                          thursday: { open: "08:00", close: "18:00" },
+                          friday: { open: "08:00", close: "18:00" },
+                          saturday: { open: "09:00", close: "17:00" },
+                          sunday: { open: "10:00", close: "16:00" },
+                        };
+                        setOpeningHours(allDays);
+                      }}
+                      className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[11px] font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 transition"
+                    >
+                      {fr ? "7 jours sur 7" : "7 days a week"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOpeningHours({})}
+                      className="px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[11px] font-semibold text-slate-500 hover:text-slate-800 transition"
+                    >
+                      {fr ? "Sur rendez-vous uniquement" : "Appointment only"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* 7-DAY SCHEDULE TABLE */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-2.5 pt-2">
+                  {[
+                    { key: "monday", label: fr ? "Lundi" : "Monday" },
+                    { key: "tuesday", label: fr ? "Mardi" : "Tuesday" },
+                    { key: "wednesday", label: fr ? "Mercredi" : "Wednesday" },
+                    { key: "thursday", label: fr ? "Jeudi" : "Thursday" },
+                    { key: "friday", label: fr ? "Vendredi" : "Friday" },
+                    { key: "saturday", label: fr ? "Samedi" : "Saturday" },
+                    { key: "sunday", label: fr ? "Dimanche" : "Sunday" },
+                  ].map((day) => {
+                    const isOpen = Boolean(openingHours[day.key]);
+                    const currentOpen = openingHours[day.key]?.open || "09:00";
+                    const currentClose = openingHours[day.key]?.close || "17:00";
+
+                    return (
+                      <div
+                        key={day.key}
+                        className={`p-3 rounded-2xl border transition-all flex flex-col justify-between ${
+                          isOpen
+                            ? "border-emerald-300 dark:border-emerald-800/80 bg-emerald-50/40 dark:bg-emerald-950/20"
+                            : "border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-1 mb-2">
+                          <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                            {day.label}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpeningHours((prev) => {
+                                const next = { ...prev };
+                                if (isOpen) {
+                                  delete next[day.key];
+                                } else {
+                                  next[day.key] = { open: "09:00", close: "17:00" };
+                                }
+                                return next;
+                              });
+                            }}
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold transition cursor-pointer ${
+                              isOpen
+                                ? "bg-emerald-500 text-white"
+                                : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400"
+                            }`}
+                          >
+                            {isOpen ? (fr ? "Ouvert" : "Open") : (fr ? "Fermé" : "Closed")}
+                          </button>
+                        </div>
+
+                        {isOpen ? (
+                          <div className="space-y-1.5 pt-1">
+                            <div>
+                              <span className="text-[9px] uppercase font-bold text-slate-400 block">
+                                {fr ? "Ouvre à" : "Opens at"}
+                              </span>
+                              <input
+                                type="time"
+                                value={currentOpen}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setOpeningHours((prev) => ({
+                                    ...prev,
+                                    [day.key]: {
+                                      open: val,
+                                      close: prev[day.key]?.close || "17:00",
+                                    },
+                                  }));
+                                }}
+                                className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono font-bold text-slate-900 dark:text-white"
+                              />
+                            </div>
+                            <div>
+                              <span className="text-[9px] uppercase font-bold text-slate-400 block">
+                                {fr ? "Ferme à" : "Closes at"}
+                              </span>
+                              <input
+                                type="time"
+                                value={currentClose}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setOpeningHours((prev) => ({
+                                    ...prev,
+                                    [day.key]: {
+                                      open: prev[day.key]?.open || "09:00",
+                                      close: val,
+                                    },
+                                  }));
+                                }}
+                                className="w-full px-2 py-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono font-bold text-slate-900 dark:text-white"
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="py-4 text-center">
+                            <span className="text-[11px] font-semibold text-slate-400 italic">
+                              {fr ? "Portes fermées" : "Closed"}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* 24/7 AI RECEPTIONIST REASSURANCE CARD */}
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-50 via-indigo-50/50 to-blue-50/30 dark:from-blue-950/40 dark:via-indigo-950/20 dark:to-blue-950/30 border border-blue-200/80 dark:border-blue-800/60 shadow-xs">
+                  <div className="flex items-start gap-3.5">
+                    <div className="w-9 h-9 rounded-xl bg-[#0076FF] text-white flex items-center justify-center shrink-0 mt-0.5 shadow-sm shadow-blue-500/20">
+                      <PhoneCall className="w-4 h-4" />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h5 className="text-xs font-extrabold text-blue-950 dark:text-blue-100">
+                          {fr
+                            ? "Disponibilité de votre réceptionniste IA : 24h/24 et 7j/7"
+                            : "AI Receptionist Availability: 24/7 Non-Stop"}
+                        </h5>
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                          {fr ? "Répond en continu" : "Always on"}
+                        </span>
+                      </div>
+                      <p className="text-xs text-blue-900/80 dark:text-blue-200/80 leading-relaxed">
+                        {fr
+                          ? "Sous réserve d'une ligne téléphonique active et d'un solde de crédits suffisant, votre réceptionniste IA répond au téléphone en tout temps (24h/24, nuits et fins de semaine). Elle renseigne les appelants sur votre entreprise, vos tarifs et produits, tout en calant les rendez-vous exclusivement sur vos plages d'ouverture physique définies ci-dessus."
+                          : "Subject to an active telephone line and sufficient credit balance, your AI receptionist answers calls 24/7 (including nights and weekends). It answers inquiries about your business, pricing, and catalog, while scheduling appointments strictly during your physical opening hours configured above."}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-white/[0.06]">
                 <button
                   type="button"
@@ -711,76 +943,204 @@ export function VoiceOnboardingWizard({
                 </p>
               </div>
 
-              <div className="space-y-3.5">
-                {/* RETAIL MODULE ACCESS */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* 1. RETAIL & STOCKS */}
                 <div
                   onClick={() => setRetailEnabled(!retailEnabled)}
-                  className={`p-5 rounded-2xl border cursor-pointer transition flex items-start justify-between gap-4 ${
+                  className={`p-5 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between ${
                     retailEnabled
-                      ? "border-[#0076FF] bg-blue-50/40 dark:bg-blue-950/20"
-                      : "border-slate-200 dark:border-slate-800"
+                      ? "border-[#0076FF] bg-blue-50/40 dark:bg-blue-950/20 shadow-xs"
+                      : "border-slate-200 dark:border-slate-800 hover:border-slate-300"
                   }`}
                 >
-                  <div className="flex items-start gap-3.5">
-                    <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-900/40 text-[#0076FF] flex items-center justify-center shrink-0 mt-0.5">
-                      <Store className="w-5 h-5" />
+                  <div>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${retailEnabled ? "bg-[#0076FF] text-white" : "bg-slate-200 dark:bg-slate-800 text-slate-500"}`}>
+                          <Store className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-900 dark:text-white">
+                            {fr ? "Produits et stocks" : "Products and inventory"}
+                          </h4>
+                          <span className="text-[10px] text-slate-400 font-semibold">
+                            {fr ? "Catalogue & Disponibilités" : "Catalog & Stock"}
+                          </span>
+                        </div>
+                      </div>
+                      <div
+                        className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 ${
+                          retailEnabled ? "bg-[#0076FF] border-[#0076FF] text-white" : "border-slate-300 dark:border-slate-700"
+                        }`}
+                      >
+                        {retailEnabled && <Check className="w-3.5 h-3.5" />}
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="text-sm font-extrabold text-slate-900 dark:text-white">
-                        {fr ? "Module Commerce & Produits (Retail AI)" : "Retail & Products Module"}
-                      </h4>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-                        {fr
-                          ? "Autorise la réceptionniste à vérifier le catalogue de produits, les disponibilités de stock et les tarifs pour renseigner l'appelant en direct."
-                          : "Authorizes the receptionist to query catalog products, stock availability, and prices live during calls."}
-                      </p>
-                      <span className="inline-block mt-2 text-[10px] font-bold text-slate-400">
-                        {fr ? "Périmètre Produits_Ero : Snowboards, fixations, entretien" : "Produits_Ero scope: Snowboards, bindings, tuning"}
-                      </span>
-                    </div>
+
+                    <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 mt-3 leading-snug">
+                      {fr
+                        ? "« Votre IA peut renseigner les clients sur votre catalogue et les disponibilités. »"
+                        : "“Your AI can answer customer questions about your catalog and stock availability.”"}
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                      {fr
+                        ? "Vérifie les fiches produits, prix et stocks pour renseigner l'appelant en direct."
+                        : "Checks product listings, prices, and stock levels to answer callers live."}
+                    </p>
                   </div>
-                  <div
-                    className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 mt-1 ${
-                      retailEnabled ? "bg-[#0076FF] border-[#0076FF] text-white" : "border-slate-300 dark:border-slate-700"
-                    }`}
-                  >
-                    {retailEnabled && <Check className="w-3.5 h-3.5" />}
+
+                  <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-white/[0.04] text-[10px] font-bold text-slate-400">
+                    {retailEnabled ? (fr ? "✓ Capacité activée" : "✓ Active") : (fr ? "Désactivé" : "Disabled")}
                   </div>
                 </div>
 
-                {/* CRM MODULE ACCESS */}
+                {/* 2. CRM & APPOINTMENTS */}
                 <div
                   onClick={() => setCrmEnabled(!crmEnabled)}
-                  className={`p-5 rounded-2xl border cursor-pointer transition flex items-start justify-between gap-4 ${
+                  className={`p-5 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between ${
                     crmEnabled
-                      ? "border-[#0076FF] bg-blue-50/40 dark:bg-blue-950/20"
-                      : "border-slate-200 dark:border-slate-800"
+                      ? "border-[#0076FF] bg-blue-50/40 dark:bg-blue-950/20 shadow-xs"
+                      : "border-slate-200 dark:border-slate-800 hover:border-slate-300"
                   }`}
                 >
-                  <div className="flex items-start gap-3.5">
-                    <div className="w-9 h-9 rounded-xl bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0 mt-0.5">
-                      <Calendar className="w-5 h-5" />
+                  <div>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${crmEnabled ? "bg-[#0076FF] text-white" : "bg-slate-200 dark:bg-slate-800 text-slate-500"}`}>
+                          <Calendar className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-900 dark:text-white">
+                            {fr ? "Rendez-vous et réservations" : "Appointments and bookings"}
+                          </h4>
+                          <span className="text-[10px] text-slate-400 font-semibold">
+                            {fr ? "Calendrier connecté" : "Connected calendar"}
+                          </span>
+                        </div>
+                      </div>
+                      <div
+                        className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 ${
+                          crmEnabled ? "bg-[#0076FF] border-[#0076FF] text-white" : "border-slate-300 dark:border-slate-700"
+                        }`}
+                      >
+                        {crmEnabled && <Check className="w-3.5 h-3.5" />}
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="text-sm font-extrabold text-slate-900 dark:text-white">
-                        {fr ? "Module Rendez-vous & Calendrier (CRM AI)" : "Appointments & Calendar Module (CRM)"}
-                      </h4>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-                        {fr
-                          ? "Permet à la réceptionniste de consulter les plages libres sur votre calendrier connecté et d'inscrire des réservations autorisées (Consultation, entretien, fartage)."
-                          : "Allows receptionist to check availability and book verified appointments on your business calendar."}
-                      </p>
-                      <span className="inline-block mt-2 text-[10px] font-bold text-slate-400">
-                        {fr ? "Services vérifiés : Consultation équipement, fartage, réparation" : "Verified services: Gear consult, waxing, tuning"}
-                      </span>
-                    </div>
+
+                    <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 mt-3 leading-snug">
+                      {fr
+                        ? "« Votre IA peut trouver des créneaux et gérer des réservations. »"
+                        : "“Your AI can find available slots and manage bookings.”"}
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                      {fr
+                        ? "Consulte les créneaux disponibles et enregistre les rendez-vous selon vos horaires d'ouverture réels."
+                        : "Checks available slots and schedules bookings according to your actual business hours."}
+                    </p>
                   </div>
-                  <div
-                    className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 mt-1 ${
-                      crmEnabled ? "bg-[#0076FF] border-[#0076FF] text-white" : "border-slate-300 dark:border-slate-700"
-                    }`}
-                  >
-                    {crmEnabled && <Check className="w-3.5 h-3.5" />}
+
+                  <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-white/[0.04] text-[10px] font-bold text-slate-400">
+                    {crmEnabled ? (fr ? "✓ Capacité activée" : "✓ Active") : (fr ? "Désactivé" : "Disabled")}
+                  </div>
+                </div>
+
+                {/* 3. CUSTOMER SERVICE & IDENTITY */}
+                <div
+                  onClick={() => setCustomerServiceEnabled(!customerServiceEnabled)}
+                  className={`p-5 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between ${
+                    customerServiceEnabled
+                      ? "border-[#0076FF] bg-blue-50/40 dark:bg-blue-950/20 shadow-xs"
+                      : "border-slate-200 dark:border-slate-800 hover:border-slate-300"
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${customerServiceEnabled ? "bg-[#0076FF] text-white" : "bg-slate-200 dark:bg-slate-800 text-slate-500"}`}>
+                          <Users className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-900 dark:text-white">
+                            {fr ? "Service clientèle" : "Customer service"}
+                          </h4>
+                          <span className="text-[10px] text-slate-400 font-semibold">
+                            {fr ? "Accueil & Renseignements" : "Front Desk & Inquiries"}
+                          </span>
+                        </div>
+                      </div>
+                      <div
+                        className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 ${
+                          customerServiceEnabled ? "bg-[#0076FF] border-[#0076FF] text-white" : "border-slate-300 dark:border-slate-700"
+                        }`}
+                      >
+                        {customerServiceEnabled && <Check className="w-3.5 h-3.5" />}
+                      </div>
+                    </div>
+
+                    <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 mt-3 leading-snug">
+                      {fr
+                        ? "« Votre IA répond aux questions sur votre entreprise. »"
+                        : "“Your AI answers questions about your business.”"}
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                      {fr
+                        ? "Renseigne les appelants sur vos activités, votre adresse, vos politiques et vos horaires physiques."
+                        : "Informs callers about your business activities, address, policies, and store hours."}
+                    </p>
+                  </div>
+
+                  <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-white/[0.04] text-[10px] font-bold text-slate-400">
+                    {customerServiceEnabled ? (fr ? "✓ Capacité activée" : "✓ Active") : (fr ? "Désactivé" : "Disabled")}
+                  </div>
+                </div>
+
+                {/* 4. INTERNAL INSIGHTS (PIN PROTECTED) */}
+                <div
+                  onClick={() => setInternalInsightsEnabled(!internalInsightsEnabled)}
+                  className={`p-5 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between ${
+                    internalInsightsEnabled
+                      ? "border-[#0076FF] bg-blue-50/40 dark:bg-blue-950/20 shadow-xs"
+                      : "border-slate-200 dark:border-slate-800 hover:border-slate-300"
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${internalInsightsEnabled ? "bg-[#0076FF] text-white" : "bg-slate-200 dark:bg-slate-800 text-slate-500"}`}>
+                          <Lock className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-900 dark:text-white">
+                            {fr ? "Informations internes" : "Internal business insights"}
+                          </h4>
+                          <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">
+                            {fr ? "Sécurisé par NIP individuel" : "Individual PIN secured"}
+                          </span>
+                        </div>
+                      </div>
+                      <div
+                        className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 ${
+                          internalInsightsEnabled ? "bg-[#0076FF] border-[#0076FF] text-white" : "border-slate-300 dark:border-slate-700"
+                        }`}
+                      >
+                        {internalInsightsEnabled && <Check className="w-3.5 h-3.5" />}
+                      </div>
+                    </div>
+
+                    <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 mt-3 leading-snug">
+                      {fr
+                        ? "« Vos employés autorisés peuvent consulter certaines informations privées. »"
+                        : "“Your authorized staff can consult select private summaries.”"}
+                    </p>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                      {fr
+                        ? "Permet au gérant ou aux employés de consulter les ventes et la trésorerie après saisie de leur NIP. Les clients externes n'y ont jamais accès."
+                        : "Allows managers or staff to consult sales and cashflow after entering their personal PIN. External callers never have access."}
+                    </p>
+                  </div>
+
+                  <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-white/[0.04] text-[10px] font-bold text-slate-400">
+                    {internalInsightsEnabled ? (fr ? "✓ NIP requis activé" : "✓ PIN required active") : (fr ? "Désactivé" : "Disabled")}
                   </div>
                 </div>
               </div>

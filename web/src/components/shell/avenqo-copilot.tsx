@@ -768,7 +768,7 @@ export function AvenqoCopilot({
               </span>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-[#94A3B8] flex items-center gap-1">
-              {locale === "fr" ? "Assistant conversationnel unifié tri-modal" : "Unified tri-modal conversational AI"}
+              {locale === "fr" ? "Votre copilote d'entreprise intelligent" : "Your intelligent business copilot"}
             </p>
           </div>
         </div>
@@ -1226,20 +1226,20 @@ export function AvenqoCopilot({
                 <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
                   {isFallbackMode
                     ? locale === "fr"
-                      ? "Mode Dictée Vocale (Web Speech)"
-                      : "Voice Dictation Mode (Web Speech)"
+                      ? "Mode Dictée Vocale"
+                      : "Voice Dictation Mode"
                     : liveState === "idle"
                     ? locale === "fr"
                       ? "Session vocale prête"
                       : "Voice session ready"
                     : liveState === "connecting"
                     ? locale === "fr"
-                      ? "Connexion au flux temps réel..."
-                      : "Connecting real-time stream..."
+                      ? "Connexion à la voix..."
+                      : "Connecting voice..."
                     : liveState === "connected"
                     ? locale === "fr"
-                      ? "Connecté · En attente de parole"
-                      : "Connected · Waiting for speech"
+                      ? "Connecté · À votre écoute"
+                      : "Connected · Ready for speech"
                     : liveState === "listening"
                     ? locale === "fr"
                       ? "Central AI vous écoute..."
@@ -1254,8 +1254,8 @@ export function AvenqoCopilot({
                       : "Central AI is answering..."
                     : liveState === "interrupted"
                     ? locale === "fr"
-                      ? "Interrompu (Barge-in)"
-                      : "Interrupted (Barge-in)"
+                      ? "Vous pouvez parler"
+                      : "You can speak now"
                     : locale === "fr"
                     ? "Connexion audio interrompue"
                     : "Audio connection failed"}
@@ -1263,17 +1263,19 @@ export function AvenqoCopilot({
               </div>
 
               <span
-                className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${
+                className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
                   isFallbackMode
                     ? "bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800"
-                    : "bg-slate-200/70 dark:bg-white/[0.08] text-slate-600 dark:text-slate-400"
+                    : "bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
                 }`}
               >
                 {isFallbackMode
                   ? locale === "fr"
-                    ? "DICTÉE (NON-REALTIME)"
-                    : "DICTATION (NON-REALTIME)"
-                  : `${locale.toUpperCase()} · 24 kHz (REALTIME)`}
+                    ? "DICTÉE VOCALE"
+                    : "VOICE DICTATION"
+                  : locale === "fr"
+                  ? "AUDIO EN DIRECT"
+                  : "LIVE AUDIO"}
               </span>
             </div>
 
@@ -1283,8 +1285,8 @@ export function AvenqoCopilot({
                 <Mic className="w-4 h-4 text-amber-600 shrink-0" />
                 <span className="leading-relaxed">
                   {locale === "fr"
-                    ? "Mode dictée vocale locale actif : transcription via le microphone de votre navigateur (sans conversation audio bidirectionnelle temps réel)."
-                    : "Local dictation active: transcription via browser microphone (without duplex Realtime streaming)."}
+                    ? "Mode dictée vocale actif : parlez naturellement, votre message sera transcrit pour interroger vos données d'entreprise."
+                    : "Voice dictation active: speak naturally, your message will be transcribed to query your business data."}
                 </span>
               </div>
             )}

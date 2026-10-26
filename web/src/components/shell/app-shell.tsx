@@ -168,17 +168,13 @@ export function AppShell({ children }: AppShellProps) {
   });
 
   const platformModules = [
-    { href: "/employees", label: locale.startsWith("fr") ? "Équipe" : "Team", icon: Users },
-    { href: "/marketplace", label: "Marketplace", icon: Layers },
-    { href: "/workspace/modules", label: locale.startsWith("fr") ? "Add-Ons & Modules" : "Add-Ons & Modules", icon: Sparkles },
+    { href: "/workspace/modules", label: locale.startsWith("fr") ? "Explorer les modules" : "Explore Modules", icon: Sparkles, badge: locale.startsWith("fr") ? "Catalogue" : "Catalog" },
     { href: "/connections", label: t.navigation.connections, icon: Plug },
-    { href: "/integrations", label: t.navigation.integrations, icon: Globe },
     { href: "/data", label: t.navigation.dataHub, icon: Database },
+    { href: "/employees", label: locale.startsWith("fr") ? "Équipe" : "Team", icon: Users },
     { href: "/billing", label: t.navigation.billing, icon: CreditCard },
-    { href: "/security", label: locale.startsWith("fr") ? "Centre de sécurité" : "Security center", icon: ShieldAlert },
-    { href: "/trust", label: locale.startsWith("fr") ? "Centre de confiance" : "Trust center", icon: ShieldAlert },
-    { href: "/onboarding", label: locale.startsWith("fr") ? "Démarrage accompagné" : "Guided setup", icon: Check },
     { href: "/settings", label: t.navigation.settings, icon: Settings },
+    { href: "/security", label: locale.startsWith("fr") ? "Sécurité & Confiance" : "Security & Trust", icon: ShieldAlert },
   ];
 
   // Global Ctrl+K / Cmd+K listener
