@@ -91,7 +91,9 @@ async def test_garage_tomorrow_1400_booking_without_external_calendar(scenarios)
     crm=CRMService(db)
     client=crm.create_client(company.id,{"first_name":"Synthetic","last_name":"Vehicle QA","email":"vehicle-qa@example.com"})
     appointment,error=await crm.create_appointment(company.id,{"client_id":client.id,"title":"Vehicle QA","start_time":start,"duration_minutes":60,"price":0.0})
-    assert error is None and appointment.company_id==company.id
+    assert error is None
+    assert appointment is not None
+    assert appointment.company_id==company.id
     assert not (await availability.check_availability(company.id,start,duration_minutes=60))["available"]
 
 
