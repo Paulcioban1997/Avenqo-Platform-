@@ -543,7 +543,7 @@ export function RetailIntelligenceView({
                   href="/integrations"
                   className="text-xs font-semibold text-[#0076FF] hover:underline flex items-center gap-1"
                 >
-                  <span>{integrations.googleCalendarConnect}</span>
+                  <span>{locale.startsWith("fr") ? "Connecter une boutique" : "Connect store"}</span>
                   <ArrowRight size={11} />
                 </Link>
               </div>

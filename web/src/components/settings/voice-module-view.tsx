@@ -152,7 +152,7 @@ export function VoiceModuleView() {
   const [languageMode, setLanguageMode] = useState<string>("auto");
   const [allowedModules, setAllowedModules] = useState<string[]>(["crm", "retail"]);
   const [testCallStatus, setTestCallStatus] = useState<string | null>(null);
-  const [showAdvanced, setShowAdvanced] = useState(true);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // COMPANY TELEPHONE ROUTING NIP (DTMF) STATE
   const [routingNip, setRoutingNip] = useState<string | null>(null);
@@ -512,12 +512,12 @@ export function VoiceModuleView() {
         onRefreshStatus={refreshVoiceStatus}
       />
 
+      {/* HUMAN BUSINESS CAPABILITIES (ZERO TECHNICAL CLUTTER) */}
+      {enabled && <VoiceModulePermissionsSection tenantId={tenantId} canManage={canManageVoice} />}
+
       {/* ADVANCED SETTINGS (COLLAPSIBLE FOR ADMINS) */}
-      <div className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0B132B] shadow-xs overflow-hidden">
-        <button
-          onClick={() => setShowAdvanced(!showAdvanced)}
-          className="w-full p-5 flex items-center justify-between text-left hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition"
-        >
+      <details className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0B132B] shadow-xs overflow-hidden group">
+        <summary className="w-full p-5 flex items-center justify-between text-left hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
               <Sliders className="w-5 h-5" />
@@ -533,12 +533,11 @@ export function VoiceModuleView() {
               </p>
             </div>
           </div>
-          {showAdvanced ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
-        </button>
+          <ChevronDown className="w-5 h-5 text-slate-400 group-open:rotate-180 transition-transform" />
+        </summary>
 
-        {showAdvanced && (
-          <div className="p-6 border-t border-slate-200 dark:border-slate-800 space-y-7 bg-slate-50/30 dark:bg-slate-900/30 animate-in fade-in duration-200">
-            {/* NUMBER SELECTION & PROVISIONING QUOTES */}
+        <div className="p-6 border-t border-slate-200 dark:border-slate-800 space-y-7 bg-slate-50/30 dark:bg-slate-900/30 animate-in fade-in duration-200">
+          {/* NUMBER SELECTION & PROVISIONING QUOTES */}
             <section className="space-y-4 border-b border-slate-200 dark:border-slate-800 pb-7">
               <h2 className="font-semibold text-slate-900 dark:text-white">{selectionCopy[0]}</h2>
               {!enabled || !canManageVoice ? (
@@ -738,10 +737,8 @@ export function VoiceModuleView() {
             {enabled && <VoiceCustomizationSection tenantId={tenantId} />}
             {enabled && <VoiceProvisioningSection tenantId={tenantId} canManage={canManageVoice} crmEnabled={Boolean(context?.enabled_modules.includes("crm"))} />}
             {enabled && <VoiceCallPolicy key={`call-policy-${tenantId}`} tenantId={tenantId} canManage={canManageVoice} />}
-            {enabled && <VoiceModulePermissionsSection tenantId={tenantId} canManage={canManageVoice} />}
-          </div>
-        )}
-      </div>
+        </div>
+      </details>
     </div>
   );
 }

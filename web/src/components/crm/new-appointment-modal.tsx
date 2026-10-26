@@ -369,6 +369,29 @@ export function NewAppointmentModal({
           </button>
         </div>
 
+        {/* 4-STEP BOOKING PROGRESSION */}
+        <div className="px-6 py-2.5 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-100 dark:border-white/[0.04] flex items-center justify-between text-[11px] font-bold text-slate-500 overflow-x-auto">
+          <div className="flex items-center gap-1.5 text-[#0076FF]">
+            <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-950 text-[#0076FF] flex items-center justify-center text-[10px]">1</span>
+            <span>{locale.startsWith("fr") ? "Client" : "Client"}</span>
+          </div>
+          <span className="text-slate-300">→</span>
+          <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+            <span className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center text-[10px]">2</span>
+            <span>{locale.startsWith("fr") ? "Prestation" : "Service"}</span>
+          </div>
+          <span className="text-slate-300">→</span>
+          <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+            <span className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center text-[10px]">3</span>
+            <span>{locale.startsWith("fr") ? "Disponibilité" : "Time Slot"}</span>
+          </div>
+          <span className="text-slate-300">→</span>
+          <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+            <span className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 flex items-center justify-center text-[10px]">4</span>
+            <span>{locale.startsWith("fr") ? "Confirmation" : "Confirmation"}</span>
+          </div>
+        </div>
+
         {/* Content */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5">
           {error && (
@@ -398,36 +421,36 @@ export function NewAppointmentModal({
                 className="text-xs text-[#0076FF] hover:underline flex items-center gap-1 font-medium"
               >
                 <Plus className="w-3 h-3" />
-                {isCreatingClient ? "Sélectionner un existant" : "+ Nouveau client"}
+                {isCreatingClient ? (locale.startsWith("fr") ? "Sélectionner un client existant" : "Select existing client") : (locale.startsWith("fr") ? "+ Nouveau client" : "+ New client")}
               </button>
             </div>
 
             {isCreatingClient ? (
               <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[11px] text-slate-500">{t.crm.clients.client} *</label>
+                  <label className="text-[11px] text-slate-500 font-semibold">{locale.startsWith("fr") ? "Prénom *" : "First Name *"}</label>
                   <input
                     type="text"
                     required
                     value={newClientFirst}
                     onChange={(e) => setNewClientFirst(e.target.value)}
-                    placeholder={t.crm.clients.client}
+                    placeholder={locale.startsWith("fr") ? "Ex: Jean" : "e.g. John"}
                     className="w-full mt-1 px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] text-slate-500">{t.crm.filters.employee} *</label>
+                  <label className="text-[11px] text-slate-500 font-semibold">{locale.startsWith("fr") ? "Nom de famille *" : "Last Name *"}</label>
                   <input
                     type="text"
                     required
                     value={newClientLast}
                     onChange={(e) => setNewClientLast(e.target.value)}
-                    placeholder={t.crm.filters.employee}
+                    placeholder={locale.startsWith("fr") ? "Ex: Tremblay" : "e.g. Smith"}
                     className="w-full mt-1 px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] text-slate-500">{t.crm.filters.employee}</label>
+                  <label className="text-[11px] text-slate-500 font-semibold">{locale.startsWith("fr") ? "Téléphone" : "Phone Number"}</label>
                   <input
                     type="tel"
                     value={newClientPhone}
@@ -437,12 +460,12 @@ export function NewAppointmentModal({
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] text-slate-500">{t.crm.searchPlaceholder}</label>
+                  <label className="text-[11px] text-slate-500 font-semibold">{locale.startsWith("fr") ? "Courriel" : "Email Address"}</label>
                   <input
                     type="email"
                     value={newClientEmail}
                     onChange={(e) => setNewClientEmail(e.target.value)}
-                    placeholder={t.crm.clients.email}
+                    placeholder="client@exemple.com"
                     className="w-full mt-1 px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
                   />
                 </div>
