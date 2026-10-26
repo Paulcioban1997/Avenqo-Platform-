@@ -130,12 +130,19 @@ class VoiceLifecycleService:
             "status": current_status,
             "can_activate": can_activate,
             "checklist": {
+                "tenant_valid": bool(company is not None),
                 "subscription_active": has_voice_module,
+                "phone_bound": phone_verified,
                 "phone_number_verified": phone_verified,
-                "configuration_saved": config_saved,
+                "identity_configured": identity_defined,
                 "identity_defined": identity_defined,
+                "configuration_saved": config_saved,
+                "voice_selected": voice_selected,
+                "language_selected": bool(config and config.preferred_language),
                 "voice_and_language_selected": voice_selected,
                 "ivr_configured": ivr_configured,
+                "modules_configured": bool(has_voice_module and config_saved),
+                "permissions_valid": True,
             },
             "phone_number": number.phone_number if number else None,
             "number_status": number.status if number else None,
@@ -152,8 +159,20 @@ class VoiceLifecycleService:
         """Activates a tenant voice agent after validating all prerequisites."""
         status_info = self.get_status(company_id)
         if not status_info["can_activate"]:
-            missing = [k for k, v in status_info["checklist"].items() if not v]
-            raise ValueError(f"Activation conditions not met. Missing prerequisites: {', '.join(missing)}")
+            missing_labels = []
+            cl = status_info.get("checklist", {})
+            if not cl.get("subscription_active"):
+                missing_labels.append("Abonnement Voice actif requis")
+            if not cl.get("phone_bound"):
+                missing_labels.append("Numéro de téléphone Telnyx lié et configuré")
+            if not cl.get("configuration_saved"):
+                missing_labels.append("Nom de l'entreprise et message d'accueil enregistrés")
+            if not cl.get("identity_configured"):
+                missing_labels.append("Identité d'entreprise et secteur d'activité renseignés")
+            if not cl.get("voice_selected"):
+                missing_labels.append("Voix et langue sélectionnées")
+            err_msg = "; ".join(missing_labels) if missing_labels else "Prérequis d'activation non satisfaits"
+            raise ValueError(f"Impossible d'activer le numéro vocal : {err_msg}")
 
         config = self.db.scalar(
             select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_id)

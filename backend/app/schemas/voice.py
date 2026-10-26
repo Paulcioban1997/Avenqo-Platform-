@@ -309,7 +309,8 @@ class CompanyRoutingNipResponse(BaseModel):
     revoked_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
-
+
+
 
 class VoiceLifecycleStatusResponse(BaseModel):
     status: str
@@ -326,7 +327,8 @@ class VoiceLifecycleStatusResponse(BaseModel):
 class VoiceLifecycleActionRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
     confirmed: bool = True
-    model_config = ConfigDict(extra="forbid")
+    confirm: bool | None = None
+    model_config = ConfigDict(extra="ignore")
 
 
 class VoiceIvrSettingsRequest(BaseModel):

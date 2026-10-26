@@ -160,6 +160,12 @@ interface RetailStatus {
     provider: string | null;
     dataset_id: string | null;
   };
+  data_freshness?: {
+    freshness_status: string;
+    source?: string | null;
+    last_updated_at?: string | null;
+    age_seconds?: number | null;
+  };
 }
 
 export function RetailIntelligenceView({
@@ -464,36 +470,85 @@ export function RetailIntelligenceView({
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          {retailStatus?.is_connected ? (
-            <div className="flex items-center gap-2">
-              <StatusBadge
-                status="connected"
-                label={`${retailStatus.provider?.toUpperCase() || company.connectionsUploadedSource} ${integrations.statusConnected}`}
-                size="sm"
-              />
-              {retailStatus.store_url && (
-                <button
-                  onClick={handleOpenStore}
-                  className="flex items-center gap-1 text-xs font-semibold text-[#0076FF] hover:underline cursor-pointer"
+          {/* 5-State Clear Data Freshness & Connection Status Indicator */}
+          {(() => {
+            const freshnessStatus = retailStatus?.data_freshness?.freshness_status?.toUpperCase() || (retailStatus?.is_connected ? "LIVE" : "DISCONNECTED");
+            const isHistoricalDataset = retailStatus?.source_context?.name?.toLowerCase().includes("superstore") || retailStatus?.source_context?.selection === "dataset";
+
+            if (freshnessStatus === "ERROR" || freshnessStatus === "FAILED") {
+              return (
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900/60">
+                  <AlertCircle size={13} className="text-rose-600" />
+                  <span>{locale.startsWith("fr") ? "Erreur de synchronisation" : "Sync Error"}</span>
+                </div>
+              );
+            }
+
+            if (freshnessStatus === "SYNCING" || freshnessStatus === "IN_PROGRESS") {
+              return (
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-900/60">
+                  <RefreshCw size={13} className="animate-spin text-[#0076FF]" />
+                  <span>{locale.startsWith("fr") ? "Synchronisation en cours" : "Sync In Progress"}</span>
+                </div>
+              );
+            }
+
+            if (freshnessStatus === "STALE" || isHistoricalDataset) {
+              return (
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-900/60">
+                    <AlertTriangle size={13} className="text-amber-600" />
+                    <span>{locale.startsWith("fr") ? "Données périmées (Historique CSV)" : "Stale Data (Historical CSV)"}</span>
+                  </div>
+                  <Link
+                    href="/integrations"
+                    className="text-xs font-bold text-[#0076FF] hover:underline flex items-center gap-1"
+                    title={locale.startsWith("fr") ? "Connecter Shopify pour des données temps réel" : "Connect Shopify for live real-time sync"}
+                  >
+                    <span>{locale.startsWith("fr") ? "Connecter boutique live" : "Connect live store"}</span>
+                    <ArrowRight size={11} />
+                  </Link>
+                </div>
+              );
+            }
+
+            if (retailStatus?.is_connected) {
+              return (
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/60">
+                    <CheckCircle2 size={13} className="text-emerald-600" />
+                    <span>{locale.startsWith("fr") ? "Connecté et synchronisé" : "Connected & Synchronized"}</span>
+                  </div>
+                  {retailStatus.store_url && (
+                    <button
+                      onClick={handleOpenStore}
+                      className="flex items-center gap-1 text-xs font-semibold text-[#0076FF] hover:underline cursor-pointer"
+                    >
+                      <Store size={13} />
+                      <span className="max-w-[140px] truncate">{retailStatus.store_url}</span>
+                      <ExternalLink size={11} />
+                    </button>
+                  )}
+                </div>
+              );
+            }
+
+            return (
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                  <Database size={13} className="text-slate-500" />
+                  <span>{locale.startsWith("fr") ? "Connexion requise" : "Connection Required"}</span>
+                </div>
+                <Link
+                  href="/integrations"
+                  className="text-xs font-semibold text-[#0076FF] hover:underline flex items-center gap-1"
                 >
-                  <Store size={13} />
-                  <span className="max-w-[140px] truncate">{retailStatus.store_url}</span>
-                  <ExternalLink size={11} />
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <StatusBadge status="disconnected" label={integrations.statusDisconnected} size="sm" />
-              <Link
-                href="/integrations"
-                className="text-xs font-semibold text-[#0076FF] hover:underline flex items-center gap-1"
-              >
-                <span>{integrations.googleCalendarConnect}</span>
-                <ArrowRight size={11} />
-              </Link>
-            </div>
-          )}
+                  <span>{integrations.googleCalendarConnect}</span>
+                  <ArrowRight size={11} />
+                </Link>
+              </div>
+            );
+          })()}
 
           <button
             onClick={() => setActiveTab("forecasts")}
