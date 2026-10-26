@@ -580,11 +580,10 @@ class CRMService:
                     )
                 )
                 if svc_obj:
-                    is_approved = getattr(svc_obj, "is_approved_by_owner", True)
-                    if svc_obj.category == "clinic" and not getattr(svc_obj, "is_approved_by_owner", False):
-                        is_approved = False
-                    if not is_approved:
-                        return None, "Ce service de démonstration n'a pas été approuvé par le propriétaire pour la réservation publique."
+                    is_approved = bool(getattr(svc_obj, "is_approved_by_owner", False))
+                    is_published = bool(getattr(svc_obj, "is_published", False))
+                    if not (is_approved and is_published):
+                        return None, "Cette prestation n'a pas été approuvée et publiée par le propriétaire pour la réservation commerciale."
             except Exception:
                 pass
 
@@ -890,8 +889,8 @@ class CRMService:
         sync_error: str | None,
     ) -> None:
         """Record calendar sync on the instance / return path — never in industry_data."""
-        appointment._calendar_sync = calendar_sync
-        appointment._calendar_sync_error = sync_error
+        setattr(appointment, "_calendar_sync", calendar_sync)
+        setattr(appointment, "_calendar_sync_error", sync_error)
 
     @staticmethod
     def calendar_sync_state(appointment: CRMAppointment) -> tuple[str, str | None]:
@@ -1246,18 +1245,23 @@ class CRMService:
 
     # --- Services & Employees ---
 
-    def list_services(self, company_id: UUID) -> list[CRMServiceModel]:
+    def list_services(self, company_id: UUID, published_only: bool = False) -> list[CRMServiceModel]:
+        query = select(CRMServiceModel).where(
+            CRMServiceModel.company_id == company_id,
+            CRMServiceModel.is_active.is_(True),
+        )
+        if published_only:
+            query = query.where(
+                CRMServiceModel.is_approved_by_owner.is_(True),
+                CRMServiceModel.is_published.is_(True),
+            )
         return list(
             self._session.scalars(
-                select(CRMServiceModel)
-                .where(CRMServiceModel.company_id == company_id, CRMServiceModel.is_active.is_(True))
-                .order_by(CRMServiceModel.name.asc())
+                query.order_by(CRMServiceModel.name.asc())
             ).all()
         )
 
     def create_service(self, company_id: UUID, data: dict[str, Any]) -> CRMServiceModel:
-        category = data.get("category")
-        is_clinic_preset = category == "clinic"
         svc = CRMServiceModel(
             company_id=company_id,
             name=data["name"].strip(),
@@ -1265,12 +1269,12 @@ class CRMService:
             duration_minutes=data.get("duration_minutes", 60),
             price=data.get("price", 0.0),
             currency=data.get("currency", "CAD"),
-            category=category,
+            category=data.get("category"),
             color_hex=data.get("color_hex", "#0076FF"),
             buffer_before_minutes=data.get("buffer_before_minutes", 0),
             buffer_after_minutes=data.get("buffer_after_minutes", 0),
-            is_approved_by_owner=data.get("is_approved_by_owner", not is_clinic_preset),
-            is_published=data.get("is_published", not is_clinic_preset),
+            is_approved_by_owner=bool(data.get("is_approved_by_owner", False)),
+            is_published=bool(data.get("is_published", False)),
         )
         self._session.add(svc)
         self._session.commit()
@@ -1287,9 +1291,7 @@ class CRMService:
         if not svc:
             return None
         current_state = bool(
-            getattr(svc, "is_approved_by_owner", False)
-            if svc.category == "clinic"
-            else getattr(svc, "is_approved_by_owner", True)
+            getattr(svc, "is_approved_by_owner", False) and getattr(svc, "is_published", False)
         )
         new_state = not current_state
         if hasattr(svc, "is_approved_by_owner"):

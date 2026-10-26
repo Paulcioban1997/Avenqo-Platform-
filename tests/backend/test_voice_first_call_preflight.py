@@ -46,9 +46,19 @@ def scenarios(tmp_path):
         # activation alone is deliberately insufficient to offer appointments.
         for key, name in (("garage-montreal", "Entretien vehicule QA"), ("empresa-espanola", "Reunion QA")):
             company, _ = companies[key]
-            service = CRMServiceRecord(company_id=company.id, name=name, duration_minutes=60, currency=company.currency_code, price=0, is_active=True)
+            service = CRMServiceRecord(
+                company_id=company.id,
+                name=name,
+                duration_minutes=60,
+                currency=company.currency_code,
+                price=0,
+                is_active=True,
+                is_approved_by_owner=True,
+                is_published=True,
+            )
             db.add(service); db.flush()
             config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company.id))
+            assert config is not None
             config.services = [{"name": name, "crm_service_id": str(service.id)}]
         db.commit()
         yield db,companies
@@ -81,10 +91,55 @@ async def test_garage_tomorrow_1400_booking_without_external_calendar(scenarios)
     crm=CRMService(db)
     client=crm.create_client(company.id,{"first_name":"Synthetic","last_name":"Vehicle QA","email":"vehicle-qa@example.com"})
     appointment,error=await crm.create_appointment(company.id,{"client_id":client.id,"title":"Vehicle QA","start_time":start,"duration_minutes":60,"price":0.0})
-    assert error is None and appointment.company_id==company.id
+    assert error is None
+    assert appointment is not None
+    assert appointment.company_id==company.id
     assert not (await availability.check_availability(company.id,start,duration_minutes=60))["available"]
 
 
 def test_fixture_writer_refuses_production(scenarios):
     db,_=scenarios
     with pytest.raises(ValueError):prepare_scenarios(db,environment="production")
+
+
+def test_unapproved_service_denies_voice_tool_booking(scenarios):
+    """P10.3: Test négatif distinct.
+    Une prestation non approuvée par l'OWNER (is_approved_by_owner=False) ou non publiée
+    doit être STRICTEMENT refusée par le VoiceToolGuard (fail-closed).
+    """
+    db, companies = scenarios
+    company, owner = companies["garage-montreal"]
+    tenant = TenantContext(company.id, owner.id)
+    perms = permissions_for(UserRole.OWNER)
+
+    # Création d'une prestation unapproved / non publiée
+    unapproved_svc = CRMServiceRecord(
+        company_id=company.id,
+        name="Prestation Brouillon Refusée",
+        duration_minutes=45,
+        currency=company.currency_code,
+        price=100,
+        is_active=True,
+        is_approved_by_owner=False,
+        is_published=False,
+    )
+    db.add(unapproved_svc)
+    db.commit()
+
+    config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company.id))
+    assert config is not None
+    # Sauvegarde des services précédents
+    prev_services = list(config.services or [])
+    # Configuration du catalogue voice avec UNIQUEMENT le service non approuvé
+    config.services = [{"name": unapproved_svc.name, "crm_service_id": str(unapproved_svc.id)}]
+    db.commit()
+
+    guard = VoiceToolGuard(db)
+    with pytest.raises(VoiceToolDenied) as exc_info:
+        guard.authorize(tenant, "check_availability", perms, user_id=owner.id)
+    assert "no verified bookable service" in str(exc_info.value).lower()
+
+    # Restauration
+    config.services = prev_services
+    db.commit()
+

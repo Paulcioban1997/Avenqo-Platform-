@@ -252,7 +252,7 @@ export function CRMServicesSettings() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {services.map((svc) => {
-              const isApproved = svc.is_approved_by_owner ?? (svc.category !== "clinic");
+              const isApproved = Boolean(svc.is_approved_by_owner && svc.is_published);
               return (
                 <div
                   key={svc.id}
@@ -267,7 +267,7 @@ export function CRMServicesSettings() {
                         </span>
                       ) : (
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-800/60">
-                          {locale.startsWith("fr") ? "Démo non approuvée — Réservation bloquée" : "Unapproved Demo — Booking Blocked"}
+                          {locale.startsWith("fr") ? "Non approuvé — Réservation bloquée" : "Unapproved — Booking Blocked"}
                         </span>
                       )}
                     </div>

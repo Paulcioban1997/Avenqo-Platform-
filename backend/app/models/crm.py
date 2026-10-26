@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -234,8 +234,12 @@ class CRMService(TimestampMixin, Base):
     buffer_before_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     buffer_after_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
-    is_approved_by_owner: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
-    is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+    is_approved_by_owner: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false"), index=True
+    )
+    is_published: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false"), index=True
+    )
 
 
 class CRMCustomFieldDefinition(TimestampMixin, Base):

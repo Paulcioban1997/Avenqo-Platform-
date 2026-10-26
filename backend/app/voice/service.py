@@ -828,31 +828,27 @@ class VoiceOrchestrator:
                     CRMServiceModel.id == UUID(str(supplied_id)),
                     CRMServiceModel.company_id == config.company_id,
                     CRMServiceModel.is_active.is_(True),
+                    CRMServiceModel.is_approved_by_owner.is_(True),
+                    CRMServiceModel.is_published.is_(True),
                 )
             )
             if not service:
-                raise ValueError("La prestation CRM configurée est introuvable.")
+                raise ValueError("La prestation CRM configurée est introuvable ou non approuvée par le propriétaire.")
             return service
         existing = self.db.scalar(
             select(CRMServiceModel).where(
                 CRMServiceModel.company_id == config.company_id,
                 CRMServiceModel.name.ilike(str(service_data["name"])),
                 CRMServiceModel.is_active.is_(True),
+                CRMServiceModel.is_approved_by_owner.is_(True),
+                CRMServiceModel.is_published.is_(True),
             )
         )
         if existing:
             return existing
-        service = CRMServiceModel(
-            company_id=config.company_id,
-            name=str(service_data["name"]),
-            duration_minutes=int(service_data["duration_minutes"]),
-            price=float(service_data.get("price", 0)),
-            currency=str(service_data.get("currency", "CAD")),
-            is_active=True,
+        raise ValueError(
+            f"La prestation '{service_data.get('name')}' n'est pas approuvée et publiée par le propriétaire pour la réservation commerciale."
         )
-        self.db.add(service)
-        self.db.flush()
-        return service
 
     def _resolve_client(self, config: VoiceBusinessConfig, caller_name: str, caller_phone: str) -> CRMClient:
         phone = caller_phone.strip()

@@ -979,7 +979,7 @@ def test_public_voice_caller_can_access_retail_and_crm_tools(db_session: Session
     entitlements.activate_module(tenant, "crm")
 
     from backend.app.models.crm import CRMService
-    db_session.add(CRMService(company_id=company_id, name="Consultation", duration_minutes=30, is_active=True))
+    db_session.add(CRMService(company_id=company_id, name="Consultation", duration_minutes=30, is_active=True, is_approved_by_owner=True, is_published=True))
     db_session.flush()
 
     grants = VoiceModulePermissionService(db_session)

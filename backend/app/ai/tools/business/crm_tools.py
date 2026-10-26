@@ -578,7 +578,7 @@ class CreateAppointmentTool(CRMAITool):
 
         service_id = UUID(verified_service["id"]) if verified_service else None
         if arguments.service_name and verified_service is None:
-            services = self._crm.list_services(context.tenant.company_id)
+            services = self._crm.list_services(context.tenant.company_id, published_only=True)
             matched_svc = next((s for s in services if arguments.service_name.lower() in s.name.lower()), None)
             if matched_svc:
                 service_id = matched_svc.id

@@ -282,12 +282,12 @@ export function NewAppointmentModal({
   const handleServiceChange = (sid: string) => {
     const selected = services.find((s) => s.id === sid);
     if (selected) {
-      const isApproved = selected.is_approved_by_owner ?? (selected.category !== "clinic");
+      const isApproved = Boolean(selected.is_approved_by_owner && selected.is_published);
       if (!isApproved) {
         setError(
           locale.startsWith("fr")
-            ? "Ce service de démonstration n'a pas été approuvé par le propriétaire pour la réservation publique."
-            : "This demo service has not been approved by the owner for public booking."
+            ? "Cette prestation n'a pas été approuvée et publiée par le propriétaire pour la réservation commerciale."
+            : "This service has not been approved and published by the owner for commercial booking."
         );
         return;
       }
@@ -311,12 +311,12 @@ export function NewAppointmentModal({
     if (serviceId) {
       const selected = services.find((s) => s.id === serviceId);
       if (selected) {
-        const isApproved = selected.is_approved_by_owner ?? (selected.category !== "clinic");
+        const isApproved = Boolean(selected.is_approved_by_owner && selected.is_published);
         if (!isApproved) {
           setError(
             locale.startsWith("fr")
-              ? "Ce service de démonstration n'a pas été approuvé par le propriétaire pour la réservation publique."
-              : "This demo service has not been approved by the owner for public booking."
+              ? "Cette prestation n'a pas été approuvée et publiée par le propriétaire pour la réservation commerciale."
+              : "This service has not been approved and published by the owner for commercial booking."
           );
           return;
         }
@@ -593,7 +593,7 @@ export function NewAppointmentModal({
                   >
                     <option value="">{locale.startsWith("fr") ? "Sélectionner une prestation..." : "Select a service..."}</option>
                     {services.map((s) => {
-                      const isApproved = s.is_approved_by_owner ?? (s.category !== "clinic");
+                      const isApproved = Boolean(s.is_approved_by_owner && s.is_published);
                       return (
                         <option
                           key={s.id}
@@ -603,7 +603,7 @@ export function NewAppointmentModal({
                         >
                           {s.name} ({metricText(s.duration_minutes, locale, t.common.insufficientData)} min — {metricText(s.price, locale, t.common.insufficientData, 2)} $)
                           {!isApproved
-                            ? (locale.startsWith("fr") ? " [Démo non approuvée — Réservation bloquée]" : " [Unapproved Demo — Booking Blocked]")
+                            ? (locale.startsWith("fr") ? " [Non approuvé — Réservation bloquée]" : " [Unapproved — Booking Blocked]")
                             : ""}
                         </option>
                       );
