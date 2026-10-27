@@ -17,7 +17,7 @@ from backend.app.services.plan_limits_service import PlanLimitsService
 
 
 class CallPolicy(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="forbid")
     max_call_seconds: int | None = Field(default=3600, ge=60, le=86400)
     idle_seconds: int = Field(default=120, ge=30, le=600)
     concurrent_calls: int = Field(default=1, ge=1, le=100)
