@@ -540,6 +540,7 @@ def single_invoice_export(
 
 
 @router.get("/ai-credits", response_model=AICreditBalanceResponse)
+@router.get("/ai-credits/balance", response_model=AICreditBalanceResponse)
 def ai_credit_balance(
     identity: CurrentIdentity = Depends(get_current_identity),
     service: BillingService = Depends(get_credit_balance_service),
