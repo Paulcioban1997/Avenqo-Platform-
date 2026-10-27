@@ -36,6 +36,7 @@ from backend.app.services.calendar.base import (
     CalendarProviderError,
     CalendarTokenRevokedError,
     CalendarTokenTransientError,
+    requires_calendar_reconnect,
 )
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
@@ -1081,7 +1082,7 @@ class CRMService:
         )
         if conn is None or self._cipher is None:
             return []
-        if conn.sync_status == "error" and any(marker in (conn.sync_error or "").lower() for marker in ("token", "jeton", "revok", "reconnect")):
+        if requires_calendar_reconnect(conn.sync_status, conn.sync_error):
             raise CalendarTokenRevokedError("Reconnectez Google Calendar pour reprendre les réservations.")
         settings = get_settings()
         provider = GoogleCalendarProvider(
@@ -1158,7 +1159,7 @@ class CRMService:
             except Exception:
                 return "not_configured", None
 
-        if conn.sync_status == "error" and any(marker in (conn.sync_error or "").lower() for marker in ("token", "jeton", "revok", "reconnect")):
+        if requires_calendar_reconnect(conn.sync_status, conn.sync_error):
             return "failed", "Reconnectez Google Calendar pour reprendre les réservations."
 
         settings = get_settings()
@@ -1204,7 +1205,11 @@ class CRMService:
                     return "skipped", None
 
                 try:
-                    return await _perform_op(creds)
+                    result = await _perform_op(creds)
+                    if result[0] == "synced":
+                        conn.sync_status = "connected"
+                        conn.sync_error = None
+                    return result
                 except CalendarProviderError as exc:
                     cause = getattr(exc, "__cause__", None)
                     if getattr(cause, "code", None) == 401 and creds.get("refresh_token"):

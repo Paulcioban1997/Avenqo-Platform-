@@ -572,7 +572,8 @@ async def test_voice_media_appointment_booked_status_allows_continued_conversati
 
 
 @pytest.mark.asyncio
-async def test_google_calendar_self_healing_from_decryption_error(tmp_path, monkeypatch):
+@pytest.mark.parametrize("provider_available", [True, False])
+async def test_google_calendar_self_healing_from_decryption_error(tmp_path, monkeypatch, provider_available):
     """Vérifie que CRMService et CRMAvailabilityService s'auto-réparent si les clés actives décryptent des identifiants en erreur."""
     from zoneinfo import ZoneInfo
     from backend.app.models.crm import CRMCalendarConnection
@@ -610,8 +611,12 @@ async def test_google_calendar_self_healing_from_decryption_error(tmp_path, monk
         def __init__(self, *args, **kwargs):
             pass
         async def create_event(self, creds, event_data, calendar_id):
+            assert provider_available, "No event may be written when provider verification fails"
             return "google_evt_12345"
         async def check_busy_slots(self, creds, s, e, cal_id):
+            if not provider_available:
+                from backend.app.services.calendar.base import CalendarProviderError
+                raise CalendarProviderError("Explicit fixture provider unavailable")
             return []
 
     monkeypatch.setattr("backend.app.services.crm_service.GoogleCalendarProvider", MockGoogleProvider)
@@ -640,6 +645,13 @@ async def test_google_calendar_self_healing_from_decryption_error(tmp_path, monk
 
     # Création du rendez-vous avec synchronisation Google Calendar
     apt, err = await crm.create_appointment(company.id, apt_data)
+    if not provider_available:
+        assert err == "EXTERNAL_AVAILABILITY_UNAVAILABLE"
+        assert apt is None
+        db.refresh(conn)
+        assert conn.sync_status == "error"
+        assert conn.sync_error is not None
+        return
     assert err is None
     assert apt is not None
     assert apt.external_event_id == "google_evt_12345"

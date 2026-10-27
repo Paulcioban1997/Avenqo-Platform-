@@ -20,6 +20,7 @@ from backend.app.services.calendar.base import (
     CalendarProviderError,
     CalendarTokenRevokedError,
     CalendarTokenTransientError,
+    requires_calendar_reconnect,
 )
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
@@ -124,7 +125,7 @@ class CRMAvailabilityService:
                 provider = GoogleCalendarProvider()
             busy = []
             for connection in connections:
-                if connection.sync_status == "error" and any(marker in (connection.sync_error or "").lower() for marker in ("token", "jeton", "revok", "reconnect")):
+                if requires_calendar_reconnect(connection.sync_status, connection.sync_error):
                     raise AvailabilityUnavailable("EXTERNAL_AVAILABILITY_UNAVAILABLE")
                 if connection.sync_status not in {"connected", "error"}:
                     raise AvailabilityUnavailable("EXTERNAL_AVAILABILITY_UNAVAILABLE")
@@ -178,6 +179,11 @@ class CRMAvailabilityService:
                             )
                         self._session.commit()
                         raise AvailabilityUnavailable("EXTERNAL_AVAILABILITY_UNAVAILABLE") from refresh_exc
+                # Only a successful provider response can heal the connection.
+                if connection.sync_status == "error":
+                    connection.sync_status = "connected"
+                    connection.sync_error = None
+                    self._session.commit()
                 busy.extend(periods)
             return busy
         except AvailabilityUnavailable:

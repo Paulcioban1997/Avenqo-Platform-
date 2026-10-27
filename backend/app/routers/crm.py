@@ -40,7 +40,7 @@ from backend.app.models.crm import (
 )
 from backend.app.models.commerce_connection import CommerceOAuthState
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
-from backend.app.services.calendar.base import CalendarProviderError, CalendarTokenRevokedError
+from backend.app.services.calendar.base import CalendarProviderError, CalendarTokenRevokedError, requires_calendar_reconnect
 from backend.app.services.calendar.outlook_provider import OutlookCalendarProvider
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
 from backend.app.services.crm_availability_service import AvailabilityUnavailable, CRMAvailabilityService
@@ -995,7 +995,7 @@ def get_calendar_connection(
             "requires_reconnect": False,
             "reconnect_message": None,
         }
-    requires_reconnect = conn.sync_status in {"reconnect_required", "revoked"} or (conn.sync_status == "error" and any(marker in (conn.sync_error or "").lower() for marker in ("token", "jeton", "revok", "révoqu", "reconnect")))
+    requires_reconnect = requires_calendar_reconnect(conn.sync_status, conn.sync_error)
     connection_status = "CONNECTED" if conn.sync_status == "connected" else "RECONNECT_REQUIRED" if requires_reconnect else "DISCONNECTED" if conn.sync_status == "disconnected" else "ERROR"
     return {
         "connected": conn.sync_status == "connected",
