@@ -32,6 +32,11 @@ export function resolveAvenqoApiOrigin(
     ""
   ).toLowerCase();
 
+  // Vercel's deployment target is authoritative. Shared application variables
+  // may be inherited from Production and must never route Preview logins there.
+  if (vercelEnv === "preview") {
+    return SANDBOX_API_ORIGIN;
+  }
   if (vercelEnv === "production" || appEnv === "production") {
     return PRODUCTION_API_ORIGIN;
   }
