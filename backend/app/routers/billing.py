@@ -56,7 +56,7 @@ from backend.app.services.invoice_fiscal_service import (
 )
 from backend.app.services.stripe_gateway import BillingProvider, StripeTaxConfigurationError
 from backend.app.services.stripe_invoice_sync import sync_customer_invoices
-from backend.app.models import BillingAccount, BillingTestDocument, Company, TenantAICreditBalance, TenantAICreditLedgerEntry, TenantAIProviderAttempt
+from backend.app.models import BillingAccount, BillingInvoice, BillingTestDocument, Company, TenantAICreditBalance, TenantAICreditLedgerEntry, TenantAIProviderAttempt
 from payments import PLANS
 from modules.registry import BUSINESS_MODULE_REGISTRY, ModuleAvailability
 
@@ -319,7 +319,6 @@ def portal(
 @router.get("/invoices", response_model=list[InvoiceResponse])
 def invoices(
     identity: CurrentIdentity = Depends(manage_billing),
-    service: BillingService = Depends(get_billing_service),
     db: Session = Depends(get_db),
     provider: BillingProvider | None = Depends(get_billing_provider_optional),
     settings: Settings = Depends(get_settings),
@@ -329,7 +328,15 @@ def invoices(
     limit = min(max(limit, 1), 200)
     skip = max(skip, 0)
     _backfill_stripe_invoices(db, provider, settings, identity.user.company_id)
-    items = [InvoiceResponse.model_validate(invoice) for invoice in service.list_invoices(identity.user.company_id)]
+    invoices_list = db.scalars(
+        select(BillingInvoice)
+        .where(
+            BillingInvoice.company_id == identity.user.company_id,
+            BillingInvoice.stripe_invoice_id.not_like("in_seed_%"),
+        )
+        .order_by(BillingInvoice.issued_at.desc())
+    ).all()
+    items = [InvoiceResponse.model_validate(invoice) for invoice in invoices_list]
     return items[skip : skip + limit]
 
 
