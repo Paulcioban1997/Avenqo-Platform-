@@ -1,6 +1,7 @@
 """Dépendances FastAPI de la facturation Stripe."""
 
-from fastapi import Depends, HTTPException, status
+from typing import cast
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from backend.app.config.settings import get_settings
@@ -12,7 +13,6 @@ from backend.app.services.account_notifications import AccountNotifier
 from backend.app.services.billing_service import BillingService
 from backend.app.services.invoice_fiscal_service import InvoiceFiscalService
 from backend.app.services.stripe_gateway import BillingProvider, StripeGateway
-from fastapi import Request
 
 
 def get_billing_provider() -> BillingProvider:
@@ -28,7 +28,8 @@ def get_billing_provider() -> BillingProvider:
 def get_billing_provider_optional(request: Request) -> BillingProvider | None:
     if get_billing_provider in request.app.dependency_overrides:
         override = request.app.dependency_overrides[get_billing_provider]
-        return override() if callable(override) else override
+        result = override() if callable(override) else override
+        return cast(BillingProvider | None, result)
     settings = get_settings()
     if not settings.stripe_secret_key:
         return None
