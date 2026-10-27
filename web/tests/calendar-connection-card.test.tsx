@@ -19,3 +19,11 @@ it("shows provider errors rather than a connected footer", async () => {
   await waitFor(() => expect(screen.getAllByText("Erreur de connexion")).toHaveLength(2));
   expect(screen.queryByText("Connecté", {exact:true})).toBeNull();
 });
+
+it("distinguishes a transient provider error from revoked authorization", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({connected:false, provider:"google", connection_status:"ERROR", sync_status:"error", requires_reconnect:false})));
+  render(<CRMCalendarConnectionCard t={getAppTranslations("fr")} />);
+  await waitFor(() => expect(screen.getAllByText("Erreur de connexion")).toHaveLength(2));
+  expect(screen.queryByText(/Le jeton pour/)).toBeNull();
+  expect(screen.queryByRole("button", {name:"Reconnecter Google Calendar"})).toBeNull();
+});

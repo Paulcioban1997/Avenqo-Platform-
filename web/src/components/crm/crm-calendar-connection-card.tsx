@@ -72,8 +72,7 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
           data.requires_reconnect ||
           data.connection_status === "RECONNECT_REQUIRED" ||
           data.sync_status === "reconnect_required" ||
-          data.sync_status === "revoked" ||
-          (!data.connected && data.provider === "google")
+          data.sync_status === "revoked"
         );
         setGoogleStatus({
           connected: Boolean(data.connected) && !needsReconnect,
