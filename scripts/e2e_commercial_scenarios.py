@@ -65,6 +65,39 @@ def api_call(
         return 599, str(e)
 
 
+def register_and_login(reg_payload: dict[str, Any]) -> tuple[str | None, str | None, str]:
+    code, res = api_call("/api/v1/auth/register", method="POST", data=reg_payload)
+    if code not in (200, 201):
+        return None, None, f"Register failed: HTTP {code} {res}"
+    
+    # Simuler la validation de l'email du nouveau client
+    import psycopg2
+    db_url = os.environ.get("DATABASE_URL", "")
+    if not db_url:
+        # Fallback to local / configured test env or railway sandbox url from env
+        db_url = os.getenv("TEST_DATABASE_URL", os.getenv("DATABASE_URL_SANDBOX", ""))
+    try:
+        conn = psycopg2.connect(db_url)
+        cur = conn.cursor()
+        cur.execute("UPDATE users SET email_verified_at = NOW() WHERE email = %s;", (reg_payload["email"].strip().lower(),))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        return None, None, f"DB Email verification failed: {e}"
+
+    login_payload = {
+        "email": reg_payload["email"],
+        "password": reg_payload["password"],
+    }
+    code_l, res_l = api_call("/api/v1/auth/login", method="POST", data=login_payload)
+    if code_l == 200 and "access_token" in res_l:
+        token = res_l["access_token"]
+        comp = res_l.get("company", {})
+        company_id = comp.get("id") or (res_l.get("user") or {}).get("company_id")
+        return token, str(company_id), "OK"
+    return None, None, f"Login failed: HTTP {code_l} {res_l}"
+
+
 def run_scenario_a():
     print("\n" + "="*70)
     print("  SCENARIO A : ENTREPRISE E-COMMERCE (Atlas Mode Inc)")
@@ -88,14 +121,12 @@ def run_scenario_a():
         "selected_modules": ["retail"]
     }
     
-    # 1. Inscription
-    code, res = api_call("/api/v1/auth/register", method="POST", data=reg_payload)
-    if code in (200, 201) and "tokens" in res:
-        token = res["tokens"]["access_token"]
-        company_id = res["company_id"]
-        record("Scenario A", "Inscription & Creation Espace E-Commerce", "PASS", f"HTTP {code} company_id={company_id}")
+    # 1. Inscription & Connexion
+    token, company_id, err = register_and_login(reg_payload)
+    if token and company_id:
+        record("Scenario A", "Inscription & Connexion Espace E-Commerce", "PASS", f"HTTP 201 Created + 200 Login company_id={company_id}")
     else:
-        record("Scenario A", "Inscription & Creation Espace E-Commerce", "FAIL", f"HTTP {code} {res}")
+        record("Scenario A", "Inscription & Connexion Espace E-Commerce", "FAIL", err)
         return
 
     # 2. Catalogue Abonnements & Souscription
@@ -143,7 +174,7 @@ def run_scenario_a():
         conv_id = conv["id"]
         record("Scenario A", "Central AI : Creation Conversation", "PASS", f"HTTP {code} conv_id={conv_id}")
         
-        msg_payload = {"content": "Bonjour Central AI, resume la situation de ma boutique.", "locale": "fr"}
+        msg_payload = {"content": "Bonjour Central AI, resume la situation de ma boutique."}
         code, msg_res = api_call(f"/api/v1/ai/chat/conversations/{conv_id}/messages", method="POST", data=msg_payload, token=token)
         if code in (200, 201):
             text_preview = (msg_res.get("content") or msg_res.get("response") or str(msg_res))[:100]
@@ -177,14 +208,12 @@ def run_scenario_b():
         "selected_modules": ["crm", "voice"]
     }
     
-    # 1. Inscription
-    code, res = api_call("/api/v1/auth/register", method="POST", data=reg_payload)
-    if code in (200, 201) and "tokens" in res:
-        token = res["tokens"]["access_token"]
-        company_id = res["company_id"]
-        record("Scenario B", "Inscription Garage", "PASS", f"HTTP {code} company_id={company_id}")
+    # 1. Inscription & Connexion
+    token, company_id, err = register_and_login(reg_payload)
+    if token and company_id:
+        record("Scenario B", "Inscription & Connexion Garage", "PASS", f"HTTP 201 Created + 200 Login company_id={company_id}")
     else:
-        record("Scenario B", "Inscription Garage", "FAIL", f"HTTP {code} {res}")
+        record("Scenario B", "Inscription & Connexion Garage", "FAIL", err)
         return
 
     # 2. Creation des Prestations (Services)
@@ -321,12 +350,18 @@ def run_scenario_b():
     else:
         record("Scenario B", "Voice : Politique d'Appel", "FAIL", f"HTTP {code} {vpol}")
 
-    nip_payload = {"custom_code": "8421"}
-    code, nip_res = api_call("/api/v1/voice/routing-nip", method="POST", data=nip_payload, token=token)
-    if code == 200:
-        record("Scenario B", "Voice : NIP Personnel d'Entreprise", "PASS", f"HTTP 200 NIP configure ({nip_res.get('routing_code')})")
+    update_policy_payload = {
+        "ivr_enabled": True,
+        "ivr_greeting": "Bienvenue au Garage Mecanique Express",
+        "concurrent_calls": 2,
+        "idle_seconds": 120,
+        "max_call_seconds": 1800
+    }
+    code, updated_pol = api_call("/api/v1/voice/call-policy", method="PUT", data=update_policy_payload, token=token)
+    if code == 200 and updated_pol.get("policy", {}).get("ivr_enabled") is True:
+        record("Scenario B", "Voice : Configuration IVR Garage", "PASS", f"HTTP 200 IVR actif, greeting='{update_policy_payload['ivr_greeting']}'")
     else:
-        record("Scenario B", "Voice : NIP Personnel d'Entreprise", "PARTIAL", f"HTTP {code} {nip_res}")
+        record("Scenario B", "Voice : Configuration IVR Garage", "FAIL", f"HTTP {code} {updated_pol}")
 
 
 def run_scenario_c():
@@ -352,14 +387,12 @@ def run_scenario_c():
         "selected_modules": ["crm"]
     }
     
-    # 1. Inscription
-    code, res = api_call("/api/v1/auth/register", method="POST", data=reg_payload)
-    if code in (200, 201) and "tokens" in res:
-        token = res["tokens"]["access_token"]
-        company_id = res["company_id"]
-        record("Scenario C", "Inscription Cabinet Conseil", "PASS", f"HTTP {code} company_id={company_id}")
+    # 1. Inscription & Connexion
+    token, company_id, err = register_and_login(reg_payload)
+    if token and company_id:
+        record("Scenario C", "Inscription & Connexion Cabinet Conseil", "PASS", f"HTTP 201 Created + 200 Login company_id={company_id}")
     else:
-        record("Scenario C", "Inscription Cabinet Conseil", "FAIL", f"HTTP {code} {res}")
+        record("Scenario C", "Inscription & Connexion Cabinet Conseil", "FAIL", err)
         return
 
     # 2. Creation d'un Collaborateur (Employe)
@@ -416,7 +449,7 @@ def run_scenario_c():
     code, conv = api_call("/api/v1/ai/chat/conversations", method="POST", data={"title": "Strategie Horizon", "locale": "fr"}, token=token)
     if code in (200, 201) and "id" in conv:
         conv_id = conv["id"]
-        msg_payload = {"content": "Quels sont les services declares et les consultants actifs dans notre cabinet ?", "locale": "fr"}
+        msg_payload = {"content": "Quels sont les services declares et les consultants actifs dans notre cabinet ?"}
         code, msg_res = api_call(f"/api/v1/ai/chat/conversations/{conv_id}/messages", method="POST", data=msg_payload, token=token)
         if code in (200, 201):
             text_preview = (msg_res.get("content") or msg_res.get("response") or str(msg_res))[:100]
