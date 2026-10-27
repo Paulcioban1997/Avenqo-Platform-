@@ -84,6 +84,7 @@ export function CRMCopilotPanel({
   const isSpanish = locale === "es";
   const isEnglish = locale.startsWith("en");
   const isRomanian = locale.startsWith("ro");
+  const errorPrompt = t.copilot.errorPrompt?.trim() || (locale.startsWith("fr") ? "La demande n’a pas abouti. Aucune action n’est confirmée. Réessayez." : "The request did not complete. No action is confirmed. Please retry.");
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -304,32 +305,34 @@ export function CRMCopilotPanel({
 
       if (res.ok) {
         const data = await res.json();
-        const unconfirmedAction = Array.isArray(data.tool_outcomes)
-          && data.tool_outcomes.some((outcome: { success?: boolean; confirmed?: boolean }) => !outcome.success || !outcome.confirmed);
-        const confirmedSuccess = data.status === "success"
-          && !unconfirmedAction
-          && typeof data.answer === "string"
-          && data.answer.trim().length > 0;
-        if (confirmedSuccess) pendingRequestRef.current = null;
+        const answer = typeof data.answer === "string" ? data.answer.trim() : "";
+        const outcomes: Array<{ tool_name?: string; tool?: string; success?: boolean; confirmed?: boolean; error?: string; data?: { error?: string } }> = Array.isArray(data.tool_outcomes) ? data.tool_outcomes : [];
+        const bookingTools = ["create_appointment", "update_appointment", "cancel_appointment", "book_appointment"];
+        const fakeBookingClaim = outcomes.some((outcome) => bookingTools.includes(outcome.tool_name ?? outcome.tool ?? "") && outcome.success && !outcome.confirmed);
+        const confirmedBooking = outcomes.some((outcome) => outcome.success && outcome.confirmed && bookingTools.includes(outcome.tool_name ?? outcome.tool ?? ""));
+        const toolError = outcomes.find((outcome) => !outcome.success)?.data?.error || outcomes.find((outcome) => outcome.error)?.error;
+        if ((answer && !fakeBookingClaim) || confirmedBooking) pendingRequestRef.current = null;
         const copilotMsg: Message = {
           id: messageId("c"),
           sender: "copilot",
-          content: confirmedSuccess ? data.answer : t.copilot.errorPrompt,
+          content: fakeBookingClaim
+            ? errorPrompt
+            : (answer || (typeof toolError === "string" ? toolError : errorPrompt)),
           timestamp: messageTimestamp(),
-          status: confirmedSuccess ? "success" : "error",
+          status: fakeBookingClaim ? "error" : (data.status === "success" || answer ? "success" : "error"),
           details: data,
         };
         setMessages((prev) => [...prev, copilotMsg]);
 
         // Auto-refresh calendar and KPIs if appointment created
-        if (data.status === "success") {
+        if (confirmedBooking) {
           onAppointmentCreated?.();
         }
       } else {
         const copilotMsg: Message = {
           id: messageId("c"),
           sender: "copilot",
-          content: t.copilot.errorPrompt,
+          content: errorPrompt,
           timestamp: messageTimestamp(),
           status: "error",
         };
@@ -340,7 +343,7 @@ export function CRMCopilotPanel({
       const copilotMsg: Message = {
         id: messageId("c"),
         sender: "copilot",
-          content: t.copilot.errorPrompt,
+          content: errorPrompt,
         timestamp: messageTimestamp(),
         status: "error",
       };

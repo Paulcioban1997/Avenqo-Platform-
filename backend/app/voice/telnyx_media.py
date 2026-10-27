@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import array
-import audioop
 import asyncio
+import time
 import base64
 import binascii
 from collections import deque
@@ -48,7 +47,7 @@ from backend.app.models import (
     VoiceToolAction,
 )
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
-from backend.app.voice.adapters import OpenAIAudioConfig, OpenAIRealtimeAudioAdapter
+from backend.app.voice.adapters import OpenAIRealtimeAudioAdapter
 from backend.app.voice.auth import VoiceCallerAuth, utc, normalized_phone
 from backend.app.voice.usage import VoiceUsageLedger, voice_pricing_catalog
 from backend.app.voice.service import resolve_voice_source_context
@@ -59,35 +58,97 @@ from shared.ai_engine.contracts import TenantContext
 from backend.app.voice.auth import redact_voice_secrets
 from backend.app.voice.caller_scope import PUBLIC_VOICE_CALLER_PERMISSIONS
 from backend.app.voice.language_resolver import CallLanguageSession
+from backend.app.voice.module_actions import company_call_language_session, voice_agent_language
 
 
-class InvalidMediaFrame(ValueError):
-    pass
+from backend.app.voice.audio_codec import InvalidMediaFrame, TelnyxAudioCodec
+from backend.app.voice.open_speech_runtime import build_phone_adapter
 
 
-def media_transport_context(db: Session, settings: Settings, call_id: UUID):
+_LIVE_MEDIA_STATUSES = frozenset({"answering", "routed", "in_progress", "appointment_booked"})
+_SESSION_MEDIA_STATUSES = _LIVE_MEDIA_STATUSES
+_HANGUP_MEDIA_STATUSES = _SESSION_MEDIA_STATUSES | frozenset({
+    "appointment_cancelled", "transferred", "blocked_credits", "blocked_announcement", "completed",
+})
+
+
+
+def media_transport_context(
+    db: Session,
+    settings: Settings,
+    call_id: UUID,
+    *,
+    allow_statuses: frozenset[str] | None = None,
+    require_active: bool = True,
+):
     if not settings.telnyx_media_enabled:
         raise PermissionError("Telnyx media transport disabled")
     db.expire_all()
+    from backend.app.services.tenant_rls import apply_tenant_rls, supports_rls
+    if supports_rls(db):
+        try:
+            resolved_cid = db.execute(
+                text("SELECT public.resolve_voice_call_tenant(:call_id, NULL)"),
+                {"call_id": call_id},
+            ).scalar()
+            if resolved_cid is not None:
+                apply_tenant_rls(db, UUID(str(resolved_cid)), bypass=False)
+            else:
+                logger.warning("resolve_voice_call_tenant returned None for call_id %s", call_id)
+        except Exception as exc:
+            logger.warning("resolve_voice_call_tenant failed for call_id %s: %s", call_id, exc, exc_info=True)
     call = db.get(VoiceCall, call_id)
-    if call is None or call.ended_at is not None or call.status not in {"answering", "routed", "in_progress"} or not call.telnyx_call_control_id:
+    allowed = allow_statuses if allow_statuses is not None else _SESSION_MEDIA_STATUSES
+    if (
+        call is None
+        or not call.telnyx_call_control_id
+        or call.status not in allowed
+        or (require_active and call.ended_at is not None)
+    ):
         raise PermissionError("Active tenant call required")
+    apply_tenant_rls(db, call.company_id, bypass=False)
+    is_dispatcher_call = bool(
+        (call.source_context or {}).get("dispatcher_routing")
+        or (call.source_context or {}).get("routing_nip")
+    )
+    from backend.app.services.voice_lifecycle_service import VoiceLifecycleService
+    caller_phone = call.caller_phone or ""
+    admitted, reason = VoiceLifecycleService(db).is_call_admissible(call.company_id, caller_phone)
+    if not admitted and not is_dispatcher_call:
+        raise PermissionError(f"Voice agent lifecycle not admitted: {reason}")
     config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.id == call.config_id, VoiceBusinessConfig.company_id == call.company_id))
     number = db.scalar(select(VoicePhoneNumber).where(VoicePhoneNumber.company_id == call.company_id,
         VoicePhoneNumber.config_id == call.config_id, VoicePhoneNumber.status == "ACTIVE", VoicePhoneNumber.provider == "telnyx"))
     account = db.scalar(select(BillingAccount).where(BillingAccount.company_id == call.company_id))
     company = db.get(Company, call.company_id)
-    if config is None or company is None or number is None or number.phone_number != config.telnyx_phone_number or "voice" not in (number.capabilities or []):
-        raise PermissionError("Tenant number binding unavailable")
-    if not settings.telnyx_voice_connection_id or number.provider_connection_id != settings.telnyx_voice_connection_id:
-        raise PermissionError("Verified Voice connection required")
+    if config is None or company is None:
+        raise PermissionError("Tenant configuration unavailable")
+    is_dispatcher_call = bool(
+        (call.source_context or {}).get("dispatcher_routing")
+        or (call.source_context or {}).get("routing_nip")
+    )
+    if not is_dispatcher_call:
+        if number is None or number.phone_number != config.telnyx_phone_number or "voice" not in (number.capabilities or []):
+            raise PermissionError("Tenant number binding unavailable")
+        if not settings.telnyx_voice_connection_id or number.provider_connection_id != settings.telnyx_voice_connection_id:
+            raise PermissionError("Verified Voice connection required")
+    else:
+        from backend.app.models.voice import CompanyRoutingNip
+        active_nip = db.scalar(
+            select(CompanyRoutingNip.id).where(
+                CompanyRoutingNip.company_id == call.company_id,
+                CompanyRoutingNip.status == "ACTIVE",
+            )
+        )
+        if active_nip is None and (number is None or number.status != "ACTIVE"):
+            raise PermissionError("Company routing NIP or dedicated number required")
     if account is None or account.status.strip().lower() not in {"active", "trialing"} or not ModuleEntitlementService(db).can_use_module(TenantContext(call.company_id), "voice"):
         raise PermissionError("Voice entitlement unavailable")
     return call, config, company
 
 
-def media_call_context(db: Session, settings: Settings, call_id: UUID):
-    call, config, company = media_transport_context(db, settings, call_id)
+def media_call_context(db: Session, settings: Settings, call_id: UUID, **context_kwargs):
+    call, config, company = media_transport_context(db, settings, call_id, **context_kwargs)
     auth = VoiceCallerAuth(db, settings).valid_session(call)
     if auth is None or auth.caller_type not in {"OWNER", "EMPLOYEE"} or call.caller_type not in {"OWNER", "EMPLOYEE"} or call.pin_challenge_hash:
         raise PermissionError("Verified staff call required")
@@ -150,10 +211,22 @@ def claim_media_start(db: Session, settings: Settings, call_id: UUID, start: dic
             options={"require": ["type", "call_id", "tenant_id", "config_id", "auth_epoch", "jti", "iat", "exp"]})
     except (ValueError, binascii.Error, UnicodeDecodeError, jwt.InvalidTokenError):
         raise PermissionError("Invalid media authorization") from None
-    if (claims["type"] != "telnyx_media" or claims["call_id"] != str(call.id) or claims["tenant_id"] != str(call.company_id)
-        or claims["config_id"] != str(config.id) or claims["auth_epoch"] != auth_epoch
-        or start.get("call_control_id") != call.telnyx_call_control_id
-        or (normalized_phone(start.get("to")) != normalized_phone(config.telnyx_phone_number) and start.get("to") != config.telnyx_phone_number)):
+    expected_to = (
+        (call.source_context or {}).get("destination_number")
+        if (call.source_context or {}).get("dispatcher_routing")
+        else config.telnyx_phone_number
+    )
+    start_to = start.get("to")
+    start_call_control_id = start.get("call_control_id")
+    if (
+        claims["type"] != "telnyx_media"
+        or claims["call_id"] != str(call.id)
+        or claims["tenant_id"] != str(call.company_id)
+        or claims["config_id"] != str(config.id)
+        or claims["auth_epoch"] != auth_epoch
+        or (start_call_control_id and call.telnyx_call_control_id and start_call_control_id != call.telnyx_call_control_id)
+        or (start_to and expected_to and normalized_phone(start_to) != normalized_phone(expected_to) and start_to != expected_to)
+    ):
         raise PermissionError("Media authorization scope mismatch")
     nonce = claims["jti"]
     if not isinstance(nonce, str) or len(nonce) > 128:
@@ -216,13 +289,12 @@ class PublicInboundConversation:
     def context(self):
         if not self.settings.telnyx_media_inbound_enabled:
             raise PermissionError("Public inbound media disabled")
-        return media_transport_context(self.db, self.settings, self.call_id)
+        return media_transport_context(self.db, self.settings, self.call_id, allow_statuses=_SESSION_MEDIA_STATUSES)
 
     def greeting(self) -> str:
         _call, config, _company = self.context()
-        if resolve_locale(config.preferred_language).startswith("fr"):
-            return f"Bonjour, vous êtes bien chez {config.business_name}. Comment puis-je vous aider ?"
-        return f"Hello, you've reached {config.business_name}. How can I help you?"
+        from backend.app.voice.messages import voice_natural_greeting
+        return voice_natural_greeting(voice_agent_language(self.db, config), config.business_name)
 
     def portal_message(self) -> str:
         _call, config, _company = self.context()
@@ -341,6 +413,8 @@ class PublicInboundConversation:
 
     def public_answer(self, transcript: str) -> dict:
         call, config, _company = self.context()
+        from backend.app.services.company_intelligence_service import CompanyIntelligenceService
+        profile = CompanyIntelligenceService(self.db).get_profile(call.company_id)
         safe = redact_voice_secrets(transcript)
         normalized = "".join(character for character in unicodedata.normalize("NFKD", safe.casefold()) if not unicodedata.combining(character))
         french = resolve_locale(call.locale or config.preferred_language).startswith("fr")
@@ -354,6 +428,8 @@ class PublicInboundConversation:
             answer = "Une vérification de votre identité client est nécessaire pour accéder à vos données personnelles ou modifier un rendez-vous." if french else "Customer identity verification is required to access personal information or change an appointment."
             return {"status": "success", "answer": answer, "customer_verification_required": True, "public": True}
         if re.search(r"rendez.vous|appointment|booking|reservation|disponibilit|disponible|availability|available", normalized):
+            if not profile.has_crm_booking:
+                return {"status": "success", "answer": "Aucune prestation réservable vérifiée n’est configurée pour cette entreprise." if french else "This business has no verified bookable service configured.", "public": True}
             answer = "Pour demander un rendez-vous, indiquez le service et la date souhaités. Aucune réservation n'est encore confirmée." if french else "For an appointment request, please provide the service and desired date. No booking is confirmed yet."
             call.source_context = {**(call.source_context or {}), "public_appointment_request": True}
             self.db.commit()
@@ -368,7 +444,7 @@ class PublicInboundConversation:
                 answer = "Les heures d'ouverture ne sont pas encore renseignées." if french else "Opening hours have not been supplied yet."
             return {"status": "success", "answer": answer, "public": True}
         if re.search(r"services|prix|price|tarif", normalized):
-            services = [{key: value[key] for key in ("name", "duration_minutes", "price", "currency") if key in value} for value in config.services if isinstance(value, dict)]
+            services = [{key: value[key] for key in ("name", "duration_minutes", "price", "currency") if key in value} for value in profile.configured_crm_services if isinstance(value, dict)]
             if services:
                 summary = ", ".join(f"{s.get('name', '')} ({s.get('price', '')} {s.get('currency', '')})".strip() for s in services)
                 answer = ("Nos services: " if french else "Our services: ") + summary
@@ -377,6 +453,9 @@ class PublicInboundConversation:
             return {"status": "success", "answer": answer, "public": True}
         if re.search(r"commande|order|produit|product|stock|inventaire|inventory|magasin|boutique|retail", normalized):
             answer = "Pour toute question sur vos commandes, nos produits ou notre inventaire, je peux vous renseigner. Que souhaitez-vous savoir ?" if french else "For questions about orders, products, or inventory, I can help. What would you like to know?"
+            return {"status": "success", "answer": answer, "public": True}
+        if not profile.has_crm_booking:
+            answer = "Je peux vous renseigner sur notre entreprise. Les données de ventes et de stock nécessitent une authentification personnelle." if french else "I can help with business information. Sales and internal stock require personal authentication."
             return {"status": "success", "answer": answer, "public": True}
         if re.search(r"parler|quelqu.un|agent|humain|reception|personne|speak|someone|representative|human", normalized):
             answer = "Je peux prendre votre message ou vous renseigner sur nos services, horaires et rendez-vous. Comment puis-je vous aider ?" if french else "I can take a message or assist with services, hours, and appointments. How can I help you?"
@@ -536,67 +615,6 @@ class TelnyxAudioReorderBuffer:
         return to_emit
 
 
-class TelnyxAudioCodec:
-    def __init__(self) -> None:
-        self._input_state = None
-        self._output_state = None
-
-    def reset(self) -> None:
-        self._input_state = None
-        self._output_state = None
-
-    @staticmethod
-    def decode_payload(payload: object, maximum: int) -> bytes:
-        if not isinstance(payload, str) or len(payload) > ((maximum + 2) // 3) * 4:
-            raise InvalidMediaFrame("Invalid audio payload")
-        try:
-            raw = base64.b64decode(payload, validate=True)
-        except (ValueError, binascii.Error):
-            raise InvalidMediaFrame("Invalid audio payload") from None
-        if not raw or len(raw) > maximum:
-            raise InvalidMediaFrame("Invalid audio payload")
-        return raw
-
-    def inbound_pcm(self, payload: object) -> bytes:
-        raw = self.decode_payload(payload, 1600)
-        pcm = audioop.ulaw2lin(raw, 2)
-        converted, self._input_state = audioop.ratecv(pcm, 2, 1, 8000, 24000, self._input_state)
-        return converted
-
-    @staticmethod
-    def _anti_alias_filter(pcm: bytes) -> bytes:
-        """7-tap symmetric FIR low-pass filter (cutoff ~3600 Hz at 24000 Hz).
-        Attenuates energy above 4 kHz before 3:1 downsampling, preventing severe harmonic aliasing.
-        """
-        if len(pcm) < 16:
-            return pcm
-        samples = array.array("h", pcm)
-        n = len(samples)
-        out = array.array("h", [0] * n)
-        # Scaled coefficients [36, 97, 195, 368, 195, 97, 36] / 1024
-        for i in range(3, n - 3):
-            val = (
-                36 * (samples[i - 3] + samples[i + 3])
-                + 97 * (samples[i - 2] + samples[i + 2])
-                + 195 * (samples[i - 1] + samples[i + 1])
-                + 368 * samples[i]
-            ) >> 10
-            out[i] = max(-32768, min(32767, val))
-        for i in (0, 1, 2):
-            out[i] = samples[i]
-        for i in (n - 3, n - 2, n - 1):
-            out[i] = samples[i]
-        return out.tobytes()
-
-    def outbound_pcm(self, payload: object) -> bytes:
-        pcm = self.decode_payload(payload, 48000)
-        if len(pcm) % 2:
-            raise InvalidMediaFrame("Invalid PCM frame")
-        filtered = self._anti_alias_filter(pcm)
-        converted, self._output_state = audioop.ratecv(filtered, 2, 1, 24000, 8000, self._output_state)
-        return audioop.lin2ulaw(converted, 2)
-
-
 class TelnyxMediaBridge:
     def __init__(
         self, socket, adapter, *, locale: str,
@@ -610,6 +628,8 @@ class TelnyxMediaBridge:
         consume_pending_query: Callable[[], Awaitable[str | None]] | None = None,
         hangup_call: Callable[[], Awaitable[None]] | None = None,
         max_output_queue: int = 64,
+        max_session_seconds: float | None = None,
+        idle_seconds: float | None = None,
     ) -> None:
         self.socket = socket
         self.adapter = adapter
@@ -626,6 +646,13 @@ class TelnyxMediaBridge:
         self.poll_pin: Callable[[], Awaitable[str]] | None = poll_pin
         self.consume_pending_query: Callable[[], Awaitable[str | None]] | None = consume_pending_query
         self.hangup_call: Callable[[], Awaitable[None]] | None = hangup_call
+        if max_session_seconds is not None and max_session_seconds <= 0:
+            raise ValueError("Session duration must be positive")
+        self.max_session_seconds = max_session_seconds
+        self.idle_seconds = idle_seconds
+        self._last_activity = time.monotonic()
+        self._authorized_session = False
+        self._termination_requested = False
         self._stop_event = asyncio.Event()
         self.codec = TelnyxAudioCodec()
         self.reorder_buffer = TelnyxAudioReorderBuffer(max_buffer_size=10, max_gap_tolerance=2)
@@ -779,9 +806,11 @@ class TelnyxMediaBridge:
                     if turn_ledger is not None:
                         turn_ledger.settle(item_id)
                 if result.get("hangup"):
-                    while not self._output.empty():
-                        await asyncio.sleep(0.06)
-                    await asyncio.sleep(0.5)
+                    drained = 0
+                    while not self._output.empty() and drained < 40:
+                        await asyncio.sleep(0.05)
+                        drained += 1
+                    await asyncio.sleep(0.15)
                     if self.hangup_call is not None:
                         with suppress(Exception):
                             await self.hangup_call()
@@ -794,6 +823,11 @@ class TelnyxMediaBridge:
         while True:
             item_id, transcript, epoch = await self._turns.get()
             await self._execute(item_id, transcript, epoch)
+            # A completed wait_for child can race with cancellation during
+            # shutdown. Do not re-enter the queue with a pending cancellation.
+            task = asyncio.current_task()
+            if task is not None and task.cancelling():
+                raise asyncio.CancelledError
 
     def _enqueue(self, raw: bytes, *, final: bool = False) -> None:
         self._remainder += raw
@@ -859,6 +893,7 @@ class TelnyxMediaBridge:
                 logger.info("Realtime session configured successfully (model=%s, stt=%s)", self.realtime_model, self.stt_model)
                 self.telemetry["final_state"] = "LISTENING"
             elif kind == "input_audio_buffer.speech_started" and not self.input_paused:
+                self._last_activity = time.monotonic()
                 logger.info("Caller speech started (epoch=%s)", self.epoch)
                 self.telemetry["speech_detected"] = True
                 self.telemetry["final_state"] = "USER_SPEAKING"
@@ -871,6 +906,7 @@ class TelnyxMediaBridge:
                 logger.info("Caller speech stopped (epoch=%s)", self.epoch)
                 self.telemetry["final_state"] = "PROCESSING"
             elif kind == "conversation.item.input_audio_transcription.completed" and not self.input_paused:
+                self._last_activity = time.monotonic()
                 item_id = getattr(event, "item_id", "")
                 transcript = getattr(event, "transcript", "")
                 logger.info("Caller speech transcribed (item_id=%s, length=%d)", item_id, len(transcript) if isinstance(transcript, str) else 0)
@@ -948,7 +984,8 @@ class TelnyxMediaBridge:
     async def _read_audio(self) -> None:
         while True:
             event = await self.socket.receive_json()
-            if not isinstance(event, dict) or event.get("stream_id") != self.stream_id:
+            event_stream_id = event.get("stream_id") or (event.get("media", {}).get("stream_id") if isinstance(event.get("media"), dict) else None)
+            if not isinstance(event, dict) or (event_stream_id and event_stream_id != self.stream_id):
                 raise InvalidMediaFrame("Media stream mismatch")
             kind = event.get("event")
             if kind == "stop":
@@ -1051,26 +1088,60 @@ class TelnyxMediaBridge:
         while True:
             await asyncio.sleep(5.0)
             await self.authorize()
+            if self.idle_seconds is not None and time.monotonic() - self._last_activity >= self.idle_seconds:
+                self.telemetry["final_state"] = "IDLE_LIMIT"
+                await self.request_stop("idle_limit")
+                return
 
     async def run(self) -> None:
+        if self.max_session_seconds is None:
+            await self._run()
+            return
+        deadline = asyncio.timeout(self.max_session_seconds)
+        try:
+            async with deadline:
+                await self._run()
+        except asyncio.TimeoutError:
+            if not deadline.expired():
+                raise
+            self.telemetry["final_state"] = "DURATION_LIMIT"
+            logger.info("Voice media duration limit reached; limit_seconds=%s", self.max_session_seconds)
+            await self.request_stop("duration_limit")
+
+    async def request_stop(self, reason: str = "manual") -> None:
+        if reason not in {"manual", "duration_limit", "idle_limit"}:
+            raise ValueError("Unsupported stop reason")
+        self._stop_event.set()
+        if self._authorized_session and not self._termination_requested:
+            self._termination_requested = True
+            logger.info("Authorized Voice media stop requested; reason=%s", reason)
+            if self.hangup_call is not None:
+                await asyncio.wait_for(self.hangup_call(), timeout=5)
+
+    async def _run(self) -> None:
         try:
             event = await asyncio.wait_for(self.socket.receive_json(), timeout=5)
             if isinstance(event, dict) and event.get("event") == "connected":
                 event = await asyncio.wait_for(self.socket.receive_json(), timeout=5)
             if not isinstance(event, dict) or event.get("event") != "start" or not isinstance(event.get("start"), dict):
                 raise InvalidMediaFrame("Media start required")
-            self.stream_id = event.get("stream_id")
+            self.stream_id = event.get("stream_id") or event["start"].get("stream_id")
             if not isinstance(self.stream_id, str) or not self.stream_id or len(self.stream_id) > 255:
                 raise InvalidMediaFrame("Invalid stream identity")
             media_fmt = event["start"].get("media_format") if isinstance(event["start"].get("media_format"), dict) else {}
-            enc = str(media_fmt.get("encoding", "")).upper()
+            raw_enc = str(media_fmt.get("encoding", "")).upper()
+            enc = raw_enc.replace("AUDIO/", "").replace("X-", "")
             rate = int(media_fmt.get("sample_rate", 0))
             channels = int(media_fmt.get("channels", 1))
-            if enc != "PCMU" or rate != 8000 or channels != 1:
+            if enc not in {"PCMU", "MULAW"} or rate not in {8000, 16000} or channels != 1:
+                logger.warning("Unsupported media format: raw_enc=%s enc=%s rate=%s channels=%s", raw_enc, enc, rate, channels)
                 raise InvalidMediaFrame("Unsupported media format")
+            if "client_state" in event and "client_state" not in event["start"]:
+                event["start"]["client_state"] = event["client_state"]
             await self.validate_start(event["start"])
             self.telemetry["media_connected"] = True
             await self.authorize()
+            self._authorized_session = True
             await self.adapter.open(locale=self.locale)
             if self.initial_answer:
                 self.telemetry["final_state"] = "GREETING"
@@ -1122,7 +1193,10 @@ class TelnyxMediaBridge:
             await asyncio.gather(*self._background, return_exceptions=True)
             self._clear_all_buffers()
             with suppress(Exception):
-                await self.adapter.close()
+                if self.max_session_seconds is None:
+                    await self.adapter.close()
+                else:
+                    await asyncio.wait_for(self.adapter.close(), timeout=5)
             for ledger in self._ledger_history:
                 ledger.settle_pending()
 
@@ -1146,7 +1220,42 @@ class BoundedMediaSocket:
             raise InvalidMediaFrame("Invalid media JSON") from None
 
     async def send_json(self, event):
-        await self.websocket.send_json(event)
+        try:
+            await self.websocket.send_json(event)
+        except (WebSocketDisconnect, RuntimeError):
+            pass
+
+
+async def complete_media_hangup(db: Session, settings: Settings, call_id: UUID):
+    """Hang up Telnyx media without overwriting terminal booking/transfer statuses."""
+    c_call, _cfg, _comp = media_transport_context(
+        db, settings, call_id,
+        allow_statuses=_HANGUP_MEDIA_STATUSES,
+        require_active=False,
+    )
+    if c_call.telnyx_call_control_id:
+        if getattr(settings, "voice_long_calls_enabled", False):
+            # Command acceptance is not proof that the phone call ended. Keep the
+            # concurrency reservation until a signed Telnyx hangup confirms it.
+            await asyncio.wait_for(TelnyxClient(settings).hangup(c_call.telnyx_call_control_id), timeout=5)
+            c_call.source_context = {**(c_call.source_context or {}), "stop_requested_at": datetime.now(timezone.utc).isoformat()}
+            db.commit()
+            return c_call
+        from backend.app.voice.sandbox_deadline import is_sandbox_test_call
+        if is_sandbox_test_call(c_call, settings):
+            await asyncio.wait_for(TelnyxClient(settings).hangup(c_call.telnyx_call_control_id), timeout=5)
+        else:
+            with suppress(Exception):
+                await TelnyxClient(settings).hangup(c_call.telnyx_call_control_id)
+    if c_call.status not in {
+        "completed", "appointment_booked", "appointment_cancelled",
+        "transferred", "blocked_credits", "blocked_announcement",
+    }:
+        c_call.status = "completed"
+    if c_call.ended_at is None:
+        c_call.ended_at = datetime.now(timezone.utc)
+    db.commit()
+    return c_call
 
 
 def media_audio_available(settings: Settings, locale: str) -> bool:
@@ -1167,13 +1276,25 @@ async def telnyx_media_socket(
             call, config, company = media_transport_context(db, settings, call_id)
         else:
             call, config, company, _user, _permissions, _auth = media_call_context(db, settings, call_id)
-        locale = resolve_locale(call.locale or config.preferred_language)
+        call_lang_session = company_call_language_session(db, config, call)
+        locale = resolve_locale(call_lang_session.active_locale)
         if not media_audio_available(settings, locale) or service.usage_service is None:
             raise PermissionError("Validated audio configuration required")
         plan = ModuleEntitlementService(db).get_company_plan(TenantContext(company.id)).code.value
         service.usage_service.ensure_quota_available(company.id, plan)
-    except Exception:
-        await websocket.close(code=4403)
+    except Exception as exc:
+        # Starlette TestClient (and some ASGI servers) block forever if the
+        # socket is closed in CONNECTING without accept(). Reject after accept.
+        logger.warning(
+            "Telnyx media websocket pre-accept rejected (4403) for call_id=%s: %s",
+            call_id,
+            exc,
+            exc_info=True,
+        )
+        with suppress(Exception):
+            await websocket.accept()
+        with suppress(Exception):
+            await websocket.close(code=4403)
         return
 
     ledger = None
@@ -1181,32 +1302,25 @@ async def telnyx_media_socket(
     principal_id = None
     auth_epoch = None
     public_conversation = PublicInboundConversation(db, settings, call_id) if public_mode else None
-    call_lang_session = CallLanguageSession(
-        tenant_id=company.id,
-        call_session_id=str(call.id),
-        primary_locale=call.locale or config.preferred_language or locale,
-        active_locale=call.locale or config.preferred_language or locale,
-        allowed_locales=tuple((call.source_context or {}).get("allowed_locales", ())) or (
-            resolve_locale(call.locale or config.preferred_language or locale),
-            "en-US", "fr-CA", "es-ES", "ro-RO",
-        ),
-    )
-    saved_lang_state = (call.source_context or {}).get("call_language_session")
-    if isinstance(saved_lang_state, dict) and saved_lang_state.get("active_locale"):
-        call_lang_session.active_locale = resolve_locale(saved_lang_state["active_locale"])
-        call_lang_session.last_confirmed_locale = call_lang_session.active_locale
-    selected_voice = getattr(config, "voice_id", None) or settings.voice_tts_voice or "alloy"
-    adapter = OpenAIRealtimeAudioAdapter(OpenAIAudioConfig(settings.openai_api_key, settings.voice_stt_model,
-        settings.voice_tts_model, selected_voice), settings.voice_realtime_model)
+    from backend.app.voice.audio_preferences import phone_audio_config
+    tenant_audio = phone_audio_config(db, settings, config)
+    adapter = build_phone_adapter(settings, lambda: OpenAIRealtimeAudioAdapter(
+        tenant_audio, settings.voice_realtime_model))
     bridge: TelnyxMediaBridge
 
     async def authorize() -> None:
         nonlocal ledger, principal_id, auth_epoch
-        current_call, current_config, current_company = media_transport_context(db, settings, call_id)
+        current_call, current_config, current_company = media_transport_context(
+            db, settings, call_id, allow_statuses=_SESSION_MEDIA_STATUSES,
+        )
+        from backend.app.voice.call_policy import check
+        check(db, settings, current_call)
         if ModuleEntitlementService(db).get_company_plan(TenantContext(current_company.id)).code.value != plan:
             raise PermissionError("Billing plan changed during media session")
         try:
-            _call, _config, _company, current_user, _permissions, current_auth = media_call_context(db, settings, call_id)
+            _call, _config, _company, current_user, _permissions, current_auth = media_call_context(
+                db, settings, call_id, allow_statuses=_SESSION_MEDIA_STATUSES,
+            )
         except PermissionError:
             if not public_mode or principal_id is not None:
                 raise
@@ -1226,10 +1340,14 @@ async def telnyx_media_socket(
             ConversationService(db).get(current_company.id, current_user.id, current_call.central_conversation_id)
         principal_id = current_user.id
         auth_epoch = current_epoch
-        ledger = VoiceUsageLedger(service.usage_service, voice_pricing_catalog(settings.ai_model_rate_card),
-            company_id=current_company.id, user_id=current_user.id, conversation_id=current_call.central_conversation_id,
-            plan_code=plan, request_namespace=call_id if public_mode else None)
-        bridge.use_ledger(ledger)
+        if ledger is None:
+            ledger = VoiceUsageLedger(service.usage_service, voice_pricing_catalog(settings.ai_model_rate_card),
+                company_id=current_company.id, user_id=current_user.id, conversation_id=current_call.central_conversation_id,
+                plan_code=plan, request_namespace=call_id,
+                on_settlement=record_call_cost)
+            bridge.use_ledger(ledger)
+        else:
+            ledger.attach_identity(current_user.id, current_call.central_conversation_id)
 
     async def validate_start(start: dict) -> None:
         nonlocal ledger, claim
@@ -1239,7 +1357,8 @@ async def telnyx_media_socket(
             current_call.source_context = {**(current_call.source_context or {}), "public_conversation_id": str(current_call.id)}
             db.commit()
             ledger = VoiceUsageLedger(service.usage_service, voice_pricing_catalog(settings.ai_model_rate_card),
-                company_id=current_company.id, user_id=None, conversation_id=None, plan_code=plan, request_namespace=current_call.id)
+                company_id=current_company.id, user_id=None, conversation_id=None, plan_code=plan, request_namespace=current_call.id,
+                on_settlement=record_call_cost)
             bridge.use_ledger(ledger)
         await authorize()
 
@@ -1251,9 +1370,13 @@ async def telnyx_media_socket(
                 return security_check
 
         if principal_id is not None:
-            current_call, current_config, current_company, current_user, permissions, _auth = media_call_context(db, settings, call_id)
+            current_call, current_config, current_company, current_user, permissions, _auth = media_call_context(
+                db, settings, call_id, allow_statuses=_SESSION_MEDIA_STATUSES,
+            )
         else:
-            current_call, current_config, current_company = media_transport_context(db, settings, call_id)
+            current_call, current_config, current_company = media_transport_context(
+                db, settings, call_id, allow_statuses=_SESSION_MEDIA_STATUSES,
+            )
             owner_membership = db.scalar(
                 select(CompanyMembership)
                 .where(
@@ -1293,6 +1416,7 @@ async def telnyx_media_socket(
                 current_user = db.get(User, owner_membership.user_id)
                 if current_user is None:
                     return {"status": "error", "answer": "Désolé, le service est momentanément indisponible."}
+            # Public booking tools still require a live CRM Voice grant.
             permissions = PUBLIC_VOICE_CALLER_PERMISSIONS
 
         if current_call.central_conversation_id is None:
@@ -1333,7 +1457,7 @@ async def telnyx_media_socket(
         }
         db.commit()
 
-        if ledger is None or ledger._user_id is None or ledger._conversation_id is None:
+        if ledger is None:
             ledger = VoiceUsageLedger(
                 service.usage_service,
                 voice_pricing_catalog(settings.ai_model_rate_card),
@@ -1342,8 +1466,11 @@ async def telnyx_media_socket(
                 conversation_id=current_call.central_conversation_id,
                 plan_code=plan,
                 request_namespace=current_call.id,
+                on_settlement=record_call_cost,
             )
             bridge.use_ledger(ledger)
+        else:
+            ledger.attach_identity(current_user.id, current_call.central_conversation_id)
 
         def is_hangup_request(text: str) -> bool:
             normalized = "".join(c for c in unicodedata.normalize("NFKD", text.casefold()) if not unicodedata.combining(c))
@@ -1429,14 +1556,55 @@ async def telnyx_media_socket(
         return public_conversation.consume_pending_auth_query()
 
     async def hangup_call() -> None:
-        c_call, _cfg, _comp = media_transport_context(db, settings, call_id)
-        if c_call.telnyx_call_control_id:
-            with suppress(Exception):
-                await TelnyxClient(settings).hangup(c_call.telnyx_call_control_id)
-        if c_call.status != "completed":
-            c_call.status = "completed"
-            c_call.ended_at = datetime.now(timezone.utc)
+        await complete_media_hangup(db, settings, call_id)
+
+    def record_call_cost(request_id, attempts):
+        if settings.voice_long_calls_enabled:
+            from backend.app.voice.call_policy import record_ai_cost
+            current = db.get(VoiceCall, call_id)
+            record_ai_cost(db, current, request_id, attempts)
+
+    # Ensure started_at is persisted so duration bounds and metering are measured accurately
+    if call.started_at is None:
+        call.started_at = call.created_at or datetime.now(timezone.utc)
+        with suppress(Exception):
             db.commit()
+
+    from backend.app.voice.sandbox_deadline import is_sandbox_test_call, remaining_seconds
+    sandbox_duration = None
+    if is_sandbox_test_call(call, settings):
+        rem = remaining_seconds(call.started_at)
+        sandbox_duration = max(1.0, rem) if rem > 0 else 90.0
+    from backend.app.services.voice_commercial_controls import managed_order, remaining
+    if settings.voice_commercial_enabled and managed_order(db, call):
+        comm_rem = remaining(call, settings)
+        if comm_rem is not None and comm_rem > 0:
+            limit = max(1.0, comm_rem)
+            sandbox_duration = min(sandbox_duration, limit) if sandbox_duration is not None else limit
+    idle_seconds = None
+    if settings.voice_long_calls_enabled:
+        from backend.app.voice.call_policy import remaining as policy_remaining, policy_for
+        from backend.app.voice.realtime_rotation import RotatingRealtimeAdapter
+        policy = policy_for(db, config, settings)
+        pol_rem = policy_remaining(call)
+        if pol_rem is not None:
+            limit = max(1.0, pol_rem)
+            sandbox_duration = min(sandbox_duration, limit) if sandbox_duration is not None else limit
+        elif policy.max_call_seconds is not None:
+            sandbox_duration = min(sandbox_duration, float(policy.max_call_seconds)) if sandbox_duration is not None else float(policy.max_call_seconds)
+        idle_seconds = policy.idle_seconds
+        adapter = RotatingRealtimeAdapter(lambda: build_phone_adapter(settings, lambda: OpenAIRealtimeAudioAdapter(
+            tenant_audio,
+            settings.voice_realtime_model)), authorize, rotation_seconds=settings.voice_realtime_rotation_seconds)
+
+    # For production-like Sandbox calls (and live calls without a lower synthetic/policy limit),
+    # ensure an appropriate bounded session duration based on plan / commercial limits (default 3600s).
+    if sandbox_duration is None:
+        from backend.app.services.plan_limits_service import PlanLimitsService
+        limits = PlanLimitsService(db).limits_for(call.company_id) if call.company_id else None
+        plan_code = limits.plan_code if limits else "base"
+        bounded_limit = settings.voice_plan_max_call_seconds.get(plan_code, 3600) or settings.voice_commercial_max_call_seconds or 3600
+        sandbox_duration = float(bounded_limit)
 
     bridge = TelnyxMediaBridge(BoundedMediaSocket(websocket), adapter, locale=locale,
         validate_start=validate_start, authorize=authorize, execute_turn=execute_turn,
@@ -1445,19 +1613,28 @@ async def telnyx_media_socket(
         begin_pin=begin_pin if public_mode else None, poll_pin=poll_pin if public_mode else None,
         consume_pending_query=consume_pending_query if public_mode else None,
         hangup_call=hangup_call,
+        max_session_seconds=sandbox_duration,
+        idle_seconds=idle_seconds,
         max_output_queue=2000)
     await websocket.accept()
     try:
         await bridge.run()
-        await websocket.close(code=1000)
+        with suppress(Exception):
+            await websocket.close(code=1000)
     except WebSocketDisconnect:
         pass
-    except PermissionError:
-        await websocket.close(code=4403)
-    except (InvalidMediaFrame, asyncio.TimeoutError):
-        await websocket.close(code=4400)
-    except Exception:
-        await websocket.close(code=1011)
+    except PermissionError as exc:
+        logger.warning("Telnyx media websocket rejected (4403) for call_id=%s: %s", call_id, exc)
+        with suppress(Exception):
+            await websocket.close(code=4403)
+    except (InvalidMediaFrame, asyncio.TimeoutError) as exc:
+        logger.warning("Telnyx media websocket frame/timeout error (4400) for call_id=%s: %s", call_id, exc)
+        with suppress(Exception):
+            await websocket.close(code=4400)
+    except Exception as exc:
+        logger.error("Telnyx media websocket unexpected error (1011) for call_id=%s: %s", call_id, exc, exc_info=True)
+        with suppress(Exception):
+            await websocket.close(code=1011)
     finally:
         db.rollback()
         # Only the socket that claimed the signed media ticket owns the call lifecycle;
@@ -1468,8 +1645,13 @@ async def telnyx_media_socket(
             try:
                 current_call = db.get(VoiceCall, call_id)
                 if current_call is not None and current_call.ended_at is None and current_call.status in {"answering", "routed", "in_progress"}:
-                    current_call.ended_at = datetime.now(timezone.utc)
-                    current_call.status = "completed"
-                    db.commit()
+                    if settings.voice_long_calls_enabled or is_sandbox_test_call(current_call, settings):
+                        await complete_media_hangup(db, settings, call_id)
+                    else:
+                        current_call.ended_at = datetime.now(timezone.utc)
+                        current_call.status = "completed"
+                        db.commit()
             except Exception:
                 db.rollback()
+                if settings.environment == "sandbox":
+                    logger.error("Sandbox media cleanup could not confirm provider hangup; call_id=%s", call_id)

@@ -13,9 +13,11 @@ Couvre:
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -62,6 +64,8 @@ from backend.app.services.crm_search_service import CRMSearchService
 from backend.app.services.crm_availability_service import CRMAvailabilityService
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
 from backend.app.services.calendar.outlook_provider import OutlookCalendarProvider
+from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
+from backend.app.dependencies.auth import CurrentIdentity
 from shared.ai_engine.contracts import TenantContext
 
 
@@ -174,7 +178,10 @@ def test_crm_appointments_this_month_uses_tenant_local_month(db_session, monkeyp
 
     monkeypatch.setattr(crm_service_module, "datetime", FrozenDateTime)
 
-    assert crm_service.get_kpis(company.id)["appointments_this_month"] == 1
+    kpis = crm_service.get_kpis(company.id)
+    assert kpis["appointments_this_month"] == 1
+    assert kpis["attendance_rate_percent"] is None
+    assert kpis["attendance_tracked_count"] == 0
 
 
 def test_strict_multi_tenant_isolation(db_session):
@@ -231,6 +238,70 @@ def test_strict_multi_tenant_isolation(db_session):
     assert ai_get_res.success is False
 
 
+def _foreign_crm_resources(db_session):
+    company_a = _create_company(db_session, "tenant-owner")
+    company_b = _create_company(db_session, "tenant-intruder")
+    crm_svc = CRMAppService(db_session)
+    foreign = SimpleNamespace(
+        client=crm_svc.create_client(company_a.id, {"first_name": "Secret", "last_name": "Client", "email": "secret.client@alpha.ca"}),
+        service=crm_svc.create_service(company_a.id, {"name": "Secret service"}),
+        employee=crm_svc.create_employee(company_a.id, {"name": "Secret Employee", "color_hex": "#123456"}),
+    )
+    own_client = crm_svc.create_client(company_b.id, {"first_name": "Own", "last_name": "Client", "email": "own.client@beta.ca"})
+    start = (datetime.now(timezone.utc) + timedelta(days=3)).replace(hour=15, minute=0, second=0, microsecond=0)
+    return crm_svc, company_b, own_client, foreign, start
+
+
+@pytest.mark.parametrize("reference", ["client_id", "service_id", "employee_id"])
+def test_appointment_creation_rejects_another_tenants_references(db_session, reference):
+    crm_svc, company_b, own_client, foreign, start = _foreign_crm_resources(db_session)
+    data = {"client_id": own_client.id, "title": "Intrusion", "start_time": start, "duration_minutes": 30}
+    data[reference] = getattr(foreign, reference.removesuffix("_id")).id
+
+    appointment, error = asyncio.run(crm_svc.create_appointment(company_b.id, data, check_conflicts=False))
+
+    assert appointment is None
+    assert error is not None
+    assert "n'existe pas" in error
+    assert db_session.query(CRMAppointment).filter(CRMAppointment.company_id == company_b.id).count() == 0
+
+
+def test_appointment_update_cannot_attach_and_then_reveal_a_foreign_employee(db_session):
+    crm_svc, company_b, own_client, foreign, start = _foreign_crm_resources(db_session)
+    appointment, error = asyncio.run(crm_svc.create_appointment(company_b.id, {
+        "client_id": own_client.id, "title": "Own booking", "start_time": start, "duration_minutes": 30,
+    }, check_conflicts=False))
+    assert error is None
+    assert appointment is not None
+
+    updated, error = asyncio.run(crm_svc.update_appointment(
+        company_b.id, appointment.id, {"employee_id": foreign.employee.id}, check_conflicts=False))
+    assert updated is None
+    assert error is not None
+    assert "n'existe pas" in error
+
+    # Even a row polluted before this fix must not leak the other tenant's employee.
+    db_session.expire_all()
+    polluted = db_session.get(CRMAppointment, appointment.id)
+    polluted.employee_id = foreign.employee.id
+    polluted.service_id = foreign.service.id
+    db_session.commit()
+    listed = crm_svc.list_appointments(company_b.id)
+    assert listed[0]["employee_name"] == "Non assigné"
+    assert listed[0]["service_name"] is None
+    assert "Secret" not in str(listed)
+
+
+def test_note_creation_rejects_another_tenants_client(db_session):
+    crm_svc, company_b, own_client, foreign, _start = _foreign_crm_resources(db_session)
+
+    with pytest.raises(LookupError):
+        crm_svc.create_note(company_b.id, {"client_id": foreign.client.id, "content": "Intrusion"})
+
+    note = crm_svc.create_note(company_b.id, {"client_id": own_client.id, "content": "Legit"})
+    assert note.company_id == company_b.id
+
+
 def test_appointment_crud_and_conflict_detection(db_session):
     """Création de RDV, détection de conflit d'horaire et mise à jour de statut."""
     company = _create_company(db_session, "tenant-appointments")
@@ -259,6 +330,8 @@ def test_appointment_crud_and_conflict_detection(db_session):
             "name": "Changement de Pneus",
             "duration_minutes": 60,
             "price": 89.99,
+            "is_approved_by_owner": True,
+            "is_published": True,
         },
     )
 
@@ -619,8 +692,11 @@ def test_google_attendee_matches_resolved_customer_and_missing_email_is_omitted(
     company = _create_company(db_session, "tenant-attendee-identity")
     captured: list[str | None] = []
 
-    class FakeCipher:
-        def decrypt(self, value):
+    class FakeCipher(ConnectorSecretCipher):
+        def __init__(self) -> None:
+            pass
+
+        def decrypt(self, encrypted_payload: str) -> dict[str, Any]:
             return {"access_token": "runtime-only"}
 
     class FakeProvider:
@@ -665,11 +741,14 @@ def test_google_attendee_matches_resolved_customer_and_missing_email_is_omitted(
     assert captured == ["alice@customer.ca", None]
 
 
-def test_google_calendar_create_failure_rolls_back_unconfirmed_appointment(db_session, monkeypatch):
+def test_google_calendar_create_failure_keeps_crm_appointment(db_session, monkeypatch):
     company = _create_company(db_session, "tenant-calendar-create-failure")
 
-    class FakeCipher:
-        def decrypt(self, value):
+    class FakeCipher(ConnectorSecretCipher):
+        def __init__(self) -> None:
+            pass
+
+        def decrypt(self, encrypted_payload: str) -> dict[str, Any]:
             return {"access_token": "runtime-only"}
 
     class FailingProvider:
@@ -704,9 +783,15 @@ def test_google_calendar_create_failure_rolls_back_unconfirmed_appointment(db_se
         {"client_id": client.id, "title": "Unconfirmed booking", "start_time": start},
     ))
 
-    assert appointment is None
-    assert error and "Synchronisation Google Calendar impossible" in error
-    assert db_session.query(CRMAppointment).filter_by(company_id=company.id).count() == 0
+    assert error is None
+    assert appointment is not None
+    assert appointment.external_event_id is None
+    assert appointment.industry_data == {}
+    assert "calendar_sync" not in (appointment.industry_data or {})
+    calendar_sync, sync_error = CRMAppService.calendar_sync_state(appointment)
+    assert calendar_sync == "failed"
+    assert "Synchronisation Google Calendar impossible" in str(sync_error or "")
+    assert db_session.query(CRMAppointment).filter_by(company_id=company.id).count() == 1
 
 
 def test_google_inbound_sync_is_tenant_scoped_idempotent_and_reflects_cancellation(db_session, monkeypatch):
@@ -726,11 +811,14 @@ def test_google_inbound_sync_is_tenant_scoped_idempotent_and_reflects_cancellati
     ))
     db_session.commit()
 
-    class FakeCipher:
-        def decrypt(self, value):
+    class FakeCipher(ConnectorSecretCipher):
+        def __init__(self) -> None:
+            pass
+
+        def decrypt(self, encrypted_payload: str) -> dict[str, Any]:
             return {"access_token": "runtime-only", "refresh_token": "refresh-only"}
 
-        def encrypt(self, value):
+        def encrypt(self, payload: Mapping[str, Any]) -> str:
             return "encrypted-refreshed"
 
     events = [{
@@ -835,6 +923,52 @@ def test_cancel_is_idempotent_and_preserves_history(db_session, monkeypatch):
     }
 
 
+def test_cancel_with_external_event_and_disconnected_calendar_fails_closed(db_session, monkeypatch):
+    monkeypatch.setattr(
+        "backend.app.services.crm_notification_service.get_settings",
+        lambda: SimpleNamespace(email_delivery_configured=False, telnyx_api_key=None),
+    )
+    company = _create_company(db_session, "tenant-cancel-disconnected")
+    service = CRMAppService(db_session)
+    client = service.create_client(company.id, {"first_name": "Fixture", "last_name": "Calendar"})
+    appointment, error = asyncio.run(service.create_appointment(company.id, {
+        "client_id": client.id, "title": "Fixture calendar appointment",
+        "start_time": datetime(2027, 2, 8, 10, tzinfo=ZoneInfo(company.timezone)),
+        "duration_minutes": 30,
+    }))
+    assert error is None
+    assert appointment is not None
+    appointment.external_event_id = "fixture-external-event"
+    appointment.calendar_provider = "google"
+    db_session.commit()
+    result = asyncio.run(service.cancel_appointment_detailed(company.id, appointment.id))
+    assert result.appointment is None and result.calendar_sync == "failed"
+    db_session.refresh(appointment)
+    assert appointment.status == "confirmed"
+    assert appointment.external_event_id == "fixture-external-event"
+
+
+def test_calendar_switch_does_not_orphan_existing_external_events(db_session):
+    from fastapi import HTTPException
+    from backend.app.routers.crm import GoogleCalendarSelectionRequest, select_google_calendar
+    company = _create_company(db_session, "tenant-calendar-switch")
+    client = CRMAppService(db_session).create_client(company.id, {"first_name": "Fixture", "last_name": "Switch"})
+    conn = CRMCalendarConnection(company_id=company.id, provider="google", account_email="fixture@example.test",
+                                 calendar_id="primary", encrypted_credentials="fixture-encrypted", sync_status="connected")
+    db_session.add(conn)
+    db_session.add(CRMAppointment(company_id=company.id, client_id=client.id, title="Fixture event",
+        start_time=datetime(2027, 2, 8, 14, tzinfo=timezone.utc), end_time=datetime(2027, 2, 8, 15, tzinfo=timezone.utc),
+        calendar_provider="google", external_event_id="fixture-event"))
+    db_session.commit()
+    tenant = TenantContext(company_id=company.id)
+    with pytest.raises(HTTPException) as raised:
+        select_google_calendar(GoogleCalendarSelectionRequest(calendar_id="different-calendar"), tenant=tenant, db=db_session)
+    assert raised.value.status_code == 409
+    assert conn.calendar_id == "primary"
+    same = select_google_calendar(GoogleCalendarSelectionRequest(calendar_id="fixture@example.test"), tenant=tenant, db=db_session)
+    assert same["status"] == "selected"
+
+
 def test_permanent_delete_is_tenant_scoped_and_idempotent(db_session):
     company_a = _create_company(db_session, "tenant-delete-a")
     company_b = _create_company(db_session, "tenant-delete-b")
@@ -890,6 +1024,12 @@ def test_create_appointment_accepts_null_industry_data(db_session):
     assert err is None
     assert app is not None
     assert app.industry_data == {}
+    assert "calendar_sync" not in (app.industry_data or {})
+    calendar_sync, sync_error = CRMAppService.calendar_sync_state(app)
+    assert calendar_sync == "not_configured"
+    assert sync_error is None
+    assert app.external_event_id is None
+    assert bool(app.external_event_id) is False
 
 
 def test_availability_engine_open_slots(db_session):
@@ -1002,10 +1142,16 @@ def combined_availability(db_session, monkeypatch):
     start = datetime(2027, 2, 8, 10, tzinfo=ZoneInfo(company.timezone))
     state = {"busy": [], "error": None, "refreshed": False, "refresh_error": False, "calls": 0}
 
-    class Cipher:
-        def decrypt(self, value):
-            assert value == "encrypted"
+    class Cipher(ConnectorSecretCipher):
+        def __init__(self) -> None:
+            pass
+
+        def decrypt(self, encrypted_payload: str) -> dict[str, Any]:
+            assert encrypted_payload == "encrypted"
             return {"access_token": "test", "refresh_token": "refresh-test"}
+
+        def encrypt(self, payload: Mapping[str, Any]) -> str:
+            return "encrypted"
 
     class Provider:
         async def check_busy_slots(self, credentials, begin, end, calendar_id):
@@ -1044,11 +1190,12 @@ def test_combined_authoritative_availability(db_session, combined_availability, 
 
 @pytest.mark.parametrize("failure", ["timeout", "403", "malformed", "refresh_failure", "401_refresh"])
 def test_external_availability_failure_and_refresh(combined_availability, failure):
+    from email.message import Message
     import urllib.error
     from backend.app.services.calendar.base import CalendarProviderError
     company, _, _, start, state, service = combined_availability
     error = CalendarProviderError("EXTERNAL_AVAILABILITY_UNAVAILABLE")
-    error.__cause__ = urllib.error.HTTPError("https://example.test", 401 if "refresh" in failure else 403, "test", {}, None)
+    error.__cause__ = urllib.error.HTTPError("https://example.test", 401 if "refresh" in failure else 403, "test", Message(), None)
     state["error"] = TimeoutError() if failure == "timeout" else ValueError() if failure == "malformed" else error
     state["refresh_error"] = failure == "refresh_failure"
     result = asyncio.run(service.check_availability(company.id, start))
@@ -1118,12 +1265,12 @@ def test_availability_never_decrypts_other_tenant_calendar(db_session, combined_
 
 
 def test_tenant_business_hours_normal_configuration_path(db_session, combined_availability):
-    from types import SimpleNamespace
+    from backend.app.dependencies.auth import CurrentIdentity
     from backend.app.models import UserRole
     from backend.app.routers.crm import BusinessHoursRequest, save_business_hours
     company, _, _, start, _, availability = combined_availability
     user_id = uuid4()
-    identity = SimpleNamespace(user=SimpleNamespace(id=user_id))
+    identity = cast(CurrentIdentity, SimpleNamespace(user=SimpleNamespace(id=user_id)))
     membership = SimpleNamespace(role=UserRole.OWNER, user_id=user_id, company_id=company.id)
     payload = BusinessHoursRequest(timezone=company.timezone, hours={"monday": [{"open": "09:00", "close": "12:00"}, {"open": "13:00", "close": "17:00"}]})
     result = save_business_hours(payload, TenantContext(company.id), identity, membership, db_session)
@@ -1159,11 +1306,51 @@ def test_copilot_multilingual_availability_is_read_only(db_session, monkeypatch,
     monkeypatch.setattr("backend.app.routers.crm.CRMAvailabilityService", lambda session: service)
     monkeypatch.setattr("backend.app.routers.crm.ModuleEntitlementService", lambda session: SimpleNamespace(can_use_module=lambda *args: True))
     response = asyncio.run(crm_copilot_chat(CRMCopilotChatRequest(message=message, locale=locale),
-        TenantContext(company.id), SimpleNamespace(), SimpleNamespace(role=UserRole.OWNER), db_session, CRMAppService(db_session)))
+        TenantContext(company.id), cast(CurrentIdentity, SimpleNamespace()), SimpleNamespace(role=UserRole.OWNER), db_session, CRMAppService(db_session)))
     assert response["locale"] == locale
     assert response["status"] in ("success", "unavailable")
     assert response.get("action") != "appointment_created"
     assert not db_session.new and not db_session.dirty
+
+
+def test_copilot_today_agenda_is_not_treated_as_create_intent(db_session, monkeypatch):
+    from types import SimpleNamespace
+    from backend.app.models import UserRole
+    from backend.app.routers.crm import CRMCopilotChatRequest, crm_copilot_chat
+
+    company = _create_company(db_session, "agenda-reader")
+    service = CRMAppService(db_session)
+    client = service.create_client(company.id, {"first_name": "Marie", "last_name": "Tremblay"})
+    start = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    db_session.add(
+        CRMAppointment(
+            company_id=company.id,
+            client_id=client.id,
+            title="Physiotherapie probe",
+            start_time=start,
+            end_time=start + timedelta(minutes=30),
+            duration_minutes=30,
+            status="confirmed",
+        )
+    )
+    db_session.commit()
+    monkeypatch.setattr(
+        "backend.app.routers.crm.ModuleEntitlementService",
+        lambda session: SimpleNamespace(can_use_module=lambda *args: True),
+    )
+    response = asyncio.run(
+        crm_copilot_chat(
+            CRMCopilotChatRequest(message="mes rendez-vous aujourd'hui", locale="fr"),
+            TenantContext(company.id),
+            cast(CurrentIdentity, SimpleNamespace(user=SimpleNamespace(id=client.id))),
+            SimpleNamespace(role=UserRole.OWNER),
+            db_session,
+            service,
+        )
+    )
+    assert response["status"] == "success"
+    assert response.get("action") != "appointment_not_created"
+    assert any(item.get("title") == "Physiotherapie probe" for item in response.get("appointments") or [])
 
 
 def test_booking_lock_precedes_combined_check(db_session, monkeypatch, combined_availability):
@@ -1303,6 +1490,39 @@ def test_ai_copilot_crm_tools_execution(db_session):
     )
     assert create_res.success is True
     assert create_res.data["title"] == "Consultation IA"
+
+
+def test_create_appointment_tool_requires_consent_after_explicit_user_request(db_session):
+    company = _create_company(db_session, "tenant-explicit-booking")
+    crm_svc = CRMAppService(db_session)
+    ctx = ToolExecutionContext(
+        tenant=TenantContext(company_id=company.id),
+        user_id=uuid4(),
+        permissions=frozenset(["ai:use"]),
+        request_id="explicit-booking-1",
+        user_message="tu peu me prendre un rdv vous pour aujourd'hui au gym a 10h30 ? c'est le 14 octobre 2026",
+    )
+    arguments = CreateAppointmentArgs(
+        client_name_or_id="vous",
+        title="Gym",
+        start_time=datetime(2026, 10, 14, 10, 30, tzinfo=ZoneInfo(company.timezone)).isoformat(),
+        duration_minutes=60,
+        service_name="gym",
+        confirmed=False,
+    )
+    tool = CreateAppointmentTool(db_session)
+    pending = asyncio.run(tool.run(ctx, arguments))
+    assert pending.success is False
+    assert pending.data["confirmation_required"] is True
+    assert crm_svc.list_appointments(company.id, limit=10) == []
+
+    # The executor supplies this flag only after validated user consent.
+    create_res = asyncio.run(tool.run(ctx, arguments.model_copy(update={"confirmed": True})))
+    assert create_res.success is True
+    assert create_res.data["id"]
+    assert create_res.data["title"] == "Gym"
+    appointments = crm_svc.list_appointments(company.id, limit=10)
+    assert len(appointments) == 1
 
 
 def test_calendar_provider_abstractions():

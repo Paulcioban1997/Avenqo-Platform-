@@ -69,6 +69,25 @@ class DashboardTrendResponse(BaseModel):
     points: list[DashboardTrendPointResponse] = Field(default_factory=list)
 
 
+class DashboardSplitItemResponse(BaseModel):
+    label: str
+    revenue: float
+    orders: int
+    share: float
+
+
+class DashboardSplitResponse(BaseModel):
+    available: bool = False
+    reason: str | None = None
+    items: list[DashboardSplitItemResponse] = Field(default_factory=list)
+
+
+class DashboardConversionResponse(BaseModel):
+    available: bool = False
+    reason: str | None = None
+    value: float | None = None
+
+
 class TenantDashboardResponse(BaseModel):
     status: str
     generated_at: datetime
@@ -80,5 +99,8 @@ class TenantDashboardResponse(BaseModel):
     data_freshness: dict[str, Any] = Field(default_factory=dict)
     priorities: list[DashboardPriorityResponse]
     trend: DashboardTrendResponse = Field(default_factory=DashboardTrendResponse)
+    category_split: DashboardSplitResponse = Field(default_factory=DashboardSplitResponse)
+    regional_split: DashboardSplitResponse = Field(default_factory=DashboardSplitResponse)
+    conversion: DashboardConversionResponse = Field(default_factory=DashboardConversionResponse)
     connections: DashboardConnectionsResponse
     recent_activity: list[DashboardActivityResponse]

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -31,6 +31,8 @@ import {
   Globe,
   Sliders,
   ShieldAlert,
+  Layers,
+  Users,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { RegionLanguageSelector } from "@/components/region-language-selector";
@@ -70,6 +72,31 @@ export function AppShell({ children }: AppShellProps) {
   const aiCreditsRemaining = session.credits.remaining;
   const aiCreditsLimit = session.credits.limit;
 
+  const [activeModuleKeys, setActiveModuleKeys] = useState<string[] | null>(null);
+
+  const loadModuleEntitlements = useCallback(async () => {
+    try {
+      const response = await apiFetch("/api/v1/modules/entitlements");
+      if (response.ok) {
+        const data = await response.json();
+        if (Array.isArray(data?.active_modules)) {
+          setActiveModuleKeys(data.active_modules);
+        }
+      }
+    } catch {
+      // Non-blocking fallback
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadModuleEntitlements();
+    const handleSourceChanged = () => {
+      void loadModuleEntitlements();
+    };
+    window.addEventListener("avenqo:sources-changed", handleSourceChanged);
+    return () => window.removeEventListener("avenqo:sources-changed", handleSourceChanged);
+  }, [loadModuleEntitlements]);
+
   const handleSwitchTenant = async (org: OrganizationItem) => {
     try {
       const res = await apiFetch("/api/v1/auth/switch-tenant", {
@@ -102,29 +129,52 @@ export function AppShell({ children }: AppShellProps) {
     window.location.href = "/login?session_expired=1";
   };
 
-  // Navigation modules
-  const mainModules = [
+  // Navigation modules with dynamic entitlement filtering
+  type NavItem = {
+    href: string;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    moduleKey?: string;
+    badge?: string;
+  };
+
+  const allMainModules: NavItem[] = [
     { href: "/dashboard", label: t.navigation.dashboard, icon: LayoutDashboard },
-    { href: "/retail", label: t.navigation.retailAi, icon: ShoppingBag },
-    { href: "/crm", label: t.navigation.crmAi, icon: Network },
-    { href: "/accounting", label: t.navigation.accountingAi, icon: ReceiptText },
+    { href: "/retail", label: t.navigation.retailAi, icon: ShoppingBag, moduleKey: "retail" },
+    { href: "/crm", label: t.navigation.crmAi, icon: Network, moduleKey: "crm" },
+    { href: "/accounting", label: t.navigation.accountingAi, icon: ReceiptText, moduleKey: "accounting" },
   ];
 
-  const aiModules = [
-    { href: "/marketing", label: t.navigation.marketingAi, icon: Megaphone },
-    { href: "/voice", label: t.navigation.voiceAi, icon: Mic2 },
-    { href: "/ocr", label: t.navigation.ocrAi, icon: FileScan },
-    { href: "/chatbots", label: t.navigation.chatbotsAi, icon: MessagesSquare },
-    { href: "/automations", label: t.navigation.automations, icon: Zap },
-    { href: "/agents", label: t.navigation.agentsAi, icon: Bot, badge: "Pro" },
+  const mainModules = allMainModules.filter((item) => {
+    if (!item.moduleKey) return true;
+    if (!activeModuleKeys) return true;
+    return activeModuleKeys.includes(item.moduleKey);
+  });
+
+  const allAiModules: NavItem[] = [
+    { href: "/marketing", label: t.navigation.marketingAi, icon: Megaphone, moduleKey: "marketing" },
+    { href: "/voice", label: t.navigation.voiceAi, icon: Mic2, moduleKey: "voice" },
+    { href: "/ocr", label: t.navigation.ocrAi, icon: FileScan, moduleKey: "ocr" },
+    { href: "/legal", label: locale.startsWith("fr") ? "Legal AI" : "Legal AI", icon: FileScan, moduleKey: "legal" },
+    { href: "/chatbots", label: t.navigation.chatbotsAi, icon: MessagesSquare, moduleKey: "chatbots" },
+    { href: "/automations", label: t.navigation.automations, icon: Zap, moduleKey: "workflow" },
+    { href: "/agents", label: t.navigation.agentsAi, icon: Bot },
   ];
+
+  const aiModules = allAiModules.filter((item) => {
+    if (!item.moduleKey) return true;
+    if (!activeModuleKeys) return true;
+    return activeModuleKeys.includes(item.moduleKey);
+  });
 
   const platformModules = [
+    { href: "/workspace/modules", label: locale.startsWith("fr") ? "Explorer les modules" : "Explore Modules", icon: Sparkles, badge: locale.startsWith("fr") ? "Catalogue" : "Catalog" },
     { href: "/connections", label: t.navigation.connections, icon: Plug },
-    { href: "/integrations", label: t.navigation.integrations, icon: Globe },
     { href: "/data", label: t.navigation.dataHub, icon: Database },
+    { href: "/employees", label: locale.startsWith("fr") ? "Équipe" : "Team", icon: Users },
     { href: "/billing", label: t.navigation.billing, icon: CreditCard },
     { href: "/settings", label: t.navigation.settings, icon: Settings },
+    { href: "/security", label: locale.startsWith("fr") ? "Sécurité & Confiance" : "Security & Trust", icon: ShieldAlert },
   ];
 
   // Global Ctrl+K / Cmd+K listener
@@ -299,7 +349,11 @@ export function AppShell({ children }: AppShellProps) {
 
           {/* Avenqo Copilot Trigger Button */}
           <button
-            onClick={() => setIsCopilotOpen((prev) => !prev)}
+            type="button"
+            aria-label={t.shell.copilotButton}
+            aria-expanded={isCopilotOpen}
+            aria-controls="avenqo-central-dialog"
+            onClick={() => setIsCopilotOpen(true)}
             className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#0076FF] to-[#005bd3] hover:from-[#158bff] hover:to-[#0076FF] text-white text-xs font-semibold shadow-xs shadow-blue-500/20 transition-all duration-150"
           >
             <Sparkles className="w-3.5 h-3.5 text-[#00D4FF]" />

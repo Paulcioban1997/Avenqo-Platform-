@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -55,24 +56,40 @@ def _normalize_query(q: str) -> str:
 
 
 def _product_to_dict(record: NormalizedCommerceRecord) -> dict[str, object]:
-    """Extrait les champs canoniques depuis le JSON normalisé d'un produit."""
+    """Extrait les champs canoniques depuis le JSON normalisé d'un produit (avec support des variantes Shopify/WooCommerce)."""
     data: dict[str, Any] = record.normalized_data or {}
+    variants = data.get("variants") or []
+
+    price_val = data.get("unit_price")
+    if price_val is None:
+        price_val = data.get("price") if data.get("price") is not None else data.get("regular_price")
+    if price_val is None and isinstance(variants, list) and variants:
+        price_val = variants[0].get("unit_price") or variants[0].get("price")
+
+    inv_val = data.get("inventory_level")
+    if inv_val is None:
+        inv_val = data.get("stock_quantity")
+    if inv_val is None and isinstance(variants, list) and variants:
+        inv_val = sum(v.get("inventory_level", 0) for v in variants if isinstance(v.get("inventory_level"), (int, float)))
+
+    sku_val = data.get("sku")
+    if not sku_val and isinstance(variants, list) and variants:
+        sku_val = variants[0].get("sku")
+
+    in_stock_val = data.get("in_stock")
+    if in_stock_val is None and inv_val is not None:
+        in_stock_val = (_safe_float(inv_val) or 0) > 0
+
     return {
         "product_name": _safe_str(data.get("product_name") or data.get("name")),
         "product_id": _safe_str(data.get("product_id") or data.get("id")),
-        "sku": _safe_str(data.get("sku")),
-        "unit_price": _safe_float(
-            data.get("unit_price") or data.get("price") or data.get("regular_price")
-        ),
-        "inventory_level": _safe_float(
-            data.get("inventory_level") or data.get("stock_quantity")
-        ),
-        "stock_quantity": _safe_float(
-            data.get("stock_quantity") or data.get("inventory_level")
-        ),
+        "sku": _safe_str(sku_val),
+        "unit_price": _safe_float(price_val),
+        "inventory_level": _safe_float(inv_val),
+        "stock_quantity": _safe_float(inv_val),
         "product_category": _safe_str(data.get("product_category") or data.get("category")),
-        "in_stock": data.get("in_stock"),
-        "stock_status": _safe_str(data.get("stock_status")),
+        "in_stock": in_stock_val,
+        "stock_status": _safe_str(data.get("stock_status") or ("instock" if in_stock_val else "outofstock")),
         "source_updated_at": (
             record.source_updated_at.isoformat() if record.source_updated_at else None
         ),
@@ -115,6 +132,7 @@ class ProductDetailArgs(ToolArguments):
     product_name: str | None = None
     product_id: str | None = None
     sku: str | None = None
+    source_scope: list[str] | str | None = None
 
 
 class GetProductDetailTool(RetailAITool):
@@ -127,10 +145,11 @@ class GetProductDetailTool(RetailAITool):
         "(WooCommerce, Shopify, CSV) in real time — never returns cached or invented values."
     )
     input_schema = ProductDetailArgs
-    required_permissions = ("ai:use",)
+    required_permissions = ("ai:use", "data:read")
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, ingestion: CompanyDatasetIngestionService | None = None) -> None:
         self._session = session
+        self._ingestion = ingestion
 
     async def run(self, context: ToolExecutionContext, arguments: ProductDetailArgs) -> ToolResult:
         company_id = context.tenant.company_id
@@ -145,6 +164,20 @@ class GetProductDetailTool(RetailAITool):
 
         active_source = RetailSourceService(self._session).active_selection(context.tenant)
         if active_source is not None and active_source.source_type == "dataset":
+            if self._ingestion is not None and not arguments.sku:
+                snapshot = TenantAnalyticsService(self._session, self._ingestion).load(context.tenant)
+                source = TenantProductsService.source_for(snapshot)
+                if source is not None:
+                    from backend.app.ai.tools.business.analytics import compute_product_portfolio
+                    products = compute_product_portfolio(source)
+                    matches = [p for p in products if
+                               (arguments.product_id is not None and str(p["product_id"]) == str(arguments.product_id)) or
+                               (arguments.product_id is None and arguments.product_name and arguments.product_name.casefold() in str(p.get("name") or "").casefold())]
+                    return ToolResult(success=True, data={"found": bool(matches), "source_type": "dataset",
+                        "products": [{"product_id": p["product_id"], "product_name": p.get("name"),
+                                      "inventory_level": p.get("stock_level"), "historical_average_selling_price": p.get("average_selling_price")} for p in matches[:10]],
+                        "stock_is_current": False, "message": "Dataset observations only; missing stock is unknown, not zero.",
+                        "data_freshness": DataFreshnessService().for_snapshot(snapshot).as_dict()}, source_refs=(str(source.dataset_id),))
             return ToolResult(
                 success=True,
                 data={
@@ -154,6 +187,24 @@ class GetProductDetailTool(RetailAITool):
                 },
             )
 
+        scope_conn_ids: list[UUID] | None = None
+        if arguments.source_scope is not None:
+            raw_scopes = [arguments.source_scope] if isinstance(arguments.source_scope, str) else list(arguments.source_scope)
+            if "all" not in [s.lower() for s in raw_scopes]:
+                parsed = []
+                for s in raw_scopes:
+                    try:
+                        parsed.append(UUID(s))
+                    except (ValueError, TypeError):
+                        pass
+                scope_conn_ids = parsed
+        elif active_source is not None:
+            conn_id = getattr(active_source, "connection_id", None)
+            if getattr(active_source, "source_type", None) in ("single", "connector") and conn_id is not None:
+                scope_conn_ids = [conn_id]
+            elif getattr(active_source, "source_type", None) == "custom_set":
+                scope_conn_ids = list(getattr(active_source, "connection_ids", []) or [])
+
         base_query = (
             select(NormalizedCommerceRecord)
             .where(
@@ -162,9 +213,9 @@ class GetProductDetailTool(RetailAITool):
                 NormalizedCommerceRecord.deleted.is_(False),
             )
         )
-        if active_source is not None and active_source.connection_id is not None:
+        if scope_conn_ids is not None:
             base_query = base_query.where(
-                NormalizedCommerceRecord.connection_id == active_source.connection_id
+                NormalizedCommerceRecord.connection_id.in_(scope_conn_ids)
             )
         base_query = base_query.order_by(NormalizedCommerceRecord.source_updated_at.desc())
 
@@ -218,6 +269,31 @@ class GetProductDetailTool(RetailAITool):
 
         search_label = arguments.product_name or arguments.product_id or arguments.sku
 
+        approximate_match_name: str | None = None
+        if not records and arguments.product_name:
+            # Recherche approximative sécurisée pour requêtes orales (ex: ASR 'The Hiva Board' -> 'The Hidden Snowboard')
+            from difflib import SequenceMatcher
+            q_norm = _normalize_query(arguments.product_name)
+            q_words = set(q_norm.split())
+            all_records = list(self._session.scalars(base_query.limit(200)).all())
+            scored_candidates = []
+            for r in all_records:
+                data = r.normalized_data or {}
+                pname = str(data.get("product_name") or data.get("name") or "")
+                p_norm = _normalize_query(pname)
+                ratio = SequenceMatcher(None, q_norm, p_norm).ratio()
+                p_words = set(p_norm.split())
+                word_overlap = len(q_words & p_words) / max(len(q_words), 1)
+                score = max(ratio, word_overlap * 0.85)
+                if score >= 0.5:
+                    scored_candidates.append((score, r, pname))
+            scored_candidates.sort(key=lambda x: x[0], reverse=True)
+            if scored_candidates:
+                top_score = scored_candidates[0][0]
+                selected = [c for c in scored_candidates if c[0] >= max(0.5, top_score - 0.05)][:3]
+                records = [c[1] for c in selected]
+                approximate_match_name = ", ".join(c[2] for c in selected)
+
         if not records:
             logger.info(
                 "commerce_product_lookup tenant_id=%s query=%r found=0",
@@ -236,8 +312,38 @@ class GetProductDetailTool(RetailAITool):
                 },
             )
 
-        products = [_product_to_dict(r) for r in records]
+        from backend.app.models.commerce_connection import CommerceConnection
+        conn_map: dict[UUID, str] = {}
+        if records:
+            conn_ids = {r.connection_id for r in records if r.connection_id}
+            conns = self._session.scalars(
+                select(CommerceConnection).where(CommerceConnection.id.in_(conn_ids))
+            ).all()
+            conn_map = {c.id: (c.display_name or c.provider) for c in conns}
+
+        products = []
+        for r in records:
+            p = _product_to_dict(r)
+            cid = r.connection_id
+            p["store_name"] = conn_map.get(cid, str(p.get("provider") or "Commerce Store"))
+            if approximate_match_name:
+                p["matched_approximate"] = True
+                p["original_query"] = arguments.product_name
+            products.append(p)
+
         source_refs = tuple({str(r.id) for r in records})
+        store_names = sorted(set(conn_map.values())) if conn_map else ["Catalogue connecté"]
+        provenance = f"Données issues de : {', '.join(store_names)}"
+
+        breakdown_by_source = {}
+        for p in products:
+            s_name = p.get("store_name") or "Autre"
+            breakdown_by_source.setdefault(s_name, []).append({
+                "product_name": p.get("product_name"),
+                "sku": p.get("sku"),
+                "inventory_level": p.get("inventory_level"),
+                "unit_price": p.get("unit_price"),
+            })
 
         logger.info(
             "commerce_product_lookup tenant_id=%s query=%r found=%d",
@@ -249,13 +355,24 @@ class GetProductDetailTool(RetailAITool):
         if len(products) == 1:
             return ToolResult(
                 success=True,
-                data={"found": True, "product": products[0]},
+                data={
+                    "found": True,
+                    "product": products[0],
+                    "provenance": provenance,
+                    "breakdown_by_source": breakdown_by_source,
+                },
                 source_refs=source_refs,
             )
 
         return ToolResult(
             success=True,
-            data={"found": True, "matches": len(products), "products": products},
+            data={
+                "found": True,
+                "matches": len(products),
+                "products": products,
+                "provenance": provenance,
+                "breakdown_by_source": breakdown_by_source,
+            },
             source_refs=source_refs,
         )
 
@@ -266,6 +383,7 @@ class GetProductDetailTool(RetailAITool):
 
 class InventorySummaryArgs(ToolArguments):
     low_stock_threshold: int = 10
+    source_scope: list[str] | str | None = None
 
 
 class GetInventorySummaryTool(RetailAITool):
@@ -277,7 +395,7 @@ class GetInventorySummaryTool(RetailAITool):
         "products needing attention. Reports the actual source freshness and never labels a sync snapshot as live."
     )
     input_schema = InventorySummaryArgs
-    required_permissions = ("ai:use",)
+    required_permissions = ("ai:use", "data:read")
 
     def __init__(self, session: Session, ingestion: CompanyDatasetIngestionService | None = None) -> None:
         self._session = session
@@ -346,6 +464,24 @@ class GetInventorySummaryTool(RetailAITool):
                 },
             )
 
+        scope_conn_ids: list[UUID] | None = None
+        if arguments.source_scope is not None:
+            raw_scopes = [arguments.source_scope] if isinstance(arguments.source_scope, str) else list(arguments.source_scope)
+            if "all" not in [s.lower() for s in raw_scopes]:
+                parsed = []
+                for s in raw_scopes:
+                    try:
+                        parsed.append(UUID(s))
+                    except (ValueError, TypeError):
+                        pass
+                scope_conn_ids = parsed
+        elif active_source is not None:
+            conn_id = getattr(active_source, "connection_id", None)
+            if getattr(active_source, "source_type", None) in ("single", "connector") and conn_id is not None:
+                scope_conn_ids = [conn_id]
+            elif getattr(active_source, "source_type", None) == "custom_set":
+                scope_conn_ids = list(getattr(active_source, "connection_ids", []) or [])
+
         try:
             inv_query = (
                 select(NormalizedCommerceRecord)
@@ -355,9 +491,9 @@ class GetInventorySummaryTool(RetailAITool):
                     NormalizedCommerceRecord.deleted.is_(False),
                 )
             )
-            if active_source is not None and active_source.connection_id is not None:
+            if scope_conn_ids is not None:
                 inv_query = inv_query.where(
-                    NormalizedCommerceRecord.connection_id == active_source.connection_id
+                    NormalizedCommerceRecord.connection_id.in_(scope_conn_ids)
                 )
             records = list(
                 self._session.scalars(
@@ -396,12 +532,39 @@ class GetInventorySummaryTool(RetailAITool):
             if level is None:
                 continue
             item = {"name": name, "inventory_level": level}
-            if float(level) <= 0:
+            lvl_val = _safe_float(level) or 0.0
+            if lvl_val <= 0:
                 out_of_stock.append(item)
-            elif float(level) <= threshold:
+            elif lvl_val <= threshold:
                 low_stock.append(item)
             else:
                 healthy.append(item)
+
+        from backend.app.models.commerce_connection import CommerceConnection
+        conn_map: dict[UUID, str] = {}
+        if records:
+            conn_ids = {r.connection_id for r in records if r.connection_id}
+            conns = self._session.scalars(
+                select(CommerceConnection).where(CommerceConnection.id.in_(conn_ids))
+            ).all()
+            conn_map = {c.id: (c.display_name or c.provider) for c in conns}
+
+        breakdown_by_source: dict[str, dict[str, int]] = {}
+        for r in records:
+            s_name = conn_map.get(r.connection_id, r.provider or "Commerce Store")
+            entry = breakdown_by_source.setdefault(s_name, {"total": 0, "out_of_stock": 0, "low_stock": 0})
+            entry["total"] += 1
+            p = _product_to_dict(r)
+            lvl = p.get("inventory_level")
+            if lvl is not None:
+                lvl_val = _safe_float(lvl) or 0.0
+                if lvl_val <= 0:
+                    entry["out_of_stock"] += 1
+                elif lvl_val <= threshold:
+                    entry["low_stock"] += 1
+
+        store_names = sorted(set(conn_map.values())) if conn_map else ["Boutiques connectées"]
+        provenance = f"Données issues de : {', '.join(store_names)}"
 
         source_refs = tuple({str(r.id) for r in records})
 
@@ -423,6 +586,8 @@ class GetInventorySummaryTool(RetailAITool):
                 "low_stock_threshold": threshold,
                 "out_of_stock": out_of_stock[:20],
                 "low_stock": low_stock[:20],
+                "provenance": provenance,
+                "breakdown_by_source": breakdown_by_source,
             },
             source_refs=source_refs,
         )

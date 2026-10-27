@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
@@ -24,7 +24,7 @@ from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
 from backend.app.dependencies.subscription import require_active_subscription
 from backend.app.models import CommerceConnection, CommerceConnectionStatus
 from backend.app.database import get_db
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from backend.app.schemas.commerce import (
     CommerceConnectionResponse,
@@ -675,6 +675,30 @@ def synchronize_generic_connector(
     db: Session = Depends(get_db),
 ) -> CommerceSyncAcceptedResponse:
     tenant = _tenant(identity)
+
+    # Multi-source resilient parallel sync support
+    if (request.connector_id and request.connector_id.lower() == "all") or (
+        request.provider and request.provider.lower() == "all"
+    ):
+        reserved_ids = sync.reserve_all(tenant)
+        if not reserved_ids:
+            active_count = db.scalar(
+                select(func.count(CommerceConnection.id)).where(
+                    CommerceConnection.company_id == tenant.company_id,
+                    CommerceConnection.status != CommerceConnectionStatus.DISCONNECTED.value,
+                )
+            )
+            if not active_count:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Aucune boutique active trouvée pour cette entreprise.",
+                )
+        background_tasks.add_task(runner.run_all_reserved, tenant, reserved_ids)
+        return CommerceSyncAcceptedResponse(
+            connection_id=reserved_ids[0] if reserved_ids else uuid4(),
+            status="SYNCING",
+        )
+
     target_id: UUID | None = None
 
     if request.connector_id:
@@ -722,6 +746,46 @@ def synchronize_generic_connector(
     background_tasks.add_task(runner.run_reserved, tenant, target_id)
     return CommerceSyncAcceptedResponse(
         connection_id=target_id,
+        status="SYNCING",
+    )
+
+
+@router.post(
+    "/connections/sync-all",
+    response_model=CommerceSyncAcceptedResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def synchronize_all_connections(
+    background_tasks: BackgroundTasks,
+    identity: CurrentIdentity = Depends(manage_connectors),
+    _: TenantContext = Depends(require_active_subscription),
+    sync: CommerceSyncService = Depends(get_commerce_sync_service),
+    runner: CommerceSyncRunner = Depends(get_commerce_sync_runner),
+    db: Session = Depends(get_db),
+    max_pages_per_entity: int | None = Query(default=None, ge=1, le=20),
+) -> CommerceSyncAcceptedResponse:
+    tenant = _tenant(identity)
+    reserved_ids = sync.reserve_all(tenant)
+    if not reserved_ids:
+        active_count = db.scalar(
+            select(func.count(CommerceConnection.id)).where(
+                CommerceConnection.company_id == tenant.company_id,
+                CommerceConnection.status != CommerceConnectionStatus.DISCONNECTED.value,
+            )
+        )
+        if not active_count:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Aucune boutique active trouvée pour cette entreprise.",
+            )
+    background_tasks.add_task(
+        runner.run_all_reserved,
+        tenant,
+        reserved_ids,
+        max_pages_per_entity=max_pages_per_entity,
+    )
+    return CommerceSyncAcceptedResponse(
+        connection_id=reserved_ids[0] if reserved_ids else uuid4(),
         status="SYNCING",
     )
 

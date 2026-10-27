@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.config.settings import Settings
+from backend.app.services.tenant_locale_service import get_company_locale
 from backend.app.models import (
     Company,
     CRMActivity,
@@ -44,6 +45,8 @@ from backend.app.voice.auth import VoiceCallerAuth, redact_voice_secrets
 from backend.app.voice.messages import voice_auth_message
 from backend.app.assistants.registry import build_default_assistant_registry, agent_entitlements
 from backend.app.ai.tools.business.crm_tools import CreateAppointmentTool, UpdateAppointmentTool, CancelAppointmentTool
+from backend.app.voice.caller_scope import PUBLIC_VOICE_CALLER_PERMISSIONS
+from backend.app.voice.tool_guard import VoiceToolDenied, VoiceToolGuard
 from shared.ai_engine.contracts import TenantContext
 
 _WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
@@ -168,7 +171,11 @@ class VoiceOrchestrator:
         if config is None:
             api_key = new_voice_api_key()
             business_name = company.name if company is not None else "Avenqo Business"
-            pref_lang = (company.preferred_language if company is not None else None) or "fr"
+            pref_lang = get_company_locale(self.db, tenant.company_id) or (
+                company.preferred_language if company is not None else None
+            )
+            if not pref_lang:
+                pref_lang = "fr"
             timezone_name = (company.timezone if company is not None else None) or "America/Toronto"
 
             config = VoiceBusinessConfig(
@@ -359,45 +366,71 @@ class VoiceOrchestrator:
         config: VoiceBusinessConfig,
         call_id: str,
         caller_phone: str | None = None,
+        *,
+        avenqo_call_id: str | None = None,
     ) -> VoiceCall:
+        del caller_phone
+        if isinstance(avenqo_call_id, str) and avenqo_call_id.strip():
+            try:
+                reference_id = UUID(str(avenqo_call_id))
+            except ValueError as exc:
+                raise LookupError("Invalid call correlation") from exc
+            call = self.db.scalar(
+                select(VoiceCall).where(
+                    VoiceCall.id == reference_id,
+                    VoiceCall.company_id == config.company_id,
+                    VoiceCall.config_id == config.id,
+                )
+            )
+            if call is None:
+                raise LookupError("Correlated tenant call not found")
+            if call.retell_call_id not in {None, call_id}:
+                raise PermissionError("Call correlation conflict")
+            if call.retell_call_id is None:
+                call.retell_call_id = call_id
+                self.db.flush()
+            return call
         call = self.db.scalar(
             select(VoiceCall).where(
+                VoiceCall.company_id == config.company_id,
                 VoiceCall.config_id == config.id,
                 (VoiceCall.retell_call_id == call_id) | (VoiceCall.telnyx_call_control_id == call_id),
             )
         )
-        if call:
-            return call
-        # Retell can issue function calls before its first call-status callback.
-        unmatched_calls = list(self.db.scalars(
-            select(VoiceCall)
-            .where(
-                VoiceCall.config_id == config.id,
-                VoiceCall.retell_call_id.is_(None),
-                VoiceCall.ended_at.is_(None),
-            )
-            .order_by(VoiceCall.created_at.desc())
-            .limit(10)
-        ).all())
-        if caller_phone:
-            call = next((item for item in unmatched_calls if item.caller_phone == caller_phone), None)
-        else:
-            call = unmatched_calls[0] if len(unmatched_calls) == 1 else None
-        if call:
-            call.retell_call_id = call_id
-            self.db.flush()
-            return call
-        call = VoiceCall(
-            company_id=config.company_id,
-            config_id=config.id,
-            retell_call_id=call_id,
-            caller_phone=caller_phone or "unknown",
-            status="in_progress",
-            started_at=datetime.now(timezone.utc),
-        )
-        self.db.add(call)
-        self.db.flush()
+        if call is None:
+            raise LookupError("Correlated tenant call not found")
         return call
+
+    def _authorize_voice_tool(self, config: VoiceBusinessConfig, call: VoiceCall, tool_name: str) -> dict[str, Any] | None:
+        if call.company_id != config.company_id or call.config_id != config.id:
+            return {"success": False, "error": "voice_call_tenant_mismatch"}
+        tenant = TenantContext(config.company_id, call.authenticated_user_id)
+        if call.caller_type in {"OWNER", "EMPLOYEE"} and call.authenticated_user_id is not None:
+            if VoiceCallerAuth(self.db, self.settings).valid_session(call) is None:
+                return {"success": False, "error": "caller_authentication_required"}
+            membership = self.db.scalar(select(CompanyMembership).where(
+                CompanyMembership.company_id == config.company_id,
+                CompanyMembership.user_id == call.authenticated_user_id,
+                CompanyMembership.is_active.is_(True),
+            ))
+            permissions = frozenset(permissions_for(membership.role)) if membership is not None else frozenset()
+        elif call.caller_type == "CLIENT" and call.verified_client_id is not None:
+            permissions = frozenset({"ai:use", "crm:appointments:read", "crm:appointments:write"})
+        else:
+            permissions = PUBLIC_VOICE_CALLER_PERMISSIONS
+        try:
+            from backend.app.ai.usage.service import AIUsageService
+            from backend.app.ai.usage.policy import AIQuotaPolicy
+            VoiceToolGuard(self.db, AIUsageService(self.db, AIQuotaPolicy(self.settings))).authorize(
+                tenant,
+                tool_name,
+                permissions,
+                user_id=call.authenticated_user_id,
+                require_credits=True,
+            )
+        except VoiceToolDenied as exc:
+            return {"success": False, "error": str(exc)}
+        return None
 
     async def execute_tool(
         self,
@@ -406,11 +439,18 @@ class VoiceOrchestrator:
         action_id: str,
         tool_name: str,
         arguments: dict[str, Any],
+        avenqo_call_id: str | None = None,
     ) -> dict[str, Any]:
         started_at = perf_counter()
-        call = self._resolve_call(config, call_id)
+        try:
+            call = self._resolve_call(config, call_id, avenqo_call_id=avenqo_call_id)
+        except (LookupError, PermissionError) as exc:
+            return {"success": False, "error": str(exc)}
         if call.ended_at is not None or call.status in {"ended", "failed", "rejected", "routing_outcome_unknown"}:
             return {"success": False, "error": "voice_call_not_active"}
+        denied = self._authorize_voice_tool(config, call, tool_name)
+        if denied is not None:
+            return denied
         mutations = {"book_appointment": CreateAppointmentTool, "reschedule_appointment": UpdateAppointmentTool, "cancel_appointment": CancelAppointmentTool}
         actor_scope = ""
         if tool_name in mutations:
@@ -516,6 +556,9 @@ class VoiceOrchestrator:
     ) -> dict[str, Any]:
         if call.ended_at is not None or call.status in {"ended", "failed", "rejected"}:
             raise ValueError("L'appel est terminé; aucune action ne peut être exécutée.")
+        denied = self._authorize_voice_tool(config, call, tool_name)
+        if denied is not None:
+            return denied
         if tool_name == "request_caller_verification":
             return await self._request_caller_verification(config, call)
         if tool_name == "request_pin_authentication":
@@ -549,13 +592,18 @@ class VoiceOrchestrator:
             elif call.caller_type != "CLIENT" or call.verified_client_id is None:
                 return {"success": False, "error": "caller_verification_required"}
         if tool_name == "get_business_info":
+            from backend.app.services.company_intelligence_service import CompanyIntelligenceService
+            profile = CompanyIntelligenceService(self.db).get_profile(config.company_id)
             return {
                 "success": True,
-                "business_name": config.business_name,
-                "opening_hours": config.opening_hours,
-                "services": config.services,
+                "business_name": config.business_name or profile.business_name,
+                "phone": profile.phone or config.transfer_phone,
+                "website": profile.website,
+                "opening_hours": config.opening_hours or profile.opening_hours,
+                "services": profile.configured_crm_services,
+                "products": profile.public_products,
                 "transfer_phone": config.transfer_phone,
-                "timezone": config.timezone_name,
+                "timezone": config.timezone_name or profile.timezone,
                 "greeting_message": config.greeting_message,
             }
         if tool_name == "take_message":
@@ -725,14 +773,8 @@ class VoiceOrchestrator:
         return {"success": True, "verified": True, "caller_type": call.caller_type}
 
     def _service_config(self, config: VoiceBusinessConfig, service_name: str) -> dict[str, Any]:
-        target = service_name.strip().casefold()
-        service = next(
-            (item for item in (config.services or []) if str(item.get("name", "")).strip().casefold() == target),
-            None,
-        )
-        if not service:
-            raise ValueError("Cette prestation n'est pas proposée par le commerce.")
-        return service
+        from backend.app.services.company_intelligence_service import CompanyIntelligenceService
+        return CompanyIntelligenceService(self.db).require_service(config.company_id, service_name=service_name)
 
     def _opening_interval(self, config: VoiceBusinessConfig, day: date) -> tuple[datetime, datetime] | None:
         windows = CRMService(self.db)._availability._windows(config.company_id, day)
@@ -786,31 +828,27 @@ class VoiceOrchestrator:
                     CRMServiceModel.id == UUID(str(supplied_id)),
                     CRMServiceModel.company_id == config.company_id,
                     CRMServiceModel.is_active.is_(True),
+                    CRMServiceModel.is_approved_by_owner.is_(True),
+                    CRMServiceModel.is_published.is_(True),
                 )
             )
             if not service:
-                raise ValueError("La prestation CRM configurée est introuvable.")
+                raise ValueError("La prestation CRM configurée est introuvable ou non approuvée par le propriétaire.")
             return service
         existing = self.db.scalar(
             select(CRMServiceModel).where(
                 CRMServiceModel.company_id == config.company_id,
                 CRMServiceModel.name.ilike(str(service_data["name"])),
                 CRMServiceModel.is_active.is_(True),
+                CRMServiceModel.is_approved_by_owner.is_(True),
+                CRMServiceModel.is_published.is_(True),
             )
         )
         if existing:
             return existing
-        service = CRMServiceModel(
-            company_id=config.company_id,
-            name=str(service_data["name"]),
-            duration_minutes=int(service_data["duration_minutes"]),
-            price=float(service_data.get("price", 0)),
-            currency=str(service_data.get("currency", "CAD")),
-            is_active=True,
+        raise ValueError(
+            f"La prestation '{service_data.get('name')}' n'est pas approuvée et publiée par le propriétaire pour la réservation commerciale."
         )
-        self.db.add(service)
-        self.db.flush()
-        return service
 
     def _resolve_client(self, config: VoiceBusinessConfig, caller_name: str, caller_phone: str) -> CRMClient:
         phone = caller_phone.strip()
@@ -873,9 +911,25 @@ class VoiceOrchestrator:
         )
         if error or appointment is None:
             return {"success": False, "conflict": True, "message": error or "appointment_creation_failed"}
-        call.appointment_id = appointment.id
-        call.status = "appointment_booked"
-        self.db.commit()
+        from backend.app.voice.booking import mark_voice_call_booked
+
+        mark_voice_call_booked(
+            self.db,
+            company_id=config.company_id,
+            appointment_id=appointment.id,
+            call=call,
+        )
+        try:
+            from backend.app.services.automation_service import AutomationService
+
+            AutomationService(self.db).dispatch(
+                config.company_id,
+                "voice_appointment",
+                {"appointment_id": str(appointment.id), "call_id": str(call.id)},
+                idempotency_key=str(appointment.id),
+            )
+        except Exception:
+            pass
         return {
             "success": True,
             "appointment_id": str(appointment.id),
@@ -995,7 +1049,7 @@ class VoiceOrchestrator:
             activity.completed_at = call.ended_at
         if call.appointment_id:
             appointment = self.db.get(CRMAppointmentModel, call.appointment_id)
-            if appointment:
+            if appointment and appointment.company_id == config.company_id:
                 existing_note = self.db.scalar(select(CRMNote).where(
                     CRMNote.company_id == config.company_id,
                     CRMNote.appointment_id == appointment.id,
@@ -1023,7 +1077,8 @@ class VoiceOrchestrator:
     async def _send_confirmation(self, config: VoiceBusinessConfig, call: VoiceCall) -> None:
         from_number = config.telnyx_phone_number
         appointment = self.db.get(CRMAppointmentModel, call.appointment_id)
-        if not appointment or call.caller_phone == "unknown" or not from_number:
+        if (not appointment or appointment.company_id != config.company_id
+                or call.caller_phone == "unknown" or not from_number):
             return
         local_time = appointment.start_time.astimezone(ZoneInfo(config.timezone_name)).strftime("%Y-%m-%d %H:%M")
         message = f"{config.business_name} : votre rendez-vous est confirmé le {local_time} ({config.timezone_name})."

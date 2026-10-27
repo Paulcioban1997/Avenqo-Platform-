@@ -28,6 +28,10 @@ import { GlobalSourceSelector } from "@/components/shell/global-source-selector"
 import { CRMCopilotPanel } from "@/components/crm/crm-copilot-panel";
 import { SettingsView } from "@/components/settings/settings-view";
 import { VoiceModuleView } from "@/components/settings/voice-module-view";
+import { VOICE_PERMISSIONS_COPY } from "@/lib/i18n/voice-permissions-copy";
+import { MODULE_PREVIEW_COPY } from "@/lib/i18n/module-preview-copy";
+import { ModulePreview } from "@/components/common/module-preview";
+import { reconcileLoginLocale } from "@/lib/i18n/locale-persistence";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/retail" }));
 
@@ -46,6 +50,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   window.localStorage.clear();
+  window.sessionStorage.clear();
 });
 
 describe("public trust content", () => {
@@ -241,7 +246,7 @@ describe("native Voice module read-only selection", () => {
     expect(params.get('area_code')).toBe('438');
     expect(params.has('organization_id')).toBe(false);
     expect(calls.every(item => item.method === 'GET')).toBe(true);
-    expect(calls.some(item => /provision|number_orders|reserve|release/.test(item.path))).toBe(false);
+    expect(calls.some(item => item.method !== 'GET' && /provision|number_orders|reserve|release/.test(item.path))).toBe(false);
     act(() => window.dispatchEvent(new Event('avenqo:session-expired')));
     await waitFor(() => expect(screen.queryByText(offer.phone_number)).not.toBeInTheDocument());
   });
@@ -255,7 +260,7 @@ describe("native Voice module read-only selection", () => {
     expect(calls.every(item => item.method === 'GET')).toBe(true);
   });
 
-  it("requires a current quote and explicit confirmation before provisioning", async () => {
+  it("a provider quote cannot bypass the commercial Stripe consent flow", async () => {
     window.localStorage.setItem('avenqo-locale', 'en');
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const calls = mockVoice(true, true);
@@ -269,11 +274,10 @@ describe("native Voice module read-only selection", () => {
     const quoteCall = calls.find(item => item.path.includes('/voice/numbers/quote?'));
     expect(quoteCall?.method).toBe('GET');
     expect(calls.some(item => item.path.endsWith('/voice/numbers/provision'))).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: VOICE_NUMBER_COPY.en.purchase }));
-    await waitFor(() => expect(calls.some(item => item.path.endsWith('/voice/numbers/provision'))).toBe(true));
-    const purchase = calls.find(item => item.path.endsWith('/voice/numbers/provision'));
-    expect(purchase?.method).toBe('POST');
-    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: VOICE_NUMBER_COPY.en.purchase })).not.toBeInTheDocument();
+    expect(screen.getByText(/Use the business-number payment flow above/)).toBeInTheDocument();
+    expect(calls.some(item => item.method === 'POST')).toBe(false);
+    expect(confirm).not.toHaveBeenCalled();
   });
 
   it("creates the owner PIN only through authenticated Voice security and clears the masked field", async () => {
@@ -284,12 +288,39 @@ describe("native Voice module read-only selection", () => {
     expect(input).toHaveAttribute('type', 'password');
     expect(input).toHaveAttribute('minLength', '6');
     fireEvent.change(input, { target: { value: '907182' } });
+    fireEvent.change(screen.getByLabelText('Current password'), { target: { value: 'TestPassword123!' } });
     fireEvent.submit(input.closest('form')!);
     await waitFor(() => expect(calls.some(call => call.path.endsWith('/voice/auth/pin') && call.method === 'PUT')).toBe(true));
     await waitFor(() => expect(input).toHaveValue(''));
     expect(window.localStorage.getItem('voice-pin')).toBeNull();
     expect(screen.queryByText('907182')).not.toBeInTheDocument();
     expect(calls.some(call => /\/tools\/|\/sessions\//.test(call.path))).toBe(false);
+  });
+
+  it("translates Voice permission chrome while keeping action_code checkbox values", async () => {
+    window.localStorage.setItem("avenqo-locale", "ro");
+    const grants: { module_code: string; action_code: string; granted: boolean }[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input, options) => {
+      const path = String(input);
+      if (path.endsWith("/auth/me")) return Response.json({ user: { id: "owner", role: "owner" }, company: { id: "voice-tenant", name: "Voice Company" } });
+      if (path.endsWith("/voice/capabilities")) return Response.json({ tenant_id: "voice-tenant", subscription_plan: "base", subscription_status: "active", enabled_modules: ["voice"], plan_compatible_modules: ["voice"], available_agents: ["retail"], permissions: ["ai:use", "modules:manage"], locale: "ro", timezone: "America/Toronto", authorized_sources: { sources: [] }, language_matrix: [] });
+      if (path.endsWith("/voice/status")) return Response.json({ voice_status: "NOT_CONFIGURED", business_number: null, call_count: 0, call_minutes: 0, voice_ai_credits_charged: 0, recent_calls: [], data_freshness: { freshness_status: "SYNCED" } });
+      if (path.endsWith("/voice/module-permissions") && (options?.method ?? "GET") === "GET") {
+        return Response.json({ modules: [{ module_code: "crm", active: true, locked: false, actions: [{ action_code: "create_appointment", granted: false, locked: false, tools: ["create_appointment"] }] }] });
+      }
+      if (path.endsWith("/voice/module-permissions") && options?.method === "PUT") {
+        grants.push(...JSON.parse(String(options.body)).grants);
+        return Response.json({ modules: [{ module_code: "crm", active: true, locked: false, actions: [{ action_code: "create_appointment", granted: true, locked: false, tools: ["create_appointment"] }] }] });
+      }
+      if (path.endsWith("/sources") || path.endsWith("/sources/context")) return Response.json(path.endsWith("/sources/context") ? { state: "NO_SOURCE_SELECTED", sources: [] } : []);
+      return Response.json({});
+    }));
+    render(<LocaleProvider><SessionProvider><VoiceModuleView /></SessionProvider></LocaleProvider>);
+    expect(await screen.findByText(VOICE_PERMISSIONS_COPY.ro.title)).toBeInTheDocument();
+    const checkbox = await screen.findByRole("checkbox", { name: "create_appointment" });
+    expect(checkbox).toHaveAttribute("value", "create_appointment");
+    fireEvent.click(checkbox);
+    await waitFor(() => expect(grants).toEqual([{ module_code: "crm", action_code: "create_appointment", granted: true }]));
   });
 });
 
@@ -323,6 +354,11 @@ describe("credit display", () => {
       monthly_included: 6500,
       monthly_remaining: 6485,
     })).toEqual({ remaining: 6485, used: 15, limit: 6500 });
+  });
+
+  it("uses recorded consumption above the allowance and does not infer it from purchased credits", () => {
+    expect(creditBalanceViewModel({ monthly_included: 6500, monthly_remaining: 0, monthly_used: 6563 })).toEqual({ remaining: 0, limit: 6500, used: 6563 });
+    expect(creditBalanceViewModel({ monthly_included: 6500, total_remaining: 10000 })).toEqual({ remaining: 10000, limit: 6500, used: null });
   });
 });
 
@@ -383,7 +419,7 @@ describe("Retail inventory rendering", () => {
       if (url.endsWith("/retail/products?limit=100")) return Response.json({ products: [] });
       if (url.endsWith("/retail/orders?limit=100")) return Response.json({ orders: [] });
       if (url.endsWith("/retail/customers?limit=100")) return Response.json({ customers: [] });
-      if (url.endsWith("/retail/inventory?limit=100")) {
+      if (url.includes("/retail/inventory?")) {
         return Response.json({
           inventory: [{
             id: "product-1",
@@ -425,7 +461,7 @@ describe("Retail inventory rendering", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Recommandations" }));
     expect(screen.queryByText(/98 %|98%|15 unités/i)).not.toBeInTheDocument();
-    expect(await screen.findByText(getAppTranslations("fr").common.insufficientData)).toBeInTheDocument();
+    expect(await screen.findByText(getAppTranslations("fr").retail.recommendationsNeedOrders)).toBeInTheDocument();
   });
 
   it("renders forecast and recommendation data returned by their tenant APIs", async () => {
@@ -449,7 +485,7 @@ describe("Retail inventory rendering", () => {
       if (url.endsWith("/retail/products?limit=100")) return Response.json({ products: [] });
       if (url.endsWith("/retail/orders?limit=100")) return Response.json({ orders: [] });
       if (url.endsWith("/retail/customers?limit=100")) return Response.json({ customers: [] });
-      if (url.endsWith("/retail/inventory?limit=100")) return Response.json({ inventory: [], anomalies: [] });
+      if (url.includes("/retail/inventory?")) return Response.json({ inventory: [], anomalies: [] });
       if (url.endsWith("/sales/summary?period=last_30_days")) {
         return Response.json({
           currency: "CAD",
@@ -493,9 +529,49 @@ describe("Retail inventory rendering", () => {
     expect(await screen.findByText("Moyenne historique hebdomadaire")).toBeInTheDocument();
     expect(screen.getByText("Week A")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Recommandations" }));
-    expect(await screen.findByText("Produits: Seasonal item")).toBeInTheDocument();
+    expect(await screen.findByText("Les revenus de ce produit progressent — Seasonal item")).toBeInTheDocument();
     expect(screen.getByText("Shopify · Avenqo Retail Test")).toBeInTheDocument();
     expect(screen.queryByText(/product_growth|product_revenue_changed|Review the next purchase order/)).not.toBeInTheDocument();
+  });
+
+  it("still renders Retail when inventory fails after status succeeds", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/auth/me")) return Response.json({ user: { id: "test-user" }, company: { id: "test-tenant", name: "Test tenant", subscription_plan: "base" } });
+      if (url.endsWith("/ai-credits")) return Response.json({ monthly_included: 6500, monthly_remaining: 6500 });
+      if (url.endsWith("/retail/status")) {
+        return Response.json({
+          is_connected: true,
+          provider: "dataset",
+          store_url: null,
+          status: "READY",
+          last_synced_at: null,
+          records_count: 1,
+          product_count: 1,
+          order_count: 0,
+          customer_count: 0,
+          source_context: { state: "READY", selection: "dataset", name: "Superstore-utf8.csv", provider: "dataset", dataset_id: "ds-1" },
+        });
+      }
+      if (url.includes("/retail/inventory?")) return new Response("unavailable", { status: 503 });
+      if (url.endsWith("/retail/products?limit=100")) return Response.json({ products: [{ id: "p1", source_record_id: "p1", provider: "dataset", product_name: "Paper", sku: "PAP-1", product_category: "Office", unit_price: 12, stock_quantity: 4, stock_status: "instock" }] });
+      if (url.endsWith("/retail/orders?limit=100")) return Response.json({ orders: [] });
+      if (url.endsWith("/retail/customers?limit=100")) return Response.json({ customers: [] });
+      if (url.endsWith("/sales/summary?period=last_30_days")) return Response.json({ currency: "CAD", summary: null, forecast: null });
+      if (url.endsWith("/recommendations")) return Response.json({ recommendation_state: "INSUFFICIENT_DATA", recommendations: [] });
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+
+    render(
+      <LocaleProvider>
+        <RetailIntelligenceView defaultTab="products" />
+      </LocaleProvider>,
+    );
+
+    expect(await screen.findByText(getAppTranslations("fr").navigation.retailAi)).toBeInTheDocument();
+    expect(screen.getByText(/Superstore-utf8\.csv/)).toBeInTheDocument();
+    expect(screen.getByText("Paper")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
 
@@ -692,6 +768,7 @@ describe("Copilot production response", () => {
 
   it("streams microphone PCM and provider audio through the Voice session without an HTTP turn", async () => {
     const playbackStart = vi.fn();
+    const playbackStop = vi.fn();
     const playbackClose = vi.fn(async () => undefined);
     const processor = { onaudioprocess: null as ((event: { inputBuffer: { getChannelData: () => Float32Array } }) => void) | null,
       connect: vi.fn(), disconnect: vi.fn() };
@@ -701,7 +778,7 @@ describe("Copilot production response", () => {
       createMediaStreamSource: () => ({ connect: vi.fn(), disconnect: vi.fn() }),
       createScriptProcessor: () => processor,
       createBuffer: (_channels: number, count: number) => ({ getChannelData: () => new Float32Array(count), duration: count / 24000 }),
-      createBufferSource: () => ({ connect: vi.fn(), start: playbackStart, buffer: null }),
+      createBufferSource: () => ({ connect: vi.fn(), start: playbackStart, stop: playbackStop, buffer: null }),
     };
     vi.stubGlobal("AudioContext", class { constructor() { return context; } });
     const stopTrack = vi.fn();
@@ -749,10 +826,14 @@ describe("Copilot production response", () => {
     sockets[0].onmessage?.({ data: JSON.stringify({ type: "audio", format: "pcm16", audio: "AQI=" }) });
     expect(playbackStart).toHaveBeenCalled();
     sockets[0].onmessage?.({ data: JSON.stringify({ type: "lifecycle", status: "interrupted" }) });
-    expect(playbackClose).toHaveBeenCalled();
+    expect(playbackStop).toHaveBeenCalled();
+    expect(playbackClose).not.toHaveBeenCalled();
+    sockets[0].onmessage?.({ data: JSON.stringify({ type: "audio", format: "pcm16", audio: "AQI=" }) });
+    expect(playbackStart).toHaveBeenCalledTimes(2);
     expect(requests.every((url) => !url.endsWith("/turn"))).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Stop microphone" }));
     expect(stopTrack).toHaveBeenCalled();
+    expect(playbackClose).toHaveBeenCalled();
   });
 
   it("renders grounded Retail values and never CRM fallback values", async () => {
@@ -858,6 +939,26 @@ describe("Copilot production response", () => {
     expect(requestKeys).toHaveLength(2);
     expect(requestKeys[0]).toBeTruthy();
     expect(requestKeys[1]).toBe(requestKeys[0]);
+  });
+});
+
+describe("module preview locale", () => {
+  it("uses French chrome for fr-FR instead of English", async () => {
+    window.localStorage.setItem("avenqo-locale", "fr-FR");
+    render(
+      <LocaleProvider>
+        <ModulePreview titleEn="English title" titleFr="Titre français" descriptionEn="English description" descriptionFr="Description française" featuresEn={["English feature"]} featuresFr={["Fonctionnalité française"]} />
+      </LocaleProvider>,
+    );
+    await waitFor(() => expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Titre français"));
+    expect(screen.getByText(MODULE_PREVIEW_COPY["fr-FR"].restrictedAccess)).toBeInTheDocument();
+    expect(screen.queryByText(MODULE_PREVIEW_COPY.en.restrictedAccess)).not.toBeInTheDocument();
+  });
+});
+
+describe("login locale reconciliation", () => {
+  it("keeps an explicit client locale over company preferred_language", () => {
+    expect(reconcileLoginLocale("en", "ja", true)).toEqual({ locale: "ja", persistCompany: true });
   });
 });
 
@@ -972,4 +1073,9 @@ it("shows a Dashboard backend failure instead of a valid empty dataset", async (
   render(<LocaleProvider><SessionProvider><DashboardView /></SessionProvider></LocaleProvider>);
   expect(await screen.findByRole("alert")).toHaveTextContent("Dashboard service unavailable");
   expect(screen.queryByText("Mon espace")).not.toBeInTheDocument();
+});
+
+
+it("includes purchased credits in the common balance even when the monthly allowance is exhausted", () => {
+  expect(creditBalanceViewModel({ monthly_included: 6500, monthly_remaining: 0, monthly_used: 6500, purchased_remaining: 6500, total_remaining: 6500 })).toEqual({ remaining: 6500, limit: 13000, used: 6500 });
 });

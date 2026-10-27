@@ -5,6 +5,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from backend.app.ai.tools.business.analytics import (
+    compute_conversion_rate,
+    compute_dimension_split,
     parse_business_datetime,
 )
 from backend.app.services.business_metrics_service import BusinessMetricsService
@@ -137,6 +139,14 @@ class TenantDashboardService:
                 for item in recommendations[:3]
             ],
             "trend": {"points": trend.get("points", [])},
+            "category_split": self._dimension_split(
+                snapshot, period, period_key, "product_category"
+            ),
+            "regional_split": self._dimension_split(
+                snapshot, period, period_key, "customer_region",
+                fallback_canonical="customer_country",
+            ),
+            "conversion": self._conversion(snapshot, period, period_key),
             "connections": {
                 "total": len(snapshot.statuses),
                 "ready": snapshot.statuses.count("ready"),
@@ -164,6 +174,61 @@ class TenantDashboardService:
                 for model in snapshot.active_models[:5]
             ],
         }
+
+    @staticmethod
+    def _empty_split(reason: str = "missing_dimension") -> dict[str, object]:
+        return {"available": False, "reason": reason, "items": []}
+
+    def _dimension_split(
+        self,
+        snapshot: TenantAnalyticsSnapshot,
+        period: dict[str, datetime | None],
+        period_key: str | None,
+        canonical: str,
+        fallback_canonical: str | None = None,
+    ) -> dict[str, object]:
+        summary_key = period_key or "last_30_days"
+        for summary in snapshot.retail_summaries:
+            cached = ((summary.get("period_splits") or {}).get(summary_key) or {}).get(canonical)
+            if isinstance(cached, dict) and cached.get("available"):
+                return cached
+            if fallback_canonical:
+                cached_fallback = ((summary.get("period_splits") or {}).get(summary_key) or {}).get(fallback_canonical)
+                if isinstance(cached_fallback, dict) and cached_fallback.get("available"):
+                    return cached_fallback
+        source = snapshot.source_for(BUSINESS_METRIC_FIELDS["revenue"])
+        if source is None:
+            return self._empty_split()
+        date_from = None if period_key == "all" else period.get("start")
+        date_to = None if period_key == "all" else period.get("end")
+        result = compute_dimension_split(source, canonical, date_from=date_from, date_to=date_to)
+        if result.get("available"):
+            return result
+        if fallback_canonical:
+            fallback = compute_dimension_split(
+                source, fallback_canonical, date_from=date_from, date_to=date_to
+            )
+            if fallback.get("available"):
+                return fallback
+        return result
+
+    def _conversion(
+        self,
+        snapshot: TenantAnalyticsSnapshot,
+        period: dict[str, datetime | None],
+        period_key: str | None,
+    ) -> dict[str, object]:
+        summary_key = period_key or "last_30_days"
+        for summary in snapshot.retail_summaries:
+            cached = ((summary.get("period_conversions") or {}).get(summary_key))
+            if isinstance(cached, dict):
+                return cached
+        source = snapshot.source_for(BUSINESS_METRIC_FIELDS["orders"])
+        if source is None:
+            return {"available": False, "reason": "missing_sessions", "value": None}
+        date_from = None if period_key == "all" else period.get("start")
+        date_to = None if period_key == "all" else period.get("end")
+        return compute_conversion_rate(source, date_from=date_from, date_to=date_to)
 
     def _kpi(
         self,

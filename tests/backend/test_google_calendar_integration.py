@@ -12,6 +12,7 @@ from uuid import UUID
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from starlette.requests import Request
 
 from backend.app.api.router import api_router
 from backend.app.core.security import hash_token
@@ -23,6 +24,129 @@ from backend.app.routers.crm import (
 )
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
 from backend.app.services.calendar.base import CalendarProviderError
+
+
+@pytest.mark.parametrize("delete_status,get_status,event_status,expected", [
+    (204, 200, "cancelled", True),
+    (204, 200, "confirmed", False),
+    (204, 404, None, True),
+    (410, 200, "cancelled", True),
+    (404, 200, "confirmed", False),
+])
+def test_google_delete_confirms_exact_event_inactive(monkeypatch, delete_status, get_status, event_status, expected):
+    import urllib.error
+    from io import BytesIO
+
+    calls = []
+
+    class Response:
+        def __init__(self, status, data):
+            self.status = status
+            self.data = data
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def read(self):
+            return json.dumps(self.data).encode()
+
+    def request(req, timeout):
+        calls.append((req.get_method(), req.full_url))
+        code = delete_status if req.get_method() == "DELETE" else get_status
+        if code >= 400:
+            raise urllib.error.HTTPError(req.full_url, code, "fixture", {}, BytesIO(b"{}"))
+        return Response(code, {"id": "fixture-event", "status": event_status})
+
+    monkeypatch.setattr("urllib.request.urlopen", request)
+    result = asyncio.run(GoogleCalendarProvider().delete_event({"access_token": "fixture"}, "fixture-event", "fixture-calendar"))
+    assert result is expected
+    assert [method for method, _ in calls] == ["DELETE", "GET"]
+    assert calls[0][1] == calls[1][1]
+
+
+def test_google_delete_confirmation_network_failure_is_not_success(monkeypatch):
+    class Response:
+        status = 204
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def read(self):
+            return b""
+    def request(req, timeout):
+        if req.get_method() == "GET":
+            raise TimeoutError("fixture")
+        return Response()
+    monkeypatch.setattr("urllib.request.urlopen", request)
+    with pytest.raises(CalendarProviderError, match="Vérification suppression"):
+        asyncio.run(GoogleCalendarProvider().delete_event({"access_token": "fixture"}, "fixture-event"))
+
+
+@pytest.mark.parametrize("reason", ["GOOGLE_BUSY", "Conflit CRM_BUSY"])
+def test_busy_calendar_slot_returns_actionable_conflict(reason):
+    from fastapi import HTTPException
+    from backend.app.routers.crm import CreateAppointmentRequest, create_appointment
+    from backend.app.core.error_localization import http_error_message
+
+    class Service:
+        async def create_appointment(self, company_id, data):
+            return None, reason
+
+    tenant = SimpleNamespace(company_id=UUID("9c97cb94-e9f9-46fb-afd4-8a1d21019cff"))
+    payload = CreateAppointmentRequest(client_id=tenant.company_id, start_time=datetime.now(timezone.utc))
+    with pytest.raises(HTTPException) as raised:
+        asyncio.run(create_appointment(payload, idempotency_key=None, tenant=tenant, service=Service()))
+    assert raised.value.status_code == 409
+    assert raised.value.detail == {"code": "APPOINTMENT_CONFLICT"}
+    assert "créneau est occupé" in http_error_message(409, "fr-CA", raised.value.detail)
+
+
+@pytest.mark.parametrize("operation", ["exchange_code", "refresh_access_token", "list_calendars"])
+def test_google_provider_errors_do_not_expose_response_or_credentials(monkeypatch, caplog, operation):
+    import urllib.error
+    from io import BytesIO
+
+    sensitive_fixture = "non-sensitive-response-marker-example.test"
+
+    def failed_request(*args, **kwargs):
+        raise urllib.error.HTTPError(
+            "https://oauth2.googleapis.com/token", 401, sensitive_fixture,
+            {}, BytesIO(json.dumps({"error_description": sensitive_fixture}).encode()),
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", failed_request)
+    provider = GoogleCalendarProvider("fixture-client", "fixture-secret", "https://example.test/callback")
+    argument = {"access_token": "fixture-token"} if operation == "list_calendars" else "fixture-value"
+    with pytest.raises(CalendarProviderError) as raised:
+        asyncio.run(getattr(provider, operation)(argument))
+    assert sensitive_fixture not in str(raised.value)
+    assert sensitive_fixture not in caplog.text
+    assert "fixture-secret" not in caplog.text
+    assert isinstance(raised.value.__cause__, urllib.error.HTTPError)
+
+
+def test_google_network_errors_do_not_echo_request_details(monkeypatch, caplog):
+    def failed_request(*args, **kwargs):
+        raise RuntimeError("fixture-private-request-details")
+
+    monkeypatch.setattr("urllib.request.urlopen", failed_request)
+    with pytest.raises(CalendarProviderError) as raised:
+        asyncio.run(GoogleCalendarProvider().exchange_code("fixture-code"))
+    assert "fixture-private-request-details" not in str(raised.value)
+    assert "fixture-private-request-details" not in caplog.text
+
+
+def _callback_request(state: str, *, bind: bool = True) -> Request:
+    headers = []
+    if bind:
+        headers.append((b"cookie", f"avenqo_oauth_bind={hash_token(state)}".encode()))
+    return Request({
+        "type": "http",
+        "method": "GET",
+        "path": "/api/v1/crm/calendar/google/callback",
+        "headers": headers,
+        "query_string": b"",
+    })
 
 
 def _encode_oauth_state(payload: dict[str, str], secret: str) -> str:
@@ -138,17 +262,43 @@ def test_callback_without_jwt_consumes_valid_state_and_rejects_replay(monkeypatc
                 expires_at=now + timedelta(minutes=10),
             ),
         )
+        with pytest.raises(Exception, match="navigateur manquante"):
+            asyncio.run(
+                google_calendar_callback(
+                    request=_callback_request(state, bind=False),
+                    code="google-code",
+                    state=state,
+                    db=db,
+                )
+            )
         with pytest.raises(Exception, match="invalide"):
             asyncio.run(
                 google_calendar_callback(
-                    code="google-code", state=cross_tenant_state, db=cross_tenant_db
+                    request=_callback_request(cross_tenant_state),
+                    code="google-code",
+                    state=cross_tenant_state,
+                    db=cross_tenant_db,
                 )
             )
 
-        response = asyncio.run(google_calendar_callback(code="google-code", state=state, db=db))
+        response = asyncio.run(
+            google_calendar_callback(
+                request=_callback_request(state),
+                code="google-code",
+                state=state,
+                db=db,
+            )
+        )
         assert response.status_code == 303
         with pytest.raises(Exception, match="déjà utilisé"):
-            asyncio.run(google_calendar_callback(code="google-code", state=state, db=db))
+            asyncio.run(
+                google_calendar_callback(
+                    request=_callback_request(state),
+                    code="google-code",
+                    state=state,
+                    db=db,
+                )
+            )
 
 
 def test_callback_rejects_expired_and_cross_tenant_persisted_states(tmp_path) -> None:
@@ -243,3 +393,91 @@ def test_google_freebusy_malformed_response_fails_closed(monkeypatch, payload):
     now = datetime.now(timezone.utc)
     with pytest.raises(CalendarProviderError, match="EXTERNAL_AVAILABILITY_UNAVAILABLE"):
         asyncio.run(GoogleCalendarProvider().check_busy_slots({"access_token": "test"}, now, now + timedelta(hours=1)))
+
+
+def test_google_refresh_token_revoked_raises_token_revoked_error(monkeypatch):
+    import urllib.error
+    from io import BytesIO
+    from backend.app.services.calendar.base import CalendarTokenRevokedError
+
+    def fake_urlopen(req, timeout=15):
+        raise urllib.error.HTTPError(
+            req.full_url,
+            400,
+            "Bad Request",
+            {},
+            BytesIO(b'{"error": "invalid_grant", "error_description": "Token has been expired or revoked."}'),
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    provider = GoogleCalendarProvider("client_id", "client_secret", "https://api.avenqo.ca/callback")
+    with pytest.raises(CalendarTokenRevokedError, match="expiré ou révoqué"):
+        asyncio.run(provider.refresh_access_token("revoked_refresh_token"))
+
+
+def test_google_refresh_token_transient_error_raises_transient_error(monkeypatch):
+    import urllib.error
+    from io import BytesIO
+    from backend.app.services.calendar.base import CalendarTokenTransientError
+
+    def fake_urlopen(req, timeout=15):
+        raise urllib.error.HTTPError(
+            req.full_url,
+            503,
+            "Service Unavailable",
+            {},
+            BytesIO(b'{"error": "backend_error"}'),
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    provider = GoogleCalendarProvider("client_id", "client_secret", "https://api.avenqo.ca/callback")
+    with pytest.raises(CalendarTokenTransientError, match="Échec temporaire"):
+        asyncio.run(provider.refresh_access_token("transient_refresh_token"))
+
+
+def test_google_refresh_token_success(monkeypatch):
+    from io import BytesIO
+
+    class SuccessResponse:
+        status = 200
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return None
+        def read(self):
+            return json.dumps({
+                "access_token": "new-access-token-123",
+                "expires_in": 3600,
+                "token_type": "Bearer",
+            }).encode("utf-8")
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda req, timeout=15: SuccessResponse())
+    provider = GoogleCalendarProvider("client_id", "client_secret", "https://api.avenqo.ca/callback")
+    result = asyncio.run(provider.refresh_access_token("valid_refresh_token"))
+    assert result["access_token"] == "new-access-token-123"
+    assert result["expires_in"] == 3600
+
+
+def test_crm_get_calendar_connection_returns_reconnect_status_when_error():
+    from backend.app.routers.crm import get_calendar_connection
+    from backend.app.models.crm import CRMCalendarConnection
+
+    fake_conn = CRMCalendarConnection(
+        company_id=UUID("9c97cb94-e9f9-46fb-afd4-8a1d21019cff"),
+        provider="google",
+        account_email="owner@avenqo.ca",
+        calendar_id="primary",
+        sync_status="error",
+        sync_error="Google token expired or revoked. Please reconnect.",
+    )
+
+    class FakeService:
+        def get_calendar_connection(self, company_id):
+            return fake_conn
+
+    tenant = SimpleNamespace(company_id=UUID("9c97cb94-e9f9-46fb-afd4-8a1d21019cff"))
+    res = get_calendar_connection(tenant=tenant, service=FakeService())
+    assert res["connected"] is False
+    assert res["sync_status"] == "error"
+    assert res["requires_reconnect"] is True
+    assert res["reconnect_message"] == "Reconnectez Google Calendar pour reprendre les réservations"

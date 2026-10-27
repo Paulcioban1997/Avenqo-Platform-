@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta, timezone
+import logging
 from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -14,9 +15,16 @@ from backend.app.config.settings import get_settings
 from backend.app.models.company import Company
 from backend.app.models.crm import CRMAppointment, CRMCalendarConnection, CRMEmployee, CRMService
 from backend.app.models.voice import VoiceBusinessConfig
-from backend.app.services.calendar.base import BusySlot, CalendarProviderError
+from backend.app.services.calendar.base import (
+    BusySlot,
+    CalendarProviderError,
+    CalendarTokenRevokedError,
+    CalendarTokenTransientError,
+)
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
+
+logger = logging.getLogger(__name__)
 
 
 class AvailabilityUnavailable(CalendarProviderError):
@@ -51,9 +59,14 @@ class CRMAvailabilityService:
             value = local
         return value.astimezone(timezone.utc)
 
-    def _resource(self, model, company_id: UUID, resource_id: UUID | None):
+    def _resource(self, model, company_id: UUID, resource_id: UUID | str | None):
         if resource_id is None:
             return None
+        if isinstance(resource_id, str):
+            try:
+                resource_id = UUID(resource_id)
+            except Exception:
+                pass
         resource = self._session.get(model, resource_id)
         if resource is None or resource.company_id != company_id or not resource.is_active:
             raise AvailabilityUnavailable("RESOURCE_NOT_AUTHORIZED")
@@ -112,10 +125,31 @@ class CRMAvailabilityService:
             busy = []
             for connection in connections:
                 if connection.sync_status == "error":
-                    raise AvailabilityUnavailable(f"EXTERNAL_CALENDAR_ERROR: {connection.error_message or 'Google Calendar token expired. Please reconnect.'}")
-                if connection.sync_status != "connected":
+                    try:
+                        credentials = cipher.decrypt(connection.encrypted_credentials)
+                        connection.sync_status = "connected"
+                        if hasattr(connection, "sync_error"):
+                            connection.sync_error = None
+                        try:
+                            self._session.commit()
+                        except Exception:
+                            pass
+                    except Exception:
+                        continue
+                elif connection.sync_status != "connected":
                     raise AvailabilityUnavailable("EXTERNAL_AVAILABILITY_UNAVAILABLE")
-                credentials = cipher.decrypt(connection.encrypted_credentials)
+                else:
+                    try:
+                        credentials = cipher.decrypt(connection.encrypted_credentials)
+                    except Exception as dec_exc:
+                        connection.sync_status = "error"
+                        if hasattr(connection, "sync_error"):
+                            connection.sync_error = "Decryption error on calendar credentials. Please reconnect."
+                        try:
+                            self._session.commit()
+                        except Exception:
+                            pass
+                        continue
                 try:
                     periods = await provider.check_busy_slots(credentials, start, end, connection.calendar_id)
                 except CalendarProviderError as exc:
@@ -128,12 +162,38 @@ class CRMAvailabilityService:
                         if hasattr(cipher, "encrypt"):
                             connection.encrypted_credentials = cipher.encrypt(credentials)
                         connection.sync_status = "connected"
-                        connection.error_message = None
+                        if hasattr(connection, "sync_error"):
+                            connection.sync_error = None
                         self._session.commit()
                         periods = await provider.check_busy_slots(credentials, start, end, connection.calendar_id)
+                    except CalendarTokenRevokedError as rev_exc:
+                        connection.sync_status = "error"
+                        if hasattr(connection, "sync_error"):
+                            connection.sync_error = "Google token expired or revoked. Please reconnect."
+                        self._session.commit()
+                        logger.warning(
+                            "Google Calendar OAuth token revoked for tenant. Reconnection required.",
+                            extra={"company_id": str(company_id), "provider": "google"},
+                        )
+                        raise AvailabilityUnavailable("EXTERNAL_AVAILABILITY_UNAVAILABLE") from rev_exc
                     except Exception as refresh_exc:
                         connection.sync_status = "error"
-                        connection.error_message = "Google token expired or revoked. Please reconnect."
+                        err_str = str(refresh_exc).lower()
+                        cause = getattr(refresh_exc, "__cause__", None)
+                        cause_code = getattr(cause, "code", None)
+                        is_revoked = (
+                            isinstance(refresh_exc, CalendarTokenRevokedError)
+                            or "invalid_grant" in err_str
+                            or "revoked" in err_str
+                            or "reconnect" in err_str
+                            or cause_code in (400, 401)
+                        )
+                        if hasattr(connection, "sync_error"):
+                            connection.sync_error = (
+                                "Google token expired or revoked. Please reconnect."
+                                if is_revoked
+                                else "Disponibilités externes temporairement inaccessibles."
+                            )
                         self._session.commit()
                         raise AvailabilityUnavailable("EXTERNAL_AVAILABILITY_UNAVAILABLE") from refresh_exc
                 busy.extend(periods)
@@ -149,8 +209,13 @@ class CRMAvailabilityService:
         config = self._session.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_id))
         company = self._session.get(Company, company_id)
         schedule = (company.business_hours if company else None) or {}
+        has_business_hours = bool(company and company.business_hours and ("weekly" in company.business_hours or "date_overrides" in company.business_hours))
+        has_voice_hours = bool(config and config.opening_hours)
+        if not has_business_hours and not has_voice_hours:
+            raise AvailabilityUnavailable("BUSINESS_HOURS_NOT_CONFIGURED")
+
         weekday = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")[day.weekday()]
-        if schedule:
+        if has_business_hours:
             records = schedule.get("date_overrides", {}).get(day.isoformat(), schedule.get("weekly", {}).get(weekday, []))
         elif config and config.opening_hours:
             records = [config.opening_hours[weekday]] if weekday in config.opening_hours else []
@@ -166,10 +231,7 @@ class CRMAvailabilityService:
                 except Exception:
                     pass
         else:
-            if weekday in {"monday", "tuesday", "wednesday", "thursday", "friday"}:
-                records = [{"open": "09:00", "close": "17:00"}]
-            else:
-                records = []
+            records = []
         if not records:
             return []
         def interval(record, start_key, end_key):
@@ -260,7 +322,15 @@ class CRMAvailabilityService:
                     "start_time": start.astimezone(self._zone(company_id)).isoformat(),
                     "end_time": end.astimezone(self._zone(company_id)).isoformat()}
         except AvailabilityUnavailable as exc:
-            return {"available": False, "state": str(exc), "reason": str(exc)}
+            reason = str(exc)
+            if reason == "BUSINESS_HOURS_NOT_CONFIGURED":
+                return {
+                    "available": False,
+                    "state": "UNCONFIGURED",
+                    "reason": "BUSINESS_HOURS_NOT_CONFIGURED",
+                    "message": "Les horaires d'ouverture de l'entreprise ne sont pas encore configurés. Veuillez d'abord les configurer dans le CRM via le bouton Horaires & Services.",
+                }
+            return {"available": False, "state": reason, "reason": reason}
 
     async def list_available_slots(self, company_id: UUID, target_date: date | datetime,
                                    service_id: UUID | None = None, employee_id: UUID | None = None,

@@ -19,8 +19,9 @@ def voice_language_matrix() -> list[dict[str, object]]:
     } for locale in BY_LOCALE]
 
 
-# Les 5 seules variantes linguistiques rigoureusement testées et validées sur la chaîne audio Telnyx
-_LIVE_AUDIO_VALIDATED_LOCALES = frozenset({"fr", "fr-CA", "en", "en-US", "en-CA", "es", "es-ES", "ro", "ro-RO"})
+# Synthetic contract tests do not certify a real telephone audio chain.
+# Add a locale only after a documented STT/TTS/Realtime/Telnyx live validation.
+_LIVE_AUDIO_VALIDATED_LOCALES: frozenset[str] = frozenset()
 
 # Langues majeures bénéficiant de modèles STT / TTS officiels chez OpenAI & Telnyx
 _TIER_1_AUDIO_LOCALES = frozenset({
@@ -72,19 +73,16 @@ def get_voice_language_capability(locale_or_bcp47: str) -> dict[str, Any]:
     for row in voice_audio_capabilities_matrix():
         if row["locale"].lower() == normalized or row["bcp47"].lower() == normalized:
             return row
-    # Fallback par défaut vers fr-CA
+    # An unknown language must not be advertised as validated French audio.
     return {
-        "locale": "fr",
-        "bcp47": "fr-CA",
-        "name": "French (Canada)",
-        "native_name": "Français (Canada)",
-        "region": "americas",
-        "ui_translation_supported": True,
-        "stt_available": True,
-        "tts_available": True,
-        "regional_voice_available": True,
-        "language_switch_tested": True,
-        "live_audio_validated": True,
-        "known_limitations": "Aucune",
-        "fallback_locale": "fr-CA",
+        "locale": locale_or_bcp47,
+        "bcp47": locale_or_bcp47,
+        "ui_translation_supported": False,
+        "stt_available": False,
+        "tts_available": False,
+        "regional_voice_available": False,
+        "language_switch_tested": False,
+        "live_audio_validated": False,
+        "known_limitations": "Unknown locale; no audio capability evidence.",
+        "fallback_locale": None,
     }

@@ -1,14 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { resolveAvenqoApiBase } from "@/lib/avenqo-api-base";
 
-const rawBase = (
-  process.env.AVENQO_API_BASE_URL ??
-  process.env.AVENQO_API_URL ??
-  process.env.API_BASE_URL ??
-  process.env.BACKEND_API_URL ??
-  "http://127.0.0.1:8000"
-).replace(/\/$/, "");
-
-const API_BASE_URL = rawBase.endsWith("/api/v1") ? rawBase : `${rawBase}/api/v1`;
+const API_BASE_URL = resolveAvenqoApiBase();
 
 const ALLOWED_ACTIONS = new Set([
   "login",

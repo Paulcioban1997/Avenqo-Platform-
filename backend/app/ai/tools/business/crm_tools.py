@@ -61,11 +61,13 @@ class CheckAvailabilityArgs(ToolArguments):
     duration_minutes: int = Field(default=60, description="Durée de la prestation en minutes.")
     employee_id: str | None = Field(default=None, description="UUID optionnel du collaborateur/praticien.")
     service_id: str | None = Field(default=None, description="UUID de la prestation avec ses marges configurées.")
+    service_name: str | None = Field(default=None, description="Nom ou intitulé de la prestation souhaitée.")
 
 
 class ListAvailableSlotsArgs(ToolArguments):
     target_date: str = Field(description="Date cible au format YYYY-MM-DD (ex: 2026-09-20).")
     service_id: str | None = Field(default=None, description="UUID optionnel de la prestation.")
+    service_name: str | None = Field(default=None, description="Nom optionnel de la prestation.")
     employee_id: str | None = Field(default=None, description="UUID optionnel du collaborateur/praticien.")
 
 
@@ -77,6 +79,7 @@ class CreateAppointmentArgs(ToolArguments):
     title: str = Field(description="Intitulé ou motif du rendez-vous (ex: Changement de pneus, Consultation).")
     duration_minutes: int = Field(default=60, description="Durée en minutes.")
     service_name: str | None = Field(default=None, description="Nom de la prestation.")
+    service_id: UUID | None = Field(default=None, description="Identifiant canonique du service CRM autorisé.")
     notes: str | None = Field(default=None, description="Notes ou spécifications (ex: Véhicule, Plaque d'immatriculation).")
     idempotency_key: str | None = Field(default=None, description="Clé stable de l'opération pour éviter les doublons lors d'une nouvelle tentative.")
     confirmed: bool = Field(default=False, description="Vrai uniquement après confirmation explicite de l'utilisateur.")
@@ -330,11 +333,53 @@ class CheckAvailabilityTool(CRMAITool):
 
         emp_id = UUID(arguments.employee_id) if arguments.employee_id else None
         service_id = UUID(arguments.service_id) if arguments.service_id else None
-        result = await self._avail.check_availability(context.tenant.company_id, start_dt, arguments.duration_minutes, emp_id, service_id)
-        is_ok = result.get("state") in ("AVAILABLE", "BUSY")
+        duration_minutes = arguments.duration_minutes
+        if context.voice_path:
+            from backend.app.services.company_intelligence_service import CompanyIntelligenceService, CompanyOfferingUnavailable
+            try:
+                offering = CompanyIntelligenceService(self._avail._session).require_service(
+                    context.tenant.company_id,
+                    service_id=service_id,
+                    service_name=arguments.service_name,
+                )
+                service_id = UUID(offering["id"])
+                duration_minutes = offering["duration_minutes"]
+            except CompanyOfferingUnavailable as exc:
+                profile = CompanyIntelligenceService(self._avail._session).get_profile(context.tenant.company_id)
+                if profile.configured_crm_services:
+                    services_info = [
+                        {"name": s["name"], "duration_minutes": s["duration_minutes"], "price": s.get("price")}
+                        for s in profile.configured_crm_services
+                    ]
+                    return ToolResult(
+                        success=True,
+                        data={
+                            "state": "SERVICE_SELECTION_REQUIRED",
+                            "message": "Plusieurs services sont proposés avec des durées différentes. Demandez au client quel service il souhaite réserver.",
+                            "available_services": services_info,
+                        },
+                        source_refs=("crm_services",),
+                    )
+                return ToolResult(success=False, error=str(exc), data={"state": "UNSUPPORTED_SERVICE"})
+        result = await self._avail.check_availability(context.tenant.company_id, start_dt, duration_minutes, emp_id, service_id)
+        state = result.get("state")
+        reason = result.get("reason", "EXTERNAL_AVAILABILITY_UNAVAILABLE")
+        if state == "UNCONFIGURED" or reason == "BUSINESS_HOURS_NOT_CONFIGURED":
+            return ToolResult(
+                success=True,
+                data={
+                    **result,
+                    "available": False,
+                    "state": "UNCONFIGURED",
+                    "reason": "BUSINESS_HOURS_NOT_CONFIGURED",
+                    "message": "Les horaires d'ouverture de l'entreprise ne sont pas encore configurés. Veuillez d'abord les configurer dans le CRM via le bouton Horaires & Services.",
+                },
+                error=None,
+                source_refs=("crm_appointments", "business_hours"),
+            )
+        is_ok = state in ("AVAILABLE", "BUSY")
         error_msg = None
         if not is_ok:
-            reason = result.get("reason", "EXTERNAL_AVAILABILITY_UNAVAILABLE")
             if "GOOGLE_CALENDAR_AUTH_EXPIRED" in str(reason) or "EXTERNAL_CALENDAR_ERROR" in str(reason):
                 error_msg = "Le calendrier Google associé nécessite une reconnexion. Veuillez contacter l'administrateur."
             else:
@@ -381,6 +426,32 @@ class ListAvailableSlotsTool(CRMAITool):
                 return ToolResult(success=False, error="Format de date invalide (YYYY-MM-DD attendu).", data={"error": "Format de date invalide (YYYY-MM-DD attendu)."})
 
         svc_id = UUID(arguments.service_id) if arguments.service_id else None
+        if context.voice_path:
+            from backend.app.services.company_intelligence_service import CompanyIntelligenceService, CompanyOfferingUnavailable
+            try:
+                offering = CompanyIntelligenceService(self._avail._session).require_service(
+                    context.tenant.company_id,
+                    service_id=svc_id,
+                    service_name=arguments.service_name,
+                )
+                svc_id = UUID(offering["id"])
+            except CompanyOfferingUnavailable as exc:
+                profile = CompanyIntelligenceService(self._avail._session).get_profile(context.tenant.company_id)
+                if profile.configured_crm_services:
+                    services_info = [
+                        {"name": s["name"], "duration_minutes": s["duration_minutes"], "price": s.get("price")}
+                        for s in profile.configured_crm_services
+                    ]
+                    return ToolResult(
+                        success=True,
+                        data={
+                            "state": "SERVICE_SELECTION_REQUIRED",
+                            "message": "Plusieurs services sont proposés avec des durées différentes. Demandez au client quel service il souhaite réserver.",
+                            "available_services": services_info,
+                        },
+                        source_refs=("crm_services",),
+                    )
+                return ToolResult(success=False, error=str(exc), data={"state": "UNSUPPORTED_SERVICE"})
         emp_id = UUID(arguments.employee_id) if arguments.employee_id else None
 
         try:
@@ -389,6 +460,19 @@ class ListAvailableSlotsTool(CRMAITool):
             )
         except AvailabilityUnavailable as exc:
             err_code = str(exc)
+            if err_code == "BUSINESS_HOURS_NOT_CONFIGURED":
+                return ToolResult(
+                    success=True,
+                    data={
+                        "target_date": target_date.isoformat(),
+                        "count": 0,
+                        "slots": [],
+                        "state": "UNCONFIGURED",
+                        "reason": "BUSINESS_HOURS_NOT_CONFIGURED",
+                        "message": "Les horaires d'ouverture de l'entreprise ne sont pas encore configurés. Veuillez d'abord les configurer dans le CRM via le bouton Horaires & Services.",
+                    },
+                    source_refs=("crm_appointments", "business_hours"),
+                )
             err_msg = (
                 "Le calendrier externe Google nécessite une reconnexion."
                 if ("GOOGLE_CALENDAR_AUTH_EXPIRED" in err_code or "EXTERNAL_CALENDAR_ERROR" in err_code)
@@ -423,6 +507,8 @@ class CreateAppointmentTool(CRMAITool):
         self._crm = CRMService(session)
 
     async def run(self, context: ToolExecutionContext, arguments: CreateAppointmentArgs) -> ToolResult:
+        # Intent starts a booking conversation, in both Central and Voice.
+        # Only the executor may validate consent before a CRM/client mutation.
         if not arguments.confirmed:
             return ToolResult(
                 success=False,
@@ -434,15 +520,29 @@ class CreateAppointmentTool(CRMAITool):
         except ValueError:
             return ToolResult(success=False, data={"error": "Format de date/heure invalide."})
 
+        verified_service = None
+        if context.voice_path:
+            from backend.app.services.company_intelligence_service import CompanyIntelligenceService, CompanyOfferingUnavailable
+            try:
+                verified_service = CompanyIntelligenceService(self._crm._session).require_service(
+                    context.tenant.company_id, service_id=arguments.service_id,
+                    service_name=arguments.service_name or arguments.title)
+            except CompanyOfferingUnavailable as exc:
+                return ToolResult(success=False, error=str(exc), data={"state": "UNSUPPORTED_SERVICE"})
+
         # Resolve only tenant-scoped exact identity or one unique CRM match.
+        requested_name = (arguments.client_name_or_id or "").strip()
+        placeholder_names = {"", "vous", "moi", "me", "client", "customer", "un client"}
+        if requested_name.casefold() in placeholder_names:
+            requested_name = (arguments.title or arguments.service_name or "Client").strip() or "Client"
         try:
-            cid = UUID(arguments.client_name_or_id)
+            cid = UUID(requested_name)
             client = self._crm.get_client(context.tenant.company_id, cid)
             resolution_error = None if client else "Client introuvable."
         except ValueError:
             client, resolution_error = self._crm.resolve_client_for_appointment(
                 context.tenant.company_id,
-                arguments.client_name_or_id,
+                requested_name,
                 email=arguments.client_email,
             )
 
@@ -453,8 +553,8 @@ class CreateAppointmentTool(CRMAITool):
                 if (arguments.client_email and self._crm.is_valid_customer_email(arguments.client_email))
                 else None
             )
-            if client_email or client_phone or arguments.client_name_or_id:
-                parts = arguments.client_name_or_id.strip().split(" ", 1)
+            if client_email or client_phone or requested_name:
+                parts = requested_name.split(" ", 1)
                 first_name = parts[0]
                 last_name = parts[1] if len(parts) > 1 else ""
                 client = self._crm.create_client(
@@ -470,15 +570,15 @@ class CreateAppointmentTool(CRMAITool):
             else:
                 return ToolResult(success=False, data={"error": resolution_error or "Impossible de déterminer le client pour ce rendez-vous."})
 
-        if not client.email and not client.phone:
+        if not client.email and not client.phone and not requested_name:
             return ToolResult(
                 success=False,
-                data={"error": "J'ai besoin du courriel ou du numéro de téléphone du client pour confirmer le rendez-vous."},
+                data={"error": "Indiquez le nom du client, plus un courriel ou un téléphone, pour confirmer le rendez-vous."},
             )
 
-        service_id = None
-        if arguments.service_name:
-            services = self._crm.list_services(context.tenant.company_id)
+        service_id = UUID(verified_service["id"]) if verified_service else None
+        if arguments.service_name and verified_service is None:
+            services = self._crm.list_services(context.tenant.company_id, published_only=True)
             matched_svc = next((s for s in services if arguments.service_name.lower() in s.name.lower()), None)
             if matched_svc:
                 service_id = matched_svc.id
@@ -486,9 +586,9 @@ class CreateAppointmentTool(CRMAITool):
         apt_data = {
             "client_id": client.id,
             "service_id": service_id,
-            "title": arguments.title,
+            "title": arguments.title or arguments.service_name or f"Rendez-vous - {client.full_name}",
             "start_time": start_dt,
-            "duration_minutes": arguments.duration_minutes,
+            "duration_minutes": verified_service["duration_minutes"] if verified_service else arguments.duration_minutes,
             "notes": arguments.notes,
             "idempotency_key": f"copilot:{context.tenant_id}:{context.request_id}",
         }
@@ -498,17 +598,32 @@ class CreateAppointmentTool(CRMAITool):
         if err or apt is None:
             return ToolResult(success=False, data={"error": err or "Échec de création du rendez-vous."})
 
+        from backend.app.voice.booking import mark_voice_call_booked
+        mark_voice_call_booked(
+            self._crm._session,
+            company_id=context.tenant.company_id,
+            appointment_id=apt.id,
+            conversation_id=context.conversation_id,
+        )
+
+        calendar_sync, sync_error = CRMService.calendar_sync_state(apt)
+        calendar_synced = calendar_sync == "synced" or bool(apt.external_event_id)
+        data = {
+            "id": str(apt.id),
+            "title": apt.title,
+            "client_name": client.full_name,
+            "start_time": apt.start_time.isoformat(),
+            "end_time": apt.end_time.isoformat(),
+            "status": apt.status,
+            "calendar_synced": calendar_synced,
+            "calendar_sync": calendar_sync,
+        }
+        if calendar_sync == "failed" and sync_error:
+            data["calendar_sync_error"] = sync_error
+
         return ToolResult(
             success=True,
-            data={
-                "id": str(apt.id),
-                "title": apt.title,
-                "client_name": client.full_name,
-                "start_time": apt.start_time.isoformat(),
-                "end_time": apt.end_time.isoformat(),
-                "status": apt.status,
-                "calendar_synced": bool(apt.external_event_id),
-            },
+            data=data,
             source_refs=("crm_appointments",),
         )
 

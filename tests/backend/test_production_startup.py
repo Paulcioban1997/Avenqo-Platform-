@@ -1,4 +1,4 @@
-﻿"""Démarrage production sans SMTP : l'app doit booter, email en erreur claire."""
+"""Démarrage production sans SMTP : l'app doit booter, email en erreur claire."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ def _build_settings(monkeypatch, **overrides):
 
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("DATABASE_URL", "sqlite:///./var/avenqo-production.db")
-    monkeypatch.setenv("AUTH_JWT_SECRET", "prod-jwt-secret-0123456789abcdef0123")
+    monkeypatch.setenv("AUTH_JWT_SECRET", 'test-only-fictional-value' * 3)
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_dummy")
     monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_dummy")
     monkeypatch.setenv("STRIPE_PRICE_DEMO", "price_demo_dummy")
@@ -30,6 +30,18 @@ def _build_settings(monkeypatch, **overrides):
     monkeypatch.setenv("FRONTEND_URL", "https://avenqo.ca")
     monkeypatch.setenv("CORS_ORIGINS", "https://avenqo.ca")
     monkeypatch.setenv("ALLOWED_HOSTS", "api.avenqo.ca")
+    for key in (
+        "SHOPIFY_CLIENT_ID",
+        "SHOPIFY_CLIENT_SECRET",
+        "SHOPIFY_REDIRECT_URI",
+        "WOOCOMMERCE_CALLBACK_URI",
+        "WOOCOMMERCE_WEBHOOK_URI",
+        "GOOGLE_CALENDAR_CLIENT_ID",
+        "GOOGLE_CALENDAR_CLIENT_SECRET",
+        "GOOGLE_CALENDAR_REDIRECT_URI",
+    ):
+        if key not in overrides:
+            monkeypatch.setenv(key, "")
     init_kwargs = {}
     for key, value in overrides.items():
         if value is None:
@@ -110,7 +122,7 @@ def test_billing_provider_returns_clear_503_when_stripe_missing(_clean_settings_
     for key in ("STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_PRICE_DEMO", "STRIPE_PRICE_PROFESSIONAL", "STRIPE_PRICE_ENTERPRISE"):
         monkeypatch.setenv(key, "")
     monkeypatch.setenv("ENVIRONMENT", "development")
-    monkeypatch.setenv("AUTH_JWT_SECRET", "prod-jwt-secret-0123456789abcdef0123")
+    monkeypatch.setenv("AUTH_JWT_SECRET", 'test-only-fictional-value' * 3)
     from backend.app.config.settings import Settings
     settings = Settings()
     assert settings.stripe_secret_key is None
@@ -195,3 +207,61 @@ def test_production_settings_rejects_wildcard_cors(
     with pytest.raises(ValueError, match="CORS_ORIGINS"):
         _build_settings(monkeypatch, CORS_ORIGINS="*")
 
+
+def test_production_rejects_connectors_without_encryption_keys(
+    _clean_settings_cache,
+    monkeypatch,
+) -> None:
+    with pytest.raises(ValueError, match="CONNECTOR_ENCRYPTION_KEYS"):
+        _build_settings(
+            monkeypatch,
+            SHOPIFY_CLIENT_ID="shopify-app-id",
+            SHOPIFY_CLIENT_SECRET="shopify-app-secret",
+            CONNECTOR_ENCRYPTION_KEYS="",
+        )
+
+
+def test_production_rejects_calendar_without_encryption_keys(
+    _clean_settings_cache,
+    monkeypatch,
+) -> None:
+    with pytest.raises(ValueError, match="CONNECTOR_ENCRYPTION_KEYS"):
+        _build_settings(
+            monkeypatch,
+            GOOGLE_CALENDAR_CLIENT_ID="calendar-client",
+            GOOGLE_CALENDAR_CLIENT_SECRET="calendar-secret",
+            CONNECTOR_ENCRYPTION_KEYS="",
+        )
+
+
+def test_production_accepts_connectors_when_encryption_keys_present(
+    _clean_settings_cache,
+    monkeypatch,
+) -> None:
+    from cryptography.fernet import Fernet
+
+    key = Fernet.generate_key().decode("ascii")
+    settings = _build_settings(
+        monkeypatch,
+        SHOPIFY_CLIENT_ID="shopify-app-id",
+        SHOPIFY_CLIENT_SECRET="shopify-app-secret",
+        SHOPIFY_REDIRECT_URI="https://api.avenqo.ca/connectors/shopify/callback",
+        CONNECTOR_ENCRYPTION_KEYS=key,
+    )
+    assert settings.connector_encryption_keys == [key]
+    assert settings.shopify_connector_configured is True
+
+
+def test_non_production_allows_missing_connector_encryption_keys(
+    _clean_settings_cache,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    monkeypatch.setenv("SHOPIFY_CLIENT_ID", "shopify-app-id")
+    monkeypatch.setenv("SHOPIFY_CLIENT_SECRET", "shopify-app-secret")
+    monkeypatch.setenv("CONNECTOR_ENCRYPTION_KEYS", "")
+    from backend.app.config.settings import Settings
+
+    settings = Settings()
+    assert settings.environment == "test"
+    assert settings.connector_encryption_keys == []

@@ -42,6 +42,9 @@ class SalesTrendResponse(BaseModel):
 class SalesForecastPointResponse(BaseModel):
     period: str
     value: float
+    orders_volume: float | None = None
+    lower_bound: float | None = None
+    upper_bound: float | None = None
 
 
 class SalesForecastResponse(BaseModel):
@@ -49,6 +52,10 @@ class SalesForecastResponse(BaseModel):
     method: str | None = None
     horizon: int | None = None
     forecasted_total: float
+    forecasted_orders: float | None = None
+    lower_bound: float | None = None
+    upper_bound: float | None = None
+    historical_context: str | None = None
     points: list[SalesForecastPointResponse]
 
 

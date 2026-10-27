@@ -515,3 +515,39 @@ def test_dashboard_endpoint_ignores_tenant_query_override(tmp_path) -> None:
 
     assert response.status_code == 200
     assert captured == [(tenant, "last_7_days")]
+
+
+def test_dashboard_splits_category_and_region_from_source_columns(tmp_path) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'dashboard-splits.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory() as session:
+        company = _company(session, "Split Tenant", "CAD")
+        dataset = _dataset(session, company, "store-utf8.csv")
+        prepared = _prepared(
+            company.id,
+            dataset.id,
+            [
+                {"date": "2016-01-01", "sale": "S1", "client": "C1", "amount": 100, "Category": "Furniture", "Region": "West"},
+                {"date": "2016-01-02", "sale": "S2", "client": "C2", "amount": 300, "Category": "Technology", "Region": "East"},
+                {"date": "2016-01-03", "sale": "S3", "client": "C3", "amount": 100, "Category": "Technology", "Region": "East"},
+            ],
+            canonical_columns={
+                "date": "order_timestamp",
+                "sale": "order_id",
+                "client": "customer_id",
+                "amount": "total_amount",
+            },
+        )
+        service, _ = _dashboard_service(session, {dataset.id: prepared})
+        dashboard = service.build(TenantContext(company.id), "all")
+
+    assert dashboard["conversion"] == {"available": False, "reason": "missing_sessions", "value": None}
+    categories = {item["label"]: item for item in dashboard["category_split"]["items"]}
+    assert dashboard["category_split"]["available"] is True
+    assert categories["Technology"]["revenue"] == 400
+    assert categories["Furniture"]["share"] == 20.0
+    regions = {item["label"]: item for item in dashboard["regional_split"]["items"]}
+    assert dashboard["regional_split"]["available"] is True
+    assert regions["East"]["orders"] == 2
+    assert regions["West"]["revenue"] == 100

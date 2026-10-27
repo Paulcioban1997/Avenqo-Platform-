@@ -18,7 +18,12 @@ from backend.app.services.calendar.base import (
     CalendarEventData,
     CalendarProvider,
     CalendarProviderError,
+    CalendarTokenRevokedError,
+    CalendarTokenTransientError,
 )
+
+GoogleTokenRevokedError = CalendarTokenRevokedError
+GoogleTokenTransientError = CalendarTokenTransientError
 
 logger = logging.getLogger(__name__)
 
@@ -36,10 +41,20 @@ CALENDAR_SCOPES = [
 async def _open_response(request, *, timeout):
     """Keep blocking urllib I/O off the API event loop, including body reads."""
     def read_response():
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            return response.read(), response.status
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return response.read(), response.status, None
+        except urllib.error.HTTPError as err:
+            try:
+                body = err.read()
+            except Exception:
+                body = b""
+            return body, err.code, err
 
-    body, status = await asyncio.to_thread(read_response)
+    body, status, err = await asyncio.to_thread(read_response)
+    if err is not None:
+        err._cached_body = body
+        raise err
     with BytesIO(body) as response:
         response.status = status
         yield response
@@ -97,12 +112,11 @@ class GoogleCalendarProvider(CalendarProvider):
             async with _open_response(req, timeout=15) as resp:
                 token_payload = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
-            err_body = exc.read().decode("utf-8")
-            logger.error("Google token exchange failed: %s %s", exc.code, err_body)
-            raise CalendarProviderError(f"Échec de l'authentification Google OAuth: {err_body}") from exc
+            logger.warning("Google token exchange failed", extra={"provider": "google", "http_status": exc.code})
+            raise CalendarProviderError(f"Échec de l'authentification Google OAuth ({exc.code}).") from exc
         except Exception as exc:
-            logger.error("Google token network error: %s", exc)
-            raise CalendarProviderError(f"Erreur de connexion avec Google: {exc}") from exc
+            logger.warning("Google token exchange network failure", extra={"provider": "google"})
+            raise CalendarProviderError("Erreur de connexion avec Google.") from exc
 
         # Fetch user email with access token
         account_email = await self._fetch_user_email(token_payload.get("access_token", ""))
@@ -148,10 +162,10 @@ class GoogleCalendarProvider(CalendarProvider):
                 ]
         except urllib.error.HTTPError as exc:
             raise CalendarProviderError(
-                f"Google Calendar API error ({exc.code}): {exc.read().decode('utf-8')}"
+                f"Google Calendar API error ({exc.code})."
             ) from exc
         except Exception as exc:
-            raise CalendarProviderError(f"Erreur réseau Google Calendar: {exc}") from exc
+            raise CalendarProviderError("Erreur réseau Google Calendar.") from exc
 
     async def refresh_access_token(self, refresh_token: str) -> dict[str, Any]:
         """Refreshes expired access token using stored refresh token."""
@@ -171,8 +185,31 @@ class GoogleCalendarProvider(CalendarProvider):
         try:
             async with _open_response(req, timeout=15) as resp:
                 return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            raw_body = getattr(exc, "_cached_body", b"").decode("utf-8", errors="replace")
+            try:
+                err_data = json.loads(raw_body)
+            except Exception:
+                err_data = {}
+            error_code = str(err_data.get("error") or "").strip().lower()
+            if error_code == "invalid_grant" or exc.code in {400, 401}:
+                logger.warning(
+                    "Google OAuth refresh token expired or revoked by Google (invalid_grant). Reconnection required.",
+                    extra={"provider": "google", "http_status": exc.code},
+                )
+                raise CalendarTokenRevokedError(
+                    "Le jeton Google Calendar est expiré ou révoqué. Reconnexion requise."
+                ) from exc
+            logger.warning(
+                "Google OAuth refresh failed with HTTP error",
+                extra={"provider": "google", "http_status": exc.code},
+            )
+            raise CalendarTokenTransientError(
+                f"Échec temporaire du rafraîchissement du token Google ({exc.code})."
+            ) from exc
         except Exception as exc:
-            raise CalendarProviderError(f"Échec du rafraîchissement du token Google: {exc}") from exc
+            logger.warning("Google token refresh network failure", extra={"provider": "google"})
+            raise CalendarTokenTransientError("Échec du rafraîchissement du token Google.") from exc
 
     def _auth_headers(self, credentials: dict[str, Any]) -> dict[str, str]:
         token = credentials.get("access_token", "")
@@ -196,7 +233,7 @@ class GoogleCalendarProvider(CalendarProvider):
             f"{GOOGLE_CALENDAR_BASE_URL}/calendars/{encoded_cal}/events"
             f"?timeMin={urllib.parse.quote(time_min)}"
             f"&timeMax={urllib.parse.quote(time_max)}"
-            f"&singleEvents=true&orderBy=startTime"
+            "&singleEvents=true&orderBy=startTime"
         )
         req = urllib.request.Request(url, headers=self._auth_headers(credentials), method="GET")
         try:
@@ -204,9 +241,9 @@ class GoogleCalendarProvider(CalendarProvider):
                 data = json.loads(resp.read().decode("utf-8"))
                 return data.get("items", [])
         except urllib.error.HTTPError as exc:
-            raise CalendarProviderError(f"Google Calendar API error ({exc.code}): {exc.read().decode('utf-8')}") from exc
+            raise CalendarProviderError(f"Google Calendar API error ({exc.code}).") from exc
         except Exception as exc:
-            raise CalendarProviderError(f"Erreur réseau Google Calendar: {exc}") from exc
+            raise CalendarProviderError("Erreur réseau Google Calendar.") from exc
 
     async def create_event(
         self,
@@ -244,9 +281,9 @@ class GoogleCalendarProvider(CalendarProvider):
                 created = json.loads(resp.read().decode("utf-8"))
                 return created.get("id", "")
         except urllib.error.HTTPError as exc:
-            raise CalendarProviderError(f"Erreur création événement Google ({exc.code}): {exc.read().decode('utf-8')}") from exc
+            raise CalendarProviderError(f"Erreur création événement Google ({exc.code}).") from exc
         except Exception as exc:
-            raise CalendarProviderError(f"Erreur création événement Google: {exc}") from exc
+            raise CalendarProviderError("Erreur création événement Google.") from exc
 
     async def update_event(
         self,
@@ -283,9 +320,9 @@ class GoogleCalendarProvider(CalendarProvider):
         except urllib.error.HTTPError as exc:
             if exc.code == 404:
                 return False
-            raise CalendarProviderError(f"Erreur modification événement Google ({exc.code}): {exc.read().decode('utf-8')}") from exc
+            raise CalendarProviderError(f"Erreur modification événement Google ({exc.code}).") from exc
         except Exception as exc:
-            raise CalendarProviderError(f"Erreur modification événement Google: {exc}") from exc
+            raise CalendarProviderError("Erreur modification événement Google.") from exc
 
     async def delete_event(
         self,
@@ -307,13 +344,27 @@ class GoogleCalendarProvider(CalendarProvider):
         )
         try:
             async with _open_response(req, timeout=15) as resp:
-                return resp.status in {200, 204}
+                if resp.status not in {200, 204}:
+                    return False
+        except urllib.error.HTTPError as exc:
+            if exc.code not in {404, 410}:
+                raise CalendarProviderError(f"Erreur suppression événement Google ({exc.code}).") from exc
+        except Exception as exc:
+            raise CalendarProviderError("Erreur suppression événement Google.") from exc
+
+        # Google retains cancelled tombstones. Confirm the exact resource is
+        # inactive before CRM clears its external ID, even after an accepted DELETE.
+        confirmation = urllib.request.Request(url, headers=self._auth_headers(credentials), method="GET")
+        try:
+            async with _open_response(confirmation, timeout=15) as resp:
+                event = json.loads(resp.read().decode("utf-8"))
+                return event.get("id") == external_event_id and event.get("status") == "cancelled"
         except urllib.error.HTTPError as exc:
             if exc.code in {404, 410}:
                 return True
-            raise CalendarProviderError(f"Erreur suppression événement Google ({exc.code}): {exc.read().decode('utf-8')}") from exc
+            raise CalendarProviderError(f"Vérification suppression Google impossible ({exc.code}).") from exc
         except Exception as exc:
-            raise CalendarProviderError(f"Erreur suppression événement Google: {exc}") from exc
+            raise CalendarProviderError("Vérification suppression Google impossible.") from exc
 
     async def check_busy_slots(
         self,

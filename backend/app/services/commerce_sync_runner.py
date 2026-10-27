@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
 from uuid import UUID
 
@@ -19,6 +20,7 @@ from backend.app.services.commerce_sync_service import (
     CommerceSyncAlreadyRunning,
     CommerceSyncService,
 )
+from backend.app.services.tenant_rls import apply_tenant_rls
 from shared.ai_engine.contracts import TenantContext
 
 logger = logging.getLogger(__name__)
@@ -56,6 +58,7 @@ class CommerceSyncRunner:
         max_pages_per_entity: int | None = None,
     ) -> None:
         with self._session_factory() as session:
+            apply_tenant_rls(session, tenant.company_id)
             service = self._service_factory(session)
             try:
                 if max_pages_per_entity is None:
@@ -73,12 +76,50 @@ class CommerceSyncRunner:
             finally:
                 session.close()
 
+    async def run_all_reserved(
+        self,
+        tenant: TenantContext,
+        connection_ids: Sequence[UUID] | None = None,
+        max_pages_per_entity: int | None = None,
+    ) -> None:
+        target_ids: list[UUID] = []
+        if connection_ids is None:
+            with self._session_factory() as session:
+                apply_tenant_rls(session, tenant.company_id)
+                conns = session.scalars(
+                    select(CommerceConnection.id).where(
+                        CommerceConnection.company_id == tenant.company_id,
+                        CommerceConnection.status != CommerceConnectionStatus.DISCONNECTED.value,
+                    )
+                ).all()
+                target_ids = list(conns)
+        else:
+            target_ids = list(connection_ids)
+
+        if not target_ids:
+            return
+
+        tasks = [
+            self.run_reserved(tenant, cid, max_pages_per_entity=max_pages_per_entity)
+            for cid in target_ids
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for cid, res in zip(target_ids, results):
+            if isinstance(res, Exception):
+                logger.error(
+                    "Parallel sync error for company=%s connection=%s: %s",
+                    tenant.company_id,
+                    cid,
+                    res,
+                )
+
     async def initialize_woocommerce(
         self,
         tenant: TenantContext,
         connection_id: UUID,
     ) -> None:
         with self._session_factory() as session:
+            apply_tenant_rls(session, tenant.company_id)
             service = self._service_factory(session)
             try:
                 await service.initialize_woocommerce(tenant, connection_id)
@@ -94,6 +135,7 @@ class CommerceSyncRunner:
 
     async def reconcile_active(self) -> int:
         with self._session_factory() as session:
+            apply_tenant_rls(session, UUID(int=0), bypass=True)
             candidates = list(
                 session.execute(
                     select(CommerceConnection.id, CommerceConnection.company_id).where(
@@ -114,6 +156,7 @@ class CommerceSyncRunner:
         for connection_id, company_id in candidates:
             tenant = TenantContext(company_id=company_id)
             with self._session_factory() as session:
+                apply_tenant_rls(session, company_id)
                 service = self._service_factory(session)
                 try:
                     service.reserve(tenant, connection_id)
@@ -136,6 +179,7 @@ class CommerceSyncRunner:
             if receipt is None or receipt.status == "PROCESSED":
                 return
             tenant = TenantContext(company_id=receipt.company_id)
+            apply_tenant_rls(session, receipt.company_id)
             service = self._service_factory(session)
             try:
                 if service.is_active(tenant, receipt.connection_id):
@@ -233,12 +277,28 @@ class CommerceSyncRunner:
             receipt.error_category = None
             receipt.processed_at = processed_at
         session.commit()
+        for receipt in receipts:
+            topic = (receipt.topic or "").lower()
+            if "order" not in topic:
+                continue
+            try:
+                from backend.app.services.automation_service import AutomationService
+
+                AutomationService(session).dispatch(
+                    receipt.company_id,
+                    "shopify_order",
+                    {"receipt_id": str(receipt.id), "topic": receipt.topic},
+                    idempotency_key=str(receipt.id),
+                )
+            except Exception:
+                logger.exception("Automation dispatch failed for commerce receipt=%s", receipt.id)
 
     @staticmethod
     def _disconnect_uninstalled(
         session: Session,
         receipt: CommerceWebhookReceipt,
     ) -> None:
+        apply_tenant_rls(session, receipt.company_id)
         connection = session.scalar(
             select(CommerceConnection).where(
                 CommerceConnection.id == receipt.connection_id,

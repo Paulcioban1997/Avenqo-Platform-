@@ -37,6 +37,7 @@ from backend.app.models import (
     TrainingJob,
 )
 from backend.app.services.dataset_import_service import DatasetImportService
+from backend.app.services.tenant_rls import apply_tenant_rls
 from backend.app.services.training_execution_controls import TrainingExecutionControls
 from backend.app.services.target_resolution_service import (
     TargetColumnUnresolved,
@@ -193,6 +194,7 @@ class TrainingDispatcher:
         session = self._session_factory()
         created: list[tuple[UUID, str]] = []
         try:
+            apply_tenant_rls(session, tenant.company_id)
             module = session.scalar(select(Module).where(Module.code == module_code))
             if module is None:
                 return []
@@ -374,6 +376,7 @@ class TrainingDispatcher:
         ai_job_id: UUID,
         dataset_id: UUID,
     ) -> None:
+        apply_tenant_rls(session, tenant.company_id)
         ai_job = session.get(AIJob, ai_job_id)
         training_job = session.scalar(
             select(TrainingJob).where(TrainingJob.ai_job_id == ai_job_id)
@@ -500,6 +503,7 @@ class TrainingDispatcher:
 
         session = self._session_factory()
         try:
+            apply_tenant_rls(session, tenant.company_id)
             dataset = (
                 session.get(Dataset, dataset_id)
                 if dataset_id is not None
@@ -619,6 +623,7 @@ class TrainingDispatcher:
 
         session = self._session_factory()
         try:
+            apply_tenant_rls(session, tenant.company_id)
             dataset = session.get(Dataset, dataset_id)
             if dataset is None or dataset.company_id != tenant.company_id:
                 raise ValueError("Connector evaluation dataset tenant mismatch")
@@ -658,6 +663,7 @@ class TrainingDispatcher:
         plans: list[tuple[str, DriftSeverity, RetrainingDecisionResult]] = []
         session = self._session_factory()
         try:
+            apply_tenant_rls(session, tenant.company_id)
             stable_dataset = session.get(Dataset, dataset_id)
             if stable_dataset is None or stable_dataset.company_id != tenant.company_id:
                 raise ValueError("Connector evaluation dataset tenant mismatch")
@@ -771,6 +777,7 @@ class TrainingDispatcher:
         decision: RetrainingDecision,
         triggered_rules: tuple[str, ...],
     ) -> None:
+        apply_tenant_rls(session, tenant.company_id)
         ai_job = session.get(AIJob, ai_job_id)
         training_job = session.scalar(
             select(TrainingJob).where(TrainingJob.ai_job_id == ai_job_id)
@@ -1403,6 +1410,7 @@ class TrainingDispatcher:
 
         session = self._session_factory()
         try:
+            apply_tenant_rls(session, tenant.company_id)
             target_row = session.scalar(
                 select(DBModelRegistry).where(
                     DBModelRegistry.company_id == tenant.company_id,

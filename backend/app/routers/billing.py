@@ -1,7 +1,7 @@
 """Routes de facturation Stripe du tenant courant."""
 
 import logging
-from typing import Any
+from typing import Any, Sequence
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -14,8 +14,14 @@ from sqlalchemy.orm import Session
 from backend.app.config.settings import Settings, get_settings
 from backend.app.core.error_localization import localized_api_message
 from backend.app.database import get_db
-from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, require_permission
-from backend.app.dependencies.billing import get_billing_provider, get_billing_service, get_invoice_fiscal_service
+from backend.app.dependencies.auth import CurrentIdentity, get_account_notifier, get_current_identity, require_permission
+from backend.app.services.account_notifications import AccountNotifier
+from backend.app.dependencies.billing import (
+    get_billing_provider,
+    get_billing_provider_optional,
+    get_billing_service,
+    get_invoice_fiscal_service,
+)
 from backend.app.core.rate_limit import rate_limit
 from backend.app.schemas.billing import (
     AICreditBalanceResponse,
@@ -32,6 +38,7 @@ from backend.app.schemas.billing import (
     InvoiceResponse,
     InvoiceFiscalSummaryResponse,
     InvoiceHistoryResponse,
+    TestInvoiceDocumentResponse,
     PaymentMethodSummary,
     PlanResponse,
     RedirectResponse,
@@ -47,9 +54,9 @@ from backend.app.services.invoice_fiscal_service import (
     InvoiceFiscalService,
     InvoiceNotFoundError,
 )
-from backend.app.services.stripe_gateway import BillingProvider
+from backend.app.services.stripe_gateway import BillingProvider, StripeTaxConfigurationError
 from backend.app.services.stripe_invoice_sync import sync_customer_invoices
-from backend.app.models import BillingAccount, Company, TenantAICreditBalance, TenantAIProviderAttempt
+from backend.app.models import BillingAccount, BillingInvoice, BillingTestDocument, Company, TenantAICreditBalance, TenantAICreditLedgerEntry, TenantAIProviderAttempt
 from payments import PLANS
 from modules.registry import BUSINESS_MODULE_REGISTRY, ModuleAvailability
 
@@ -84,6 +91,8 @@ def _credit_usage_period_start(period: str, identity: CurrentIdentity, db: Sessi
 
 def _ai_usage_module(operation: str | None) -> str:
     normalized = (operation or "").lower()
+    if "voice" in normalized:
+        return "Voice AI"
     if "retail" in normalized or "sales" in normalized:
         return "Retail AI"
     if "crm" in normalized or "appointment" in normalized:
@@ -99,14 +108,45 @@ def _ai_usage_module(operation: str | None) -> str:
     return "Autre"
 
 
+def _debited_attempt_credits(
+    db: Session, company_id: UUID, attempts: Sequence[TenantAIProviderAttempt]
+) -> dict[UUID, int]:
+    """Display wallet debits, excluding provider costs absorbed by Avenqo."""
+    request_ids = list({attempt.avenqo_request_id for attempt in attempts})
+    debits = {}
+    for start in range(0, len(request_ids), 500):
+        rows = db.execute(select(
+            TenantAICreditLedgerEntry.reference_id,
+            func.sum(-TenantAICreditLedgerEntry.included_delta - TenantAICreditLedgerEntry.purchased_delta),
+        ).where(
+            TenantAICreditLedgerEntry.company_id == company_id,
+            TenantAICreditLedgerEntry.reference_id.in_(request_ids[start:start + 500]),
+            TenantAICreditLedgerEntry.transaction_type.in_(["ai_usage", "ai_settlement"]),
+        ).group_by(TenantAICreditLedgerEntry.reference_id)).all()
+        debits.update({reference: max(int(credits or 0), 0) for reference, credits in rows})
+    return {
+        attempt.id: debits.get(attempt.avenqo_request_id, attempt.avenqo_credits or 0)
+        if attempt.avenqo_credits else 0
+        for attempt in attempts
+    }
+
+
+def _plan_display_price(plan_obj: Any, currency: str) -> tuple[float | None, float | None]:
+    usd = getattr(plan_obj, "monthly_price_usd", None) if plan_obj is not None else None
+    cad = getattr(plan_obj, "monthly_price_cad", None) if plan_obj is not None else None
+    code = (currency or "CAD").upper()
+    if code == "CAD":
+        display = cad if cad is not None else usd
+    else:
+        display = usd if usd is not None else cad
+    return usd, display
+
+
 def subscription_response(account: Any, company: Any = None) -> SubscriptionResponse:
     plan_obj = next((p for p in PLANS if p.code.value == account.plan_code), None)
     plan_name = plan_obj.name if plan_obj else account.plan_code.capitalize()
     currency = (company.currency_code or "CAD").upper() if company else "CAD"
-    if currency == "CAD":
-        price = plan_obj.monthly_price_cad if (plan_obj and plan_obj.monthly_price_cad is not None) else 29.99
-    else:
-        price = plan_obj.monthly_price_usd if (plan_obj and plan_obj.monthly_price_usd is not None) else 21.99
+    usd, price = _plan_display_price(plan_obj, currency)
     comp_name = company.name if company else None
     stripe_linked = bool(account.stripe_subscription_id)
     return SubscriptionResponse(
@@ -121,7 +161,7 @@ def subscription_response(account: Any, company: Any = None) -> SubscriptionResp
         current_period_end=account.current_period_end if stripe_linked else None,
         cancel_at_period_end=account.cancel_at_period_end,
         plan_name=plan_name,
-        monthly_price_usd=plan_obj.monthly_price_usd if plan_obj else None,
+        monthly_price_usd=usd,
         monthly_price=price,
         billing_frequency="monthly",
         currency=currency,
@@ -133,15 +173,20 @@ def subscription_response(account: Any, company: Any = None) -> SubscriptionResp
 
 def _backfill_stripe_invoices(
     db: Session,
-    provider: BillingProvider,
+    provider: BillingProvider | None,
     settings: Settings,
     company_id: UUID,
-) -> None:
+) -> bool:
+    if provider is None:
+        return False
     try:
         sync_customer_invoices(db, provider, settings, company_id)
+        return True
     except Exception:
         # L'historique local reste disponible même si Stripe est momentanément indisponible.
         logger.exception("Stripe invoice backfill failed for tenant %s", company_id)
+        db.rollback()
+        return False
 
 
 @router.get("/plans", response_model=list[PlanResponse])
@@ -174,16 +219,18 @@ def subscription(
     )
     if account is None:
         plan_obj = next((p for p in PLANS if p.code.value == identity.user.company.subscription_plan), None)
+        currency = (identity.user.company.currency_code or "CAD").upper()
+        usd, price = _plan_display_price(plan_obj, currency)
         return SubscriptionResponse(
             plan_code=identity.user.company.subscription_plan,
             status="inactive",
             current_period_end=None,
             cancel_at_period_end=False,
             plan_name=plan_obj.name if plan_obj else identity.user.company.subscription_plan.capitalize(),
-            monthly_price_usd=plan_obj.monthly_price_usd if plan_obj else 0,
-            monthly_price=plan_obj.monthly_price_usd if plan_obj else 0,
+            monthly_price_usd=usd,
+            monthly_price=price,
             billing_frequency="monthly",
-            currency=(identity.user.company.currency_code or "USD").upper(),
+            currency=currency,
             stripe_subscription_linked=False,
             company_name=identity.user.company.name,
             payment_method=None,
@@ -223,7 +270,7 @@ def checkout(
 ) -> RedirectResponse:
     try:
         return RedirectResponse(url=service.create_checkout(identity.user.company, request.plan_code))
-    except BillingConfigurationError as exc:
+    except (BillingConfigurationError, StripeTaxConfigurationError) as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     except (BillingOperationError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -250,6 +297,8 @@ def cancel(
 ) -> SubscriptionResponse:
     try:
         return subscription_response(service.cancel(identity.user.company_id))
+    except BillingConfigurationError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     except BillingOperationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -261,6 +310,8 @@ def portal(
 ) -> RedirectResponse:
     try:
         return RedirectResponse(url=service.create_portal(identity.user.company))
+    except BillingConfigurationError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     except BillingOperationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -268,9 +319,8 @@ def portal(
 @router.get("/invoices", response_model=list[InvoiceResponse])
 def invoices(
     identity: CurrentIdentity = Depends(manage_billing),
-    service: BillingService = Depends(get_billing_service),
     db: Session = Depends(get_db),
-    provider: BillingProvider = Depends(get_billing_provider),
+    provider: BillingProvider | None = Depends(get_billing_provider_optional),
     settings: Settings = Depends(get_settings),
     skip: int = 0,
     limit: int = 50,
@@ -278,7 +328,15 @@ def invoices(
     limit = min(max(limit, 1), 200)
     skip = max(skip, 0)
     _backfill_stripe_invoices(db, provider, settings, identity.user.company_id)
-    items = [InvoiceResponse.model_validate(invoice) for invoice in service.list_invoices(identity.user.company_id)]
+    invoices_list = db.scalars(
+        select(BillingInvoice)
+        .where(
+            BillingInvoice.company_id == identity.user.company_id,
+            BillingInvoice.stripe_invoice_id.not_like("in_seed_%"),
+        )
+        .order_by(BillingInvoice.issued_at.desc())
+    ).all()
+    items = [InvoiceResponse.model_validate(invoice) for invoice in invoices_list]
     return items[skip : skip + limit]
 
 
@@ -287,7 +345,7 @@ def invoice_history(
     identity: CurrentIdentity = Depends(manage_billing),
     service: InvoiceFiscalService = Depends(get_invoice_fiscal_service),
     db: Session = Depends(get_db),
-    provider: BillingProvider = Depends(get_billing_provider),
+    provider: BillingProvider | None = Depends(get_billing_provider_optional),
     settings: Settings = Depends(get_settings),
     offset: int = 0,
     limit: int = 20,
@@ -296,7 +354,7 @@ def invoice_history(
     fiscal_year: int | None = Query(default=None, ge=2000, le=2200),
 ) -> InvoiceHistoryResponse:
     # Le frontend Avenqo charge cet endpoint, donc le backfill doit être fait ici aussi.
-    _backfill_stripe_invoices(db, provider, settings, identity.user.company_id)
+    synchronized = _backfill_stripe_invoices(db, provider, settings, identity.user.company_id)
     items, total = service.get_company_invoices(
         identity.user.company_id,
         start=start,
@@ -311,10 +369,16 @@ def invoice_history(
 
     bounded_limit = min(max(limit, 1), 200)
     return InvoiceHistoryResponse(
+        environment="test" if (settings.stripe_secret_key or "").startswith("sk_test_") else "live",
+        synchronization_status="ready" if synchronized else "unavailable",
         items=[InvoiceResponse.model_validate(invoice) for invoice in items],
         total=total,
         offset=max(offset, 0),
         limit=bounded_limit,
+        test_documents=[TestInvoiceDocumentResponse.model_validate(document) for document in db.scalars(
+            select(BillingTestDocument).where(BillingTestDocument.company_id == identity.user.company_id)
+            .order_by(BillingTestDocument.issued_at.desc()).limit(50)
+        )],
     )
 
 
@@ -376,6 +440,26 @@ def invoice_fiscal_pdf(
     )
 
 
+@router.get("/test-invoice-documents/{document_id}/pdf")
+def test_invoice_document_pdf(
+    document_id: UUID,
+    identity: CurrentIdentity = Depends(manage_billing),
+    db: Session = Depends(get_db),
+) -> Response:
+    document = db.scalar(select(BillingTestDocument).where(
+        BillingTestDocument.id == document_id,
+        BillingTestDocument.company_id == identity.user.company_id,
+    ))
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    # Only an explicitly imported, tenant-scoped test PDF; no Stripe redirect or ledger write.
+    return Response(content=document.pdf_content, media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="facture-avenqo-test-{document.id}.pdf"',
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+    })
+
+
 @router.get("/invoices/{invoice_id}", response_model=InvoiceResponse)
 def invoice_detail(
     invoice_id: UUID,
@@ -388,6 +472,23 @@ def invoice_detail(
         )
     except InvoiceNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.get("/invoices/{invoice_id}/avenqo-pdf")
+def avenqo_invoice_pdf(
+    invoice_id: UUID,
+    identity: CurrentIdentity = Depends(manage_billing),
+    service: InvoiceFiscalService = Depends(get_invoice_fiscal_service),
+) -> Response:
+    try:
+        invoice = service.get_invoice(identity.user.company_id, invoice_id)
+    except InvoiceNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    content, media_type, file_name = service.generate_invoice_pdf(invoice)
+    return Response(content=content, media_type=media_type, headers={
+        "Content-Disposition": f'attachment; filename="{file_name}"',
+        "Cache-Control": "private, no-store",
+    })
 
 
 @router.get("/invoices/{invoice_id}/pdf")
@@ -471,12 +572,14 @@ def ai_credits_breakdown(
         "Copilot": 0,
         "OCR AI": 0,
         "Marketing AI": 0,
+        "Voice AI": 0,
         "Autre": 0,
     }
 
     total = 0
+    debited = _debited_attempt_credits(db, identity.user.company_id, attempts)
     for att in attempts:
-        creds = att.avenqo_credits or 0
+        creds = debited[att.id]
         module_counts[_ai_usage_module(att.operation)] += creds
         total += creds
 
@@ -508,7 +611,7 @@ def ai_credits_history(
     query = (
         select(TenantAIProviderAttempt)
         .where(*filters)
-        .order_by(TenantAIProviderAttempt.id.desc())
+        .order_by(TenantAIProviderAttempt.created_at.desc(), TenantAIProviderAttempt.id.desc())
     )
     total = (
         db.scalar(
@@ -520,10 +623,16 @@ def ai_credits_history(
     )
 
     attempts = db.scalars(query.offset(offset).limit(limit)).all()
+    from backend.app.models import User
+    actor_ids = {att.user_id for att in attempts if att.user_id is not None}
+    actors = {user.id: f"{user.first_name} {user.last_name}".strip() for user in db.scalars(
+        select(User).where(User.company_id == identity.user.company_id, User.id.in_(actor_ids))
+    )} if actor_ids else {}
     items = []
+    debited = _debited_attempt_credits(db, identity.user.company_id, attempts)
     for att in attempts:
         op = (att.operation or "Requête IA").replace("_", " ").title()
-        timestamp = att.created_at or datetime.now(timezone.utc)
+        timestamp = att.created_at
         if timestamp.tzinfo is None:
             timestamp = timestamp.replace(tzinfo=timezone.utc)
         items.append(
@@ -532,8 +641,8 @@ def ai_credits_history(
                 date=timestamp.isoformat(),
                 module=_ai_usage_module(att.operation),
                 operation=op,
-                credits_used=att.avenqo_credits or 0,
-                user=f"{identity.user.first_name} {identity.user.last_name}",
+                credits_used=debited[att.id],
+                user=actors.get(att.user_id, "—") if att.user_id is not None else "—",
             )
         )
     return AICreditHistoryResponse(
@@ -544,7 +653,7 @@ def ai_credits_history(
     )
 
 
-@router.get("/credit-packs", response_model=list[CreditPackResponse])
+@router.get("/credit-packs", response_model=list[CreditPackResponse], response_model_exclude_unset=True)
 def credit_packs(
     identity: CurrentIdentity = Depends(get_current_identity),
     service: BillingService = Depends(get_billing_service),
@@ -568,7 +677,7 @@ def credit_pack_checkout(
         return RedirectResponse(
             url=service.create_credit_checkout(identity.user.company, request.pack_code)
         )
-    except BillingConfigurationError as exc:
+    except (BillingConfigurationError, StripeTaxConfigurationError) as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     except BillingOperationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -580,6 +689,7 @@ def request_enterprise_quote(
     request: EnterpriseQuoteRequest,
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
+    notifier: AccountNotifier = Depends(get_account_notifier),
 ) -> EnterpriseQuoteResponse:
     from backend.app.models.audit_log import AuditLogEntry
     from backend.app.models.billing import EnterpriseQuote
@@ -635,6 +745,29 @@ def request_enterprise_quote(
         reference_id,
         identity.user.company_id,
     )
+
+    # Deliver notification emails to Avenqo leadership
+    subject = f"Demande de devis Enterprise — {identity.user.company.name} ({reference_id})"
+    body = "\n".join([
+        "Nouvelle demande de devis Enterprise Avenqo",
+        f"Numéro de référence : {reference_id}",
+        f"Entreprise : {identity.user.company.name} ({identity.user.company_id})",
+        f"Contact : {quote.contact_name}",
+        f"Email : {quote.contact_email}",
+        f"Téléphone : {quote.contact_phone or 'Non renseigné'}",
+        f"Modules demandés : {', '.join(quote.requested_modules or []) or 'Tous les modules Enterprise'}",
+        f"Utilisateurs estimés : {quote.estimated_users or 'Non spécifié'}",
+        f"Volume mensuel attendu : {quote.monthly_volume or 'Non spécifié'}",
+        f"Intégrations requises : {', '.join(quote.required_integrations or []) or 'Standard'}",
+        f"Message du client : {quote.notes or 'Aucun message supplémentaire'}",
+        f"Date et heure de soumission : {now.isoformat()}",
+    ])
+    for admin_email in ("info@avenqo.ca", "paulmircea15@gmail.com"):
+        try:
+            notifier.send_transactional(admin_email, subject, body)
+            logger.info("Enterprise quote notification email delivered to %s", admin_email)
+        except Exception as exc:
+            logger.warning("Échec de livraison email de devis à %s: %s", admin_email, exc)
 
     return EnterpriseQuoteResponse(
         reference_id=reference_id,

@@ -1,10 +1,32 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "git": { "deploymentEnabled": { "main": false } },
+  "git": {
+    "deploymentEnabled": {
+      "main": false,
+      "codex/avenqo-pr33-pr37-validation-20261011": false,
+      "codex/avenqo-locale-integration-20261011": false,
+      "codex/avenqo-voice-tenant-candidate-20261011": false,
+      "codex/avenqo-voice-first-call-preflight-20261012": false,
+      "codex/avenqo-voice-sandbox-call-limits-20261013": false,
+      "codex/avenqo-sandbox-inbound-answer-20261013": false,
+      "codex/avenqo-voice-commercial-provisioning-20261013": false,
+      "codex/avenqo-calendar-sandbox-hardening-20261013": false,
+      "codex/avenqo-voice-long-calls-20261013": false,
+      "codex/avenqo-marketing-truthful-errors-20261013": false,
+      "codex/voice-confirmation-20261022": false,
+      "codex/voice-tenant-audio-20261022": false,
+      "codex/voice-64-65-candidate-20261022": false,
+      "codex/voice-multi-tenant-44locales-employee-20261023": false,
+      "promotion/sandbox": false
+    }
+  },
   "framework": null,
   "buildCommand": "bash vercel-build.sh",
   "outputDirectory": "build/web",
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ]
 }

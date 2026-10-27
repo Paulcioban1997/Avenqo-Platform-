@@ -1,14 +1,8 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { resolveAvenqoApiBase } from "@/lib/avenqo-api-base";
 
-const rawApiBase = (
-  process.env.AVENQO_API_BASE_URL ??
-  process.env.AVENQO_API_URL ??
-  process.env.API_BASE_URL ??
-  process.env.BACKEND_API_URL ??
-  "http://127.0.0.1:8000"
-).replace(/\/$/, "");
-const API_BASE_URL = rawApiBase.endsWith("/api/v1") ? rawApiBase : `${rawApiBase}/api/v1`;
+const API_BASE_URL = resolveAvenqoApiBase();
 
 function tokenExpiresSoon(token: string): boolean {
   try {
@@ -59,6 +53,8 @@ function setAuthCookies(response: NextResponse, tokens: { accessToken: string; r
 
 // Routes qui nécessitent une authentification
 const PROTECTED_ROUTES = [
+  "/security",
+  "/workspace",
   "/dashboard",
   "/crm",
   "/retail",

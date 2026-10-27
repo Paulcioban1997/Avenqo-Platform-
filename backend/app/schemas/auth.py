@@ -67,6 +67,7 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1, max_length=128)
+    otp: str | None = Field(default=None, max_length=32)
 
 
 class TokenRequest(BaseModel):
@@ -87,6 +88,10 @@ class ResetPasswordRequest(TokenRequest):
     _validate_new_password = field_validator("new_password")(
         RegisterRequest.validate_password.__func__
     )
+
+
+class PreferredLanguageRequest(BaseModel):
+    preferred_language: str = Field(min_length=2, max_length=16)
 
 
 class CompanyResponse(BaseModel):

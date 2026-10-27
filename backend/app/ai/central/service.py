@@ -14,10 +14,13 @@ from backend.app.ai.chat.chat_service import ChatService
 from backend.app.ai.usage.exceptions import AIQuotaExceededError
 from backend.app.ai.llm.schemas import LLMProviderAttempt
 from backend.app.ai.usage.service import AIUsageService
+from backend.app.ai.usage.included_central import central_is_included
 from backend.app.core.locale_catalog import detect_spoken_language, resolve_locale
 from backend.app.core.error_localization import agent_upgrade_message
 from backend.app.assistants.registry import AssistantRegistry, agent_entitlements
-from backend.app.voice.caller_scope import is_public_voice_caller, public_voice_tool_allowed
+from backend.app.voice.caller_scope import is_public_voice_caller
+from backend.app.voice.tool_registry import VoiceToolRegistryService
+from backend.app.core.tenant_execution import TenantExecutionError, peek_tenant_execution
 from shared.ai_engine.contracts import TenantContext
 
 logger = logging.getLogger("avenqo.ai.central")
@@ -61,27 +64,24 @@ class CentralAIService:
         page_context: str | None,
         active_modules: frozenset[str],
         permissions: frozenset[str] = frozenset(),
+        granted_voice_tools: frozenset[str] | None = None,
+        tenant=None,
     ) -> tuple[frozenset[str], dict[str, str]] | None:
         is_voice = bool(page_context and page_context.startswith("/voice"))
         if is_voice:
-            public_caller = is_public_voice_caller(permissions)
-            voice_tool_names: set[str] = set()
-            voice_tool_agents: dict[str, str] = {}
-            for defn in self._registry.list_authorized(active_modules):
-                # Ne jamais exposer les assistants de gestion de plateforme ou d'administration
-                if defn.category in {"platform", "platform_support"} or defn.slug in {"tenant_capabilities", "platform_support", "voice"}:
-                    continue
-                for tool_name in defn.allowed_tool_names:
-                    if tool_name in {"get_subscription_options"}:
-                        continue
-                    # Appelant non authentifié : réservation publique uniquement
-                    if public_caller and not public_voice_tool_allowed(tool_name):
-                        continue
-                    voice_tool_names.add(tool_name)
-                    voice_tool_agents[tool_name] = defn.agent_id
-            if voice_tool_names:
-                return frozenset(voice_tool_names), voice_tool_agents
-            return frozenset(), {}
+            if tenant is not None and granted_voice_tools is None:
+                session = getattr(getattr(self._context_builder, "_entitlements", None), "_session", None)
+                if session is not None:
+                    return VoiceToolRegistryService(session, self._registry).allowed_tools(
+                        tenant,
+                        permissions,
+                        active_modules=active_modules,
+                    )
+            return self._voice_scope_from_grants(
+                active_modules,
+                permissions,
+                granted_voice_tools if granted_voice_tools is not None else frozenset(),
+            )
 
         if agent is None:
             return frozenset(), {}
@@ -110,6 +110,41 @@ class CentralAIService:
 
         return frozenset(tool_agents), tool_agents
 
+    def _voice_scope_from_grants(
+        self,
+        active_modules: frozenset[str],
+        permissions: frozenset[str],
+        granted_voice_tools: frozenset[str],
+    ) -> tuple[frozenset[str], dict[str, str]]:
+        from backend.app.voice.caller_scope import is_public_voice_caller, public_voice_tool_allowed
+        from backend.app.voice.module_actions import VOICE_WRITE_TOOLS
+
+        public_caller = is_public_voice_caller(permissions)
+        names: set[str] = set()
+        owners: dict[str, str] = {}
+        for defn in self._registry.list_authorized(active_modules):
+            if defn.category in {"platform", "platform_support"} or defn.slug in {
+                "tenant_capabilities",
+                "platform_support",
+                "voice",
+            }:
+                continue
+            for tool_name in defn.allowed_tool_names:
+                if tool_name == "get_subscription_options":
+                    continue
+                if public_caller and not public_voice_tool_allowed(
+                    tool_name,
+                    has_crm_booking="crm" in active_modules,
+                ):
+                    continue
+                if tool_name not in granted_voice_tools:
+                    continue
+                if tool_name in VOICE_WRITE_TOOLS and "crm:appointments:write" not in permissions and not public_caller:
+                    continue
+                names.add(tool_name)
+                owners[tool_name] = defn.agent_id
+        return frozenset(names), owners
+
     @bounded_ai_request
     async def execute(
         self,
@@ -131,6 +166,19 @@ class CentralAIService:
         attempt_sink: list[LLMProviderAttempt] | None = None,
         spoken_language_input: bool = False,
     ) -> CentralAIResult:
+        is_voice_request = bool(page_context and page_context.startswith("/voice"))
+        voice_allowed = None
+        db = getattr(self._usage, "_db", None)
+        if is_voice_request and db is not None:
+            from backend.app.services.tenant_locale_service import get_stored_profile
+            from backend.app.voice.language_resolver import to_bcp47
+            profile = get_stored_profile(db, tenant.company_id)
+            primary = profile.primary_locale if profile else user_language
+            voice_allowed = {to_bcp47(code) for code in (
+                [primary, *(profile.secondary_locales or [])] if profile else [primary]
+            )}
+            if to_bcp47(user_language) not in voice_allowed and not (locale_explicit or spoken_language_input):
+                user_language = primary
         user_language = resolve_locale(user_language)
         language_source = "explicit" if locale_explicit else "fallback"
         language_confidence = None
@@ -143,12 +191,19 @@ class CentralAIService:
             language_source = language_detection.source
             language_confidence = language_detection.confidence
             language_explicitly_requested = language_detection.source == "explicit_request"
-            if language_detection.locale is not None:
+            if language_detection.locale is not None and (
+                voice_allowed is None
+                or language_explicitly_requested
+                or any(code.split("-")[0] == language_detection.locale.split("-")[0] for code in voice_allowed)
+            ):
                 user_language = language_detection.locale
                 locale_explicit = True
             elif spoken_language_input:
                 language_auto_detect = True
         started_at = perf_counter()
+        bound = peek_tenant_execution()
+        if bound is not None and bound.company_id != tenant.company_id:
+            raise TenantExecutionError("Central AI cannot run outside the bound tenant.")
         self._chat.validate_conversation(tenant.company_id, user_id, conversation_id)
         tenant = type(tenant)(company_id=tenant.company_id, user_id=user_id)
         context = self._context_builder.build(
@@ -198,6 +253,9 @@ class CentralAIService:
                 classification_request_id = (
                     request_id if allow_existing_reservation else f"{request_id}:classification"
                 )
+                from backend.app.services.tenant_rls import release_tenant_connection
+
+                release_tenant_connection(getattr(self._usage, "_db", None))
                 return await self._chat.classify_intent(
                     system_instruction,
                     prompt,
@@ -210,9 +268,12 @@ class CentralAIService:
 
             agent = await self._router.select_free_form(query, classify)
         if agent is not None and not agent.status.is_executable:
-            result = self._result(tenant.company_id, agent.slug, "agent_unavailable", context.plan_code, agent.status.value)
-            self._log_result(tenant.company_id, agent.module_code, result, started_at, "module_unavailable")
-            return result
+            if central_is_included(tenant.company_id):
+                agent = None
+            else:
+                result = self._result(tenant.company_id, agent.slug, "agent_unavailable", context.plan_code, agent.status.value)
+                self._log_result(tenant.company_id, agent.module_code, result, started_at, "module_unavailable")
+                return result
         if agent is not None:
             scoped_agents = (agent, *self._router.select_matching_agents(query, page_context=page_context)) if agent.aggregate else (agent,)
             if any(item is not None and not item.required_permissions.issubset(permissions) for item in scoped_agents):
@@ -225,7 +286,15 @@ class CentralAIService:
             page_context,
             frozenset(context.active_modules),
             permissions=permissions,
+            tenant=tenant,
         )
+        if central_is_included(tenant.company_id) and context.subscription_status.lower() not in {"active", "trialing"}:
+            agent = None
+            tool_scope = (frozenset(), {})
+        if tool_scope is None:
+            if central_is_included(tenant.company_id):
+                agent = None
+                tool_scope = (frozenset(), {})
         if tool_scope is None:
             agent_slug = agent.slug if agent is not None else None
             module_code = agent.module_code if agent is not None else None
@@ -260,6 +329,9 @@ class CentralAIService:
         effective_agent_id = agent.agent_id if agent is not None else fallback_agent_id
 
         try:
+            from backend.app.services.tenant_rls import release_tenant_connection
+
+            release_tenant_connection(getattr(self._usage, "_db", None))
             message, _ = await self._chat.send(
                 tenant.company_id,
                 user_id,
@@ -277,13 +349,14 @@ class CentralAIService:
                 client_context=page_context or "",
                 allowed_tool_names=allowed_tool_names,
                 selected_agent_id=effective_agent_id,
+                voice_path=is_voice,
                 module_id=effective_module_id,
                 locale_explicit=locale_explicit,
                 authorized_tool_agents=authorized_tool_agents,
-                retrieve_tenant_data=False if is_public_voice_caller(permissions) else (True if is_voice else (agent is not None and agent.slug not in {"tenant_capabilities", "voice"})),
+                retrieve_tenant_data=False if is_voice or is_public_voice_caller(permissions) else (agent is not None and agent.slug not in {"tenant_capabilities", "voice"}),
                 allow_existing_reservation=allow_existing_reservation,
                 attempt_sink=attempt_sink,
-                follow_latest_utterance_language=spoken_language_input,
+                follow_latest_utterance_language=spoken_language_input or language_explicitly_requested,
                 language_explicitly_requested=language_explicitly_requested,
                 language_auto_detect=language_auto_detect,
             )
@@ -321,14 +394,21 @@ class CentralAIService:
             if tool_name == "check_availability":
                 confirmed = confirmed and tool_result.data.get("state") == "AVAILABLE"
             elif tool_name == "create_appointment":
-                confirmed = (
-                    confirmed
-                    and bool(tool_result.data.get("id"))
-                    and tool_result.data.get("calendar_synced") is True
-                )
+                confirmed = confirmed and bool(tool_result.data.get("id"))
             elif tool_name == "list_available_slots":
                 confirmed = confirmed and isinstance(tool_result.data.get("slots"), list)
-            outcomes.append({"tool": tool_name, "success": bool(tool_result.success), "confirmed": confirmed})
+            error = None
+            if not tool_result.success:
+                payload = tool_result.data if isinstance(tool_result.data, dict) else {}
+                error = tool_result.error or payload.get("error")
+            outcome: dict[str, object] = {
+                "tool": tool_name,
+                "success": bool(tool_result.success),
+                "confirmed": confirmed,
+            }
+            if error:
+                outcome["error"] = str(error)
+            outcomes.append(outcome)
         return tuple(outcomes)
 
     def _log_result(
@@ -344,7 +424,7 @@ class CentralAIService:
             company_id,
             module_code,
             self._chat.provider_name,
-            1 if result.status == "success" else 0,
+            1 if result.status == "success" and not central_is_included(company_id) else 0,
             result.status,
             int((perf_counter() - started_at) * 1000),
             route,
