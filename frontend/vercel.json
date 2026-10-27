@@ -17,7 +17,8 @@
       "codex/voice-tenant-audio-20261022": false,
       "codex/voice-64-65-candidate-20261022": false,
       "codex/voice-multi-tenant-44locales-employee-20261023": false,
-      "promotion/sandbox": false
+      "promotion/sandbox": false,
+      "codex/fix-sandbox-owner-login-20261027": false
     }
   },
   "framework": null,

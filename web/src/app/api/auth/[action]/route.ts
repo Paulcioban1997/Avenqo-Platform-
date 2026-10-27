@@ -3,6 +3,13 @@ import { resolveAvenqoApiBase } from "@/lib/avenqo-api-base";
 
 const API_BASE_URL = resolveAvenqoApiBase();
 
+function traceHeaders() {
+  return {
+    "X-Request-ID": crypto.randomUUID(),
+    "X-Avenqo-Backend-Origin": new URL(API_BASE_URL).origin,
+  };
+}
+
 const ALLOWED_ACTIONS = new Set([
   "login",
   "register",
@@ -38,10 +45,12 @@ export async function POST(
   }
 
   try {
+    const trace = traceHeaders();
     const body = await request.text();
     const headers: Record<string, string> = {
       "Content-Type": request.headers.get("content-type") ?? "application/json",
       Accept: "application/json",
+      "X-Request-ID": trace["X-Request-ID"],
     };
     const acceptLanguage =
       request.headers.get("accept-language") ??
@@ -71,6 +80,7 @@ export async function POST(
     const responseBody = await upstream.text();
     const responseHeaders = new Headers();
     responseHeaders.set("Content-Type", upstream.headers.get("content-type") ?? "application/json");
+    Object.entries(trace).forEach(([name, value]) => responseHeaders.set(name, value));
 
     const response = new NextResponse(responseBody, {
       status: upstream.status,
@@ -134,7 +144,7 @@ export async function POST(
 
     return response;
   } catch (error) {
-    console.error(`Avenqo auth proxy failed for ${action}`, error);
+    console.error("Avenqo auth proxy unavailable", {action, error_class: error instanceof Error ? error.name : "UnknownError"});
     return NextResponse.json(
       { detail: "Le service Avenqo est temporairement indisponible." },
       { status: 503 },
@@ -153,8 +163,10 @@ export async function GET(
   }
 
   try {
+    const trace = traceHeaders();
     const headers: Record<string, string> = {
       Accept: "application/json",
+      "X-Request-ID": trace["X-Request-ID"],
     };
     const incomingCookie = request.headers.get("cookie");
     if (incomingCookie) headers["Cookie"] = incomingCookie;
@@ -176,6 +188,7 @@ export async function GET(
     return new NextResponse(responseBody, {
       status: upstream.status,
       headers: {
+        ...trace,
         "Content-Type": upstream.headers.get("content-type") ?? "application/json",
       },
     });

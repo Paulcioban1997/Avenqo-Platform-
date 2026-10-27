@@ -44,3 +44,16 @@ it("does not send preview traffic to production even if the env points there", (
 it("uses localhost for local development", () => {
   expect(resolveAvenqoApiOrigin({})).toBe("http://127.0.0.1:8000");
 });
+
+it.each(["ENVIRONMENT", "AVENQO_ENVIRONMENT", "NEXT_PUBLIC_AVENQO_ENVIRONMENT"])(
+  "keeps Preview isolated when inherited %s says production", (key) => {
+    expect(resolveAvenqoApiBase({VERCEL_ENV: "preview", [key]: "production",
+      BACKEND_API_URL: "https://api.avenqo.ca"})).toBe(
+        "https://avenqo-platform-sandbox.up.railway.app/api/v1");
+  });
+
+it("does not allow a stale branch URL to redirect Preview credentials", () => {
+  expect(resolveAvenqoApiOrigin({VERCEL_ENV: "preview", ENVIRONMENT: "production",
+    AVENQO_API_BASE_URL: "https://old-branch.invalid"})).toBe(
+      "https://avenqo-platform-sandbox.up.railway.app");
+});
