@@ -56,6 +56,19 @@ def get_billing_service(
     )
 
 
+def get_credit_balance_service(
+    db: Session = Depends(get_db),
+    notifier: AccountNotifier = Depends(get_account_notifier),
+) -> BillingService:
+    """Read the tenant ledger without requiring or invoking Stripe."""
+    settings = get_settings()
+    return BillingService(
+        db, None, settings,
+        AIUsageService(db, AIQuotaPolicy(settings), settings.avenqo_provider_cost_per_credit_usd, settings.ai_credit_reservation_ttl_minutes),
+        notifier,
+    )
+
+
 def get_invoice_fiscal_service(
     db: Session = Depends(get_db),
 ) -> InvoiceFiscalService:

@@ -1060,7 +1060,7 @@ class CRMService:
             conn = self._session.get(CRMCalendarConnection, conn.id)
             if conn is not None:
                 conn.sync_status = "error"
-                conn.sync_error = "Synchronisation Google Calendar impossible."
+                conn.sync_error = "Google token expired or revoked. Please reconnect." if isinstance(exc, CalendarTokenRevokedError) else "Synchronisation Google Calendar impossible."
                 self._session.commit()
             raise CalendarProviderError("Synchronisation Google Calendar impossible.") from exc
 
@@ -1081,15 +1081,8 @@ class CRMService:
         )
         if conn is None or self._cipher is None:
             return []
-        if conn.sync_status == "error":
-            try:
-                test_creds = self._cipher.decrypt(conn.encrypted_credentials)
-                if test_creds and isinstance(test_creds, dict):
-                    conn.sync_status = "connected"
-                    conn.sync_error = None
-                    self._session.commit()
-            except Exception:
-                return []
+        if conn.sync_status == "error" and any(marker in (conn.sync_error or "").lower() for marker in ("token", "jeton", "revok", "reconnect")):
+            raise CalendarTokenRevokedError("Reconnectez Google Calendar pour reprendre les réservations.")
         settings = get_settings()
         provider = GoogleCalendarProvider(
             settings.google_calendar_client_id,
@@ -1108,8 +1101,16 @@ class CRMService:
                 credentials = {**credentials, **refreshed, "refresh_token": refresh_token}
                 conn.encrypted_credentials = self._cipher.encrypt(credentials)
                 events = await provider.list_events(credentials, start_time, end_time, conn.calendar_id)
+            conn.sync_status = "connected"
+            conn.sync_error = None
             conn.last_synced_at = datetime.now(timezone.utc)
             self._session.commit()
+        except CalendarTokenRevokedError:
+            self._session.rollback()
+            conn.sync_status = "error"
+            conn.sync_error = "Google token expired or revoked. Please reconnect."
+            self._session.commit()
+            raise
         except Exception as exc:
             self._session.rollback()
             raise CalendarProviderError("Lecture Google Calendar impossible.") from exc
@@ -1157,15 +1158,8 @@ class CRMService:
             except Exception:
                 return "not_configured", None
 
-        if conn.sync_status == "error":
-            try:
-                test_creds = cipher.decrypt(conn.encrypted_credentials)
-                if test_creds and isinstance(test_creds, dict):
-                    conn.sync_status = "connected"
-                    conn.sync_error = None
-                    self._session.commit()
-            except Exception:
-                return "failed", f"Le calendrier Google est en erreur ({conn.sync_error or 'reconnexion requise'}). Veuillez reconnecter le calendrier."
+        if conn.sync_status == "error" and any(marker in (conn.sync_error or "").lower() for marker in ("token", "jeton", "revok", "reconnect")):
+            return "failed", "Reconnectez Google Calendar pour reprendre les réservations."
 
         settings = get_settings()
         try:

@@ -10,6 +10,7 @@ import json
 import logging
 import re
 import secrets
+from urllib.parse import urlencode, urlsplit
 from typing import Any
 from uuid import UUID
 
@@ -39,6 +40,7 @@ from backend.app.models.crm import (
 )
 from backend.app.models.commerce_connection import CommerceOAuthState
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
+from backend.app.services.calendar.base import CalendarProviderError, CalendarTokenRevokedError
 from backend.app.services.calendar.outlook_provider import OutlookCalendarProvider
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
 from backend.app.services.crm_availability_service import AvailabilityUnavailable, CRMAvailabilityService
@@ -153,7 +155,7 @@ def save_business_hours(payload: BusinessHoursRequest, tenant: TenantContext = D
     return get_business_hours(tenant, db)
 
 
-def _google_oauth_state(tenant_id: UUID, user_id: UUID, secret: str) -> str:
+def _google_oauth_state(tenant_id: UUID, user_id: UUID, secret: str, return_origin: str | None = None) -> str:
     payload = {
         "tenant_id": str(tenant_id),
         "user_id": str(user_id),
@@ -161,6 +163,8 @@ def _google_oauth_state(tenant_id: UUID, user_id: UUID, secret: str) -> str:
         "nonce": secrets.token_urlsafe(24),
         "expires_at": int(datetime.now(timezone.utc).timestamp()) + 600,
     }
+    if return_origin:
+        payload["return_origin"] = return_origin
     encoded = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).decode().rstrip("=")
     signature = hmac.new(secret.encode(), encoded.encode(), hashlib.sha256).hexdigest()
     return f"{encoded}.{signature}"
@@ -182,6 +186,17 @@ def _verify_google_oauth_state(state: str, secret: str) -> dict[str, str]:
         return payload
     except (ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=400, detail="État OAuth Google invalide ou expiré.") from exc
+
+
+def _calendar_return_origin(settings, origin: str) -> str:
+    """Exact operator-managed allowlist; never trust arbitrary forwarded hosts."""
+    origin = origin.rstrip("/")
+    parsed = urlsplit(origin)
+    allowed = {settings.frontend_url.rstrip("/"), *getattr(settings, "cors_origins", [])}
+    allowed.update(item.strip().rstrip("/") for item in getattr(settings, "google_calendar_return_origins", "").split(",") if item.strip())
+    if origin not in allowed or parsed.scheme != "https" or parsed.netloc != parsed.hostname or parsed.path or parsed.query or parsed.fragment:
+        raise HTTPException(status_code=400, detail="Origine de retour Calendar non autorisée.")
+    return origin
 
 
 def _google_redirect_uri(settings, request: Request | None = None) -> str:
@@ -980,9 +995,11 @@ def get_calendar_connection(
             "requires_reconnect": False,
             "reconnect_message": None,
         }
-    requires_reconnect = conn.sync_status == "error"
+    requires_reconnect = conn.sync_status in {"reconnect_required", "revoked"} or (conn.sync_status == "error" and any(marker in (conn.sync_error or "").lower() for marker in ("token", "jeton", "revok", "révoqu", "reconnect")))
+    connection_status = "CONNECTED" if conn.sync_status == "connected" else "RECONNECT_REQUIRED" if requires_reconnect else "DISCONNECTED" if conn.sync_status == "disconnected" else "ERROR"
     return {
         "connected": conn.sync_status == "connected",
+        "connection_status": connection_status,
         "provider": conn.provider,
         "account_email": conn.account_email,
         "calendar_id": conn.calendar_id,
@@ -1018,10 +1035,12 @@ def get_google_calendar_auth_url(
         client_secret=settings.google_calendar_client_secret,
         redirect_uri=redirect_uri,
     )
+    return_origin = _calendar_return_origin(settings, request.headers.get("x-avenqo-calendar-return-origin") or settings.frontend_url)
     state = _google_oauth_state(
         tenant.company_id,
         identity.user.id,
         settings.auth_jwt_secret,
+        return_origin=return_origin,
     )
     now = datetime.now(timezone.utc)
     previous_states = db.scalars(
@@ -1057,12 +1076,12 @@ async def google_calendar_callback(
     state: str = Query(...),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
-    _require_oauth_bind(request, state)
     settings = get_settings()
     state_data = _verify_google_oauth_state(state, settings.auth_jwt_secret)
     tenant_id = UUID(state_data["tenant_id"])
     user_id = UUID(state_data["user_id"])
     now = datetime.now(timezone.utc)
+    apply_tenant_rls(db, tenant_id)
     oauth_state = db.scalar(
         select(CommerceOAuthState)
         .where(
@@ -1079,6 +1098,21 @@ async def google_calendar_callback(
         or oauth_state.actor_user_id != user_id
     ):
         raise HTTPException(status_code=400, detail="État OAuth Google invalide ou déjà utilisé.")
+    # Google returns to the stable API domain. The HttpOnly binding cookie
+    # belongs to the initiating web origin. Relay the short-lived code there;
+    # only its server route can forward the browser cookie for finalization.
+    # Never exchange/persist credentials before the browser binding is checked.
+    return_origin = state_data.get("return_origin")
+    if return_origin:
+        return_origin = _calendar_return_origin(settings, return_origin)
+    if not request.cookies.get(_OAUTH_BIND_COOKIE) and return_origin and request.headers.get("x-avenqo-calendar-relay") != "1":
+        redirect = RedirectResponse(
+            url=f"{return_origin}/api/v1/crm/calendar/google/relay?{urlencode({'code': code, 'state': state})}",
+            status_code=303,
+            headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+        )
+        return redirect
+    _require_oauth_bind(request, state)
     apply_tenant_rls(db, tenant_id)
     oauth_state.consumed_at = now
     db.add(oauth_state)
@@ -1091,6 +1125,10 @@ async def google_calendar_callback(
         redirect_uri=_google_redirect_uri(settings, request),
     )
     tokens = await provider.exchange_code(code)
+    # Verify real Calendar access before recording CONNECTED; no event writes.
+    if not tokens.get("access_token") or not tokens.get("account_email"):
+        raise HTTPException(status_code=502, detail="Identité du compte Google non confirmée.")
+    await provider.list_calendars(tokens)
     encrypted_creds = cipher.encrypt(tokens)
     email = tokens.get("account_email") or "compte-google@avenqo.ca"
 
@@ -1131,14 +1169,12 @@ async def google_calendar_callback(
         db.add(conn)
 
     db.commit()
-    try:
-        await CRMService(db, cipher).sync_from_google(tenant_id)
-    except Exception:
-        pass
     redirect = RedirectResponse(
-        url=f"{settings.frontend_url.rstrip('/')}/integrations?integration=google_calendar&status=connected",
+        url=f"{return_origin or settings.frontend_url.rstrip('/')}/crm?tab=connections&integration=google_calendar",
         status_code=303,
     )
+    redirect.headers["Cache-Control"] = "no-store"
+    redirect.headers["Referrer-Policy"] = "no-referrer"
     redirect.delete_cookie(_OAUTH_BIND_COOKIE, path=_OAUTH_BIND_PATH)
     return redirect
 
@@ -1288,12 +1324,27 @@ async def list_google_calendars(
         raise HTTPException(status_code=404, detail="Google Calendar non connecté.")
     try:
         credentials = get_connector_secret_cipher().decrypt(conn.encrypted_credentials)
-        calendars = await GoogleCalendarProvider(
+        provider = GoogleCalendarProvider(
             client_id=get_settings().google_calendar_client_id,
             client_secret=get_settings().google_calendar_client_secret,
             redirect_uri=get_settings().google_calendar_redirect_uri,
-        ).list_calendars(credentials)
+        )
+        try:
+            calendars = await provider.list_calendars(credentials)
+        except CalendarProviderError as exc:
+            if "401" not in str(exc) or not credentials.get("refresh_token"):
+                raise
+            refreshed = await provider.refresh_access_token(credentials["refresh_token"])
+            credentials = {**credentials, **refreshed}
+            calendars = await provider.list_calendars(credentials)
+            conn.encrypted_credentials = get_connector_secret_cipher().encrypt(credentials)
+            db.commit()
         return {"selected_calendar_id": conn.calendar_id, "calendars": calendars}
+    except CalendarTokenRevokedError as exc:
+        conn.sync_status = "error"
+        conn.sync_error = "Google token expired or revoked. Please reconnect."
+        db.commit()
+        raise HTTPException(status_code=409, detail="Reconnectez Google Calendar pour reprendre les réservations.") from exc
     except Exception as exc:
         conn.sync_status = "error"
         conn.sync_error = "Impossible de lire les calendriers Google."
@@ -1327,6 +1378,8 @@ async def get_google_calendar_events(
             end_time=end or now + timedelta(days=365),
         )
         return {"events": events}
+    except CalendarTokenRevokedError as exc:
+        raise HTTPException(status_code=409, detail="Reconnectez Google Calendar pour reprendre les réservations.") from exc
     except Exception as exc:
         logger.warning("Événements Google Calendar indisponibles pour company=%s: %s", tenant.company_id, exc)
         return {"events": []}

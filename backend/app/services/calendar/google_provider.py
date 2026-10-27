@@ -192,7 +192,7 @@ class GoogleCalendarProvider(CalendarProvider):
             except Exception:
                 err_data = {}
             error_code = str(err_data.get("error") or "").strip().lower()
-            if error_code == "invalid_grant" or exc.code in {400, 401}:
+            if error_code == "invalid_grant":
                 logger.warning(
                     "Google OAuth refresh token expired or revoked by Google (invalid_grant). Reconnection required.",
                     extra={"provider": "google", "http_status": exc.code},

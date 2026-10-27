@@ -306,6 +306,7 @@ class Settings(BaseSettings):
     google_calendar_client_id: str | None = Field(default=None, alias="GOOGLE_CALENDAR_CLIENT_ID")
     google_calendar_client_secret: str | None = Field(default=None, alias="GOOGLE_CALENDAR_CLIENT_SECRET")
     google_calendar_redirect_uri: str | None = Field(default=None, alias="GOOGLE_CALENDAR_REDIRECT_URI")
+    google_calendar_return_origins: str = Field(default="", alias="GOOGLE_CALENDAR_RETURN_ORIGINS")
     microsoft_calendar_client_id: str | None = Field(default=None, alias="MICROSOFT_CALENDAR_CLIENT_ID")
     microsoft_calendar_client_secret: str | None = Field(default=None, alias="MICROSOFT_CALENDAR_CLIENT_SECRET")
     microsoft_calendar_redirect_uri: str | None = Field(default=None, alias="MICROSOFT_CALENDAR_REDIRECT_URI")

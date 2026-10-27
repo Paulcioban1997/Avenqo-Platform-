@@ -20,6 +20,7 @@ from backend.app.dependencies.billing import (
     get_billing_provider,
     get_billing_provider_optional,
     get_billing_service,
+    get_credit_balance_service,
     get_invoice_fiscal_service,
 )
 from backend.app.core.rate_limit import rate_limit
@@ -541,7 +542,7 @@ def single_invoice_export(
 @router.get("/ai-credits", response_model=AICreditBalanceResponse)
 def ai_credit_balance(
     identity: CurrentIdentity = Depends(get_current_identity),
-    service: BillingService = Depends(get_billing_service),
+    service: BillingService = Depends(get_credit_balance_service),
 ) -> AICreditBalanceResponse:
     return AICreditBalanceResponse.model_validate(
         service.get_credit_balance(

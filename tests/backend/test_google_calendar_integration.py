@@ -221,6 +221,9 @@ def test_callback_without_jwt_consumes_valid_state_and_rejects_replay(monkeypatc
     now = datetime.now(timezone.utc)
 
     class FakeProvider:
+        async def list_calendars(self, credentials):
+            return [{"id": "primary"}]
+
         async def exchange_code(self, code: str):
             assert code == "google-code"
             return {"access_token": "runtime-token", "account_email": "owner@example.com"}
@@ -481,3 +484,43 @@ def test_crm_get_calendar_connection_returns_reconnect_status_when_error():
     assert res["sync_status"] == "error"
     assert res["requires_reconnect"] is True
     assert res["reconnect_message"] == "Reconnectez Google Calendar pour reprendre les réservations"
+
+def test_cross_domain_callback_relays_without_exchanging_tokens(monkeypatch):
+    from urllib.parse import urlsplit, parse_qs
+    from backend.app.routers.crm import _calendar_return_origin
+    tenant_id, user_id = UUID('00000000-0000-0000-0000-000000000010'), UUID('00000000-0000-0000-0000-000000000011')
+    origin = 'https://preview.example.test'
+    settings = SimpleNamespace(auth_jwt_secret='explicit-test-fixture', frontend_url='https://old.example.test', cors_origins=[], google_calendar_return_origins=origin)
+    monkeypatch.setattr('backend.app.routers.crm.get_settings', lambda: settings)
+    state = _google_oauth_state(tenant_id, user_id, settings.auth_jwt_secret, return_origin=origin)
+    row = SimpleNamespace(company_id=tenant_id, actor_user_id=user_id, expires_at=datetime.now(timezone.utc) + timedelta(minutes=10), consumed_at=None)
+    db = SimpleNamespace(scalar=lambda query:row)
+    monkeypatch.setattr('backend.app.routers.crm.GoogleCalendarProvider', lambda **kwargs: pytest.fail('must not exchange before browser binding'))
+    response = asyncio.run(google_calendar_callback(request=_callback_request(state, bind=False), code='non-sensitive-fixture-code', state=state, db=db))
+    assert response.status_code == 303
+    target = urlsplit(response.headers['location'])
+    assert f'{target.scheme}://{target.netloc}' == origin
+    assert target.path == '/api/v1/crm/calendar/google/relay'
+    assert parse_qs(target.query)['state'] == [state]
+    assert row.consumed_at is None
+    assert response.headers['referrer-policy'] == 'no-referrer'
+    req = _callback_request(state, bind=False)
+    req.scope['headers'].append((b'x-avenqo-calendar-relay', b'1'))
+    with pytest.raises(Exception, match='navigateur manquante'):
+        asyncio.run(google_calendar_callback(request=req, code='fixture-code', state=state, db=db))
+    with pytest.raises(Exception, match='non autorisée'):
+        _calendar_return_origin(settings, 'https://preview.example.test.attacker.invalid')
+    with pytest.raises(Exception, match='non autorisée'):
+        _calendar_return_origin(settings, origin + '/untrusted')
+    with pytest.raises(Exception, match='invalide'):
+        asyncio.run(google_calendar_callback(request=_callback_request(state, bind=False), code='fixture-code', state=state + 'tampered', db=db))
+
+def test_google_oauth_configuration_error_is_not_misreported_as_revoked_token(monkeypatch):
+    from io import BytesIO
+    from urllib.error import HTTPError
+    from backend.app.services.calendar.base import CalendarTokenTransientError
+    def bad_client(req, timeout):
+        raise HTTPError(req.full_url, 400, 'fixture', {}, BytesIO(b'{"error":"invalid_client"}'))
+    monkeypatch.setattr('urllib.request.urlopen', bad_client)
+    with pytest.raises(CalendarTokenTransientError):
+        asyncio.run(GoogleCalendarProvider('fixture-client', 'fixture-secret').refresh_access_token('fixture-refresh'))

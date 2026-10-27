@@ -1705,3 +1705,21 @@ def test_versioned_pack_fulfills_server_terms_once_and_rejects_wrong_subtotal(bi
     assert client.post("/api/v1/billing/webhook",content=b"{}",headers={"Stripe-Signature":"valid_signature"}).json()=={"processed":False}
     balance=client.get("/api/v1/billing/ai-credits",headers=headers).json()
     assert balance["purchased_remaining"]==1000 and balance["monthly_included"]==6500
+
+def test_credit_balance_does_not_require_stripe_and_remains_tenant_scoped(billing_environment, monkeypatch):
+    client, provider, notifier = billing_environment
+    first = create_owner(client, notifier, email='credit-no-gateway-first@example.com')
+    second = create_owner(client, notifier, email='credit-no-gateway-second@example.com')
+    provider.events.append(subscription_event(second['company']['id'], plan_code='professional'))
+    assert client.post('/api/v1/billing/webhook', content=b'{}', headers={'Stripe-Signature':'valid_signature'}).status_code == 200
+    from backend.app.dependencies.billing import get_billing_provider
+    def forbidden_gateway():
+        raise AssertionError('local ledger must not require Stripe')
+    client.app.dependency_overrides[get_billing_provider] = forbidden_gateway
+    response = client.get('/api/v1/billing/ai-credits?company_id=' + second['company']['id'], headers=auth_headers(first))
+    assert response.status_code == 200
+    second_balance = client.get('/api/v1/billing/ai-credits', headers=auth_headers(second))
+    assert second_balance.status_code == 200
+    assert second_balance.json()['monthly_included'] == 25000
+    assert response.json()['monthly_included'] == 6500
+    assert client.get('/api/v1/billing/ai-credits').status_code == 401
