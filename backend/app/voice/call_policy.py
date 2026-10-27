@@ -17,7 +17,7 @@ from backend.app.services.plan_limits_service import PlanLimitsService
 
 
 class CallPolicy(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
     max_call_seconds: int | None = Field(default=3600, ge=60, le=86400)
     idle_seconds: int = Field(default=120, ge=30, le=600)
     concurrent_calls: int = Field(default=1, ge=1, le=100)
@@ -26,6 +26,9 @@ class CallPolicy(BaseModel):
     monthly_minutes: int = Field(default=600, ge=1, le=1000000)
     alert_percent: int = Field(default=80, ge=1, le=99)
     auth_seconds: int = Field(default=600, ge=60, le=86400)
+    ivr_enabled: bool | None = None
+    lifecycle_status: str | None = None
+    ivr_greeting: str | None = None
 
 
 def utc(value):

@@ -118,6 +118,7 @@ class AuthService:
         )
         self._session.add_all((company, user))
         self._session.flush()
+        apply_tenant_rls(self._session, company.id)
         membership = CompanyMembership(
             user_id=user.id,
             company_id=company.id,

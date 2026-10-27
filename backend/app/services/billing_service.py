@@ -44,7 +44,7 @@ class BillingService:
     def __init__(
         self,
         session: Session,
-        provider: BillingProvider,
+        provider: BillingProvider | None,
         settings: Settings,
         usage_service: AIUsageService,
         notifier: AccountNotifier,
@@ -54,6 +54,12 @@ class BillingService:
         self._settings = settings
         self._usage_service = usage_service
         self._notifier = notifier
+
+    @property
+    def provider(self) -> BillingProvider:
+        if self._provider is None:
+            raise BillingConfigurationError("Stripe n'est pas configuré")
+        return self._provider
 
     def get_account(self, company_id: UUID) -> BillingAccount:
         account = self._session.scalar(select(BillingAccount).where(
@@ -79,13 +85,13 @@ class BillingService:
         if account.stripe_subscription_id and account.status not in {"canceled", "incomplete_expired"}:
             raise BillingOperationError("Un abonnement existe déjà; utilisez le changement d'offre")
         if not account.stripe_customer_id:
-            account.stripe_customer_id = self._provider.create_customer(
+            account.stripe_customer_id = self.provider.create_customer(
                 company.email,
                 company.name,
                 str(company.id),
             )
             self._session.commit()
-        return self._provider.create_checkout(
+        return self.provider.create_checkout(
             account.stripe_customer_id,
             price_id,
             str(company.id),
@@ -100,7 +106,7 @@ class BillingService:
         account = self.get_account(company_id)
         if not account.stripe_subscription_id:
             raise BillingOperationError("Aucun abonnement Stripe actif")
-        self._provider.change_subscription(
+        self.provider.change_subscription(
             account.stripe_subscription_id,
             self._required_price(plan.code, account.company.currency_code),
         )
@@ -110,7 +116,7 @@ class BillingService:
         account = self.get_account(company_id)
         if not account.stripe_subscription_id:
             raise BillingOperationError("Aucun abonnement Stripe actif")
-        self._provider.cancel_subscription(account.stripe_subscription_id)
+        self.provider.cancel_subscription(account.stripe_subscription_id)
         account.cancel_at_period_end = True
         self._session.commit()
         return account
@@ -119,13 +125,13 @@ class BillingService:
         """Ouvre le portail Stripe et crée le Customer à la demande si nécessaire."""
         account = self.get_account(company.id)
         if not account.stripe_customer_id:
-            account.stripe_customer_id = self._provider.create_customer(
+            account.stripe_customer_id = self.provider.create_customer(
                 company.email,
                 company.name,
                 str(company.id),
             )
             self._session.commit()
-        return self._provider.create_portal(
+        return self.provider.create_portal(
             account.stripe_customer_id,
             f"{self._settings.frontend_url.rstrip('/')}/billing",
         )
@@ -241,7 +247,7 @@ class BillingService:
             **({"avenqo_pack_name": offer.name, "avenqo_price_cents": str(offer.price_cents)} if offer else {}),
         }
         try:
-            checkout = self._provider.create_credit_checkout(
+            checkout = self.provider.create_credit_checkout(
                 account.stripe_customer_id,
                 "" if offer else self._required_credit_price(pack.code),
                 metadata,
@@ -261,7 +267,7 @@ class BillingService:
     def process_webhook(self, payload: bytes, signature: str) -> bool:
         if not self._settings.stripe_webhook_secret:
             raise BillingConfigurationError("STRIPE_WEBHOOK_SECRET n'est pas configuré")
-        event = self._provider.construct_event(
+        event = self.provider.construct_event(
             payload,
             signature,
             self._settings.stripe_webhook_secret,

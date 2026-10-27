@@ -16,7 +16,12 @@ from backend.app.core.error_localization import localized_api_message
 from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_account_notifier, get_current_identity, require_permission
 from backend.app.services.account_notifications import AccountNotifier
-from backend.app.dependencies.billing import get_billing_provider, get_billing_service, get_invoice_fiscal_service
+from backend.app.dependencies.billing import (
+    get_billing_provider,
+    get_billing_provider_optional,
+    get_billing_service,
+    get_invoice_fiscal_service,
+)
 from backend.app.core.rate_limit import rate_limit
 from backend.app.schemas.billing import (
     AICreditBalanceResponse,
@@ -168,10 +173,12 @@ def subscription_response(account: Any, company: Any = None) -> SubscriptionResp
 
 def _backfill_stripe_invoices(
     db: Session,
-    provider: BillingProvider,
+    provider: BillingProvider | None,
     settings: Settings,
     company_id: UUID,
 ) -> bool:
+    if provider is None:
+        return False
     try:
         sync_customer_invoices(db, provider, settings, company_id)
         return True
@@ -290,6 +297,8 @@ def cancel(
 ) -> SubscriptionResponse:
     try:
         return subscription_response(service.cancel(identity.user.company_id))
+    except BillingConfigurationError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     except BillingOperationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -301,6 +310,8 @@ def portal(
 ) -> RedirectResponse:
     try:
         return RedirectResponse(url=service.create_portal(identity.user.company))
+    except BillingConfigurationError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     except BillingOperationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -310,7 +321,7 @@ def invoices(
     identity: CurrentIdentity = Depends(manage_billing),
     service: BillingService = Depends(get_billing_service),
     db: Session = Depends(get_db),
-    provider: BillingProvider = Depends(get_billing_provider),
+    provider: BillingProvider | None = Depends(get_billing_provider_optional),
     settings: Settings = Depends(get_settings),
     skip: int = 0,
     limit: int = 50,
@@ -327,7 +338,7 @@ def invoice_history(
     identity: CurrentIdentity = Depends(manage_billing),
     service: InvoiceFiscalService = Depends(get_invoice_fiscal_service),
     db: Session = Depends(get_db),
-    provider: BillingProvider = Depends(get_billing_provider),
+    provider: BillingProvider | None = Depends(get_billing_provider_optional),
     settings: Settings = Depends(get_settings),
     offset: int = 0,
     limit: int = 20,
