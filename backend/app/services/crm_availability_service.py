@@ -20,6 +20,7 @@ from backend.app.services.calendar.base import (
     CalendarProviderError,
     CalendarTokenRevokedError,
     CalendarTokenTransientError,
+    requires_calendar_reconnect,
 )
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
@@ -124,32 +125,14 @@ class CRMAvailabilityService:
                 provider = GoogleCalendarProvider()
             busy = []
             for connection in connections:
-                if connection.sync_status == "error":
-                    try:
-                        credentials = cipher.decrypt(connection.encrypted_credentials)
-                        connection.sync_status = "connected"
-                        if hasattr(connection, "sync_error"):
-                            connection.sync_error = None
-                        try:
-                            self._session.commit()
-                        except Exception:
-                            pass
-                    except Exception:
-                        continue
-                elif connection.sync_status != "connected":
+                if requires_calendar_reconnect(connection.sync_status, connection.sync_error):
                     raise AvailabilityUnavailable("EXTERNAL_AVAILABILITY_UNAVAILABLE")
-                else:
-                    try:
-                        credentials = cipher.decrypt(connection.encrypted_credentials)
-                    except Exception as dec_exc:
-                        connection.sync_status = "error"
-                        if hasattr(connection, "sync_error"):
-                            connection.sync_error = "Decryption error on calendar credentials. Please reconnect."
-                        try:
-                            self._session.commit()
-                        except Exception:
-                            pass
-                        continue
+                if connection.sync_status not in {"connected", "error"}:
+                    raise AvailabilityUnavailable("EXTERNAL_AVAILABILITY_UNAVAILABLE")
+                try:
+                    credentials = cipher.decrypt(connection.encrypted_credentials)
+                except Exception as exc:
+                    raise AvailabilityUnavailable("EXTERNAL_AVAILABILITY_UNAVAILABLE") from exc
                 try:
                     periods = await provider.check_busy_slots(credentials, start, end, connection.calendar_id)
                 except CalendarProviderError as exc:
@@ -196,6 +179,11 @@ class CRMAvailabilityService:
                             )
                         self._session.commit()
                         raise AvailabilityUnavailable("EXTERNAL_AVAILABILITY_UNAVAILABLE") from refresh_exc
+                # Only a successful provider response can heal the connection.
+                if connection.sync_status == "error":
+                    connection.sync_status = "connected"
+                    connection.sync_error = None
+                    self._session.commit()
                 busy.extend(periods)
             return busy
         except AvailabilityUnavailable:

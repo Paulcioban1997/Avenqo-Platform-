@@ -18,7 +18,8 @@
       "codex/voice-64-65-candidate-20261022": false,
       "codex/voice-multi-tenant-44locales-employee-20261023": false,
       "promotion/sandbox": false,
-      "codex/fix-sandbox-owner-login-20261027": false
+      "codex/fix-sandbox-owner-login-20261027": false,
+      "codex/fix-calendar-oauth-relay-20261027": false
     }
   }
 }
