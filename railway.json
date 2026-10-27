@@ -1,7 +1,7 @@
 {
   "$schema": "https://railway.com/railway.schema.json",
   "deploy": {
-    "startCommand": "sh -c 'if [ -n \"$ALEMBIC_DATABASE_URL\" ]; then python -m alembic upgrade head; fi; exec uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1'",
+    "startCommand": "exec uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1",
     "healthcheckPath": "/api/v1/health",
     "healthcheckTimeout": 600
   }
