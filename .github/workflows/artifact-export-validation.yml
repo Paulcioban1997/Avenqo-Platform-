@@ -26,7 +26,9 @@ jobs:
       - name: Test fictional archive, encryption, S3 and restore
         run: |
           python -m pip install --disable-pip-version-check boto3==1.43.81 cryptography==50.0.0 moto==5.2.3 pytest==9.0.3
-          python -m pytest -q tests/backend/test_artifact_volume_export.py
+          # The repository-wide conftest imports the full FastAPI application.
+          # This independent rescue test intentionally installs no app runtime.
+          python -m pytest --confcutdir=tests/backend -q tests/backend/test_artifact_volume_export.py
       - name: Build the exact rescue Dockerfile
         run: |
           docker build --pull --iidfile /tmp/avenqo-artifact-export-image.id --file backend/Dockerfile.artifact-export .
