@@ -21,7 +21,7 @@ python -m compileall -q scripts/export_artifact_volume.py
 git rev-parse HEAD
 ```
 
-Conserver le SHA du commit final de cette branche. Ne pas modifier la branche RC1 ni la branche `main`. La variable Production existante `RAILWAY_DOCKERFILE_PATH=backend/Dockerfile` peut imposer ce chemin. Dans la branche de secours **uniquement**, `backend/Dockerfile` est donc identique à `backend/Dockerfile.artifact-export`. Les deux ne copient que l'exporteur ; ils n'incluent pas `backend/docker-entrypoint.sh`, FastAPI, Alembic, les connecteurs, Stripe ou Telnyx. `railway.json` supprime la commande de prédéploiement, le healthcheck HTTP, le cron et les redémarrages. **Ces changements sont propres à la branche d'export ; cette PR ne doit jamais être fusionnée dans une branche applicative.**
+Conserver le SHA du commit final de cette branche. Ne pas modifier la branche RC1 ni la branche `main`. La variable Production existante `RAILWAY_DOCKERFILE_PATH=backend/Dockerfile` peut imposer ce chemin. Dans la branche de secours **uniquement**, `backend/Dockerfile` est donc identique à `backend/Dockerfile.artifact-export`. Les deux ne copient que l'exporteur, définissent `ENTRYPOINT ["python", "/srv/export_artifact_volume.py", "export"]` (qui ignore tout `startCommand` hérité du service Railway tel que `sh -c 'python -m alembic ...'`) et n'incluent pas `backend/docker-entrypoint.sh`, FastAPI, Alembic, les connecteurs, Stripe ou Telnyx. `railway.json` supprime la commande de prédéploiement, le healthcheck HTTP, le cron et les redémarrages. **Ces changements sont propres à la branche d'export ; cette PR ne doit jamais être fusionnée dans une branche applicative.**
 
 ## P1 — Préparer la clé hors de Railway
 

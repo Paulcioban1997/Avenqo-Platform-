@@ -42,8 +42,16 @@ jobs:
           docker run --rm --entrypoint sh "$image_id" -c 'test ! -e /srv/backend && test ! -e /srv/alembic.ini && test ! -e /usr/local/bin/docker-entrypoint.sh'
           docker run --rm --entrypoint python "$image_id" -c 'import importlib.util; assert all(importlib.util.find_spec(name) is None for name in ("fastapi", "uvicorn", "alembic", "stripe", "telnyx"))'
           set +e
-          output="$(docker run --rm "$image_id" 2>&1)"
-          status=$?
+          output_no_args="$(docker run --rm "$image_id" 2>&1)"
+          status_no_args=$?
+          output_railway_cmd="$(docker run --rm "$image_id" sh -c 'python -m alembic upgrade head && exec uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1' 2>&1)"
+          status_railway_cmd=$?
+          output_unexpected_args="$(docker run --rm "$image_id" --unexpected-flag arbitrary-arg 2>&1)"
+          status_unexpected_args=$?
           set -e
-          test "$status" -eq 1
-          test "$output" = '{"status": "FAIL", "error_class": "ValueError"}'
+          test "$status_no_args" -eq 1
+          test "$output_no_args" = '{"status": "FAIL", "error_class": "ValueError"}'
+          test "$status_railway_cmd" -eq 1
+          test "$output_railway_cmd" = '{"status": "FAIL", "error_class": "ValueError"}'
+          test "$status_unexpected_args" -eq 1
+          test "$output_unexpected_args" = '{"status": "FAIL", "error_class": "ValueError"}'

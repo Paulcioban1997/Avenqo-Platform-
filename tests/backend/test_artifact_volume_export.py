@@ -194,8 +194,30 @@ def test_rescue_image_and_railway_config_exclude_application_startup():
     copy_lines = [line for line in dockerfile.splitlines() if line.startswith("COPY ")]
     assert copy_lines == ["COPY scripts/export_artifact_volume.py /srv/export_artifact_volume.py"]
     assert "docker-entrypoint.sh" not in "\n".join(copy_lines)
+    assert 'ENTRYPOINT ["python", "/srv/export_artifact_volume.py", "export"]' in dockerfile
+    assert "\nCMD " not in dockerfile
     assert config["build"]["dockerfilePath"] == "backend/Dockerfile.artifact-export"
     assert config["deploy"]["startCommand"] == "python /srv/export_artifact_volume.py export"
     assert config["deploy"]["preDeployCommand"] == []
     assert config["deploy"]["cronSchedule"] is None
     assert config["deploy"]["restartPolicyType"] == "NEVER"
+
+
+def test_export_ignores_inherited_railway_start_command_arguments(monkeypatch):
+    for name in ("RAILWAY_PROJECT_ID", "RAILWAY_ENVIRONMENT_ID", "RAILWAY_SERVICE_ID",
+                 "RAILWAY_ENVIRONMENT_NAME", "ENVIRONMENT", "ARTIFACT_ROOT", "BACKUP_S3_BUCKET"):
+        monkeypatch.delenv(name, raising=False)
+    with pytest.raises(ValueError, match="identity mismatch"):
+        exporter.main([
+            "export",
+            "sh",
+            "-c",
+            "python -m alembic upgrade head && exec uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1",
+        ])
+    with pytest.raises(ValueError, match="identity mismatch"):
+        exporter.main(["export", "--unexpected-flag", "arbitrary-command"])
+    with pytest.raises(SystemExit):
+        exporter.main([])
+    with pytest.raises(SystemExit):
+        exporter.main(["sh", "-c", "echo unsafe"])
+

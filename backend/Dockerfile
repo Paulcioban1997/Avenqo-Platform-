@@ -9,5 +9,7 @@ COPY scripts/export_artifact_volume.py /srv/export_artifact_volume.py
 
 # The volume is owned by the application user. Read-only rescue requires root
 # to inspect all files; the process has no code path that writes under ROOT.
+# ENTRYPOINT (not CMD) ensures Railway's service-level startCommand cannot
+# replace the exporter with `sh -c "python -m alembic ... && exec uvicorn ..."`.
 USER 0
-CMD ["python", "/srv/export_artifact_volume.py", "export"]
+ENTRYPOINT ["python", "/srv/export_artifact_volume.py", "export"]

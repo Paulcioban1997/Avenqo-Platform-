@@ -290,14 +290,22 @@ def _production_guard() -> None:
         raise ValueError("Production export identity mismatch")
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Encrypted, read-only artifact volume exporter")
     parser.add_argument("command", choices=("export", "restore-local", "keygen-local"))
     parser.add_argument("--archive", type=Path, help="Encrypted archive downloaded from S3 for local restore")
     parser.add_argument("--private-key", type=Path, help="Local private PEM; never sent to Railway")
     parser.add_argument("--public-key", type=Path, help="Local public PEM; safe to configure as recipient")
     parser.add_argument("--target", type=Path, help="New isolated directory for local restore")
-    args = parser.parse_args()
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    if raw_argv and raw_argv[0] == "export":
+        # Railway's service-level startCommand is appended after Docker ENTRYPOINT.
+        # In export mode, ignore any trailing arguments so inherited commands
+        # (such as `sh -c "python -m alembic ... && exec uvicorn ..."`) can never
+        # block or divert the one-shot read-only export.
+        args = parser.parse_args(["export"])
+    else:
+        args = parser.parse_args(raw_argv)
     if args.command == "keygen-local":
         if not args.private_key or not args.public_key:
             parser.error("keygen-local requires --private-key and --public-key")
