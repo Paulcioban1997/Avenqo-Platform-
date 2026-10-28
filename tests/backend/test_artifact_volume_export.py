@@ -97,6 +97,7 @@ def test_symlink_and_hardlink_cannot_escape_export_root(tmp_path):
 def test_remote_full_sha256_and_no_overwrite(tmp_path, monkeypatch):
     client = boto3.client("s3", region_name="us-east-1")
     client.create_bucket(Bucket=exporter.BUCKET)
+    client.put_object(Bucket=exporter.BUCKET, Key="historic-backups/previous.sql.gz", Body=b"preserve historic fixture")
     cipher = tmp_path / "archive.avq"
     cipher.write_bytes(b"encrypted fixture bytes")
     key = exporter.KEY_PREFIX + "fictional-run.avq"
@@ -106,6 +107,7 @@ def test_remote_full_sha256_and_no_overwrite(tmp_path, monkeypatch):
     with pytest.raises(FileExistsError):
         exporter.upload_and_verify(cipher, key, client)
     assert client.get_object(Bucket=exporter.BUCKET, Key=key)["Body"].read() == cipher.read_bytes()
+    assert client.get_object(Bucket=exporter.BUCKET, Key="historic-backups/previous.sql.gz")["Body"].read() == b"preserve historic fixture"
 
 
 def test_production_identity_guard_refuses_fixture_context(monkeypatch):
