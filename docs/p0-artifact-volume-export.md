@@ -44,7 +44,7 @@ $recipientPublicB64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Pa
 ## P2 — Contrôles avant intervention Production (après nouvelle autorisation)
 
 ```powershell
-railway volume list --project 062bbe91-68e7-4e79-8de7-cffeb8a5f5cd --environment b9b03d41-2a67-4aab-a6f6-32939d8b81e0 --service 24a2afc3-36f8-46d0-b79d-b323755a83f3 --json
+railway volume --project 062bbe91-68e7-4e79-8de7-cffeb8a5f5cd --environment b9b03d41-2a67-4aab-a6f6-32939d8b81e0 --service 24a2afc3-36f8-46d0-b79d-b323755a83f3 list --json
 railway deployment list --project 062bbe91-68e7-4e79-8de7-cffeb8a5f5cd --environment b9b03d41-2a67-4aab-a6f6-32939d8b81e0 --service 24a2afc3-36f8-46d0-b79d-b323755a83f3 --limit 5 --json
 ```
 
