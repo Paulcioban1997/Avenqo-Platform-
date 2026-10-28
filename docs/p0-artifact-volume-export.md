@@ -21,7 +21,7 @@ python -m compileall -q scripts/export_artifact_volume.py
 git rev-parse HEAD
 ```
 
-Conserver le SHA du commit final de cette branche. Ne pas modifier la branche RC1 ni la branche `main`. Le `backend/Dockerfile.artifact-export` ne copie que l'exporteur ; il n'inclut pas `backend/docker-entrypoint.sh`, FastAPI, Alembic, les connecteurs, Stripe ou Telnyx. `railway.json` supprime la commande de prédéploiement, le healthcheck HTTP, le cron et les redémarrages. **Ce fichier est propre à la branche d'export ; il ne doit jamais être fusionné dans une branche applicative.**
+Conserver le SHA du commit final de cette branche. Ne pas modifier la branche RC1 ni la branche `main`. La variable Production existante `RAILWAY_DOCKERFILE_PATH=backend/Dockerfile` peut imposer ce chemin. Dans la branche de secours **uniquement**, `backend/Dockerfile` est donc identique à `backend/Dockerfile.artifact-export`. Les deux ne copient que l'exporteur ; ils n'incluent pas `backend/docker-entrypoint.sh`, FastAPI, Alembic, les connecteurs, Stripe ou Telnyx. `railway.json` supprime la commande de prédéploiement, le healthcheck HTTP, le cron et les redémarrages. **Ces changements sont propres à la branche d'export ; cette PR ne doit jamais être fusionnée dans une branche applicative.**
 
 ## P1 — Préparer la clé hors de Railway
 
@@ -62,7 +62,7 @@ Vérifier depuis un contexte autorisé que les identifiants S3 existants permett
 railway up --project 062bbe91-68e7-4e79-8de7-cffeb8a5f5cd --environment b9b03d41-2a67-4aab-a6f6-32939d8b81e0 --service 24a2afc3-36f8-46d0-b79d-b323755a83f3 --message 'P0 read-only encrypted artifact export'
 ```
 
-4. Vérifier dans les Build Logs que `backend/Dockerfile.artifact-export` a réellement été utilisé. Si l'image ou la commande effective diffère, interrompre avant l'exécution ; ne pas tenter de la « réparer » par modification de secrets. Le script termine normalement avec un code 0 ; un état Railway `COMPLETED` est attendu pour cette tâche ponctuelle, et ne signifie **pas** que l'API est rétablie.
+4. Vérifier dans les Build Logs que l'un des deux Dockerfiles **identiques** de la branche de secours a réellement été utilisé, puis dans les détails du déploiement que la commande effective est `python /srv/export_artifact_volume.py export` et qu'aucune commande de prédéploiement ne subsiste. Si l'image ou la commande effective diffère, interrompre avant l'exécution ; ne pas tenter de la « réparer » par modification de secrets. Le script termine normalement avec un code 0 ; un état Railway `COMPLETED` est attendu pour cette tâche ponctuelle, et ne signifie **pas** que l'API est rétablie.
 5. Le seul objet nouveau attendu est `avenqo-backups-u7bgklgz2/p0-volume-export/v1/<horodatage>-<UUID>.avq`. Le journal JSON doit annoncer `uploaded_and_remote_sha256_verified`, `file_count > 0`, `source_bytes > 0`, tailles de l'archive et empreintes SHA-256. Le fichier tar en clair n'existe que sur disque éphémère du conteneur pendant l'exécution ; il est supprimé par le dossier temporaire à la fin normale. Le script ne touche ni à PostgreSQL ni aux anciennes archives.
 
 ## P4 — Vérifier et conserver une deuxième copie indépendante

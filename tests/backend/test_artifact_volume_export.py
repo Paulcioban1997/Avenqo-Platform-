@@ -188,7 +188,9 @@ def test_keygen_creates_encrypted_local_private_key_only(tmp_path, monkeypatch, 
 def test_rescue_image_and_railway_config_exclude_application_startup():
     repository = Path(exporter.__file__).resolve().parents[1]
     dockerfile = (repository / "backend" / "Dockerfile.artifact-export").read_text(encoding="utf-8")
+    inherited_dockerfile = (repository / "backend" / "Dockerfile").read_text(encoding="utf-8")
     config = json.loads((repository / "railway.json").read_text(encoding="utf-8"))
+    assert inherited_dockerfile == dockerfile  # Existing RAILWAY_DOCKERFILE_PATH points here.
     copy_lines = [line for line in dockerfile.splitlines() if line.startswith("COPY ")]
     assert copy_lines == ["COPY scripts/export_artifact_volume.py /srv/export_artifact_volume.py"]
     assert "docker-entrypoint.sh" not in "\n".join(copy_lines)

@@ -6,6 +6,7 @@ name: P0 Artifact Export Validation
     paths:
       - '.github/workflows/artifact-export-validation.yml'
       - 'backend/Dockerfile.artifact-export'
+      - 'backend/Dockerfile'
       - 'scripts/export_artifact_volume.py'
       - 'tests/backend/test_artifact_volume_export.py'
       - 'railway.json'
@@ -31,12 +32,15 @@ jobs:
           python -m pytest --confcutdir=tests/backend -q tests/backend/test_artifact_volume_export.py
       - name: Build the exact rescue Dockerfile
         run: |
-          docker build --pull --iidfile /tmp/avenqo-artifact-export-image.id --file backend/Dockerfile.artifact-export .
+          cmp backend/Dockerfile backend/Dockerfile.artifact-export
+          # Production's existing RAILWAY_DOCKERFILE_PATH selects backend/Dockerfile.
+          docker build --pull --iidfile /tmp/avenqo-artifact-export-image.id --file backend/Dockerfile .
           echo "Image ID: $(cat /tmp/avenqo-artifact-export-image.id)" >> "$GITHUB_STEP_SUMMARY"
       - name: Verify image cannot start the application or run without Production identity
         run: |
           image_id="$(cat /tmp/avenqo-artifact-export-image.id)"
           docker run --rm --entrypoint sh "$image_id" -c 'test ! -e /srv/backend && test ! -e /srv/alembic.ini && test ! -e /usr/local/bin/docker-entrypoint.sh'
+          docker run --rm --entrypoint python "$image_id" -c 'import importlib.util; assert all(importlib.util.find_spec(name) is None for name in ("fastapi", "uvicorn", "alembic", "stripe", "telnyx"))'
           set +e
           output="$(docker run --rm "$image_id" 2>&1)"
           status=$?
