@@ -34,8 +34,36 @@ def ensure_application_roles(connection: Connection) -> None:
 
     if connection.dialect.name != "postgresql":
         return
+    actor = connection.execute(text("SELECT current_user")).scalar_one()
+    if actor == MIGRATE_ROLE:
+        # Revision 0058/0059 also calls this helper. The restricted migrator
+        # cannot ALTER ROLE or GRANT role memberships; an administrator must
+        # prepare these privileges before migration. Verify, then proceed.
+        checks = (
+            role_is_constrained(connection, MIGRATE_ROLE)
+            and role_is_constrained(connection, APP_ROLE)
+            and connection.execute(text(
+                "SELECT pg_has_role('avenqo_migrate', 'avenqo_owner', 'USAGE')"
+            )).scalar_one()
+            and connection.execute(text(
+                "SELECT has_schema_privilege('avenqo_migrate', 'public', 'CREATE')"
+            )).scalar_one()
+            and connection.execute(text(
+                "SELECT has_schema_privilege('avenqo_owner', 'public', 'CREATE')"
+            )).scalar_one()
+            and not connection.execute(text(
+                "SELECT pg_has_role('avenqo_app', 'avenqo_owner', 'MEMBER')"
+            )).scalar_one()
+            and not connection.execute(text(
+                "SELECT has_schema_privilege('avenqo_app', 'public', 'CREATE')"
+            )).scalar_one()
+        )
+        if not checks:
+            raise RuntimeError("Restricted migration roles were not prepared by an administrator")
+        return
     connection.execute(text(_CREATE_ROLES_SQL))
-    connection.execute(text("GRANT avenqo_owner TO avenqo_migrate"))
+    connection.execute(text("GRANT avenqo_owner TO avenqo_migrate WITH INHERIT TRUE"))
+    connection.execute(text("GRANT USAGE, CREATE ON SCHEMA public TO avenqo_owner"))
     connection.execute(text("GRANT USAGE ON SCHEMA public TO avenqo_app"))
     connection.execute(text("GRANT USAGE, CREATE ON SCHEMA public TO avenqo_migrate"))
     database = connection.execute(text("SELECT current_database()")).scalar_one()
