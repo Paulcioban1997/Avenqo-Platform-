@@ -21,22 +21,21 @@ def _is_postgres(bind) -> bool:
 def upgrade() -> None:
     bind = op.get_bind()
     if _is_postgres(bind):
-        # Determine table owner of voice_calls (typically postgres superuser in Railway)
-        try:
-            owner = bind.execute(
-                sa.text("SELECT r.rolname FROM pg_class c JOIN pg_roles r ON c.relowner = r.oid WHERE c.relname = 'voice_calls'")
-            ).scalar() or "postgres"
-            bind.execute(sa.text(f"ALTER FUNCTION public.resolve_voice_call_tenant(uuid, text) OWNER TO {owner};"))
-        except Exception:
-            try:
-                bind.execute(sa.text("ALTER FUNCTION public.resolve_voice_call_tenant(uuid, text) OWNER TO postgres;"))
-            except Exception:
-                pass
+        owner = bind.execute(sa.text(
+            "SELECT r.rolname FROM pg_class c "
+            "JOIN pg_namespace n ON n.oid=c.relnamespace "
+            "JOIN pg_roles r ON c.relowner=r.oid "
+            "WHERE n.nspname='public' AND c.relname='voice_calls'"
+        )).scalar_one()
+        quoted_owner = bind.dialect.identifier_preparer.quote(owner)
+        # Ownership is required by the resolver's security contract. A failed
+        # ALTER FUNCTION must abort the migration, not leave the transaction
+        # poisoned and silently fall back to a superuser-owned function.
+        bind.execute(sa.text(
+            f"ALTER FUNCTION public.resolve_voice_call_tenant(uuid, text) OWNER TO {quoted_owner}"
+        ))
         bind.execute(sa.text("GRANT EXECUTE ON FUNCTION public.resolve_voice_call_tenant(uuid, text) TO PUBLIC;"))
-        try:
-            bind.execute(sa.text("GRANT EXECUTE ON FUNCTION public.resolve_voice_call_tenant(uuid, text) TO avenqo_app;"))
-        except Exception:
-            pass
+        bind.execute(sa.text("GRANT EXECUTE ON FUNCTION public.resolve_voice_call_tenant(uuid, text) TO avenqo_app;"))
 
 
 def downgrade() -> None:
