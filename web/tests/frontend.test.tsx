@@ -1075,6 +1075,26 @@ it("shows a Dashboard backend failure instead of a valid empty dataset", async (
   expect(screen.queryByText("Mon espace")).not.toBeInTheDocument();
 });
 
+it("does not present historical dashboard revenue as live sales", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.endsWith("/auth/me")) return Response.json({ user: { id: "test-user", first_name: "Alex" }, company: { id: "test-tenant", name: "Test tenant", subscription_plan: "base" } });
+    if (url.endsWith("/ai-credits")) return Response.json({ monthly_included: 6500, monthly_remaining: 6000 });
+    if (url.includes("/dashboard?")) return Response.json({
+      company: { currency: "CAD" },
+      kpis: [
+        { key: "revenue", value: 2297200.86, available: true },
+        { key: "orders", value: 5009, available: true },
+      ],
+      trend: { points: [{ period: "2017-12", revenue: 2297200.86, orders: 5009 }] },
+    });
+    return Response.json({});
+  }));
+  render(<LocaleProvider><SessionProvider><DashboardView /></SessionProvider></LocaleProvider>);
+  expect(await screen.findByText(/5[\s,\u202f]009/)).toBeVisible();
+  expect(screen.queryByText("Live")).not.toBeInTheDocument();
+});
+
 
 it("includes purchased credits in the common balance even when the monthly allowance is exhausted", () => {
   expect(creditBalanceViewModel({ monthly_included: 6500, monthly_remaining: 0, monthly_used: 6500, purchased_remaining: 6500, total_remaining: 6500 })).toEqual({ remaining: 6500, limit: 13000, used: 6500 });

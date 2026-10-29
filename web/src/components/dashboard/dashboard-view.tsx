@@ -342,7 +342,6 @@ export function DashboardView({
               }
               period={periodLabel}
               icon={<DollarSign className="w-4 h-4" />}
-              badge="Live"
             />
 
             {/* Commandes / Orders */}
