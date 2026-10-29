@@ -377,6 +377,25 @@ describe("Retail inventory rendering", () => {
     expect(screen.queryByText("REVENUS GÉNÉRÉS")).not.toBeInTheDocument();
   });
 
+  it("keeps CRM available when Google Calendar requires reconnection", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.includes("/crm/calendar/google/events")) {
+        return Response.json({ detail: "Google Calendar requires reconnection" }, { status: 409 });
+      }
+      if (path.includes("/crm/kpis")) return Response.json({ active_clients: 2, appointments_this_month: 1 });
+      if (path.includes("/crm/summary")) return Response.json({ company_name: "Test company" });
+      if (path.includes("/crm/settings/business-hours")) return Response.json({ hours: {} });
+      return Response.json([]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LocaleProvider><CRMView /></LocaleProvider>);
+    expect(await screen.findByRole("heading", { name: /CRM IA/i })).toBeInTheDocument();
+    expect(screen.queryByRole("alert", { name: /conflit/i })).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/crm/calendar/google/events"), expect.anything());
+  });
+
   it("keeps Connections in a loading state instead of claiming the dataset is absent", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
     render(<LocaleProvider><ConnectionsView /></LocaleProvider>);
