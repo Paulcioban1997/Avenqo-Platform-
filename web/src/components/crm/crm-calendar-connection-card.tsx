@@ -128,13 +128,15 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
       const res = await fetch("/api/v1/crm/calendar/google/auth-url", { headers: { ...headers, "X-Avenqo-Calendar-Return-Origin": window.location.origin } });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || t.integrations.googleCalendarConnecting);
+        const detail = typeof err.detail === "string" ? err.detail : null;
+        throw new Error(detail || (res.status === 400
+          ? "Cette adresse Avenqo n'est pas autorisée pour la connexion Google Calendar. Contactez le support."
+          : "La connexion Google Calendar est momentanément indisponible. Réessayez."));
       }
       const data = await res.json();
       const targetUrl = data.auth_url || data.url;
-      if (targetUrl) {
-        window.location.href = targetUrl;
-      }
+      if (!targetUrl) throw new Error("Google Calendar n'a pas fourni de lien de connexion. Réessayez.");
+      window.location.href = targetUrl;
     } catch (err: any) {
       setError(err.message || "Erreur de connexion");
       setIsConnecting(false);

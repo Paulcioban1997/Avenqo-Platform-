@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, waitFor, cleanup, fireEvent } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { CRMCalendarConnectionCard } from "@/components/crm/crm-calendar-connection-card";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
@@ -26,4 +26,16 @@ it("distinguishes a transient provider error from revoked authorization", async 
   await waitFor(() => expect(screen.getAllByText("Erreur de connexion")).toHaveLength(2));
   expect(screen.queryByText(/Le jeton pour/)).toBeNull();
   expect(screen.queryByRole("button", {name:"Reconnecter Google Calendar"})).toBeNull();
+});
+
+it("explains a rejected preview origin instead of displaying a loading label", async () => {
+  const fetcher = vi.fn()
+    .mockResolvedValueOnce(Response.json({ connected: false, provider: "google", connection_status: "RECONNECT_REQUIRED", requires_reconnect: true }))
+    .mockResolvedValueOnce(Response.json({ success: false, error: { code: "HTTP_ERROR" } }, { status: 400 }));
+  vi.stubGlobal("fetch", fetcher);
+  render(<CRMCalendarConnectionCard t={getAppTranslations("fr")} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Reconnecter Google Calendar" }));
+  expect(await screen.findByText(/adresse Avenqo n'est pas autorisée/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Reconnecter Google Calendar" })).toBeEnabled();
+  expect(screen.queryByText("Connexion...", { exact: true })).toBeNull();
 });

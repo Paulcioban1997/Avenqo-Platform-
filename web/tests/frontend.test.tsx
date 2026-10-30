@@ -377,6 +377,25 @@ describe("Retail inventory rendering", () => {
     expect(screen.queryByText("REVENUS GÉNÉRÉS")).not.toBeInTheDocument();
   });
 
+  it("keeps CRM available when Google Calendar requires reconnection", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.includes("/crm/calendar/google/events")) {
+        return Response.json({ detail: "Google Calendar requires reconnection" }, { status: 409 });
+      }
+      if (path.includes("/crm/kpis")) return Response.json({ active_clients: 2, appointments_this_month: 1 });
+      if (path.includes("/crm/summary")) return Response.json({ company_name: "Test company" });
+      if (path.includes("/crm/settings/business-hours")) return Response.json({ hours: {} });
+      return Response.json([]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<LocaleProvider><CRMView /></LocaleProvider>);
+    expect(await screen.findByRole("heading", { name: /CRM IA/i })).toBeInTheDocument();
+    expect(screen.queryByRole("alert", { name: /conflit/i })).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/crm/calendar/google/events"), expect.anything());
+  });
+
   it("keeps Connections in a loading state instead of claiming the dataset is absent", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
     render(<LocaleProvider><ConnectionsView /></LocaleProvider>);
@@ -1073,6 +1092,26 @@ it("shows a Dashboard backend failure instead of a valid empty dataset", async (
   render(<LocaleProvider><SessionProvider><DashboardView /></SessionProvider></LocaleProvider>);
   expect(await screen.findByRole("alert")).toHaveTextContent("Dashboard service unavailable");
   expect(screen.queryByText("Mon espace")).not.toBeInTheDocument();
+});
+
+it("does not present historical dashboard revenue as live sales", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.endsWith("/auth/me")) return Response.json({ user: { id: "test-user", first_name: "Alex" }, company: { id: "test-tenant", name: "Test tenant", subscription_plan: "base" } });
+    if (url.endsWith("/ai-credits")) return Response.json({ monthly_included: 6500, monthly_remaining: 6000 });
+    if (url.includes("/dashboard?")) return Response.json({
+      company: { currency: "CAD" },
+      kpis: [
+        { key: "revenue", value: 2297200.86, available: true },
+        { key: "orders", value: 5009, available: true },
+      ],
+      trend: { points: [{ period: "2017-12", revenue: 2297200.86, orders: 5009 }] },
+    });
+    return Response.json({});
+  }));
+  render(<LocaleProvider><SessionProvider><DashboardView /></SessionProvider></LocaleProvider>);
+  expect(await screen.findByText(/5[\s,\u202f]009/)).toBeVisible();
+  expect(screen.queryByText("Live")).not.toBeInTheDocument();
 });
 
 
