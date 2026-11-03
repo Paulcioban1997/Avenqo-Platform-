@@ -6,6 +6,7 @@ import base64
 import json
 from datetime import datetime, timezone
 from decimal import Decimal
+from typing import Any, Mapping
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
@@ -35,14 +36,17 @@ from backend.app.models.user import User, UserRole
 from backend.app.services.ads_service import AdsService
 
 
-class DummyCipher:
-    def encrypt(self, data: dict) -> str:
-        return f"enc_{base64.b64encode(json.dumps(data).encode()).decode()}"
+class DummyCipher(ConnectorSecretCipher):
+    def __init__(self) -> None:
+        pass
 
-    def decrypt(self, token: str) -> dict:
-        if token.startswith("enc_"):
-            return json.loads(base64.b64decode(token[4:].encode()).decode())
-        return json.loads(token)
+    def encrypt(self, payload: Mapping[str, Any]) -> str:
+        return f"enc_{base64.b64encode(json.dumps(dict(payload)).encode()).decode()}"
+
+    def decrypt(self, encrypted_payload: str) -> dict[str, Any]:
+        if encrypted_payload.startswith("enc_"):
+            return json.loads(base64.b64decode(encrypted_payload[4:].encode()).decode())
+        return json.loads(encrypted_payload)
 
 
 @pytest.fixture
