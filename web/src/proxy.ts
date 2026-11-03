@@ -79,7 +79,7 @@ const PROTECTED_ROUTES = [
 ];
 
 // Routes publiques uniquement (redirect si déjà authentifié)
-const AUTH_ONLY_ROUTES = ["/login", "/register", "/forgot-password", "/reset-password"];
+const AUTH_ONLY_ROUTES = ["/login", "/register", "/forgot-password"];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

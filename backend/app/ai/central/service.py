@@ -103,7 +103,12 @@ class CentralAIService:
                 tool_agents[tool_name] = requested_agent.agent_id
 
         if agent_entitlements(agent).issubset(active_modules):
+            tool_reg = getattr(self._chat, "_tool_registry", None)
             for tool_name in agent.allowed_tool_names:
+                if tool_reg is not None:
+                    tool_obj = tool_reg.get(tool_name)
+                    if tool_obj and tool_obj.required_entitlements and not tool_obj.required_entitlements.issubset(active_modules):
+                        continue
                 tool_agents[tool_name] = agent.agent_id
         elif not requested_agents:
             return None

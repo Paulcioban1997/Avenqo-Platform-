@@ -20,9 +20,26 @@ from backend.app.database import get_db
 from backend.app.dependencies.auth import get_tenant_context
 from backend.app.models.accounting import AccountingInvoice, AccountingTransaction
 from backend.app.services.accounting_intelligence_service import AccountingIntelligenceService
+from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from shared.ai_engine.contracts import TenantContext
 
-router = APIRouter(prefix="/accounting", tags=["accounting"])
+
+def require_accounting_module(
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> None:
+    if not ModuleEntitlementService(db).can_use_module(tenant, "accounting"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "module_inactive", "module": "accounting"},
+        )
+
+
+router = APIRouter(
+    prefix="/accounting",
+    tags=["accounting"],
+    dependencies=[Depends(require_accounting_module)],
+)
 
 
 # --- Pydantic Schemas ---
