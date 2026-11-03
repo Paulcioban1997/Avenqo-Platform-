@@ -12,6 +12,23 @@ Validates:
 
 from __future__ import annotations
 
+import base64
+from typing import Any, Mapping
+from backend.app.dependencies.commerce import ConnectorSecretCipher
+
+
+class DummyCipher(ConnectorSecretCipher):
+    def __init__(self) -> None:
+        pass
+
+    def encrypt(self, payload: Mapping[str, Any]) -> str:
+        return f"enc_{base64.b64encode(json.dumps(dict(payload)).encode()).decode()}"
+
+    def decrypt(self, encrypted_payload: str) -> dict[str, Any]:
+        if encrypted_payload.startswith("enc_"):
+            return json.loads(base64.b64decode(encrypted_payload[4:].encode()).decode())
+        return json.loads(encrypted_payload)
+
 import json
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -80,7 +97,7 @@ def test_identity():
 async def test_e2e_ads_simulation(mock_settings, test_identity):
     """Simulates the entire ads integration lifecycle in Sandbox/Test environment."""
     mock_db = MagicMock()
-    service = AdsService(db=mock_db, settings=mock_settings)
+    service = AdsService(db=mock_db, settings=mock_settings, cipher=DummyCipher())
 
     # 1. Check initial status (both disconnected)
     mock_db.query.return_value.filter.return_value.first.return_value = None

@@ -15,7 +15,7 @@ from backend.app.connectors.ads.base import AdsConfigurationMissingError, AdsCon
 from backend.app.core.permissions import permissions_for
 from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity
-from backend.app.dependencies.commerce import get_connector_secret_cipher
+from backend.app.dependencies.commerce import ConnectorSecretCipher, get_connector_secret_cipher
 from backend.app.dependencies.subscription import require_active_subscription
 from backend.app.services.ads_service import AdsService
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
@@ -28,8 +28,9 @@ router = APIRouter(prefix="/ads", tags=["Advertising Connectors"])
 def get_ads_service(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    cipher: ConnectorSecretCipher = Depends(get_connector_secret_cipher),
 ) -> AdsService:
-    return AdsService(db, settings, get_connector_secret_cipher())
+    return AdsService(db, settings, cipher)
 
 
 def require_marketing_entitlement(
@@ -222,7 +223,7 @@ async def get_google_ads_campaigns(
                 "currency_native": c.currency,
                 "daily_budget_native": float(c.daily_budget_native) if c.daily_budget_native else None,
                 "spend_native": float(c.spend_native),
-                "spend_cad": float(c.spend_cad) if c.converted_currency == "CAD" or c.currency == "CAD" else None,
+                "spend_cad": float(c.spend_cad) if c.spend_cad is not None else None,
                 "impressions": c.impressions,
                 "clicks": c.clicks,
                 "conversions": c.conversions,
@@ -316,7 +317,7 @@ async def get_meta_ads_campaigns(
                 "daily_budget_native": float(c.daily_budget_native) if c.daily_budget_native else None,
                 "lifetime_budget_native": float(c.lifetime_budget_native) if c.lifetime_budget_native else None,
                 "spend_native": float(c.spend_native),
-                "spend_cad": float(c.spend_cad) if c.converted_currency == "CAD" or c.currency == "CAD" else None,
+                "spend_cad": float(c.spend_cad) if c.spend_cad is not None else None,
                 "impressions": c.impressions,
                 "clicks": c.clicks,
                 "conversions": c.conversions,

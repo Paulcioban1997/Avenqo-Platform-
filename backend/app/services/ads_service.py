@@ -49,7 +49,18 @@ class AdsService:
     ) -> None:
         self.db = db
         self.settings = settings or get_settings()
-        self.cipher = cipher or get_connector_secret_cipher()
+        if cipher is not None:
+            self.cipher = cipher
+        elif self.settings.connector_encryption_keys:
+            try:
+                self.cipher = ConnectorSecretCipher(self.settings.connector_encryption_keys)
+            except Exception:
+                self.cipher = None
+        else:
+            try:
+                self.cipher = get_connector_secret_cipher()
+            except Exception:
+                self.cipher = None
         self.fx_service = fx_service or BankOfCanadaFXService()
 
         self.google_ads = GoogleAdsConnector(
@@ -228,6 +239,8 @@ class AdsService:
         }
 
     async def connect_google_ads(self, company_id: UUID, code: str, customer_id: str | None = None) -> CommerceConnection:
+        if not self.cipher:
+            raise AdsConfigurationMissingError("Encryption", "Chiffrement des connecteurs non configure.")
         tokens = await self.google_ads.exchange_code(code)
 
         # Verify access, permissions, and fetch real account currency & metadata (Fail-Closed)
@@ -285,6 +298,8 @@ class AdsService:
         return conn
 
     async def connect_meta_ads(self, company_id: UUID, code: str, ad_account_id: str | None = None) -> CommerceConnection:
+        if not self.cipher:
+            raise AdsConfigurationMissingError("Encryption", "Chiffrement des connecteurs non configure.")
         tokens = await self.meta_ads.exchange_code(code)
 
         # Verify permissions, accessible accounts, and fetch real account currency & active status (Fail-Closed)
@@ -351,6 +366,8 @@ class AdsService:
         return True
 
     def get_credentials(self, company_id: UUID, provider: str) -> dict[str, Any] | None:
+        if not self.cipher:
+            return None
         conn = self.get_connection(company_id, provider)
         if not conn or not conn.encrypted_credentials or conn.status != CommerceConnectionStatus.CONNECTED.value:
             return None
