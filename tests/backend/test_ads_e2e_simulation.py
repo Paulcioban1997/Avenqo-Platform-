@@ -135,6 +135,7 @@ async def test_e2e_ads_simulation(mock_settings, test_identity):
          patch.object(service.meta_ads, "list_campaigns") as mock_m_camps:
 
         mock_creds.return_value = {"access_token": "token123"}
+        service.fx_service.set_cached_rate("USD", "CAD", Decimal("1.3650"), "2026-11-02")
         # Google in USD ($100 native)
         mock_g_perf.return_value = AdsPerformanceSummary(
             provider="google_ads",

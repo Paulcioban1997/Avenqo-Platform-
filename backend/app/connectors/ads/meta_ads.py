@@ -75,14 +75,18 @@ class MetaAdsConnector(BaseAdsConnector):
             raise AdsConfigurationMissingError("Meta Ads")
 
         target_redirect = redirect_uri or self.redirect_uri
-        params = {
+        payload = urllib.parse.urlencode({
             "client_id": self.app_id,
             "client_secret": self.app_secret,
             "redirect_uri": target_redirect,
             "code": code,
-        }
-        url = f"{self.OAUTH_TOKEN_ENDPOINT}?{urllib.parse.urlencode(params)}"
-        req = urllib.request.Request(url, method="GET")
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            self.OAUTH_TOKEN_ENDPOINT,
+            data=payload,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            method="POST",
+        )
 
         try:
             with urllib.request.urlopen(req, timeout=15) as resp:
@@ -112,14 +116,18 @@ class MetaAdsConnector(BaseAdsConnector):
 
     async def _exchange_long_lived_token(self, short_token: str) -> str | None:
         try:
-            params = {
+            payload = urllib.parse.urlencode({
                 "grant_type": "fb_exchange_token",
                 "client_id": self.app_id,
                 "client_secret": self.app_secret,
                 "fb_exchange_token": short_token,
-            }
-            url = f"{self.OAUTH_TOKEN_ENDPOINT}?{urllib.parse.urlencode(params)}"
-            req = urllib.request.Request(url, method="GET")
+            }).encode("utf-8")
+            req = urllib.request.Request(
+                self.OAUTH_TOKEN_ENDPOINT,
+                data=payload,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                method="POST",
+            )
             with urllib.request.urlopen(req, timeout=15) as resp:
                 res = json.loads(resp.read().decode("utf-8"))
                 return res.get("access_token")
@@ -288,6 +296,16 @@ class MetaAdsConnector(BaseAdsConnector):
                     if act.get("action_type") in ("purchase", "omni_purchase", "lead", "complete_registration"):
                         conversions += int(act.get("value", 0))
 
+                action_values = insight.get("action_values", [])
+                conversion_value = Decimal("0.00")
+                for av in action_values:
+                    if av.get("action_type") in ("purchase", "omni_purchase"):
+                        try:
+                            conversion_value += Decimal(str(av.get("value", "0.00")))
+                        except Exception:
+                            pass
+                roas = float(conversion_value / spend) if spend > Decimal("0.00") else 0.0
+
                 ctr = float(insight.get("ctr", 0.0))
                 cpc = Decimal(str(insight.get("cpc", "0.00"))) if clicks > 0 else Decimal("0.00")
 
@@ -305,7 +323,7 @@ class MetaAdsConnector(BaseAdsConnector):
                     conversions=conversions,
                     ctr=round(ctr, 2),
                     cpc_native=cpc.quantize(Decimal("0.01")),
-                    roas=0.0,
+                    roas=round(roas, 2),
                 ))
 
             # Pagination handling
@@ -337,6 +355,8 @@ class MetaAdsConnector(BaseAdsConnector):
         total_conversions = sum(c.conversions for c in campaigns)
         avg_ctr = (total_clicks / total_impressions * 100) if total_impressions > 0 else 0.0
         avg_cpc = (total_spend / Decimal(total_clicks)) if total_clicks > 0 else Decimal("0.00")
+        total_conv_value = sum(Decimal(str(c.roas)) * c.spend_native for c in campaigns)
+        avg_roas = float(total_conv_value / total_spend) if total_spend > Decimal("0.00") else 0.0
 
         return AdsPerformanceSummary(
             provider="meta_ads",
@@ -348,6 +368,7 @@ class MetaAdsConnector(BaseAdsConnector):
             total_conversions=total_conversions,
             average_ctr=round(avg_ctr, 2),
             average_cpc_native=avg_cpc.quantize(Decimal("0.01")),
+            average_roas=round(avg_roas, 2),
             campaigns_count=len(campaigns),
             active_campaigns_count=sum(1 for c in campaigns if c.status in ("ACTIVE", "ENABLED")),
             period=period,

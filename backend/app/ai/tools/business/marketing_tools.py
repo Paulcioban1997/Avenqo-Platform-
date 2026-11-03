@@ -135,7 +135,7 @@ class GetAdsPerformanceTool(MarketingAITool):
         "dépenses totales en CAD, impressions, clics, conversions, coût par clic (CPC) et ROAS."
     )
     input_schema = GetAdsPerformanceArgs
-    required_permissions = ("ai:use", "data:read")
+    required_permissions = ("ai:use", "marketing:read")
 
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -143,6 +143,13 @@ class GetAdsPerformanceTool(MarketingAITool):
     async def run(self, context: ToolExecutionContext, arguments: GetAdsPerformanceArgs) -> ToolResult:
         from backend.app.services.ads_service import AdsService
         from backend.app.services.module_entitlement_service import ModuleEntitlementService
+
+        if "marketing:read" not in context.permissions and "data:read" not in context.permissions:
+            return ToolResult(
+                success=False,
+                error="Permission 'marketing:read' requise pour consulter les données publicitaires.",
+                data={"code": "INSUFFICIENT_PERMISSIONS", "required": "marketing:read"},
+            )
 
         if not ModuleEntitlementService(self._session).can_use_module(context.tenant, "marketing"):
             return ToolResult(

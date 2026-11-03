@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import json
 import logging
+import secrets
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
@@ -31,26 +32,25 @@ from backend.app.models.commerce_connection import (
     CommerceConnectionStatus,
     CommerceOAuthState,
 )
+from backend.app.services.fx_service import BankOfCanadaFXService, FXRateRecord
 
 logger = logging.getLogger("avenqo.ads.service")
-
-# Reference daily foreign exchange rates (Bank of Canada reference)
-# In production, this can also query an external central bank / BoC daily FX endpoint
-DEFAULT_FX_RATES: dict[tuple[str, str], tuple[Decimal, str]] = {
-    ("USD", "CAD"): (Decimal("1.3650"), "Banque du Canada - Cours de référence quotidien"),
-    ("EUR", "CAD"): (Decimal("1.4850"), "Banque du Canada - Cours de référence quotidien"),
-    ("GBP", "CAD"): (Decimal("1.7420"), "Banque du Canada - Cours de référence quotidien"),
-    ("CAD", "CAD"): (Decimal("1.0000"), "Parité CAD"),
-}
 
 
 class AdsService:
     """Provides high-level ads connection management, security, and multi-currency analytics."""
 
-    def __init__(self, db: Session, settings: Settings | None = None, cipher: ConnectorSecretCipher | None = None) -> None:
+    def __init__(
+        self,
+        db: Session,
+        settings: Settings | None = None,
+        cipher: ConnectorSecretCipher | None = None,
+        fx_service: BankOfCanadaFXService | None = None,
+    ) -> None:
         self.db = db
         self.settings = settings or get_settings()
         self.cipher = cipher or get_connector_secret_cipher()
+        self.fx_service = fx_service or BankOfCanadaFXService()
 
         self.google_ads = GoogleAdsConnector(
             client_id=self.settings.google_ads_client_id,
@@ -71,7 +71,7 @@ class AdsService:
         """Generates a cryptographically signed, single-use anti-replay OAuth state."""
         created_at = datetime.now(timezone.utc)
         expires_at = created_at + timedelta(minutes=10)
-        nonce = base64.urlsafe_b64encode(hashlib.sha256(f"{company_id}:{user_id}:{created_at.isoformat()}".encode()).digest()[:16]).decode().rstrip("=")
+        nonce = secrets.token_urlsafe(32)
 
         payload = {
             "company_id": str(company_id),
@@ -102,7 +102,7 @@ class AdsService:
         return full_state
 
     def verify_oauth_state(self, state: str, expected_provider: str) -> tuple[UUID, UUID]:
-        """Validates HMAC signature, expiration, and ensures single-use consumption against replay attacks."""
+        """Validates HMAC signature, expiration, and ensures atomic single-use consumption against replay attacks."""
         parts = state.split(".")
         if len(parts) != 2:
             raise AdsConnectorError("Format de state OAuth invalide.", code="INVALID_OAUTH_STATE", status_code=400)
@@ -125,27 +125,37 @@ class AdsService:
         if data.get("provider") != expected_provider:
             raise AdsConnectorError(f"Fournisseur OAuth inattendu: {data.get('provider')}", code="INVALID_PROVIDER", status_code=400)
 
-        # Replay Attack & Expiration check in database
+        # Atomic single-use consumption in database
         state_hash = self._state_hash(state)
-        record = self.db.query(CommerceOAuthState).filter(CommerceOAuthState.state_hash == state_hash).first()
         now = datetime.now(timezone.utc)
 
-        if not record:
-            raise AdsConnectorError("Tentative OAuth inconnue ou non initiée par cette plateforme.", code="UNKNOWN_OAUTH_STATE", status_code=400)
+        updated_count = (
+            self.db.query(CommerceOAuthState)
+            .filter(
+                CommerceOAuthState.state_hash == state_hash,
+                CommerceOAuthState.consumed_at.is_(None),
+            )
+            .update(
+                {CommerceOAuthState.consumed_at: now},
+                synchronize_session=False,
+            )
+        )
+        self.db.commit()
 
-        if record.consumed_at is not None:
+        if updated_count == 0:
+            existing = self.db.query(CommerceOAuthState).filter(CommerceOAuthState.state_hash == state_hash).first()
+            if not existing:
+                raise AdsConnectorError("Tentative OAuth inconnue ou non initiée par cette plateforme.", code="UNKNOWN_OAUTH_STATE", status_code=400)
             raise AdsConnectorError("Jeton de state OAuth déjà consommé (tentative de rejeu interceptée).", code="REPLAY_ATTACK_DETECTED", status_code=400)
 
-        # Check expiration
-        exp = record.expires_at
-        if exp.tzinfo is None:
-            exp = exp.replace(tzinfo=timezone.utc)
-        if exp < now:
-            raise AdsConnectorError("Le délai d'autorisation OAuth a expiré (validité 10 min).", code="EXPIRED_OAUTH_STATE", status_code=400)
-
-        # Mark consumed immediately
-        record.consumed_at = now
-        self.db.commit()
+        # Expiration check
+        record = self.db.query(CommerceOAuthState).filter(CommerceOAuthState.state_hash == state_hash).first()
+        if record:
+            exp = record.expires_at
+            if exp.tzinfo is None:
+                exp = exp.replace(tzinfo=timezone.utc)
+            if exp < now:
+                raise AdsConnectorError("Le délai d'autorisation OAuth a expiré (validité 10 min).", code="EXPIRED_OAUTH_STATE", status_code=400)
 
         return UUID(data["company_id"]), UUID(data["user_id"])
 
@@ -177,14 +187,26 @@ class AdsService:
         if not meta_ready:
             meta_instructions = "Définir META_ADS_APP_ID, META_ADS_APP_SECRET et META_ADS_REDIRECT_URI."
 
+        google_currency = "CAD"
+        meta_currency = "CAD"
+        if google_conn and google_conn.encrypted_credentials:
+            creds = self.get_credentials(company_id, "google_ads")
+            if creds:
+                google_currency = creds.get("currency", "CAD")
+        if meta_conn and meta_conn.encrypted_credentials:
+            creds = self.get_credentials(company_id, "meta_ads")
+            if creds:
+                meta_currency = creds.get("currency", "CAD")
+
         return {
             "google_ads": AdsConnectionStatus(
                 provider="google_ads",
                 connected=bool(google_conn and google_conn.status == CommerceConnectionStatus.CONNECTED.value),
-                configured=google_api_ready,
+                configured=google_ready,
                 external_account_id=google_conn.external_account_id if google_conn else None,
                 account_name=google_conn.display_name if google_conn else None,
-                status=google_conn.status if google_conn else ("BLOCKED" if not google_api_ready else "DISCONNECTED"),
+                currency=google_currency,
+                status=google_conn.status if google_conn else ("BLOCKED" if not google_ready else "DISCONNECTED"),
                 granted_scopes=google_conn.granted_scopes if google_conn else [],
                 last_successful_sync=google_conn.last_successful_sync if google_conn else None,
                 error_message=google_conn.sync_error_message if google_conn else None,
@@ -196,6 +218,7 @@ class AdsService:
                 configured=meta_ready,
                 external_account_id=meta_conn.external_account_id if meta_conn else None,
                 account_name=meta_conn.display_name if meta_conn else None,
+                currency=meta_currency,
                 status=meta_conn.status if meta_conn else ("BLOCKED" if not meta_ready else "DISCONNECTED"),
                 granted_scopes=meta_conn.granted_scopes if meta_conn else [],
                 last_successful_sync=meta_conn.last_successful_sync if meta_conn else None,
@@ -209,7 +232,10 @@ class AdsService:
 
         # Verify access, permissions, and fetch real account currency & metadata
         verification = await self.google_ads.verify_access(tokens, customer_id)
-        account_id = verification.get("customer_id") or customer_id or "pending_account_select"
+        account_id = (verification.get("customer_id") or customer_id or "").strip()
+        if not account_id or account_id == "pending_account_select":
+            raise AdsConnectorError("Aucun compte Google Ads actif ou autorisé n'a été validé.", code="NO_AUTHORIZED_ACCOUNT", status_code=400)
+
         currency = verification.get("currency") or "CAD"
         name = verification.get("account_name") or f"Google Ads ({account_id})"
 
@@ -249,7 +275,10 @@ class AdsService:
 
         # Verify permissions, accessible accounts, and fetch real account currency & active status
         verification = await self.meta_ads.verify_access(tokens, ad_account_id)
-        account_id = verification.get("ad_account_id") or ad_account_id or "pending_account_select"
+        account_id = (verification.get("ad_account_id") or ad_account_id or "").strip()
+        if not account_id or account_id == "pending_account_select":
+            raise AdsConnectorError("Aucun compte Meta Ads actif ou autorisé n'a été validé.", code="NO_AUTHORIZED_ACCOUNT", status_code=400)
+
         currency = verification.get("currency") or "CAD"
         name = verification.get("account_name") or f"Meta Ads ({account_id})"
 
@@ -316,7 +345,7 @@ class AdsService:
         return []
 
     async def get_combined_performance(self, company_id: UUID, period: str = "last_30d") -> dict[str, Any]:
-        """Consolidates ads performance across providers with explicit multi-currency resolution."""
+        """Consolidates ads performance across providers with official Bank of Canada FX resolution."""
         google_creds = self.get_credentials(company_id, "google_ads")
         meta_creds = self.get_credentials(company_id, "meta_ads")
 
@@ -327,7 +356,6 @@ class AdsService:
         all_campaigns: list[AdCampaign] = []
         errors: dict[str, str] = {}
         target_currency = "CAD"
-        today_iso = datetime.now(timezone.utc).date().isoformat()
 
         # 1. Fetch Google Ads performance if configured & active
         if google_creds and self.google_ads.is_api_ready():
@@ -363,7 +391,7 @@ class AdsService:
                     meta_conn.sync_error_message = err_msg
                     self.db.commit()
 
-        # 3. Currency resolution & conversion
+        # 3. Currency resolution via Bank of Canada FX Service
         rates_used: list[dict[str, Any]] = []
         can_aggregate = True
         total_spend_target = Decimal("0.00")
@@ -372,18 +400,18 @@ class AdsService:
             source_curr = s.native_currency.upper().strip()
             if source_curr == target_currency:
                 s.reference_currency = target_currency
-                s.exchange_rate = Decimal("1.0000")
+                s.exchange_rate = Decimal("1.00000000")
                 s.total_spend_converted = s.total_spend_native
                 s.average_cpc_converted = s.average_cpc_native
                 total_spend_target += s.total_spend_native
             else:
-                fx = DEFAULT_FX_RATES.get((source_curr, target_currency))
-                if fx:
-                    rate, source_name = fx
+                fx_record = await self.fx_service.get_exchange_rate(source_curr, target_currency)
+                if fx_record:
+                    rate = fx_record.rate
                     s.reference_currency = target_currency
                     s.exchange_rate = rate
-                    s.exchange_rate_source = source_name
-                    s.exchange_rate_date = today_iso
+                    s.exchange_rate_source = fx_record.source
+                    s.exchange_rate_date = fx_record.observation_date
                     s.total_spend_converted = (s.total_spend_native * rate).quantize(Decimal("0.01"))
                     s.average_cpc_converted = (s.average_cpc_native * rate).quantize(Decimal("0.01"))
                     total_spend_target += s.total_spend_converted
@@ -391,11 +419,11 @@ class AdsService:
                         "from_currency": source_curr,
                         "to_currency": target_currency,
                         "rate": float(rate),
-                        "source": source_name,
-                        "date": today_iso,
+                        "source": fx_record.source,
+                        "date": fx_record.observation_date,
                     })
                 else:
-                    # Incompatible currency without rate -> block mixed aggregation
+                    # Incompatible or unavailable rate -> block mixed aggregation
                     can_aggregate = False
 
         # Apply campaign currency conversion
@@ -403,21 +431,24 @@ class AdsService:
             source_curr = c.currency.upper().strip()
             if source_curr == target_currency:
                 c.converted_currency = target_currency
-                c.exchange_rate = Decimal("1.0000")
+                c.exchange_rate = Decimal("1.00000000")
                 c.spend_converted = c.spend_native
                 c.daily_budget_converted = c.daily_budget_native
                 c.cpc_converted = c.cpc_native
             else:
-                fx = DEFAULT_FX_RATES.get((source_curr, target_currency))
-                if fx:
-                    rate, source_name = fx
+                fx_record = await self.fx_service.get_exchange_rate(source_curr, target_currency)
+                if fx_record:
+                    rate = fx_record.rate
                     c.converted_currency = target_currency
                     c.exchange_rate = rate
-                    c.exchange_rate_source = source_name
-                    c.exchange_rate_date = today_iso
+                    c.exchange_rate_source = fx_record.source
+                    c.exchange_rate_date = fx_record.observation_date
                     c.spend_converted = (c.spend_native * rate).quantize(Decimal("0.01"))
                     c.daily_budget_converted = (c.daily_budget_native * rate).quantize(Decimal("0.01")) if c.daily_budget_native else None
                     c.cpc_converted = (c.cpc_native * rate).quantize(Decimal("0.01"))
+                else:
+                    c.converted_currency = None
+                    c.spend_converted = None
 
         total_impressions = sum(s.total_impressions for s in summaries)
         total_clicks = sum(s.total_clicks for s in summaries)
@@ -425,6 +456,13 @@ class AdsService:
 
         avg_ctr = (total_clicks / total_impressions * 100) if total_impressions > 0 else 0.0
         avg_cpc = (total_spend_target / Decimal(total_clicks)) if total_clicks > 0 else Decimal("0.00")
+
+        # ROAS calculation weighted by spend
+        total_conv_value = sum(
+            Decimal(str(c.roas)) * (c.spend_converted if c.spend_converted is not None else c.spend_native)
+            for c in all_campaigns
+        )
+        avg_roas = float(total_conv_value / total_spend_target) if (can_aggregate and total_spend_target > Decimal("0.00")) else 0.0
 
         start_date, end_date = resolve_date_range(period)
 
@@ -440,6 +478,7 @@ class AdsService:
             "total_conversions": total_conversions,
             "average_ctr": round(avg_ctr, 2),
             "average_cpc_cad": float(avg_cpc.quantize(Decimal("0.01"))) if can_aggregate else None,
+            "average_roas": round(avg_roas, 2),
             "exchange_rates_applied": rates_used,
             "campaigns_count": len(all_campaigns),
             "active_campaigns_count": sum(1 for c in all_campaigns if c.status in ("ENABLED", "ACTIVE")),
@@ -455,6 +494,7 @@ class AdsService:
                     "conversions": s.total_conversions,
                     "ctr": s.average_ctr,
                     "cpc_native": float(s.average_cpc_native),
+                    "roas": s.average_roas,
                 }
                 for s in summaries
             },

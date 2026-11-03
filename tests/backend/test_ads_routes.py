@@ -3,10 +3,14 @@
 Validates:
 1. Authentication & Subscription gating.
 2. Marketing module entitlement gating (HTTP 403 MODULE_NOT_ENTITLED when inactive).
-3. Anti-replay single-use OAuth state verification.
-4. Strict multi-tenant isolation between companies.
-5. Error sanitization without leaking sensitive tokens or exceptions in redirect URLs.
-6. Multi-currency reporting and period filters.
+3. Fine-grained RBAC permissions:
+   - READ (marketing:read / data:read): Owner, Admin, Manager, Analyst, Viewer allowed; Standard User denied.
+   - CONNECT (marketing:connect): Owner, Admin, Manager allowed; Analyst, Viewer, User denied.
+   - DISCONNECT (marketing:disconnect): Owner, Admin allowed; Manager, Analyst, Viewer, User denied.
+4. Anti-replay single-use OAuth state verification.
+5. Strict multi-tenant isolation between companies.
+6. Error sanitization without leaking sensitive tokens or exceptions in redirect URLs.
+7. Multi-currency reporting and period filters.
 """
 
 from __future__ import annotations
@@ -15,6 +19,7 @@ import base64
 import json
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from typing import Any, Mapping
 from unittest.mock import AsyncMock, patch
 from uuid import UUID, uuid4
 
@@ -38,14 +43,17 @@ from backend.main import create_application
 from tests.subscription_helpers import add_active_subscription
 
 
-class DummyCipher:
-    def encrypt(self, data: dict) -> str:
-        return f"enc_{base64.b64encode(json.dumps(data).encode()).decode()}"
+class DummyCipher(ConnectorSecretCipher):
+    def __init__(self) -> None:
+        pass
 
-    def decrypt(self, token: str) -> dict:
-        if token.startswith("enc_"):
-            return json.loads(base64.b64decode(token[4:].encode()).decode())
-        return json.loads(token)
+    def encrypt(self, payload: Mapping[str, Any]) -> str:
+        return f"enc_{base64.b64encode(json.dumps(dict(payload)).encode()).decode()}"
+
+    def decrypt(self, encrypted_payload: str) -> dict[str, Any]:
+        if encrypted_payload.startswith("enc_"):
+            return json.loads(base64.b64decode(encrypted_payload[4:].encode()).decode())
+        return json.loads(encrypted_payload)
 
 
 @pytest.fixture
@@ -57,7 +65,38 @@ def db_session(tmp_path):
         yield session
 
 
-def _create_tenant(db_session, name: str, *, with_marketing_module: bool = True):
+def _create_tenant_user(db_session, company: Company, role: UserRole) -> dict[str, Any]:
+    user = User(
+        id=uuid4(),
+        company_id=company.id,
+        first_name="Test",
+        last_name=f"User-{role.value}",
+        email=f"user-{role.value}-{uuid4().hex[:6]}@example.com",
+        password_hash="hash",
+        role=role,
+        email_verified_at=datetime.now(timezone.utc),
+    )
+    db_session.add(user)
+    db_session.flush()
+
+    session_id = uuid4()
+    now = datetime.now(timezone.utc)
+    db_session.add(
+        AuthSession(
+            id=session_id,
+            user_id=user.id,
+            token_hash=f"hash-{session_id}",
+            created_at=now,
+            expires_at=now.replace(year=now.year + 1),
+        )
+    )
+    db_session.commit()
+
+    token, _ = create_access_token(user.id, company.id, session_id)
+    return {"user": user, "token": token}
+
+
+def _create_tenant(db_session, name: str, *, with_marketing_module: bool = True, role: UserRole = UserRole.ADMIN):
     company = Company(
         id=uuid4(),
         name=name,
@@ -87,39 +126,13 @@ def _create_tenant(db_session, name: str, *, with_marketing_module: bool = True)
             )
         )
 
-    user = User(
-        id=uuid4(),
-        company_id=company.id,
-        first_name="Ads",
-        last_name="Manager",
-        email=f"user-{uuid4().hex[:6]}@example.com",
-        password_hash="hash",
-        role=UserRole.ADMIN,
-        email_verified_at=datetime.now(timezone.utc),
-    )
-    db_session.add(user)
-    db_session.flush()
-
-    session_id = uuid4()
-    now = datetime.now(timezone.utc)
-    db_session.add(
-        AuthSession(
-            id=session_id,
-            user_id=user.id,
-            token_hash=f"hash-{session_id}",
-            created_at=now,
-            expires_at=now.replace(year=now.year + 1),
-        )
-    )
-    db_session.commit()
-
-    token, _ = create_access_token(user.id, company.id, session_id)
-    return {"company": company, "user": user, "token": token}
+    user_info = _create_tenant_user(db_session, company, role)
+    return {"company": company, "user": user_info["user"], "token": user_info["token"]}
 
 
 @pytest.fixture
 def test_setup(db_session):
-    return _create_tenant(db_session, "Test Ads Co", with_marketing_module=True)
+    return _create_tenant(db_session, "Test Ads Co", with_marketing_module=True, role=UserRole.ADMIN)
 
 
 def get_test_client(db_session, settings: Settings) -> TestClient:
@@ -143,7 +156,6 @@ def test_ads_status_unauthenticated_fails(db_session):
 
 
 def test_ads_routes_require_marketing_module_entitlement(db_session):
-    # Tenant without marketing module
     tenant_no_marketing = _create_tenant(db_session, "Company Sans Marketing", with_marketing_module=False)
     settings = Settings(AUTH_JWT_SECRET="a" * 32)
     client = get_test_client(db_session, settings)
@@ -167,6 +179,88 @@ def test_ads_status_authenticated_returns_providers(db_session, test_setup):
     assert "meta_ads" in data
     assert data["google_ads"]["connected"] is False
     assert data["meta_ads"]["connected"] is False
+
+
+def test_marketing_rbac_fine_grained_matrix(db_session):
+    """Verifies READ, CONNECT, and DISCONNECT boundaries across all tenant roles."""
+    company = Company(
+        id=uuid4(),
+        name="RBAC Matrix Co",
+        slug=f"rbac-{uuid4().hex[:6]}",
+        email=f"rbac-{uuid4().hex[:6]}@example.com",
+        country="CA",
+        timezone="America/Toronto",
+        industry="Retail",
+        subscription_plan="professional",
+    )
+    db_session.add(company)
+    db_session.flush()
+    add_active_subscription(db_session, company)
+
+    module = db_session.query(Module).filter(Module.code == "marketing").first()
+    if not module:
+        module = Module(name="Marketing", code="marketing", is_active=True)
+        db_session.add(module)
+        db_session.flush()
+    db_session.add(
+        CompanyModule(
+            company_id=company.id,
+            module_id=module.id,
+            activated_at=datetime.now(timezone.utc) - timedelta(days=1),
+            status=CompanyModuleStatus.ACTIVE,
+        )
+    )
+
+    owner = _create_tenant_user(db_session, company, UserRole.OWNER)
+    admin = _create_tenant_user(db_session, company, UserRole.ADMIN)
+    manager = _create_tenant_user(db_session, company, UserRole.MANAGER)
+    analyst = _create_tenant_user(db_session, company, UserRole.ANALYST)
+    viewer = _create_tenant_user(db_session, company, UserRole.VIEWER)
+    user = _create_tenant_user(db_session, company, UserRole.USER)
+
+    settings = Settings(
+        AUTH_JWT_SECRET="a" * 32,
+        GOOGLE_ADS_CLIENT_ID="gid-1234.apps.googleusercontent.com",
+        GOOGLE_ADS_CLIENT_SECRET="gsecret-5678",
+        GOOGLE_ADS_DEVELOPER_TOKEN="devtoken-9999",
+        GOOGLE_ADS_REDIRECT_URI="https://api.avenqo.ca/api/v1/ads/google/callback",
+    )
+    client = get_test_client(db_session, settings)
+
+    # 1. READ PERMISSIONS (/api/v1/ads/status)
+    # Allowed: OWNER, ADMIN, MANAGER, ANALYST, VIEWER
+    # Denied: USER
+    for role_name, token in [("owner", owner["token"]), ("admin", admin["token"]), ("manager", manager["token"]), ("analyst", analyst["token"]), ("viewer", viewer["token"])]:
+        r = client.get("/api/v1/ads/status", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200, f"Role {role_name} should have READ access"
+
+    r_user = client.get("/api/v1/ads/status", headers={"Authorization": f"Bearer {user['token']}"})
+    assert r_user.status_code == 403, "Standard USER should NOT have marketing read access"
+    assert r_user.json()["error"]["code"] == "INSUFFICIENT_ROLE"
+
+    # 2. CONNECT PERMISSIONS (/api/v1/ads/google/auth-url)
+    # Allowed: OWNER, ADMIN, MANAGER
+    # Denied: ANALYST, VIEWER, USER
+    for role_name, token in [("owner", owner["token"]), ("admin", admin["token"]), ("manager", manager["token"])]:
+        r = client.get("/api/v1/ads/google/auth-url", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200, f"Role {role_name} should have CONNECT access"
+
+    for role_name, token in [("analyst", analyst["token"]), ("viewer", viewer["token"]), ("user", user["token"])]:
+        r = client.get("/api/v1/ads/google/auth-url", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 403, f"Role {role_name} should NOT have CONNECT access"
+        assert r.json()["error"]["code"] == "INSUFFICIENT_ROLE"
+
+    # 3. DISCONNECT PERMISSIONS (/api/v1/ads/google/disconnect)
+    # Allowed: OWNER, ADMIN only
+    # Denied: MANAGER, ANALYST, VIEWER, USER
+    for role_name, token in [("owner", owner["token"]), ("admin", admin["token"])]:
+        r = client.post("/api/v1/ads/google/disconnect", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200, f"Role {role_name} should have DISCONNECT access"
+
+    for role_name, token in [("manager", manager["token"]), ("analyst", analyst["token"]), ("viewer", viewer["token"]), ("user", user["token"])]:
+        r = client.post("/api/v1/ads/google/disconnect", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 403, f"Role {role_name} should NOT have DISCONNECT access"
+        assert r.json()["error"]["code"] == "INSUFFICIENT_ROLE"
 
 
 def test_google_ads_auth_url_blocked_when_unconfigured(db_session, test_setup):
@@ -244,7 +338,7 @@ def test_multi_tenant_isolation_between_companies(db_session, test_setup):
     headers_b = {"Authorization": f"Bearer {tenant_b['token']}"}
     res_b = client.get("/api/v1/ads/status", headers=headers_b)
     assert res_b.json()["google_ads"]["connected"] is False
-    assert res_b.json()["google_ads"]["external_account_id"] is None
+    assert res_b.json()["google_ads"]["external_account_id"] == None
 
     # Tenant B attempts to disconnect Tenant A: cannot affect Tenant A
     disc_b = client.post("/api/v1/ads/google/disconnect", headers=headers_b)

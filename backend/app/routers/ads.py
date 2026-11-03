@@ -12,11 +12,11 @@ from sqlalchemy.orm import Session
 
 from backend.app.config.settings import Settings, get_settings
 from backend.app.connectors.ads.base import AdsConfigurationMissingError, AdsConnectorError
+from backend.app.core.permissions import permissions_for
 from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity
 from backend.app.dependencies.commerce import get_connector_secret_cipher
 from backend.app.dependencies.subscription import require_active_subscription
-from backend.app.models.user import UserRole
 from backend.app.services.ads_service import AdsService
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from shared.ai_engine.contracts import TenantContext
@@ -53,27 +53,69 @@ def require_marketing_entitlement(
 def require_marketing_read(
     identity: CurrentIdentity = Depends(get_current_identity),
 ) -> CurrentIdentity:
-    """Read access: user with marketing:view, marketing:read, or manager/admin/owner role."""
-    user = identity.user
-    if user.role in (UserRole.ADMIN, UserRole.OWNER):
-        return identity
-    return identity
-
-
-def require_marketing_write(
-    identity: CurrentIdentity = Depends(get_current_identity),
-) -> CurrentIdentity:
-    """Write/Connect access: requires admin/owner or marketing:edit permission."""
-    user = identity.user
-    if user.role in (UserRole.ADMIN, UserRole.OWNER):
+    """Read access: Requires marketing:read or data:read permission."""
+    perms = permissions_for(identity.user.role)
+    if "marketing:read" in perms or "data:read" in perms:
         return identity
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail={
             "code": "INSUFFICIENT_ROLE",
-            "message": "Seuls les administrateurs et gestionnaires marketing peuvent modifier les canaux publicitaires.",
+            "message": "Permission 'marketing:read' requise pour consulter les canaux publicitaires.",
         },
     )
+
+
+def require_marketing_connect(
+    identity: CurrentIdentity = Depends(get_current_identity),
+) -> CurrentIdentity:
+    """Connect access: Requires marketing:connect permission (Owner, Admin, Manager)."""
+    perms = permissions_for(identity.user.role)
+    if "marketing:connect" in perms:
+        return identity
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={
+            "code": "INSUFFICIENT_ROLE",
+            "message": "Permission 'marketing:connect' requise pour initier ou connecter un canal publicitaire.",
+        },
+    )
+
+
+def require_marketing_disconnect(
+    identity: CurrentIdentity = Depends(get_current_identity),
+) -> CurrentIdentity:
+    """Disconnect access: Requires marketing:disconnect permission (Owner, Admin only)."""
+    perms = permissions_for(identity.user.role)
+    if "marketing:disconnect" in perms:
+        return identity
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={
+            "code": "INSUFFICIENT_ROLE",
+            "message": "Permission 'marketing:disconnect' requise pour déconnecter un canal publicitaire.",
+        },
+    )
+
+
+def require_marketing_admin(
+    identity: CurrentIdentity = Depends(get_current_identity),
+) -> CurrentIdentity:
+    """Admin access: Requires marketing:admin permission (Owner, Admin only)."""
+    perms = permissions_for(identity.user.role)
+    if "marketing:admin" in perms:
+        return identity
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={
+            "code": "INSUFFICIENT_ROLE",
+            "message": "Permission 'marketing:admin' requise pour administrer les paramètres marketing.",
+        },
+    )
+
+
+# Backward-compatible alias
+require_marketing_write = require_marketing_connect
 
 
 @router.get("/status")
@@ -109,7 +151,7 @@ async def get_google_ads_auth_url(
     identity: CurrentIdentity = Depends(get_current_identity),
     _subscription: Any = Depends(require_active_subscription),
     _entitlement: TenantContext = Depends(require_marketing_entitlement),
-    _write_guard: CurrentIdentity = Depends(require_marketing_write),
+    _connect_guard: CurrentIdentity = Depends(require_marketing_connect),
     service: AdsService = Depends(get_ads_service),
 ) -> dict[str, str]:
     """Generates a signed, single-use anti-replay OAuth authorization URL for Google Ads."""
@@ -151,7 +193,7 @@ async def disconnect_google_ads(
     identity: CurrentIdentity = Depends(get_current_identity),
     _subscription: Any = Depends(require_active_subscription),
     _entitlement: TenantContext = Depends(require_marketing_entitlement),
-    _write_guard: CurrentIdentity = Depends(require_marketing_write),
+    _disconnect_guard: CurrentIdentity = Depends(require_marketing_disconnect),
     service: AdsService = Depends(get_ads_service),
 ) -> dict[str, bool]:
     """Disconnects Google Ads integration."""
@@ -202,7 +244,7 @@ async def get_meta_ads_auth_url(
     identity: CurrentIdentity = Depends(get_current_identity),
     _subscription: Any = Depends(require_active_subscription),
     _entitlement: TenantContext = Depends(require_marketing_entitlement),
-    _write_guard: CurrentIdentity = Depends(require_marketing_write),
+    _connect_guard: CurrentIdentity = Depends(require_marketing_connect),
     service: AdsService = Depends(get_ads_service),
 ) -> dict[str, str]:
     """Generates a signed, single-use anti-replay OAuth authorization URL for Meta Ads."""
@@ -244,7 +286,7 @@ async def disconnect_meta_ads(
     identity: CurrentIdentity = Depends(get_current_identity),
     _subscription: Any = Depends(require_active_subscription),
     _entitlement: TenantContext = Depends(require_marketing_entitlement),
-    _write_guard: CurrentIdentity = Depends(require_marketing_write),
+    _disconnect_guard: CurrentIdentity = Depends(require_marketing_disconnect),
     service: AdsService = Depends(get_ads_service),
 ) -> dict[str, bool]:
     """Disconnects Meta Ads integration."""

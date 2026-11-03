@@ -312,6 +312,9 @@ async def test_ads_service_multi_currency_conversion_and_incompatible_blocking(d
 
     # Case 1: Google Ads in USD ($100) + Meta Ads in CAD ($200)
     # Expected: USD converted to CAD via 1.3650 (Bank of Canada rate) -> $136.50 + $200.00 = $336.50 CAD
+    service.fx_service.set_cached_rate(
+        "USD", "CAD", Decimal("1.3650"), "2026-11-02", source="Banque du Canada - API Valet (FXUSDCAD)"
+    )
     summary_google_usd = AdsPerformanceSummary(
         provider="google_ads",
         account_id="111-222-3333",
@@ -354,7 +357,7 @@ async def test_ads_service_multi_currency_conversion_and_incompatible_blocking(d
         assert result["exchange_rates_applied"][0]["from_currency"] == "USD"
         assert result["exchange_rates_applied"][0]["rate"] == 1.365
 
-    # Case 2: Incompatible currency without certified rate (e.g. JPY) -> blocks mixed addition
+    # Case 2: Incompatible currency without certified rate (e.g. JPY without BoC observation) -> blocks mixed addition
     summary_jpy = AdsPerformanceSummary(
         provider="google_ads",
         account_id="888-999-0000",
@@ -365,6 +368,7 @@ async def test_ads_service_multi_currency_conversion_and_incompatible_blocking(d
         total_conversions=2,
     )
     with patch.object(service, "get_credentials") as mock_creds, \
+         patch.object(service.fx_service, "get_exchange_rate", AsyncMock(return_value=None)), \
          patch.object(service.google_ads, "get_performance", AsyncMock(return_value=summary_jpy)), \
          patch.object(service.google_ads, "list_campaigns", AsyncMock(return_value=[])), \
          patch.object(service.meta_ads, "get_performance", AsyncMock(return_value=summary_meta_cad)), \
@@ -376,3 +380,21 @@ async def test_ads_service_multi_currency_conversion_and_incompatible_blocking(d
         assert result["currency"] == "MIXED"
         assert result["currency_aggregation_blocked"] is True
         assert result["total_spend_cad"] is None  # Blocked from generating an invalid mixed dollar total
+
+
+@pytest.mark.asyncio
+async def test_connect_fails_closed_when_no_authorized_account(db_session, dummy_settings):
+    service = AdsService(db=db_session, settings=dummy_settings, cipher=DummyCipher())
+    company_id = uuid4()
+
+    with patch.object(service.google_ads, "exchange_code", AsyncMock(return_value={"access_token": "g_tok"})), \
+         patch.object(service.google_ads, "verify_access", AsyncMock(return_value={"customer_id": ""})), \
+         pytest.raises(AdsConnectorError) as exc_info:
+        await service.connect_google_ads(company_id, "mock_code")
+    assert exc_info.value.code == "NO_AUTHORIZED_ACCOUNT"
+
+    with patch.object(service.meta_ads, "exchange_code", AsyncMock(return_value={"access_token": "m_tok"})), \
+         patch.object(service.meta_ads, "verify_access", AsyncMock(return_value={"ad_account_id": ""})), \
+         pytest.raises(AdsConnectorError) as exc_info_meta:
+        await service.connect_meta_ads(company_id, "mock_code")
+    assert exc_info_meta.value.code == "NO_AUTHORIZED_ACCOUNT"
