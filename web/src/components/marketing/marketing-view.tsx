@@ -10,6 +10,10 @@ import {
   Target,
   Send,
   Plug,
+  BarChart2,
+  ShieldCheck,
+  AlertCircle,
+  Link2,
 } from "lucide-react";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
@@ -21,6 +25,69 @@ import { MARKETING_SURFACE_COPY } from "@/lib/i18n/marketing-surface-copy";
 type CustomerAnalysis = { available: boolean; currency: string; source_context: { name?: string };
   summary: { total_customers: number; active_customers: number | null; new_customers?: number | null; purchase_frequency: number; average_customer_value: number | null } | null;
   segments: { label: string; count: number }[] };
+
+type AdsProviderStatus = {
+  provider: string;
+  connected: boolean;
+  configured: boolean;
+  external_account_id: string | null;
+  account_name: string | null;
+  status: string;
+  last_successful_sync: string | null;
+  setup_instructions: string | null;
+};
+
+type AdsPerformance = {
+  currency: string;
+  period?: string;
+  start_date?: string;
+  end_date?: string;
+  currency_aggregation_blocked?: boolean;
+  total_spend_cad: number | null;
+  total_impressions: number;
+  total_clicks: number;
+  total_conversions: number;
+  average_ctr: number;
+  average_cpc_cad: number | null;
+  exchange_rates_applied?: Array<{
+    from_currency: string;
+    to_currency: string;
+    rate: number;
+    source: string;
+    date: string;
+  }>;
+  errors?: Record<string, string>;
+  campaigns_count: number;
+  active_campaigns_count: number;
+  providers_connected: string[];
+  provider_summaries?: Record<string, {
+    account_id: string | null;
+    native_currency: string;
+    total_spend_native: number;
+    total_spend_converted_cad: number | null;
+    impressions: number;
+    clicks: number;
+    conversions: number;
+    ctr: number;
+    cpc_native: number;
+  }>;
+  campaigns: Array<{
+    id: string;
+    name: string;
+    status: string;
+    provider: string;
+    currency_native?: string;
+    daily_budget_native?: number | null;
+    spend_native?: number;
+    spend_cad: number | null;
+    impressions: number;
+    clicks: number;
+    conversions: number;
+    ctr: number;
+    cpc_native?: number;
+    roas: number;
+  }>;
+};
 
 export function MarketingView() {
   const { locale } = useLocale();
@@ -66,6 +133,56 @@ export function MarketingView() {
   const [generatedCampaign, setGeneratedCampaign] = useState<{ content: string; provider: string } | null>(null);
 
   const [generationError, setGenerationError] = useState("");
+  const [showAdsConnectors, setShowAdsConnectors] = useState(false);
+  const [adsPeriod, setAdsPeriod] = useState<"7d" | "30d" | "90d">("30d");
+  const [adsStatus, setAdsStatus] = useState<Record<string, AdsProviderStatus> | null>(null);
+  const [adsPerformance, setAdsPerformance] = useState<AdsPerformance | null>(null);
+  const [connectingProvider, setConnectingProvider] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!tenant || !showAdsConnectors) return;
+    const abort = new AbortController();
+    void apiFetch("/api/v1/ads/status", { signal: abort.signal })
+      .then(r => r.json())
+      .then(d => { if (!abort.signal.aborted) setAdsStatus(d); })
+      .catch(() => {});
+
+    void apiFetch(`/api/v1/ads/performance/summary?period=${adsPeriod}`, { signal: abort.signal })
+      .then(r => r.json())
+      .then(d => { if (!abort.signal.aborted) setAdsPerformance(d); })
+      .catch(() => {});
+
+    return () => abort.abort();
+  }, [tenant, showAdsConnectors, adsPeriod]);
+
+  const handleConnect = async (provider: "google" | "meta") => {
+    setConnectingProvider(provider);
+    try {
+      const endpoint = provider === "google" ? "/api/v1/ads/google/auth-url" : "/api/v1/ads/meta/auth-url";
+      const resp = await apiFetch(endpoint);
+      const res = await resp.json();
+      if (res?.auth_url) {
+        window.location.href = res.auth_url;
+      }
+    } catch {
+      void apiFetch("/api/v1/ads/status").then(r => r.json()).then(setAdsStatus).catch(() => {});
+    } finally {
+      setConnectingProvider(null);
+    }
+  };
+
+  const handleDisconnect = async (provider: "google" | "meta") => {
+    try {
+      const endpoint = provider === "google" ? "/api/v1/ads/google/disconnect" : "/api/v1/ads/meta/disconnect";
+      await apiFetch(endpoint, { method: "POST" });
+      const statusResp = await apiFetch("/api/v1/ads/status");
+      setAdsStatus(await statusResp.json());
+      const perfResp = await apiFetch("/api/v1/ads/performance/summary");
+      setAdsPerformance(await perfResp.json());
+    } catch {
+      // ignore
+    }
+  };
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -311,6 +428,224 @@ export function MarketingView() {
           </ul>
         )
           : <p className="text-sm text-slate-500">{company.analyticsUnavailable}</p>}
+      </div>
+
+      {/* Advertising Connectors (Google Ads & Meta Ads) */}
+      <div className="p-6 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-[#0076FF] dark:text-[#00D4FF]">
+              <BarChart2 size={20} />
+            </div>
+            <div>
+              <h2 className="text-base font-extrabold text-slate-900 dark:text-[#F4F7FB]">
+                {locale.startsWith("fr") ? "Connecteurs Publicitaires (Google Ads & Meta Ads)" : "Advertising Connectors (Google Ads & Meta Ads)"}
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-[#94A3B8]">
+                {locale.startsWith("fr")
+                  ? "Lecture sécurisée des dépenses, campagnes, impressions, clics et ROAS. Aucune modification payante automatique."
+                  : "Secure read-only tracking of spend, campaigns, impressions, clicks and ROAS. Zero automated paid mutations."}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-xs font-semibold">
+              <ShieldCheck size={14} />
+              <span>{locale.startsWith("fr") ? "Lecture Seule Garantie" : "Guaranteed Read-Only"}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowAdsConnectors(prev => !prev)}
+              className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/5 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer"
+            >
+              {showAdsConnectors
+                ? (locale.startsWith("fr") ? "Masquer les canaux" : "Hide channels")
+                : (locale.startsWith("fr") ? "Afficher les canaux" : "Show channels")}
+            </button>
+          </div>
+        </div>
+
+        {/* Connectors Status Cards */}
+        {showAdsConnectors && (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Google Ads Card */}
+          <div className="p-4 rounded-xl border border-slate-200 dark:border-white/[0.08] bg-slate-50/50 dark:bg-[#111D3D]/50 flex flex-col justify-between space-y-3">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>Google Ads</span>
+                  {adsStatus?.google_ads?.connected ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200">
+                      {locale.startsWith("fr") ? "Connecté" : "Connected"}
+                    </span>
+                  ) : adsStatus?.google_ads?.configured ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200">
+                      {locale.startsWith("fr") ? "Prêt à connecter" : "Ready to connect"}
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                      {locale.startsWith("fr") ? "Non configuré (BLOCKED)" : "Not configured (BLOCKED)"}
+                    </span>
+                  )}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {adsStatus?.google_ads?.connected
+                    ? `${locale.startsWith("fr") ? "Compte" : "Account"}: ${adsStatus.google_ads.external_account_id}`
+                    : adsStatus?.google_ads?.setup_instructions || (locale.startsWith("fr") ? "Synchronisation des campagnes de recherche et display." : "Search and display campaigns synchronization.")}
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-200/60 dark:border-white/[0.05] flex justify-end">
+              {adsStatus?.google_ads?.connected ? (
+                <button
+                  type="button"
+                  onClick={() => handleDisconnect("google")}
+                  className="px-3 py-1.5 rounded-lg border border-rose-300 text-rose-600 hover:bg-rose-50 dark:border-rose-900/60 dark:text-rose-400 text-xs font-semibold cursor-pointer"
+                >
+                  {locale.startsWith("fr") ? "Déconnecter" : "Disconnect"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={!adsStatus?.google_ads?.configured || connectingProvider === "google"}
+                  onClick={() => handleConnect("google")}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0076FF] hover:bg-[#005bd3] disabled:opacity-40 text-white text-xs font-semibold cursor-pointer"
+                >
+                  <Link2 size={13} />
+                  <span>{connectingProvider === "google" ? (locale.startsWith("fr") ? "Connexion…" : "Connecting…") : (locale.startsWith("fr") ? "Connecter Google Ads" : "Connect Google Ads")}</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Meta Ads Card */}
+          <div className="p-4 rounded-xl border border-slate-200 dark:border-white/[0.08] bg-slate-50/50 dark:bg-[#111D3D]/50 flex flex-col justify-between space-y-3">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>Meta Ads (Facebook & Instagram)</span>
+                  {adsStatus?.meta_ads?.connected ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200">
+                      {locale.startsWith("fr") ? "Connecté" : "Connected"}
+                    </span>
+                  ) : adsStatus?.meta_ads?.configured ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200">
+                      {locale.startsWith("fr") ? "Prêt à connecter" : "Ready to connect"}
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                      {locale.startsWith("fr") ? "Non configuré (BLOCKED)" : "Not configured (BLOCKED)"}
+                    </span>
+                  )}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {adsStatus?.meta_ads?.connected
+                    ? `${locale.startsWith("fr") ? "Compte" : "Account"}: ${adsStatus.meta_ads.external_account_id}`
+                    : adsStatus?.meta_ads?.setup_instructions || (locale.startsWith("fr") ? "Synchronisation des campagnes et insights Instagram / Facebook." : "Instagram / Facebook campaigns and insights synchronization.")}
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-200/60 dark:border-white/[0.05] flex justify-end">
+              {adsStatus?.meta_ads?.connected ? (
+                <button
+                  type="button"
+                  onClick={() => handleDisconnect("meta")}
+                  className="px-3 py-1.5 rounded-lg border border-rose-300 text-rose-600 hover:bg-rose-50 dark:border-rose-900/60 dark:text-rose-400 text-xs font-semibold cursor-pointer"
+                >
+                  {locale.startsWith("fr") ? "Déconnecter" : "Disconnect"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={!adsStatus?.meta_ads?.configured || connectingProvider === "meta"}
+                  onClick={() => handleConnect("meta")}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0076FF] hover:bg-[#005bd3] disabled:opacity-40 text-white text-xs font-semibold cursor-pointer"
+                >
+                  <Link2 size={13} />
+                  <span>{connectingProvider === "meta" ? (locale.startsWith("fr") ? "Connexion…" : "Connecting…") : (locale.startsWith("fr") ? "Connecter Meta Ads" : "Connect Meta Ads")}</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Live Ads Performance Summary if available */}
+        {adsPerformance && adsPerformance.campaigns_count > 0 && (
+          <div className="pt-4 border-t border-slate-200/60 dark:border-white/[0.08] space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                {locale.startsWith("fr") ? "Performance Publicitaire Consolidée" : "Consolidated Ads Performance"}
+              </h3>
+              <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-xs">
+                {(["7d", "30d", "90d"] as const).map(p => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setAdsPeriod(p)}
+                    className={`px-2.5 py-1 rounded-lg font-semibold transition-colors cursor-pointer ${
+                      adsPeriod === p
+                        ? "bg-white dark:bg-[#0076FF] text-slate-900 dark:text-white shadow-xs"
+                        : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    {p === "7d" ? "7j" : p === "30d" ? "30j" : "90j"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {adsPerformance.currency_aggregation_blocked && (
+              <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 flex items-start gap-2.5 text-xs text-amber-800 dark:text-amber-200">
+                <AlertCircle size={16} className="shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                <div>
+                  <span className="font-bold">{locale.startsWith("fr") ? "Devises multiples détectées :" : "Multiple currencies detected:"} </span>
+                  {locale.startsWith("fr")
+                    ? "Les comptes publicitaires utilisent des devises distinctes sans conversion certifiée. Les totaux monétaires sont ventilés par plateforme pour garantir l'exactitude financière."
+                    : "Ad accounts use distinct currencies without certified conversion. Monetary totals are split per platform to guarantee financial accuracy."}
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-200 dark:border-white/[0.08]">
+                <div className="text-[11px] text-slate-500">{locale.startsWith("fr") ? "Dépenses (CAD)" : "Spend (CAD)"}</div>
+                <div className="text-lg font-extrabold text-slate-900 dark:text-white mt-1">
+                  {adsPerformance.total_spend_cad !== null ? `${number(adsPerformance.total_spend_cad)} CAD` : "N/A (Multi)"}
+                </div>
+              </div>
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-200 dark:border-white/[0.08]">
+                <div className="text-[11px] text-slate-500">{locale.startsWith("fr") ? "Impressions" : "Impressions"}</div>
+                <div className="text-lg font-extrabold text-slate-900 dark:text-white mt-1">
+                  {number(adsPerformance.total_impressions)}
+                </div>
+              </div>
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-200 dark:border-white/[0.08]">
+                <div className="text-[11px] text-slate-500">{locale.startsWith("fr") ? "Clics" : "Clicks"}</div>
+                <div className="text-lg font-extrabold text-slate-900 dark:text-white mt-1">
+                  {number(adsPerformance.total_clicks)} ({adsPerformance.average_ctr}%)
+                </div>
+              </div>
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-200 dark:border-white/[0.08]">
+                <div className="text-[11px] text-slate-500">{locale.startsWith("fr") ? "Conversions" : "Conversions"}</div>
+                <div className="text-lg font-extrabold text-slate-900 dark:text-white mt-1">
+                  {number(adsPerformance.total_conversions)}
+                </div>
+              </div>
+            </div>
+
+            {adsPerformance.exchange_rates_applied && adsPerformance.exchange_rates_applied.length > 0 && (
+              <div className="text-[11px] text-slate-400 italic">
+                {locale.startsWith("fr") ? "Conversion de change : " : "Foreign exchange: "}
+                {adsPerformance.exchange_rates_applied.map(fx => `1 ${fx.from_currency} = ${fx.rate} ${fx.to_currency} (${fx.source}, ${fx.date})`).join(" ; ")}
+              </div>
+            )}
+          </div>
+        )}
+        </>
+        )}
       </div>
     </div>
   );
