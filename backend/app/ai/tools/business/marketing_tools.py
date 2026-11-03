@@ -122,3 +122,30 @@ class DraftMarketingCampaignTool(MarketingAITool):
             },
             source_refs=("media_generations", "retail_customer_segments"),
         )
+
+
+class GetAdsPerformanceArgs(ToolArguments):
+    period: str = Field(default="last_30d", description="Période d'analyse (ex: 'last_30d', 'last_7d', 'this_month').")
+
+
+class GetAdsPerformanceTool(MarketingAITool):
+    name = "get_ads_performance"
+    description = (
+        "Consulte les indicateurs réels de performance des campagnes publicitaires (Google Ads et Meta Ads) : "
+        "dépenses totales en CAD, impressions, clics, conversions, coût par clic (CPC) et ROAS."
+    )
+    input_schema = GetAdsPerformanceArgs
+    required_permissions = ("ai:use", "data:read")
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    async def run(self, context: ToolExecutionContext, arguments: GetAdsPerformanceArgs) -> ToolResult:
+        from backend.app.services.ads_service import AdsService
+        service = AdsService(self._session)
+        perf = await service.get_combined_performance(context.tenant.company_id, arguments.period)
+        return ToolResult(
+            success=True,
+            data=perf,
+            source_refs=("commerce_connections", "ads_reporting"),
+        )
