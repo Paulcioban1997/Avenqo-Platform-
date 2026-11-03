@@ -71,40 +71,40 @@ class AdCampaign:
     cpc_converted: Decimal | None = None
 
     @property
-    def spend_cad(self) -> Decimal:
-        """Backward-compatible helper returning spend in CAD."""
+    def spend_cad(self) -> Decimal | None:
+        """Helper returning spend in CAD only if converted or natively CAD."""
         if self.converted_currency == "CAD" and self.spend_converted is not None:
             return self.spend_converted
         if self.currency == "CAD":
             return self.spend_native
-        return self.spend_native
+        return None
 
     @property
     def daily_budget_cad(self) -> Decimal | None:
-        """Backward-compatible helper returning daily budget in CAD."""
+        """Helper returning daily budget in CAD only if converted or natively CAD."""
         if self.converted_currency == "CAD" and self.daily_budget_converted is not None:
             return self.daily_budget_converted
         if self.currency == "CAD":
             return self.daily_budget_native
-        return self.daily_budget_native
+        return None
 
     @property
     def lifetime_budget_cad(self) -> Decimal | None:
-        """Backward-compatible helper returning lifetime budget in CAD."""
+        """Helper returning lifetime budget in CAD only if converted or natively CAD."""
         if self.converted_currency == "CAD" and self.lifetime_budget_converted is not None:
             return self.lifetime_budget_converted
         if self.currency == "CAD":
             return self.lifetime_budget_native
-        return self.lifetime_budget_native
+        return None
 
     @property
-    def cpc_cad(self) -> Decimal:
-        """Backward-compatible helper returning average CPC in CAD."""
+    def cpc_cad(self) -> Decimal | None:
+        """Helper returning average CPC in CAD only if converted or natively CAD."""
         if self.converted_currency == "CAD" and self.cpc_converted is not None:
             return self.cpc_converted
         if self.currency == "CAD":
             return self.cpc_native
-        return self.cpc_native
+        return None
 
 
 @dataclass
@@ -135,20 +135,20 @@ class AdsPerformanceSummary:
     average_cpc_converted: Decimal | None = None
 
     @property
-    def total_spend_cad(self) -> Decimal:
+    def total_spend_cad(self) -> Decimal | None:
         if self.reference_currency == "CAD" and self.total_spend_converted is not None:
             return self.total_spend_converted
         if self.native_currency == "CAD":
             return self.total_spend_native
-        return self.total_spend_native
+        return None
 
     @property
-    def average_cpc_cad(self) -> Decimal:
+    def average_cpc_cad(self) -> Decimal | None:
         if self.reference_currency == "CAD" and self.average_cpc_converted is not None:
             return self.average_cpc_converted
         if self.native_currency == "CAD":
             return self.average_cpc_native
-        return self.average_cpc_native
+        return None
 
 
 @dataclass

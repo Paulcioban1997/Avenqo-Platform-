@@ -230,13 +230,27 @@ class AdsService:
     async def connect_google_ads(self, company_id: UUID, code: str, customer_id: str | None = None) -> CommerceConnection:
         tokens = await self.google_ads.exchange_code(code)
 
-        # Verify access, permissions, and fetch real account currency & metadata
+        # Verify access, permissions, and fetch real account currency & metadata (Fail-Closed)
         verification = await self.google_ads.verify_access(tokens, customer_id)
-        account_id = (verification.get("customer_id") or customer_id or "").strip()
-        if not account_id or account_id == "pending_account_select":
-            raise AdsConnectorError("Aucun compte Google Ads actif ou autorisé n'a été validé.", code="NO_AUTHORIZED_ACCOUNT", status_code=400)
+        if verification.get("status") == "NEEDS_ACCOUNT_SELECTION":
+            raise AdsConnectorError(
+                "Plusieurs comptes Google Ads accessibles. Une sélection de compte explicite est requise.",
+                code="NEEDS_ACCOUNT_SELECTION",
+                status_code=400,
+            )
 
-        currency = verification.get("currency") or "CAD"
+        account_id = (verification.get("customer_id") or "").strip()
+        currency = verification.get("currency")
+        if not account_id or not currency:
+            raise AdsConnectorError("Métadonnées de compte client Google Ads incomplètes ou introuvables.", code="NO_AUTHORIZED_ACCOUNT", status_code=400)
+
+        if not verification.get("verified") or verification.get("status") not in ("VERIFIED", "ACTIVE", None):
+            raise AdsConnectorError(
+                "La vérification du compte Google Ads a échoué. Accès fournisseur non confirmé.",
+                code="GOOGLE_ADS_VERIFICATION_FAILED",
+                status_code=400,
+            )
+
         name = verification.get("account_name") or f"Google Ads ({account_id})"
 
         tokens["currency"] = currency
@@ -273,13 +287,27 @@ class AdsService:
     async def connect_meta_ads(self, company_id: UUID, code: str, ad_account_id: str | None = None) -> CommerceConnection:
         tokens = await self.meta_ads.exchange_code(code)
 
-        # Verify permissions, accessible accounts, and fetch real account currency & active status
+        # Verify permissions, accessible accounts, and fetch real account currency & active status (Fail-Closed)
         verification = await self.meta_ads.verify_access(tokens, ad_account_id)
-        account_id = (verification.get("ad_account_id") or ad_account_id or "").strip()
-        if not account_id or account_id == "pending_account_select":
-            raise AdsConnectorError("Aucun compte Meta Ads actif ou autorisé n'a été validé.", code="NO_AUTHORIZED_ACCOUNT", status_code=400)
+        if verification.get("status") == "NEEDS_ACCOUNT_SELECTION":
+            raise AdsConnectorError(
+                "Plusieurs comptes publicitaires Meta accessibles. Une sélection de compte explicite est requise.",
+                code="NEEDS_ACCOUNT_SELECTION",
+                status_code=400,
+            )
 
-        currency = verification.get("currency") or "CAD"
+        account_id = (verification.get("ad_account_id") or "").strip()
+        currency = verification.get("currency")
+        if not account_id or not currency:
+            raise AdsConnectorError("Métadonnées de compte publicitaire Meta Ads incomplètes ou introuvables.", code="NO_AUTHORIZED_ACCOUNT", status_code=400)
+
+        if not verification.get("verified") or verification.get("status") not in ("VERIFIED", "ACTIVE", None):
+            raise AdsConnectorError(
+                "La vérification du compte Meta Ads a échoué. Accès fournisseur non confirmé.",
+                code="META_ADS_VERIFICATION_FAILED",
+                status_code=400,
+            )
+
         name = verification.get("account_name") or f"Meta Ads ({account_id})"
 
         tokens["currency"] = currency
@@ -457,12 +485,27 @@ class AdsService:
         avg_ctr = (total_clicks / total_impressions * 100) if total_impressions > 0 else 0.0
         avg_cpc = (total_spend_target / Decimal(total_clicks)) if total_clicks > 0 else Decimal("0.00")
 
-        # ROAS calculation weighted by spend
-        total_conv_value = sum(
-            Decimal(str(c.roas)) * (c.spend_converted if c.spend_converted is not None else c.spend_native)
-            for c in all_campaigns
-        )
-        avg_roas = float(total_conv_value / total_spend_target) if (can_aggregate and total_spend_target > Decimal("0.00")) else 0.0
+        # ROAS calculation weighted by spend strictly in target currency
+        avg_roas: float | None = None
+        if can_aggregate:
+            if total_spend_target > Decimal("0.00"):
+                total_conv_value = Decimal("0.00")
+                roas_valid = True
+                for c in all_campaigns:
+                    spend_cad = c.spend_converted if c.spend_converted is not None else (c.spend_native if c.currency == target_currency else None)
+                    if spend_cad is None and c.spend_native > Decimal("0.00"):
+                        roas_valid = False
+                        break
+                    if spend_cad is not None:
+                        total_conv_value += (Decimal(str(c.roas)) * spend_cad)
+                if roas_valid:
+                    avg_roas = float((total_conv_value / total_spend_target).quantize(Decimal("0.01")))
+                else:
+                    avg_roas = None
+            else:
+                avg_roas = 0.0
+        else:
+            avg_roas = None
 
         start_date, end_date = resolve_date_range(period)
 
@@ -478,7 +521,7 @@ class AdsService:
             "total_conversions": total_conversions,
             "average_ctr": round(avg_ctr, 2),
             "average_cpc_cad": float(avg_cpc.quantize(Decimal("0.01"))) if can_aggregate else None,
-            "average_roas": round(avg_roas, 2),
+            "average_roas": round(avg_roas, 2) if avg_roas is not None else None,
             "exchange_rates_applied": rates_used,
             "campaigns_count": len(all_campaigns),
             "active_campaigns_count": sum(1 for c in all_campaigns if c.status in ("ENABLED", "ACTIVE")),
@@ -508,7 +551,7 @@ class AdsService:
                     "currency_native": c.currency,
                     "daily_budget_native": float(c.daily_budget_native) if c.daily_budget_native else None,
                     "spend_native": float(c.spend_native),
-                    "spend_cad": float(c.spend_cad) if c.converted_currency == "CAD" or c.currency == "CAD" else None,
+                    "spend_cad": float(c.spend_cad) if c.spend_cad is not None else None,
                     "impressions": c.impressions,
                     "clicks": c.clicks,
                     "conversions": c.conversions,

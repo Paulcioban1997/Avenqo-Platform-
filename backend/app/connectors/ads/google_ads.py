@@ -199,6 +199,12 @@ class GoogleAdsConnector(BaseAdsConnector):
 
         resource_names = data.get("resourceNames", [])
         accessible_ids = [r.replace("customers/", "").strip() for r in resource_names]
+        if not accessible_ids:
+            raise AdsConnectorError(
+                "Aucun compte Google Ads accessible associé à ces identifiants.",
+                code="NO_ACCESSIBLE_ACCOUNTS",
+                status_code=400,
+            )
 
         target_id = (account_id or credentials.get("customer_id") or "").replace("-", "").strip()
         if target_id and accessible_ids and target_id not in accessible_ids:
@@ -208,17 +214,22 @@ class GoogleAdsConnector(BaseAdsConnector):
                 status_code=403,
             )
 
-        chosen_id = target_id or (accessible_ids[0] if accessible_ids else "")
-        if not chosen_id:
-            return {
-                "accessible_ids": accessible_ids,
-                "verified": False,
-                "currency": "CAD",
-                "account_name": None,
-                "status": "PENDING_SELECT",
-            }
+        if not target_id:
+            if len(accessible_ids) == 1:
+                chosen_id = accessible_ids[0]
+            else:
+                return {
+                    "accessible_ids": accessible_ids,
+                    "customer_id": None,
+                    "verified": False,
+                    "currency": None,
+                    "account_name": None,
+                    "status": "NEEDS_ACCOUNT_SELECTION",
+                }
+        else:
+            chosen_id = target_id
 
-        # 2. Query account currency and metadata via GAQL
+        # 2. Query account currency and metadata via GAQL (Fail-Closed)
         gaql = "SELECT customer.id, customer.descriptive_name, customer.currency_code, customer.time_zone, customer.status FROM customer LIMIT 1"
         search_url = f"{self.GOOGLE_ADS_API_BASE}/customers/{chosen_id}/googleAds:search"
         search_req = urllib.request.Request(
@@ -230,30 +241,54 @@ class GoogleAdsConnector(BaseAdsConnector):
         try:
             with urllib.request.urlopen(search_req, timeout=15) as resp:
                 customer_data = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            if exc.code == 401:
+                raise AdsConnectorError("Accès Google Ads révoqué ou expiré.", code="TOKEN_REVOKED", status_code=401)
+            raise AdsConnectorError(
+                _redact_secrets(f"Erreur requête métadonnées Google Ads ({exc.code}): {exc.reason}"),
+                code="GOOGLE_ADS_API_ERROR",
+                status_code=exc.code,
+            )
         except Exception as exc:
-            logger.warning("Impossible de lire les métadonnées du compte client %s: %s", chosen_id, _redact_secrets(str(exc)))
-            return {
-                "accessible_ids": accessible_ids,
-                "customer_id": chosen_id,
-                "verified": True,
-                "currency": "CAD",
-                "account_name": f"Google Ads ({chosen_id})",
-                "status": "ACTIVE",
-            }
+            raise AdsConnectorError(
+                _redact_secrets(f"Échec de connexion aux métadonnées du compte Google Ads {chosen_id}: {exc}"),
+                code="GOOGLE_ADS_METADATA_FAILED",
+                status_code=502,
+            )
 
         results = customer_data.get("results", [])
-        cust = results[0].get("customer", {}) if results else {}
-        currency = cust.get("currencyCode") or "CAD"
-        name = cust.get("descriptiveName") or f"Google Ads ({chosen_id})"
+        if not results or not results[0].get("customer"):
+            raise AdsConnectorError(
+                f"Aucune métadonnée retournée par Google Ads pour le compte {chosen_id}.",
+                code="GOOGLE_ADS_EMPTY_CUSTOMER",
+                status_code=400,
+            )
+
+        cust = results[0].get("customer", {})
+        raw_currency = cust.get("currencyCode")
+        if not raw_currency or not str(raw_currency).strip():
+            raise AdsConnectorError(
+                f"Devise manquante dans les métadonnées Google Ads pour le compte {chosen_id}.",
+                code="GOOGLE_ADS_MISSING_CURRENCY",
+                status_code=400,
+            )
+
+        account_status = cust.get("status", "UNKNOWN")
+        if account_status not in ("ENABLED", "ACTIVE"):
+            raise AdsConnectorError(
+                f"Le compte client Google Ads {chosen_id} est inactif ou suspendu (statut: {account_status}).",
+                code="ACCOUNT_DISABLED",
+                status_code=400,
+            )
 
         return {
             "accessible_ids": accessible_ids,
             "customer_id": chosen_id,
             "verified": True,
-            "currency": currency,
-            "account_name": name,
+            "currency": str(raw_currency).upper().strip(),
+            "account_name": cust.get("descriptiveName") or f"Google Ads ({chosen_id})",
             "time_zone": cust.get("timeZone"),
-            "status": cust.get("status", "ACTIVE"),
+            "status": "VERIFIED",
         }
 
     async def list_campaigns(

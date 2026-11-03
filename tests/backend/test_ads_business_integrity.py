@@ -275,3 +275,73 @@ async def test_strict_isolation_between_two_distinct_companies(ads_service, db_s
     ads_service.disconnect(cid_a, "google_ads")
     assert ads_service.get_status(cid_a)["google_ads"].status == "DISCONNECTED"
     assert ads_service.get_status(cid_b)["google_ads"].status == "CONNECTED"
+
+
+@pytest.mark.asyncio
+async def test_multi_currency_roas_with_missing_fx_blocks_aggregation_and_returns_none_roas(ads_service):
+    """When FX rates cannot be resolved, total spend and average ROAS must be None, never false 0.0."""
+    company_id = uuid4()
+
+    # Google Ads in CAD with $100 spend and ROAS = 3.0
+    g_camp = AdCampaign(
+        id="gc_cad", name="Google Search CAD", status="ENABLED", provider="google_ads",
+        currency="CAD", spend_native=Decimal("100.00"), impressions=1000, clicks=100,
+        conversions=5, ctr=10.0, cpc_native=Decimal("1.00"), roas=3.0,
+    )
+    g_summary = AdsPerformanceSummary(
+        provider="google_ads", account_id="111-222-3333", native_currency="CAD",
+        total_spend_native=Decimal("100.00"), total_impressions=1000, total_clicks=100,
+        total_conversions=5, average_ctr=10.0, average_cpc_native=Decimal("1.00"), average_roas=3.0,
+    )
+
+    # Meta Ads in JPY with ¥50,000 spend and ROAS = 2.5 (No FX rate available for JPY)
+    m_camp = AdCampaign(
+        id="mc_jpy", name="Meta Retargeting JPY", status="ACTIVE", provider="meta_ads",
+        currency="JPY", spend_native=Decimal("50000.00"), impressions=5000, clicks=200,
+        conversions=10, ctr=4.0, cpc_native=Decimal("250.00"), roas=2.5,
+    )
+    m_summary = AdsPerformanceSummary(
+        provider="meta_ads", account_id="act_jpy", native_currency="JPY",
+        total_spend_native=Decimal("50000.00"), total_impressions=5000, total_clicks=200,
+        total_conversions=10, average_ctr=4.0, average_cpc_native=Decimal("250.00"), average_roas=2.5,
+    )
+
+    with patch.object(ads_service, "get_credentials", return_value={"access_token": "valid"}), \
+         patch.object(ads_service.google_ads, "get_performance", AsyncMock(return_value=g_summary)), \
+         patch.object(ads_service.google_ads, "list_campaigns", AsyncMock(return_value=[g_camp])), \
+         patch.object(ads_service.meta_ads, "get_performance", AsyncMock(return_value=m_summary)), \
+         patch.object(ads_service.meta_ads, "list_campaigns", AsyncMock(return_value=[m_camp])):
+
+        perf = await ads_service.get_combined_performance(company_id, period="30d")
+
+        # Integrity checks:
+        # 1. Aggregation is blocked due to missing JPY -> CAD rate
+        assert perf["currency_aggregation_blocked"] is True
+        assert perf["currency"] == "MIXED"
+
+        # 2. total_spend_cad must be None, NOT unconverted CAD or partial CAD
+        assert perf["total_spend_cad"] is None
+
+        # 3. average_cpc_cad must be None
+        assert perf["average_cpc_cad"] is None
+
+        # 4. average_roas must be None (Unavailable), NEVER false 0.0 which would indicate 100% loss!
+        assert perf["average_roas"] is None
+
+        # 5. Non-monetary aggregates remain correct
+        assert perf["total_impressions"] == 6000
+        assert perf["total_clicks"] == 300
+        assert perf["total_conversions"] == 15
+        assert perf["average_ctr"] == 5.0
+        assert perf["campaigns_count"] == 2
+
+        # 6. Native values are preserved in provider_summaries and campaigns list
+        assert perf["provider_summaries"]["google_ads"]["native_currency"] == "CAD"
+        assert perf["provider_summaries"]["google_ads"]["total_spend_native"] == 100.0
+        assert perf["provider_summaries"]["meta_ads"]["native_currency"] == "JPY"
+        assert perf["provider_summaries"]["meta_ads"]["total_spend_native"] == 50000.0
+
+        # 7. Campaign in JPY has spend_cad as None
+        assert perf["campaigns"][1]["currency_native"] == "JPY"
+        assert perf["campaigns"][1]["spend_cad"] is None
+

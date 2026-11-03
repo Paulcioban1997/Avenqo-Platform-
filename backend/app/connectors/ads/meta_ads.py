@@ -215,7 +215,16 @@ class MetaAdsConnector(BaseAdsConnector):
                     status_code=403,
                 )
         else:
-            selected = accessible_accounts[0]
+            if len(accessible_accounts) == 1:
+                selected = accessible_accounts[0]
+            else:
+                return {
+                    "accessible_accounts": [a.get("id") for a in accessible_accounts],
+                    "ad_account_id": None,
+                    "verified": False,
+                    "currency": None,
+                    "status": "NEEDS_ACCOUNT_SELECTION",
+                }
 
         # 3. Check account status (1 = ACTIVE)
         account_status = selected.get("account_status", 1)
@@ -227,11 +236,20 @@ class MetaAdsConnector(BaseAdsConnector):
                 status_code=400,
             )
 
+        currency = selected.get("currency")
+        if not currency or not str(currency).strip():
+            raise AdsConnectorError(
+                f"Devise manquante dans les métadonnées Meta Ads pour le compte {selected.get('id')}.",
+                code="META_ADS_MISSING_CURRENCY",
+                status_code=400,
+            )
+
         return {
             "verified": True,
             "ad_account_id": selected.get("id"),
             "account_name": selected.get("name") or selected.get("id"),
-            "currency": selected.get("currency") or "CAD",
+            "currency": str(currency).upper().strip(),
+            "status": "VERIFIED",
             "account_status": "ACTIVE",
             "accessible_accounts": [a.get("id") for a in accessible_accounts],
         }

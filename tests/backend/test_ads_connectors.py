@@ -127,6 +127,75 @@ async def test_google_ads_connector_verify_access_and_currency(dummy_settings):
         assert result["customer_id"] == "1234567890"
         assert result["currency"] == "USD"
         assert result["account_name"] == "Compte Principal Google Ads"
+        assert result["status"] == "VERIFIED"
+
+
+@pytest.mark.asyncio
+async def test_google_ads_verify_access_fails_closed_on_metadata_error_regression(dummy_settings):
+    """Regression test: Proves that GAQL failure, empty response, or missing currency CANNOT produce verified=True."""
+    connector = GoogleAdsConnector(
+        client_id=dummy_settings.google_ads_client_id,
+        client_secret=dummy_settings.google_ads_client_secret,
+        developer_token=dummy_settings.google_ads_developer_token,
+        redirect_uri=dummy_settings.google_ads_redirect_uri,
+    )
+
+    # Sub-case A: GAQL network/HTTP failure (reproducing the old false-positive fallback)
+    with patch("urllib.request.urlopen") as mock_url:
+        mock_resp1 = MagicMock()
+        mock_resp1.read.return_value = json.dumps({"resourceNames": ["customers/1234567890"]}).encode()
+        mock_resp1.__enter__.return_value = mock_resp1
+        mock_url.side_effect = [mock_resp1, Exception("GAQL timeout / connection reset")]
+
+        with pytest.raises(AdsConnectorError) as exc_info:
+            await connector.verify_access({"access_token": "mock-token"}, "123-456-7890")
+        assert exc_info.value.code == "GOOGLE_ADS_METADATA_FAILED"
+
+    # Sub-case B: Empty customer results from GAQL
+    with patch("urllib.request.urlopen") as mock_url:
+        mock_resp1 = MagicMock()
+        mock_resp1.read.return_value = json.dumps({"resourceNames": ["customers/1234567890"]}).encode()
+        mock_resp1.__enter__.return_value = mock_resp1
+        mock_resp2 = MagicMock()
+        mock_resp2.read.return_value = json.dumps({"results": []}).encode()
+        mock_resp2.__enter__.return_value = mock_resp2
+        mock_url.side_effect = [mock_resp1, mock_resp2]
+
+        with pytest.raises(AdsConnectorError) as exc_info_empty:
+            await connector.verify_access({"access_token": "mock-token"}, "123-456-7890")
+        assert exc_info_empty.value.code == "GOOGLE_ADS_EMPTY_CUSTOMER"
+
+    # Sub-case C: Missing currency code in customer results
+    with patch("urllib.request.urlopen") as mock_url:
+        mock_resp1 = MagicMock()
+        mock_resp1.read.return_value = json.dumps({"resourceNames": ["customers/1234567890"]}).encode()
+        mock_resp1.__enter__.return_value = mock_resp1
+        mock_resp2 = MagicMock()
+        mock_resp2.read.return_value = json.dumps({
+            "results": [{"customer": {"id": "1234567890", "status": "ENABLED", "currencyCode": ""}}]
+        }).encode()
+        mock_resp2.__enter__.return_value = mock_resp2
+        mock_url.side_effect = [mock_resp1, mock_resp2]
+
+        with pytest.raises(AdsConnectorError) as exc_info_curr:
+            await connector.verify_access({"access_token": "mock-token"}, "123-456-7890")
+        assert exc_info_curr.value.code == "GOOGLE_ADS_MISSING_CURRENCY"
+
+    # Sub-case D: Account disabled or suspended
+    with patch("urllib.request.urlopen") as mock_url:
+        mock_resp1 = MagicMock()
+        mock_resp1.read.return_value = json.dumps({"resourceNames": ["customers/1234567890"]}).encode()
+        mock_resp1.__enter__.return_value = mock_resp1
+        mock_resp2 = MagicMock()
+        mock_resp2.read.return_value = json.dumps({
+            "results": [{"customer": {"id": "1234567890", "status": "SUSPENDED", "currencyCode": "USD"}}]
+        }).encode()
+        mock_resp2.__enter__.return_value = mock_resp2
+        mock_url.side_effect = [mock_resp1, mock_resp2]
+
+        with pytest.raises(AdsConnectorError) as exc_info_susp:
+            await connector.verify_access({"access_token": "mock-token"}, "123-456-7890")
+        assert exc_info_susp.value.code == "ACCOUNT_DISABLED"
 
 
 @pytest.mark.asyncio
