@@ -36,9 +36,9 @@ from shared.ai_engine.contracts import TenantContext
 @pytest.fixture
 def mock_settings():
     return Settings(
-        app_env="test",
+        environment="test",
         database_url="sqlite+aiosqlite:///:memory:",
-        jwt_secret_key="test-jwt-secret-for-ads-simulation",
+        auth_jwt_secret="test-jwt-secret-for-ads-simulation",
         encryption_master_key="00" * 32,
         google_ads_client_id="mock-google-client-id",
         google_ads_client_secret="mock-google-client-secret",
