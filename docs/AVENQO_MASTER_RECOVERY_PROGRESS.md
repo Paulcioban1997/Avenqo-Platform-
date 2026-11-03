@@ -153,8 +153,32 @@ ed999bb test(crm): keep workspace available on Calendar reconnect
 
 ---
 
-## 7. Préparation de la Phase B (API Production)
+## 7. Phase B Production : Promotion Contrôlée de l'API (Exécutée)
 
-- **Commit prêt pour promotion** : `65c3a63439c1c74fa3de4845fb2a18a787001735`
-- **Start Command requis** : `/usr/local/bin/docker-entrypoint.sh uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1`
-- **Attente stricte** : Autorisation explicite (GO) de l'utilisateur avant toute action sur l'API Production.
+- **Service Railway** : `Avenqo-Platform-` (`24a2afc3-36f8-46d0-b79d-b323755a83f3`)
+- **Environnement** : Production (`b9b03d41-2a67-4aab-a6f6-32939d8b81e0`)
+- **ID Déploiement** : `964eb353-64ad-4bd4-818b-161349f0eb50` -> **SUCCESS**
+- **Git SHA déployé** : `65c3a63439c1c74fa3de4845fb2a18a787001735`
+- **Image Digest** : `sha256:54606abb3f2ce3263dab4241d33783a4d8c3b080ccf0760a7762920d95a8c9be`
+- **Start Command effectif** : `/usr/local/bin/docker-entrypoint.sh uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1`
+- **Volume monté** : `/data/artifacts` (préservé et accessible)
+- **Réplique active** : 1/1 réplique saine et stable
+
+### Validation Production (8/8 PASS - 100%)
+1. `health_and_sha` : **PASS** (HTTP 200, Live SHA `65c3a63439c1c74fa3de4845fb2a18a787001735`, env `production`)
+2. `ready_and_storage` : **PASS** (`database: ok`, `artifact_storage: ok`, `migrations: ok`)
+3. `postgresql_production_integrity` : **PASS** (Alembic `0069`, 93 tables, 379 index, 11 enums, 17 entreprises et 17 utilisateurs préservés)
+4. `auth_and_docs_security` : **PASS** (Swagger `/docs` masqué en production, `/auth/me` renvoie 401 unauthenticated)
+5. `password_reset_route` : **PASS** (Route débloquée et opérationnelle sans header auth)
+6. `module_endpoints_gating` : **PASS** (Endpoints CRM, Retail, Accounting, Voice, OCR, Automations protégés par 401)
+7. `production_frontend_availability` : **PASS** (HTTP 200 sur `https://avenqo.ca`)
+8. `backup_service_status` : **PASS** (Déploiement `1b879621` SUCCESS, cron quotidien actif)
+
+- **Verdict Phase B** : **PASS**
+
+---
+
+## 8. Prochaine Étape : Phase C (Frontend Production Vercel)
+
+- **Branche prête** : `release/v1.0.0-rc1` (alignée sur SHA `65c3a63`)
+- **Attente stricte** : Arrêt complet avant tout déploiement sur Vercel Production. Attente de l'autorisation explicite (GO) de l'utilisateur.
