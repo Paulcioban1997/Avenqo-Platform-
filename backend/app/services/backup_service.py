@@ -430,6 +430,7 @@ class BackupService:
             for name in sorted(names):
                 local_meta = self.root / Path(name).name
                 if not local_meta.exists():
+                    local_meta.parent.mkdir(parents=True, exist_ok=True)
                     self._s3.download(name, local_meta)
                 result.append(self._load_metadata(local_meta))
             return result
@@ -602,6 +603,7 @@ class BackupService:
                 backup_id = Path(name).name.removesuffix(".json")
                 local_meta = self.root / f"{backup_id}.json"
                 if not local_meta.exists():
+                    local_meta.parent.mkdir(parents=True, exist_ok=True)
                     self._s3.download(name, local_meta)
                 created_at = self._metadata_created_at(local_meta)
                 if created_at is not None and created_at < cutoff:

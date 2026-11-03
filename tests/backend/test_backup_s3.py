@@ -110,3 +110,37 @@ def test_s3_restore_from_bucket(s3_settings, tmp_path) -> None:
     value = conn2.execute("SELECT v FROM t").fetchone()
     conn2.close()
     assert value == ("restore-me",)
+
+
+@mock_aws
+def test_s3_retention_and_listing_when_local_root_missing(s3_settings, tmp_path) -> None:
+    _make_bucket()
+    import json, shutil, sqlite3
+
+    src = s3_settings.database_url.split("///", 1)[1]
+    conn = sqlite3.connect(src)
+    conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)")
+    conn.execute("INSERT INTO t (v) VALUES ('parent-dir-test')")
+    conn.commit()
+    conn.close()
+
+    service = BackupService(s3_settings)
+    meta = service.create_backup()
+
+    # Supprimer completement le repertoire local self.root pour simuler un conteneur neuf / volume non cree
+    if service.root.exists():
+        shutil.rmtree(service.root)
+    assert not service.root.exists()
+
+    # list_backups() doit recreer le parent et telecharger sans FileNotFoundError
+    listed = service.list_backups()
+    assert any(b.backup_id == meta.backup_id for b in listed)
+
+    # Re-supprimer self.root
+    if service.root.exists():
+        shutil.rmtree(service.root)
+    assert not service.root.exists()
+
+    # _apply_retention() doit recreer le parent et telecharger sans FileNotFoundError
+    service._apply_retention()
+    assert service.root.exists()
