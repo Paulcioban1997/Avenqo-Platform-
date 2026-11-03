@@ -40,6 +40,7 @@ from backend.app.routers.ai_voice import router as ai_voice_router
 from backend.app.routers.workspace import router as workspace_router
 from backend.app.routers.documents import legal_router, ocr_router
 from backend.app.routers.media import router as media_router
+from backend.app.routers.ads import router as ads_router
 from backend.app.routers.automations import router as automations_router
 from backend.app.routers.marketplace import router as marketplace_router
 from backend.app.routers.agents_catalog import router as agents_catalog_router
@@ -56,6 +57,7 @@ api_router.include_router(marketplace_router, prefix="/api/v1")
 api_router.include_router(ocr_router, prefix="/api/v1")
 api_router.include_router(legal_router, prefix="/api/v1")
 api_router.include_router(media_router, prefix="/api/v1")
+api_router.include_router(ads_router, prefix="/api/v1")
 api_router.include_router(automations_router, prefix="/api/v1")
 api_router.include_router(agents_catalog_router, prefix="/api/v1")
 api_router.include_router(health_router, prefix="/api/v1")

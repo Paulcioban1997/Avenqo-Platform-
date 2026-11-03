@@ -122,3 +122,46 @@ class DraftMarketingCampaignTool(MarketingAITool):
             },
             source_refs=("media_generations", "retail_customer_segments"),
         )
+
+
+class GetAdsPerformanceArgs(ToolArguments):
+    period: str = Field(default="last_30d", description="Période d'analyse (ex: 'last_30d', 'last_7d', 'this_month').")
+
+
+class GetAdsPerformanceTool(MarketingAITool):
+    name = "get_ads_performance"
+    description = (
+        "Consulte les indicateurs réels de performance des campagnes publicitaires (Google Ads et Meta Ads) : "
+        "dépenses totales en CAD, impressions, clics, conversions, coût par clic (CPC) et ROAS."
+    )
+    input_schema = GetAdsPerformanceArgs
+    required_permissions = ("ai:use", "marketing:read")
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    async def run(self, context: ToolExecutionContext, arguments: GetAdsPerformanceArgs) -> ToolResult:
+        from backend.app.services.ads_service import AdsService
+        from backend.app.services.module_entitlement_service import ModuleEntitlementService
+
+        if "marketing:read" not in context.permissions and "data:read" not in context.permissions:
+            return ToolResult(
+                success=False,
+                error="Permission 'marketing:read' requise pour consulter les données publicitaires.",
+                data={"code": "INSUFFICIENT_PERMISSIONS", "required": "marketing:read"},
+            )
+
+        if not ModuleEntitlementService(self._session).can_use_module(context.tenant, "marketing"):
+            return ToolResult(
+                success=False,
+                error="Le module Marketing n'est pas activé pour cette entreprise.",
+                data={"code": "MODULE_NOT_ENTITLED", "module": "marketing"},
+            )
+
+        service = AdsService(self._session)
+        perf = await service.get_combined_performance(context.tenant.company_id, arguments.period)
+        return ToolResult(
+            success=True,
+            data=perf,
+            source_refs=("commerce_connections", "ads_reporting"),
+        )
