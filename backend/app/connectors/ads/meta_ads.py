@@ -75,12 +75,13 @@ class MetaAdsConnector(BaseAdsConnector):
             raise AdsConfigurationMissingError("Meta Ads")
 
         target_redirect = redirect_uri or self.redirect_uri
-        payload = urllib.parse.urlencode({
+        body_data: dict[str, Any] = {
             "client_id": self.app_id,
             "client_secret": self.app_secret,
             "redirect_uri": target_redirect,
             "code": code,
-        }).encode("utf-8")
+        }
+        payload = urllib.parse.urlencode(body_data).encode("utf-8")
         req = urllib.request.Request(
             self.OAUTH_TOKEN_ENDPOINT,
             data=payload,
@@ -116,12 +117,13 @@ class MetaAdsConnector(BaseAdsConnector):
 
     async def _exchange_long_lived_token(self, short_token: str) -> str | None:
         try:
-            payload = urllib.parse.urlencode({
+            exchange_data: dict[str, Any] = {
                 "grant_type": "fb_exchange_token",
                 "client_id": self.app_id,
                 "client_secret": self.app_secret,
                 "fb_exchange_token": short_token,
-            }).encode("utf-8")
+            }
+            payload = urllib.parse.urlencode(exchange_data).encode("utf-8")
             req = urllib.request.Request(
                 self.OAUTH_TOKEN_ENDPOINT,
                 data=payload,
