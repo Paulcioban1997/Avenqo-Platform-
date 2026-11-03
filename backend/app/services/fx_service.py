@@ -183,7 +183,11 @@ class BankOfCanadaFXService:
             return self._fallback_cached(cached, today, curr)
 
         # Get latest observation (last element in sorted chronological observations)
-        latest_obs = observations[-1]
+        valid_obs = [o for o in observations if isinstance(o, dict) and o.get("d")]
+        if not valid_obs:
+            logger.warning("Format d'observation invalide pour %s", series)
+            return self._fallback_cached(cached, today, curr)
+        latest_obs = max(valid_obs, key=lambda o: str(o.get("d", "")))
         obs_date_str = latest_obs.get("d")
         series_val = latest_obs.get(series, {})
         raw_val = series_val.get("v") if isinstance(series_val, dict) else None

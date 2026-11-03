@@ -310,7 +310,8 @@ async def test_multi_currency_roas_with_missing_fx_blocks_aggregation_and_return
          patch.object(ads_service.google_ads, "get_performance", AsyncMock(return_value=g_summary)), \
          patch.object(ads_service.google_ads, "list_campaigns", AsyncMock(return_value=[g_camp])), \
          patch.object(ads_service.meta_ads, "get_performance", AsyncMock(return_value=m_summary)), \
-         patch.object(ads_service.meta_ads, "list_campaigns", AsyncMock(return_value=[m_camp])):
+         patch.object(ads_service.meta_ads, "list_campaigns", AsyncMock(return_value=[m_camp])), \
+         patch.object(ads_service.fx_service, "get_exchange_rate", AsyncMock(return_value=None)):
 
         perf = await ads_service.get_combined_performance(company_id, period="30d")
 
