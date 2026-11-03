@@ -142,6 +142,15 @@ class GetAdsPerformanceTool(MarketingAITool):
 
     async def run(self, context: ToolExecutionContext, arguments: GetAdsPerformanceArgs) -> ToolResult:
         from backend.app.services.ads_service import AdsService
+        from backend.app.services.module_entitlement_service import ModuleEntitlementService
+
+        if not ModuleEntitlementService(self._session).can_use_module(context.tenant, "marketing"):
+            return ToolResult(
+                success=False,
+                error="Le module Marketing n'est pas activé pour cette entreprise.",
+                data={"code": "MODULE_NOT_ENTITLED", "module": "marketing"},
+            )
+
         service = AdsService(self._session)
         perf = await service.get_combined_performance(context.tenant.company_id, arguments.period)
         return ToolResult(

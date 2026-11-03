@@ -39,27 +39,52 @@ type AdsProviderStatus = {
 
 type AdsPerformance = {
   currency: string;
-  total_spend_cad: number;
+  period?: string;
+  start_date?: string;
+  end_date?: string;
+  currency_aggregation_blocked?: boolean;
+  total_spend_cad: number | null;
   total_impressions: number;
   total_clicks: number;
   total_conversions: number;
   average_ctr: number;
-  average_cpc_cad: number;
+  average_cpc_cad: number | null;
+  exchange_rates_applied?: Array<{
+    from_currency: string;
+    to_currency: string;
+    rate: number;
+    source: string;
+    date: string;
+  }>;
+  errors?: Record<string, string>;
   campaigns_count: number;
   active_campaigns_count: number;
   providers_connected: string[];
+  provider_summaries?: Record<string, {
+    account_id: string | null;
+    native_currency: string;
+    total_spend_native: number;
+    total_spend_converted_cad: number | null;
+    impressions: number;
+    clicks: number;
+    conversions: number;
+    ctr: number;
+    cpc_native: number;
+  }>;
   campaigns: Array<{
     id: string;
     name: string;
     status: string;
     provider: string;
-    daily_budget_cad: number | null;
-    spend_cad: number;
+    currency_native?: string;
+    daily_budget_native?: number | null;
+    spend_native?: number;
+    spend_cad: number | null;
     impressions: number;
     clicks: number;
     conversions: number;
     ctr: number;
-    cpc_cad: number;
+    cpc_native?: number;
     roas: number;
   }>;
 };
@@ -109,6 +134,7 @@ export function MarketingView() {
 
   const [generationError, setGenerationError] = useState("");
   const [showAdsConnectors, setShowAdsConnectors] = useState(false);
+  const [adsPeriod, setAdsPeriod] = useState<"7d" | "30d" | "90d">("30d");
   const [adsStatus, setAdsStatus] = useState<Record<string, AdsProviderStatus> | null>(null);
   const [adsPerformance, setAdsPerformance] = useState<AdsPerformance | null>(null);
   const [connectingProvider, setConnectingProvider] = useState<string | null>(null);
@@ -121,13 +147,13 @@ export function MarketingView() {
       .then(d => { if (!abort.signal.aborted) setAdsStatus(d); })
       .catch(() => {});
 
-    void apiFetch("/api/v1/ads/performance/summary", { signal: abort.signal })
+    void apiFetch(`/api/v1/ads/performance/summary?period=${adsPeriod}`, { signal: abort.signal })
       .then(r => r.json())
       .then(d => { if (!abort.signal.aborted) setAdsPerformance(d); })
       .catch(() => {});
 
     return () => abort.abort();
-  }, [tenant, showAdsConnectors]);
+  }, [tenant, showAdsConnectors, adsPeriod]);
 
   const handleConnect = async (provider: "google" | "meta") => {
     setConnectingProvider(provider);
@@ -548,15 +574,46 @@ export function MarketingView() {
 
         {/* Live Ads Performance Summary if available */}
         {adsPerformance && adsPerformance.campaigns_count > 0 && (
-          <div className="pt-4 border-t border-slate-200/60 dark:border-white/[0.08] space-y-3">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              {locale.startsWith("fr") ? "Performance Publicitaire Consolidée" : "Consolidated Ads Performance"}
-            </h3>
+          <div className="pt-4 border-t border-slate-200/60 dark:border-white/[0.08] space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                {locale.startsWith("fr") ? "Performance Publicitaire Consolidée" : "Consolidated Ads Performance"}
+              </h3>
+              <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-xs">
+                {(["7d", "30d", "90d"] as const).map(p => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setAdsPeriod(p)}
+                    className={`px-2.5 py-1 rounded-lg font-semibold transition-colors cursor-pointer ${
+                      adsPeriod === p
+                        ? "bg-white dark:bg-[#0076FF] text-slate-900 dark:text-white shadow-xs"
+                        : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    {p === "7d" ? "7j" : p === "30d" ? "30j" : "90j"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {adsPerformance.currency_aggregation_blocked && (
+              <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 flex items-start gap-2.5 text-xs text-amber-800 dark:text-amber-200">
+                <AlertCircle size={16} className="shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                <div>
+                  <span className="font-bold">{locale.startsWith("fr") ? "Devises multiples détectées :" : "Multiple currencies detected:"} </span>
+                  {locale.startsWith("fr")
+                    ? "Les comptes publicitaires utilisent des devises distinctes sans conversion certifiée. Les totaux monétaires sont ventilés par plateforme pour garantir l'exactitude financière."
+                    : "Ad accounts use distinct currencies without certified conversion. Monetary totals are split per platform to guarantee financial accuracy."}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-200 dark:border-white/[0.08]">
-                <div className="text-[11px] text-slate-500">{locale.startsWith("fr") ? "Dépenses" : "Spend"}</div>
+                <div className="text-[11px] text-slate-500">{locale.startsWith("fr") ? "Dépenses (CAD)" : "Spend (CAD)"}</div>
                 <div className="text-lg font-extrabold text-slate-900 dark:text-white mt-1">
-                  {number(adsPerformance.total_spend_cad)} CAD
+                  {adsPerformance.total_spend_cad !== null ? `${number(adsPerformance.total_spend_cad)} CAD` : "N/A (Multi)"}
                 </div>
               </div>
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-200 dark:border-white/[0.08]">
@@ -578,6 +635,13 @@ export function MarketingView() {
                 </div>
               </div>
             </div>
+
+            {adsPerformance.exchange_rates_applied && adsPerformance.exchange_rates_applied.length > 0 && (
+              <div className="text-[11px] text-slate-400 italic">
+                {locale.startsWith("fr") ? "Conversion de change : " : "Foreign exchange: "}
+                {adsPerformance.exchange_rates_applied.map(fx => `1 ${fx.from_currency} = ${fx.rate} ${fx.to_currency} (${fx.source}, ${fx.date})`).join(" ; ")}
+              </div>
+            )}
           </div>
         )}
         </>

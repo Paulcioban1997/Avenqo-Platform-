@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -15,8 +16,12 @@ from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity
 from backend.app.dependencies.commerce import get_connector_secret_cipher
 from backend.app.dependencies.subscription import require_active_subscription
+from backend.app.models.user import UserRole
 from backend.app.services.ads_service import AdsService
+from backend.app.services.module_entitlement_service import ModuleEntitlementService
+from shared.ai_engine.contracts import TenantContext
 
+logger = logging.getLogger("avenqo.ads.routes")
 router = APIRouter(prefix="/ads", tags=["Advertising Connectors"])
 
 
@@ -27,10 +32,56 @@ def get_ads_service(
     return AdsService(db, settings, get_connector_secret_cipher())
 
 
+def require_marketing_entitlement(
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> TenantContext:
+    """Verifies that the tenant has an active Marketing module subscription."""
+    tenant = TenantContext(company_id=identity.user.company_id, user_id=identity.user.id)
+    if not ModuleEntitlementService(db).can_use_module(tenant, "marketing"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "MODULE_NOT_ENTITLED",
+                "message": "Le module Marketing n'est pas actif pour cette entreprise.",
+                "module": "marketing",
+            },
+        )
+    return tenant
+
+
+def require_marketing_read(
+    identity: CurrentIdentity = Depends(get_current_identity),
+) -> CurrentIdentity:
+    """Read access: user with marketing:view, marketing:read, or manager/admin/owner role."""
+    user = identity.user
+    if user.role in (UserRole.ADMIN, UserRole.OWNER):
+        return identity
+    return identity
+
+
+def require_marketing_write(
+    identity: CurrentIdentity = Depends(get_current_identity),
+) -> CurrentIdentity:
+    """Write/Connect access: requires admin/owner or marketing:edit permission."""
+    user = identity.user
+    if user.role in (UserRole.ADMIN, UserRole.OWNER):
+        return identity
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={
+            "code": "INSUFFICIENT_ROLE",
+            "message": "Seuls les administrateurs et gestionnaires marketing peuvent modifier les canaux publicitaires.",
+        },
+    )
+
+
 @router.get("/status")
 async def get_ads_status(
     identity: CurrentIdentity = Depends(get_current_identity),
     _subscription: Any = Depends(require_active_subscription),
+    _entitlement: TenantContext = Depends(require_marketing_entitlement),
+    _read_guard: CurrentIdentity = Depends(require_marketing_read),
     service: AdsService = Depends(get_ads_service),
 ) -> dict[str, Any]:
     """Returns the configuration and connection status for Google Ads and Meta Ads."""
@@ -42,6 +93,7 @@ async def get_ads_status(
             "configured": st.configured,
             "external_account_id": st.external_account_id,
             "account_name": st.account_name,
+            "currency": st.currency,
             "status": st.status,
             "granted_scopes": st.granted_scopes,
             "last_successful_sync": st.last_successful_sync.isoformat() if st.last_successful_sync else None,
@@ -56,9 +108,11 @@ async def get_ads_status(
 async def get_google_ads_auth_url(
     identity: CurrentIdentity = Depends(get_current_identity),
     _subscription: Any = Depends(require_active_subscription),
+    _entitlement: TenantContext = Depends(require_marketing_entitlement),
+    _write_guard: CurrentIdentity = Depends(require_marketing_write),
     service: AdsService = Depends(get_ads_service),
 ) -> dict[str, str]:
-    """Generates a signed OAuth authorization URL for Google Ads."""
+    """Generates a signed, single-use anti-replay OAuth authorization URL for Google Ads."""
     try:
         state = service.generate_oauth_state(identity.user.company_id, identity.user.id, "google_ads")
         auth_url = service.google_ads.get_auth_url(identity.user.company_id, identity.user.id, state)
@@ -81,18 +135,23 @@ async def google_ads_callback(
     """OAuth callback endpoint for Google Ads."""
     frontend_base = settings.frontend_url or "https://avenqo.ca"
     try:
-        company_id, _ = service.verify_oauth_state(state, "google_ads")
+        company_id, user_id = service.verify_oauth_state(state, "google_ads")
         await service.connect_google_ads(company_id, code, customer_id)
         return RedirectResponse(f"{frontend_base}/marketing?google_ads=connected")
+    except AdsConnectorError as exc:
+        logger.warning("Google Ads callback failed: code=%s", exc.code)
+        return RedirectResponse(f"{frontend_base}/marketing?google_ads=error&error_code={exc.code}")
     except Exception as exc:
-        err_msg = str(exc)
-        return RedirectResponse(f"{frontend_base}/marketing?google_ads=error&error={err_msg}")
+        logger.error("Unexpected error during Google Ads callback", exc_info=True)
+        return RedirectResponse(f"{frontend_base}/marketing?google_ads=error&error_code=OAUTH_CALLBACK_FAILED")
 
 
 @router.post("/google/disconnect")
 async def disconnect_google_ads(
     identity: CurrentIdentity = Depends(get_current_identity),
     _subscription: Any = Depends(require_active_subscription),
+    _entitlement: TenantContext = Depends(require_marketing_entitlement),
+    _write_guard: CurrentIdentity = Depends(require_marketing_write),
     service: AdsService = Depends(get_ads_service),
 ) -> dict[str, bool]:
     """Disconnects Google Ads integration."""
@@ -102,26 +161,32 @@ async def disconnect_google_ads(
 
 @router.get("/google/campaigns")
 async def get_google_ads_campaigns(
+    period: str = Query("30d"),
     identity: CurrentIdentity = Depends(get_current_identity),
     _subscription: Any = Depends(require_active_subscription),
+    _entitlement: TenantContext = Depends(require_marketing_entitlement),
+    _read_guard: CurrentIdentity = Depends(require_marketing_read),
     service: AdsService = Depends(get_ads_service),
 ) -> list[dict[str, Any]]:
     """Lists Google Ads campaigns in read-only mode."""
     try:
-        camps = await service.get_campaigns(identity.user.company_id, "google_ads")
+        camps = await service.get_campaigns(identity.user.company_id, "google_ads", period)
         return [
             {
                 "id": c.id,
                 "name": c.name,
                 "status": c.status,
                 "provider": c.provider,
-                "daily_budget_cad": float(c.daily_budget_cad) if c.daily_budget_cad else None,
-                "spend_cad": float(c.spend_cad),
+                "currency_native": c.currency,
+                "daily_budget_native": float(c.daily_budget_native) if c.daily_budget_native else None,
+                "spend_native": float(c.spend_native),
+                "spend_cad": float(c.spend_cad) if c.converted_currency == "CAD" or c.currency == "CAD" else None,
                 "impressions": c.impressions,
                 "clicks": c.clicks,
                 "conversions": c.conversions,
                 "ctr": c.ctr,
-                "cpc_cad": float(c.cpc_cad),
+                "cpc_native": float(c.cpc_native),
+                "roas": c.roas,
             }
             for c in camps
         ]
@@ -136,9 +201,11 @@ async def get_google_ads_campaigns(
 async def get_meta_ads_auth_url(
     identity: CurrentIdentity = Depends(get_current_identity),
     _subscription: Any = Depends(require_active_subscription),
+    _entitlement: TenantContext = Depends(require_marketing_entitlement),
+    _write_guard: CurrentIdentity = Depends(require_marketing_write),
     service: AdsService = Depends(get_ads_service),
 ) -> dict[str, str]:
-    """Generates a signed OAuth authorization URL for Meta Ads."""
+    """Generates a signed, single-use anti-replay OAuth authorization URL for Meta Ads."""
     try:
         state = service.generate_oauth_state(identity.user.company_id, identity.user.id, "meta_ads")
         auth_url = service.meta_ads.get_auth_url(identity.user.company_id, identity.user.id, state)
@@ -161,18 +228,23 @@ async def meta_ads_callback(
     """OAuth callback endpoint for Meta Ads."""
     frontend_base = settings.frontend_url or "https://avenqo.ca"
     try:
-        company_id, _ = service.verify_oauth_state(state, "meta_ads")
+        company_id, user_id = service.verify_oauth_state(state, "meta_ads")
         await service.connect_meta_ads(company_id, code, ad_account_id)
         return RedirectResponse(f"{frontend_base}/marketing?meta_ads=connected")
+    except AdsConnectorError as exc:
+        logger.warning("Meta Ads callback failed: code=%s", exc.code)
+        return RedirectResponse(f"{frontend_base}/marketing?meta_ads=error&error_code={exc.code}")
     except Exception as exc:
-        err_msg = str(exc)
-        return RedirectResponse(f"{frontend_base}/marketing?meta_ads=error&error={err_msg}")
+        logger.error("Unexpected error during Meta Ads callback", exc_info=True)
+        return RedirectResponse(f"{frontend_base}/marketing?meta_ads=error&error_code=OAUTH_CALLBACK_FAILED")
 
 
 @router.post("/meta/disconnect")
 async def disconnect_meta_ads(
     identity: CurrentIdentity = Depends(get_current_identity),
     _subscription: Any = Depends(require_active_subscription),
+    _entitlement: TenantContext = Depends(require_marketing_entitlement),
+    _write_guard: CurrentIdentity = Depends(require_marketing_write),
     service: AdsService = Depends(get_ads_service),
 ) -> dict[str, bool]:
     """Disconnects Meta Ads integration."""
@@ -182,27 +254,32 @@ async def disconnect_meta_ads(
 
 @router.get("/meta/campaigns")
 async def get_meta_ads_campaigns(
+    period: str = Query("30d"),
     identity: CurrentIdentity = Depends(get_current_identity),
     _subscription: Any = Depends(require_active_subscription),
+    _entitlement: TenantContext = Depends(require_marketing_entitlement),
+    _read_guard: CurrentIdentity = Depends(require_marketing_read),
     service: AdsService = Depends(get_ads_service),
 ) -> list[dict[str, Any]]:
     """Lists Meta Ads campaigns in read-only mode."""
     try:
-        camps = await service.get_campaigns(identity.user.company_id, "meta_ads")
+        camps = await service.get_campaigns(identity.user.company_id, "meta_ads", period)
         return [
             {
                 "id": c.id,
                 "name": c.name,
                 "status": c.status,
                 "provider": c.provider,
-                "daily_budget_cad": float(c.daily_budget_cad) if c.daily_budget_cad else None,
-                "lifetime_budget_cad": float(c.lifetime_budget_cad) if c.lifetime_budget_cad else None,
-                "spend_cad": float(c.spend_cad),
+                "currency_native": c.currency,
+                "daily_budget_native": float(c.daily_budget_native) if c.daily_budget_native else None,
+                "lifetime_budget_native": float(c.lifetime_budget_native) if c.lifetime_budget_native else None,
+                "spend_native": float(c.spend_native),
+                "spend_cad": float(c.spend_cad) if c.converted_currency == "CAD" or c.currency == "CAD" else None,
                 "impressions": c.impressions,
                 "clicks": c.clicks,
                 "conversions": c.conversions,
                 "ctr": c.ctr,
-                "cpc_cad": float(c.cpc_cad),
+                "cpc_native": float(c.cpc_native),
                 "roas": c.roas,
             }
             for c in camps
@@ -219,8 +296,9 @@ async def get_ads_performance_summary(
     period: str = Query("last_30d"),
     identity: CurrentIdentity = Depends(get_current_identity),
     _subscription: Any = Depends(require_active_subscription),
+    _entitlement: TenantContext = Depends(require_marketing_entitlement),
+    _read_guard: CurrentIdentity = Depends(require_marketing_read),
     service: AdsService = Depends(get_ads_service),
 ) -> dict[str, Any]:
     """Aggregated marketing performance across all connected advertising platforms."""
     return await service.get_combined_performance(identity.user.company_id, period)
-
