@@ -123,9 +123,38 @@ ed999bb test(crm): keep workspace available on Calendar reconnect
 
 ---
 
-## 6. État de Préparation pour la Production
+## 6. Phase A Production : Réparation & Validation du Service de Sauvegarde (Exécutée)
 
-- **PostgreSQL Production** : Alembic `0069_crm_service_approval_columns`, 93 tables, données intègres.
-- **Volume Production `/data/artifacts`** : Sauvegarde chiffrée hors Railway testée et validée.
-- **Règles de sécurité respectées** : Aucune écriture ni modification de Production sans ordre explicite de l'utilisateur.
-- **Recommandation** : GO pour déploiement contrôlé de `release/v1.0.0-rc1` (SHA `65c3a63`) sur Production.
+- **Service Railway** : `avenqo-daily-backup` (`95b8c1d8-aa9a-4d88-9e12-401ffaefd997`)
+- **Environnement** : Production (`b9b03d41-2a67-4aab-a6f6-32939d8b81e0`)
+- **ID Déploiement** : `1b879621-0514-400e-80a2-9bf50fb65602` -> **SUCCESS**
+- **Git SHA déployé** : `65c3a63439c1c74fa3de4845fb2a18a787001735`
+- **Start Command effectif** : `python scripts/backup_db.py`
+- **Cron Schedule** : `0 7 * * *` (quotidien 07:00 UTC)
+- **Restart Policy** : `NEVER` (pour conteneur de tâche planifiée)
+- **Exécution réelle de test (déclenchement contrôlé unique)** :
+  - **Backup ID** : `20261103T025801607841Z`
+  - **Objets S3 créés** : `production/20261103T025801607841Z.sql` et `.json` dans `avenqo-backups-u7bgklgz2`
+  - **Taille** : **2 316 461 octets (2.32 Mo)**
+  - **Empreinte SHA-256** : `90ff9dccea99a4a5899327bf4af5d82672a5eeec4f0d0ce69dab5b2d7d99362b`
+  - **Vérification absence d'erreur** : `FileNotFoundError` = 0 (résolu), purge accidentelle = 0
+- **Restauration de contrôle sur PostgreSQL 18.6 isolé** :
+  - **Résultat** : **PASS (code retour psql 0)**
+  - **Révision Alembic** : `0069_crm_service_approval_columns`
+  - **Tables restaurées** : 93 / 93
+  - **Index restaurés** : 379 / 379
+  - **Enums restaurés** : 11 / 11
+  - **Entreprises préservées** : 17 / 17
+  - **Utilisateurs préservés** : 17 / 17
+- **État de l'API Production pendant et après l'opération** :
+  - `/api/v1/health` : HTTP 200 OK (ininterrompue)
+  - `/api/v1/ready` : HTTP 200 OK (ininterrompue)
+- **Verdict Phase A** : **PASS**
+
+---
+
+## 7. Préparation de la Phase B (API Production)
+
+- **Commit prêt pour promotion** : `65c3a63439c1c74fa3de4845fb2a18a787001735`
+- **Start Command requis** : `/usr/local/bin/docker-entrypoint.sh uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1`
+- **Attente stricte** : Autorisation explicite (GO) de l'utilisateur avant toute action sur l'API Production.
