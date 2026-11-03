@@ -178,7 +178,43 @@ ed999bb test(crm): keep workspace available on Calendar reconnect
 
 ---
 
-## 8. Prochaine Étape : Phase C (Frontend Production Vercel)
+## 8. Phase C Production : Promotion du Frontend Vercel (Exécutée)
 
-- **Branche prête** : `release/v1.0.0-rc1` (alignée sur SHA `65c3a63`)
-- **Attente stricte** : Arrêt complet avant tout déploiement sur Vercel Production. Attente de l'autorisation explicite (GO) de l'utilisateur.
+- **Projet Vercel** : `web` (`prj_Z81n0a6axqPCib0cXhAmpbFFI7I8`)
+- **ID Déploiement** : `dpl_JEGK8fgsWtRECEjkeBaPnrNSdXrH` -> **READY**
+- **Domaines actifs** :
+  - `https://avenqo.ca` (Aliased)
+  - `https://www.avenqo.ca`
+  - `https://web-two-puce-96.vercel.app`
+  - `https://web-paulmircea15-9488s-projects.vercel.app`
+- **Résolution API Backend** : Automatiquement routée vers `https://api.avenqo.ca` (environnement `production`)
+- **CI & Tests Locaux Préalables (100% PASS)** :
+  - Tests Unitaires & Intégration : **168/168 PASS** (15 fichiers de test)
+  - Catalogues i18n : **44/44 PASS**
+  - TypeScript : 0 erreur (`tsc --noEmit`)
+
+### Validation Live Frontend Production (17/17 PASS - 100%)
+1. `root_page` : **PASS** (HTTP 200, 95 408 octets)
+2. `route_login` : **PASS** (`/login` accessible, HTTP 200)
+3. `route_register` : **PASS** (`/register` redirige vers `/signup`, HTTP 200)
+4. `route_verify-email` : **PASS** (`/verify-email` accessible, HTTP 200)
+5. `route_reset-password` : **PASS** (`/reset-password` débloqué, HTTP 200 sans session)
+6. `route_forgot-password` : **PASS** (`/forgot-password` accessible, HTTP 200)
+7. `reset_password_unblocked` : **PASS** (Formulaire de réinitialisation rendu sans redirection forcée vers le login)
+8. `locale_en` / `locale_fr` / `locale_es` : **PASS** (HTTP 200 sur les 3 langues canoniques)
+9. Portes d'accès protégées :
+   - `/dashboard`, `/crm`, `/retail`, `/accounting`, `/voice`, `/automations`, `/security` : **PASS** (Redirection sécurisée vers `/login?next=...`)
+
+- **Verdict Phase C** : **PASS**
+
+---
+
+## 9. Synthèse d'Alignement Production / Sandbox
+
+| Critère | Production (`https://avenqo.ca`) | Sandbox (`avenqo-platform-sandbox`) | Statut d'Alignement |
+| :--- | :--- | :--- | :---: |
+| **Git SHA Backend** | `65c3a63439c1c74fa3de4845fb2a18a787001735` | `65c3a63439c1c74fa3de4845fb2a18a787001735` | **IDENTIQUE** |
+| **Git SHA Frontend** | `65c3a63439c1c74fa3de4845fb2a18a787001735` | `65c3a63439c1c74fa3de4845fb2a18a787001735` | **IDENTIQUE** |
+| **Alembic Schema** | `0069_crm_service_approval_columns` (93 tables) | `0069_crm_service_approval_columns` (93 tables) | **SYNCHRONISÉ** |
+| **Données Métier** | 17 entreprises, 17 utilisateurs, 4 830 lignes | Données de test isolées (Alpha, Beta) | **CLOISONNÉ (0 fuite)** |
+| **Service de Backup** | Réparé (`1b879621`), S3 chiffré, cron 07:00 UTC | Réparé (`7148ca66`), S3 chiffré, manuel | **SÉCURISÉ & TESTÉ** |
