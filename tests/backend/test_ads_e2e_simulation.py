@@ -36,17 +36,15 @@ from shared.ai_engine.contracts import TenantContext
 @pytest.fixture
 def mock_settings():
     return Settings(
-        environment="test",
-        database_url="sqlite+aiosqlite:///:memory:",
-        auth_jwt_secret="test-jwt-secret-for-ads-simulation",
-        encryption_master_key="00" * 32,
-        google_ads_client_id="mock-google-client-id",
-        google_ads_client_secret="mock-google-client-secret",
-        google_ads_developer_token="mock-google-developer-token",
-        google_ads_redirect_uri="https://api.avenqo.ca/api/v1/ads/google/callback",
-        meta_ads_app_id="mock-meta-app-id",
-        meta_ads_app_secret="mock-meta-app-secret",
-        meta_ads_redirect_uri="https://api.avenqo.ca/api/v1/ads/meta/callback",
+        ENVIRONMENT="test",
+        AUTH_JWT_SECRET="test-jwt-secret-for-ads-simulation",
+        GOOGLE_ADS_CLIENT_ID="mock-google-client-id",
+        GOOGLE_ADS_CLIENT_SECRET="mock-google-client-secret",
+        GOOGLE_ADS_DEVELOPER_TOKEN="mock-google-developer-token",
+        GOOGLE_ADS_REDIRECT_URI="https://api.avenqo.ca/api/v1/ads/google/callback",
+        META_ADS_APP_ID="mock-meta-app-id",
+        META_ADS_APP_SECRET="mock-meta-app-secret",
+        META_ADS_REDIRECT_URI="https://api.avenqo.ca/api/v1/ads/meta/callback",
     )
 
 
