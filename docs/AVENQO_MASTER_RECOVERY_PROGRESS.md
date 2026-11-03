@@ -2,7 +2,7 @@
 
 > **Document de référence unique** : Restauration, réparations, gating multi-tenant et alignement Production / Sandbox.
 > **Date de mise à jour** : 2026-11-02 (UTC-5)
-> **Statut global** : Phase 1 & 2 complétées — Correctifs P0 appliqués et validés par tests unitaires et d'intégration.
+> **Statut global** : Phase 1 & 2 complétées — Correctifs P0 & P1 appliqués et validés par tests unitaires et d'intégration.
 
 ---
 
@@ -60,9 +60,26 @@
 
 ---
 
-## 3. Historique Git sur la Branche `release/v1.0.0-rc1`
+## 3. Résultats des Tests de Validation Locale
+
+| Fichier de Test | Périmètre Validé | Résultat | Temps |
+| :--- | :--- | :--- | :--- |
+| `tests/backend/test_backup_s3.py` | S3 Upload, List, Download, Rétention & Absence répertoire local | **5/5 PASS** (100%) | 37.69s |
+| `tests/backend/test_accounting_ai.py` | Isolation multi-tenant & écritures confirmées | **1/1 PASS** (100%) | 4.99s |
+| `tests/backend/test_cross_agent_ai.py` | Synthèse 360 multi-piliers & isolation | **1/1 PASS** (100%) | 2.29s |
+| `tests/backend/test_central_ai.py` | Routage d'intentions Central AI & gating d'outils | **63/63 PASS** (100%) | 82.59s |
+| `tests/backend/test_production_subscriptions_and_modules.py` | 12 modules, quotas de plan & activations | **6/6 PASS** (100%) | 1.80s |
+| `tests/backend/test_subscription_module_entitlements.py` | Entitlements, swap de modules & limites | **4/4 PASS** (100%) | 0.70s |
+| `tests/backend/test_voice_module_permissions.py` | Permissions Voice AI, rôles & actions autorisées | **17/17 PASS** (100%) | 28.76s |
+
+**Total cumulé** : **97 tests exécutés — 97 PASS — 0 échec**.
+
+---
+
+## 4. Historique Git sur la Branche `release/v1.0.0-rc1`
 
 ```
+28278c8 docs: create master recovery progress tracking document
 9789572 fix(security): enforce module entitlements on cross-agent tools, accounting router, and unblock reset-password
 071c44f fix(backup): create parent directories before downloading metadata from S3
 ec718a5 fix(dashboard): avoid labeling historical revenue as live
@@ -73,7 +90,7 @@ ed999bb test(crm): keep workspace available on Calendar reconnect
 
 ---
 
-## 4. Prochaines Étapes Contrôlées
+## 5. Prochaines Étapes Contrôlées
 
 1. **Validation Sandbox** : Déployer et exécuter la suite de tests automatisée sur Sandbox (`https://avenqo-platform-sandbox.up.railway.app`).
 2. **Vérification Multi-Tenant Sandbox** : Exécuter le test de non-régression de l'isolation des données sur 2 entreprises fictives (Tenant A et Tenant B).
