@@ -90,9 +90,42 @@ ed999bb test(crm): keep workspace available on Calendar reconnect
 
 ---
 
-## 5. Prochaines Étapes Contrôlées
+## 5. Déploiement et Validation E2E Sandbox (Exécutés)
 
-1. **Validation Sandbox** : Déployer et exécuter la suite de tests automatisée sur Sandbox (`https://avenqo-platform-sandbox.up.railway.app`).
-2. **Vérification Multi-Tenant Sandbox** : Exécuter le test de non-régression de l'isolation des données sur 2 entreprises fictives (Tenant A et Tenant B).
-3. **Audit de non-régression global** : Exécution de la suite pytest complète.
-4. **Demande d'autorisation explicite (GO)** auprès de l'utilisateur avant tout déploiement en Production.
+- **Backend API Sandbox** (`24a2afc3-36f8-46d0-b79d-b323755a83f3`) :
+  - Déploiement : `f8f4c374-d430-4cf0-bc19-6181c7f2437e` -> **SUCCESS**
+  - Git SHA en ligne : `65c3a63439c1c74fa3de4845fb2a18a787001735`
+  - `/api/v1/health` : HTTP 200
+  - `/api/v1/ready` : HTTP 200 (database: ok, artifact_storage: ok, migrations: ok)
+
+- **Service de Sauvegarde Automatique Sandbox** (`95b8c1d8-aa9a-4d88-9e12-401ffaefd997`) :
+  - Déploiement : `7148ca66-5dc3-4130-bef0-28211d8fba66` -> **SUCCESS**
+  - Exécution réelle vérifiée : ID `20261103T023558604070Z`, 2 222 818 octets (2.22 Mo), SHA-256 `ea31a5a91738777d97cd7a89153ea0fcb4e12d2dc6ed707eb4e78c979f14d410`
+  - Zéro `FileNotFoundError`, upload S3 chiffré réussi.
+
+- **Suite de Validation E2E Multi-Tenant Sandbox (12/12 PASS - 100%)** :
+  1. `health_and_version` : **PASS** (HTTP 200, SHA `65c3a63`)
+  2. `auth_registration_alpha` : **PASS** (Tenant Alpha Retail créé et authentifié)
+  3. `auth_registration_beta` : **PASS** (Tenant Beta Healthcare créé et authentifié)
+  4. `plan_quotas_and_credits` : **PASS** (Plan base : 2 modules, 6 500 requêtes IA)
+  5. `module_activation_and_limits` : **PASS** (Activation autorisée pour 2 modules, 3ème bloqué en HTTP 409)
+  6. `crm_and_calendar_oauth` : **PASS** (Génération d'URL OAuth Google avec origine Sandbox Vercel)
+  7. `accounting_module_gating` : **PASS** (HTTP 200 pour Beta avec module actif, HTTP 403 `module_inactive` pour Alpha)
+  8. `retail_intelligence` : **PASS** (Route fonctionnelle)
+  9. `cross_tenant_forbidden_access` : **PASS** (Zéro fuite de données, transactions isolées par RLS)
+  10. `central_ai_and_multi_tenant_isolation` : **PASS** (Registre d'agents filtré par entitlements)
+  11. `password_reset_flow` : **PASS** (Route débloquée, email de réinitialisation accepté)
+  12. `automations_and_documents` : **PASS** (Gestion des droits et statuts conforme)
+
+- **Frontend Vercel Sandbox** :
+  - URL : `https://avenqo-calendar-sandbox-paulmircea15-9488s-projects.vercel.app`
+  - Statut : HTTP 200 OK (95 443 octets)
+
+---
+
+## 6. État de Préparation pour la Production
+
+- **PostgreSQL Production** : Alembic `0069_crm_service_approval_columns`, 93 tables, données intègres.
+- **Volume Production `/data/artifacts`** : Sauvegarde chiffrée hors Railway testée et validée.
+- **Règles de sécurité respectées** : Aucune écriture ni modification de Production sans ordre explicite de l'utilisateur.
+- **Recommandation** : GO pour déploiement contrôlé de `release/v1.0.0-rc1` (SHA `65c3a63`) sur Production.
