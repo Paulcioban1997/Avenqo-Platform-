@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import secrets
+
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -173,6 +175,9 @@ class WorkspaceService:
         if existing is not None:
             raise WorkspaceError("Une invitation est déjà en cours pour cet email")
         raw = generate_token()
+        code = f"{secrets.randbelow(90000000) + 10000000}"
+        salt = secrets.token_hex(16)
+        code_h = hash_token(f"{code}:{salt}")
         now = datetime.now(timezone.utc)
         invitation = EmployeeInvitation(
             company_id=actor.company_id,
@@ -182,7 +187,10 @@ class WorkspaceService:
             job_title=job_title.strip() or "Employee",
             department=department,
             token_hash=hash_token(raw),
-            expires_at=now + timedelta(days=7),
+            code_hash=code_h,
+            code_salt=salt,
+            failed_attempts=0,
+            expires_at=now + timedelta(hours=24),
         )
         self._session.add(invitation)
         self._session.commit()
@@ -191,12 +199,63 @@ class WorkspaceService:
             if send:
                 send(normalized, raw)
         invitation._raw_token = raw  # type: ignore[attr-defined]
+        invitation._raw_code = code  # type: ignore[attr-defined]
         return invitation
 
-    def accept_invitation(self, token: str, first_name: str, last_name: str, password: str) -> User:
-        invitation = self._session.scalar(
-            select(EmployeeInvitation).where(EmployeeInvitation.token_hash == hash_token(token))
-        )
+
+    def invite_bulk(
+        self, actor: User, emails: list[str], role: UserRole, job_title: str, department: str | None
+    ) -> list[EmployeeInvitation]:
+        invitations = []
+        for email in emails:
+            if not email or not email.strip():
+                continue
+            invitations.append(self.invite(actor, email.strip(), role, job_title, department))
+        return invitations
+
+    def accept_invitation(
+        self,
+        token: str | None,
+        first_name: str,
+        last_name: str,
+        password: str,
+        *,
+        code: str | None = None,
+        email: str | None = None,
+    ) -> User:
+        invitation = None
+        now = datetime.now(timezone.utc)
+        if code and email:
+            normalized_email = email.strip().lower()
+            invitation = self._session.scalar(
+                select(EmployeeInvitation).where(
+                    EmployeeInvitation.email == normalized_email,
+                    EmployeeInvitation.accepted_at.is_(None),
+                    EmployeeInvitation.revoked_at.is_(None),
+                ).order_by(EmployeeInvitation.created_at.desc())
+            )
+            if invitation is None:
+                raise WorkspaceError("Aucune invitation active trouvée pour cet email")
+            if invitation.failed_attempts >= 5:
+                invitation.revoked_at = now
+                self._session.commit()
+                raise WorkspaceError("Nombre maximal de tentatives dépassé. Invitation révoquée par sécurité.")
+            
+            clean_code = code.strip()
+            expected_hash = hash_token(f"{clean_code}:{invitation.code_salt}")
+            if not secrets.compare_digest(invitation.code_hash or "", expected_hash):
+                invitation.failed_attempts += 1
+                if invitation.failed_attempts >= 5:
+                    invitation.revoked_at = now
+                self._session.commit()
+                remaining = max(0, 5 - invitation.failed_attempts)
+                raise WorkspaceError(f"Code d'invitation incorrect. {remaining} tentative(s) restante(s).")
+        elif token:
+            invitation = self._session.scalar(
+                select(EmployeeInvitation).where(EmployeeInvitation.token_hash == hash_token(token))
+            )
+        else:
+            raise WorkspaceError("Jeton ou code d'invitation requis")
         now = datetime.now(timezone.utc)
         expires = invitation.expires_at if invitation is not None else now
         if expires.tzinfo is None:

@@ -21,6 +21,8 @@ import {
   UserX,
   Check,
   X,
+  ChevronDown,
+  Sliders,
 } from "lucide-react";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
@@ -496,7 +498,7 @@ export function SettingsView() {
         <div className="bg-white dark:bg-[#0B132B] rounded-2xl p-6 border border-slate-200/80 dark:border-white/[0.08] shadow-xs space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              {companyTranslations.settingsPlanLabel}
+              {t.shell.activeModules || "Modules Actifs"}
             </span>
             <Layers className="w-4 h-4 text-purple-500" />
           </div>
@@ -525,13 +527,45 @@ export function SettingsView() {
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{voiceHealthCopy.freshness}</p>
             </div>
             {voiceStatus && (
-              <div className="flex flex-wrap gap-2 text-[10px] font-mono text-slate-500">
-                <span>{t.integrations.title}: {voiceStatus.telnyx_status}</span>
-                <span>Retell: {voiceStatus.retell_status}</span>
-                <span>STT: {voiceStatus.stt_status}</span>
-                <span>TTS: {voiceStatus.tts_status}</span>
-                <span>Realtime: {voiceStatus.realtime_status}</span>
-              </div>
+              <details className="group cursor-pointer">
+                <summary className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 font-semibold select-none list-none">
+                  <Sliders className="w-3.5 h-3.5 text-slate-400 group-open:text-[#0076FF]" />
+                  <span>Diagnostics & Infrastructure</span>
+                  <ChevronDown className="w-3 h-3 text-slate-400 transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="mt-2.5 p-3 rounded-xl bg-slate-50 dark:bg-[#060B13]/40 border border-slate-200/80 dark:border-white/[0.08] flex flex-wrap gap-3 text-[11px] font-mono">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-400">Téléphonie:</span>
+                    <span className={`px-1.5 py-0.5 rounded font-semibold text-[10px] ${voiceStatus.telnyx_status === "CONFIGURED" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400" : "bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-400"}`}>
+                      {voiceStatus.telnyx_status}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-400">Moteur Vocal:</span>
+                    <span className={`px-1.5 py-0.5 rounded font-semibold text-[10px] ${voiceStatus.retell_status === "CONFIGURED" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400" : "bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-400"}`}>
+                      {voiceStatus.retell_status}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-400">STT:</span>
+                    <span className="px-1.5 py-0.5 rounded font-semibold text-[10px] bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-400">
+                      {voiceStatus.stt_status}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-400">TTS:</span>
+                    <span className="px-1.5 py-0.5 rounded font-semibold text-[10px] bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-400">
+                      {voiceStatus.tts_status}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-400">Temps Réel:</span>
+                    <span className="px-1.5 py-0.5 rounded font-semibold text-[10px] bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-400">
+                      {voiceStatus.realtime_status}
+                    </span>
+                  </div>
+                </div>
+              </details>
             )}
           </div>
 

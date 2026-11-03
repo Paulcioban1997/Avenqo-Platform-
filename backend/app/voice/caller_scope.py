@@ -26,6 +26,7 @@ PUBLIC_VOICE_CRM_TOOLS: frozenset[str] = frozenset({
     "check_availability",
     "list_available_slots",
     "create_appointment",
+    "get_crm_services",
 })
 
 # Union of all possible public tools for backward compatibility

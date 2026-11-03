@@ -225,7 +225,7 @@ export function AppShell({ children }: AppShellProps) {
                 className="flex items-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-[#111D3D] hover:bg-slate-200/80 dark:hover:bg-[#172652] text-xs font-semibold text-slate-700 dark:text-[#F4F7FB] border border-slate-200/60 dark:border-white/[0.08] transition-colors cursor-pointer"
               >
                 <Building2 className="w-3.5 h-3.5 text-[#0076FF]" />
-                <span className="max-w-[30px] sm:max-w-[120px] truncate" title={activeTenant}>{activeTenant}</span>
+                <span className="max-w-[120px] sm:max-w-[200px] lg:max-w-[280px] truncate" title={activeTenant}>{activeTenant}</span>
                 <ChevronDown className="w-3 h-3 text-slate-400" />
               </button>
 
@@ -267,7 +267,7 @@ export function AppShell({ children }: AppShellProps) {
           ) : (
             <div className="min-w-0 flex items-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-[#111D3D] text-xs font-semibold text-slate-700 dark:text-[#F4F7FB] border border-slate-200/60 dark:border-white/[0.08]">
               <Building2 className="w-3.5 h-3.5 text-[#0076FF]" />
-              <span className="max-w-[30px] sm:max-w-[140px] truncate" title={activeTenant}>{activeTenant || catalog.company.connectionsLoading}</span>
+              <span className="max-w-[120px] sm:max-w-[200px] lg:max-w-[280px] truncate" title={activeTenant}>{activeTenant || catalog.company.connectionsLoading}</span>
             </div>
           )}
 
@@ -501,6 +501,9 @@ export function AppShell({ children }: AppShellProps) {
             <CreditMeter
               remaining={aiCreditsRemaining}
               limit={aiCreditsLimit}
+              monthlyAllocation={session.credits.monthlyAllocation}
+              monthlyRemaining={session.credits.monthlyRemaining}
+              purchasedRemaining={session.credits.purchasedRemaining}
               label={t.shell.aiCredits}
               upgradeLabel={t.shell.upgradePlan}
               error={session.creditError ? session.creditError.publicMessage ?? catalog.auth.genericError : undefined}

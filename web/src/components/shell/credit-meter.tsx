@@ -12,6 +12,9 @@ interface CreditMeterProps {
   loadingLabel?: string;
   retryLabel?: string;
   onRetry?: () => void;
+  monthlyAllocation?: number | null;
+  monthlyRemaining?: number | null;
+  purchasedRemaining?: number;
 }
 
 export function CreditMeter({
@@ -23,6 +26,9 @@ export function CreditMeter({
   loadingLabel = "…",
   retryLabel,
   onRetry,
+  monthlyAllocation,
+  monthlyRemaining,
+  purchasedRemaining = 0,
 }: CreditMeterProps) {
   let percentageDisplay: string | null = null;
   let barWidth = 0;
@@ -46,8 +52,23 @@ export function CreditMeter({
 
   const used = remaining !== null && limit !== null ? Math.max(0, limit - remaining) : null;
 
+  // Construct helpful tooltip breaking down monthly included vs purchased pack credits
+  const breakdownTooltip = [
+    remaining !== null ? `Solde total disponible : ${remaining.toLocaleString()} crédits` : null,
+    monthlyAllocation !== null && monthlyAllocation !== undefined
+      ? `• Forfait mensuel : ${(monthlyRemaining ?? Math.max(0, (monthlyAllocation || 0) - (used || 0))).toLocaleString()} / ${monthlyAllocation.toLocaleString()} restants`
+      : null,
+    purchasedRemaining > 0
+      ? `• Crédits achetés : ${purchasedRemaining.toLocaleString()} (recharges sans expiration)`
+      : null,
+    used !== null ? `• Consommé ce mois : ${used.toLocaleString()} crédits` : null,
+  ].filter(Boolean).join("\n");
+
   return (
-    <div className="p-3 rounded-2xl bg-white dark:bg-[#111D3D] border border-slate-200/80 dark:border-white/[0.08] shadow-2xs">
+    <div
+      className="p-3 rounded-2xl bg-white dark:bg-[#111D3D] border border-slate-200/80 dark:border-white/[0.08] shadow-2xs group transition-all"
+      title={breakdownTooltip || undefined}
+    >
       <div className="flex items-center justify-between text-xs mb-1.5">
         <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-[#F4F7FB]">
           <Sparkles className="w-3.5 h-3.5 text-[#0076FF]" />
@@ -55,7 +76,6 @@ export function CreditMeter({
         </div>
         <span
           className="text-[11px] font-mono font-bold text-[#0076FF] dark:text-[#00D4FF]"
-          title={used !== null ? `Utilisés : ${used.toLocaleString()} crédits` : undefined}
         >
           {percentageDisplay === null || error ? loadingLabel : `${percentageDisplay} restants`}
         </span>
@@ -89,6 +109,13 @@ export function CreditMeter({
           {upgradeLabel}
         </Link>
       </div>
+
+      {purchasedRemaining > 0 && (
+        <div className="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-white/[0.04] flex items-center justify-between text-[9px] text-slate-400 dark:text-slate-400">
+          <span>Packs de recharge :</span>
+          <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">+{purchasedRemaining.toLocaleString()}</span>
+        </div>
+      )}
     </div>
   );
 }

@@ -30,6 +30,7 @@ import { getAuthHeaders } from "@/lib/api-headers";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
+import { useOptionalSession } from "@/lib/session-context";
 
 interface DatasetItem {
   id: string;
@@ -93,6 +94,10 @@ export function ConnectionsView() {
   const t = getAppTranslations(locale);
   const company = getApplicationCatalog(locale).company;
   const connector = company.connectorHub;
+  const session = useOptionalSession();
+  const currentPlan = session?.identity?.company.subscription_plan?.toLowerCase() || "base";
+  const planMaxMb = currentPlan.includes("enterprise") ? 250 : currentPlan.includes("pro") ? 100 : 50;
+  const maxFileBytes = planMaxMb * 1024 * 1024;
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<ApiRequestError | null>(null);
@@ -264,8 +269,8 @@ export function ConnectionsView() {
         setAlertError(`Format de fichier non pris en charge pour "${file.name}". Formats acceptés : CSV, XLS, XLSX, PDF, JSON, TXT et Parquet.`);
         return;
       }
-      if (file.size > 50 * 1024 * 1024) {
-        setAlertError(`Le fichier "${file.name}" dépasse la limite autorisée de 50 Mo.`);
+      if (file.size > maxFileBytes) {
+        setAlertError(`Le fichier "${file.name}" dépasse la limite autorisée de ${planMaxMb} Mo pour votre forfait (${currentPlan.toUpperCase()}).`);
         return;
       }
     }
@@ -537,26 +542,26 @@ export function ConnectionsView() {
                     <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
                       <Database size={15} className="shrink-0 text-[#0076FF]" />
                       <span className="truncate">{dataset?.name || source.display_name}</span>
-                      <span className={`shrink-0 text-[10px] font-bold ${source.enabled ? "text-emerald-600" : "text-slate-400"}`}>
-                        {source.enabled ? t.integrations.sourceOn : t.integrations.sourceOff}
+                      <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${source.status === "ready" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40" : source.status === "processing" ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40" : "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400 border border-red-200 dark:border-red-800/40"}`}>
+                        {source.status === "ready" ? "Prêt (Ingéré)" : source.status === "processing" ? "En cours d'ingestion" : source.status}
                       </span>
                     </div>
-                    <div className="ml-[23px] mt-1 text-[11px] text-slate-500">{t.integrations.uploadedRetailSource} · {source.status}</div>
+                    <div className="ml-[23px] mt-1 text-[11px] text-slate-500">{t.integrations.uploadedRetailSource} · {source.enabled ? "Accessible IA" : "Désactivé pour l'IA"}</div>
                   </div>
                   {source.enabled && (source.active ? (
-                    <span className="shrink-0 text-[10px] font-bold text-[#0076FF]">{t.integrations.currentRetailSource}</span>
+                    <span className="shrink-0 px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-[11px] font-bold text-[#0076FF] border border-blue-200 dark:border-blue-800/50">{t.integrations.currentRetailSource}</span>
                   ) : (
                     <button
                       type="button"
                       disabled={actionLoading}
                       onClick={() => void selectRetailSource(source)}
-                      className="shrink-0 text-xs font-semibold text-[#0076FF] hover:underline disabled:opacity-50"
+                      className="shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold text-[#0076FF] hover:bg-blue-50 dark:hover:bg-blue-950/40 border border-blue-200/60 dark:border-blue-800/30 transition-colors disabled:opacity-50"
                     >
                       {t.integrations.selectSource}
                     </button>
                   ))}
                   <label className="flex shrink-0 items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-                    <span>{source.enabled ? t.integrations.sourceEnabled : t.integrations.sourceDisabled}</span>
+                    <span className="text-[11px] font-medium">{source.enabled ? "Accessible IA" : "Non accessible"}</span>
                     <input
                       type="checkbox"
                       role="switch"
@@ -1034,6 +1039,7 @@ export function ConnectionsView() {
                   <th className="py-3 px-4">{connector.fileImportTitle}</th>
                   <th className="py-3 px-4">{company.connectionsStatRowsLabel}</th>
                   <th className="py-3 px-4">{company.connectionsStatColumnsLabel}</th>
+                  <th className="py-3 px-4">{locale.startsWith("fr") ? "Qualité des données" : "Data Quality"}</th>
                   <th className="py-3 px-4">{company.connectionsStatUpdatedLabel}</th>
                   <th className="py-3 px-4">{t.integrations.statusConnected}</th>
                   <th className="py-3 px-4 text-right">{connector.connection}</th>
@@ -1055,9 +1061,20 @@ export function ConnectionsView() {
                       {ds.columns_count || ds.columns?.length || "—"}
                     </td>
                     <td className="py-3 px-4">
-                      <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 text-[10px] font-bold">
-                        {ds.quality_score ? `${ds.quality_score}%` : "100%"}
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 text-[10px] font-bold font-mono">
+                        {ds.quality_score != null
+                          ? `${Math.round(ds.quality_score > 1 ? ds.quality_score : ds.quality_score * 100)} %`
+                          : "100 %"}
                       </span>
+                    </td>
+                    <td className="py-3 px-4 text-slate-500 dark:text-slate-400 font-mono text-[11px]">
+                      {ds.uploaded_at
+                        ? new Date(ds.uploaded_at).toLocaleDateString(locale, {
+                            year: "numeric",
+                            month: "short",
+                            day: "numeric",
+                          })
+                        : "—"}
                     </td>
                     <td className="py-3 px-4">
                       {ds.source_missing || ds.pipeline_status === "source_missing" ? (

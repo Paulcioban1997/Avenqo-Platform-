@@ -47,6 +47,9 @@ class EmployeeInvitation(TimestampMixin, Base):
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    code_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    code_salt: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    failed_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
 
 class EmployeeResponsibility(TimestampMixin, Base):

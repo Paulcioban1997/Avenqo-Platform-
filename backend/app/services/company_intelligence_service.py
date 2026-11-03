@@ -165,8 +165,12 @@ class CompanyIntelligenceService:
         matches = [s for s in profile.configured_crm_services if
                    (service_id is not None and s["id"] == str(service_id)) or
                    (service_id is None and service_name is not None and s["name"].strip().casefold() == str(service_name).strip().casefold())]
+        if not matches and service_name and service_id is None:
+            norm_name = str(service_name).strip().casefold()
+            matches = [s for s in profile.configured_crm_services if norm_name in s["name"].strip().casefold() or s["name"].strip().casefold() in norm_name]
         if service_id is None and not service_name and len(profile.configured_crm_services) == 1:
             matches = list(profile.configured_crm_services)
         if len(matches) != 1:
-            raise CompanyOfferingUnavailable("Select an exact, active service offered by this company")
+            avail = ", ".join(f"'{s['name']}'" for s in profile.configured_crm_services) if profile.configured_crm_services else "aucun"
+            raise CompanyOfferingUnavailable(f"Veuillez sélectionner un service actif proposé par l'entreprise. Services disponibles : {avail}")
         return matches[0]
