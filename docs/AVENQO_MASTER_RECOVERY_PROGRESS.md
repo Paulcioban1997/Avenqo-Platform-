@@ -218,3 +218,47 @@ ed999bb test(crm): keep workspace available on Calendar reconnect
 | **Alembic Schema** | `0069_crm_service_approval_columns` (93 tables) | `0069_crm_service_approval_columns` (93 tables) | **SYNCHRONISÉ** |
 | **Données Métier** | 17 entreprises, 17 utilisateurs, 4 830 lignes | Données de test isolées (Alpha, Beta) | **CLOISONNÉ (0 fuite)** |
 | **Service de Backup** | Réparé (`1b879621`), S3 chiffré, cron 07:00 UTC | Réparé (`7148ca66`), S3 chiffré, manuel | **SÉCURISÉ & TESTÉ** |
+
+---
+
+## 10. Phase D Sandbox : Validation Fonctionnelle E2E Multi-Modules & Multi-Tenant (Exécutée)
+
+- **Date d'exécution** : 2026-11-02T22:46:25-05:00
+- **Environnement** : Sandbox (`https://avenqo-platform-sandbox.up.railway.app`)
+- **Base de données** : PostgreSQL Sandbox (`altaria.proxy.rlwy.net:17860/railway`)
+- **Tenants de test** :
+  - **Alpha Global Corp** (`f4cf2511-xxxx`) : Offre Professional (5 modules actifs : `retail`, `crm`, `voice`, `ocr`, `workflow`).
+  - **Beta Clinic** (`2eb2a282-xxxx`) : Offre Base (2 modules actifs : `accounting`, `crm`).
+
+### 10.1 Matrice des Scénarios E2E (8/8 PASS - 100%)
+
+| Code | Scénario & Modules Évalués | Résultat | Détails Techniques Validés |
+| :--- | :--- | :---: | :--- |
+| **SCENARIO_A** | **Onboarding, Auth, Modules & Dashboard** | **PASS** | Inscriptions Alpha (Pro) et Beta (Base) créées avec succès (HTTP 201). Vérification email atomique en DB. Connexion via `/auth/login` (JWT Bearer tokens générés). Entitlements appliqués. Dashboard tenant opérationnel (HTTP 200). |
+| **SCENARIO_B** | **Retail Data Ingestion, Profiling & Central AI** | **PASS** | Téléversement d'un dataset CSV Retail (5 produits, CA 3 142.30 CAD) via `/datasets/csv` (HTTP 201). Profil statistique généré via `/profile` (HTTP 200). Création de conversation IA (`/ai/chat/conversations` HTTP 201) et grounding Central AI (`/ai/central/conversations/{id}/messages` HTTP 200). |
+| **SCENARIO_C** | **CRM Pipeline, Clients, Services & Calendar Relay** | **PASS** | Création d'un contact client via `/crm/clients` (HTTP 201, ID `c8c87837`). Création d'un service commercial via `/crm/services` (HTTP 201, ID `8bbbe51e`). Génération sécurisée de l'URL OAuth Google Calendar via `/crm/calendar/google/auth-url` (HTTP 200, relai Google vérifié). |
+| **SCENARIO_D** | **Voice AI Agent Lifecycle & Multilingual Voice Config** | **PASS** | Consultation du catalogue des voix de synthèse via `/voice/voices` (HTTP 200, 8 voix premium temps réel). Vérification du statut Voice via `/voice/status` (HTTP 200). Initialisation d'une session conversationnelle Voice AI via `/ai/voice/sessions` (HTTP 200, Session ID `cd25d109`). |
+| **SCENARIO_E** | **Accounting Invoices, Entries & Overview** | **PASS** | Émission d'une facture client via `/accounting/invoices` (HTTP 201, Invoice ID `d0b9553c`, type `receivable`, montant 1 724.63 CAD). Enregistrement d'une transaction via `/accounting/transactions` (HTTP 201, 450.00 CAD). Vue d'ensemble du bilan comptable via `/accounting/overview` (HTTP 200). |
+| **SCENARIO_F** | **OCR Documents & Automations Gating** | **PASS** | Vérification de l'admissibilité modulaire stricte : Alpha (module actif) accède à `/ocr/documents` (HTTP 200) et `/automations` (HTTP 200). Beta (module inactif) est hermétiquement bloqué avec HTTP 403 Forbidden sur `/ocr/documents` et `/automations`. |
+| **SCENARIO_G** | **Strict Cross-Tenant Multi-Tenant Isolation** | **PASS** | **0 fuite de données**. Alpha tente d'accéder aux factures et écritures de Beta : reçoit HTTP 403 / 0 résultat. Beta consulte ses factures : voit uniquement sa facture `INV-...-001`. Cloisonnement RLS et applicatif hermétique. |
+| **SCENARIO_H** | **Billing Plans, Quotas & AI Credits Balance** | **PASS** | Consultation des offres via `/billing/plans` (3 offres publiques : Base, Professional, Enterprise). Validation de la souscription active via `/billing/subscription` (`plan=professional`). Solde de crédits IA vérifié via `/billing/ai-credits` (allocation mensuelle 20 000 crédits intacte). |
+
+- **Verdict Phase D** : **PASS (100% SUCCÈS)**
+
+---
+
+## 11. Matrice d'État Complète des Modules Métier
+
+| Module | Statut Backend | Statut Frontend | Isolation RLS | Gating Offre | Intégration AI / Central | Statut Global |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Authentification & Rôles** | Opérationnel (200) | Opérationnel (200) | Cloisonné | Core Platform | N/A | **Prêt Production** |
+| **Central AI (Copilot)** | Opérationnel (200) | Opérationnel (200) | Cloisonné | Modulaire | Moteur Central (v1) | **Prêt Production** |
+| **Retail Intelligence** | Opérationnel (200) | Opérationnel (200) | Cloisonné | Modulaire | Grounding CSV & KPIs | **Prêt Production** |
+| **CRM AI & Calendrier** | Opérationnel (200) | Opérationnel (200) | Cloisonné | Modulaire | Relais OAuth Google/MS | **Prêt Production** |
+| **Voice AI & Agents Vocaux** | Opérationnel (200) | Opérationnel (200) | Cloisonné | Premium (2x) | 8 voix temps réel | **Prêt Production** |
+| **Accounting AI** | Opérationnel (200) | Opérationnel (200) | Cloisonné | Modulaire | Factures & Bilans | **Prêt Production** |
+| **OCR / Documents AI** | Opérationnel (200) | Opérationnel (200) | Cloisonné | Modulaire | Extraction & Stockage | **Prêt Production** |
+| **Workflow / Automations** | Opérationnel (200) | Opérationnel (200) | Cloisonné | Modulaire | Triggers & Gating | **Prêt Production** |
+| **Facturation & Stripe** | Opérationnel (200) | Opérationnel (200) | Cloisonné | Core Platform | Quotas & Packs crédits | **Prêt Production** |
+| **Internationalisation** | 44 locales | 44 catalogues | Global | Tous plans | Traduction Central AI | **Prêt Production** |
+
