@@ -10,7 +10,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.app.database import get_db
-from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
+from backend.app.dependencies.auth import (
+    CurrentIdentity,
+    get_account_notifier,
+    get_current_identity,
+    get_tenant_context,
+)
 from backend.app.models.company import Company
 from backend.app.services.account_notifications import AccountNotifier
 from backend.app.services.audit_log_service import AuditLogService
@@ -47,8 +52,11 @@ class ContractItemResponse(BaseModel):
     has_pdf: bool
 
 
-def _get_service(db: Session = Depends(get_db)) -> ContractSignatureService:
-    return ContractSignatureService(db, audit_service=AuditLogService(db), notifier=AccountNotifier())
+def _get_service(
+    db: Session = Depends(get_db),
+    notifier: AccountNotifier = Depends(get_account_notifier),
+) -> ContractSignatureService:
+    return ContractSignatureService(db, audit_service=AuditLogService(db), notifier=notifier)
 
 
 @router.get("", response_model=list[ContractItemResponse])
