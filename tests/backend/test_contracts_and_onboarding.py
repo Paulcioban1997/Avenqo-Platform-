@@ -271,7 +271,8 @@ def test_mandatory_contracts_gate_blocks_and_activates(db_session):
     with pytest.raises(HTTPException) as exc_info:
         require_active_subscription(tenant, db_session)
     assert exc_info.value.status_code == 403
-    assert exc_info.value.detail["code"] == CONTRACT_SIGNATURE_REQUIRED_CODE
+    assert isinstance(exc_info.value.detail, dict)
+    assert exc_info.value.detail.get("code") == CONTRACT_SIGNATURE_REQUIRED_CODE
 
     # 3. Signature du Mutual NDA seulement: toujours pas complet
     service.sign_contract_electronic(
