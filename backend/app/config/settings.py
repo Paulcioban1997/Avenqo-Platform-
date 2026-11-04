@@ -694,11 +694,37 @@ class Settings(BaseSettings):
 
     @property
     def dataset_s3_enabled(self) -> bool:
-        """Stockage S3 dédié aux datasets clients (distinct ou repli sur backup_s3)."""
+        """Stockage S3 dédié exclusivement aux datasets clients.
 
-        if self.dataset_s3_bucket and self.dataset_s3_access_key and self.dataset_s3_secret_key:
-            return True
-        return self.backup_s3_enabled
+        Ne bascule JAMAIS vers backup_s3 pour garantir l'isolation stricte
+        entre données clients et sauvegardes d'infrastructure.
+        """
+        return bool(
+            self.dataset_s3_bucket
+            and self.dataset_s3_access_key
+            and self.dataset_s3_secret_key
+        )
+
+    @property
+    def dataset_storage_status(self) -> str:
+        """Indique le statut précis de la configuration du stockage datasets.
+
+        Valeurs :
+        - 'S3_CONFIGURED' : Stockage S3 dédié entièrement configuré.
+        - 'LOCAL_PERSISTENCE' : Aucun S3 dataset configuré, stockage local persistant actif.
+        - 'STORAGE_CONFIGURATION_MISSING' : Configuration S3 dataset partielle ou incomplète.
+        """
+        has_any_s3 = bool(
+            self.dataset_s3_bucket
+            or self.dataset_s3_access_key
+            or self.dataset_s3_secret_key
+            or self.dataset_s3_endpoint_url
+        )
+        if not has_any_s3:
+            return "LOCAL_PERSISTENCE"
+        if self.dataset_s3_enabled:
+            return "S3_CONFIGURED"
+        return "STORAGE_CONFIGURATION_MISSING"""
 
     @property
     def app_title(self) -> str:
