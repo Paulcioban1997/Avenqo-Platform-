@@ -281,7 +281,8 @@ class ContractSignatureService:
 
         # Contrôle du rôle : seuls OWNER ou ADMIN peuvent engager l'entreprise
         user_role = getattr(user, "role", None)
-        role_val = user_role.value if hasattr(user_role, "value") else str(user_role or "")
+        role_val = getattr(user_role, "value", user_role) if user_role is not None else ""
+        role_val = str(role_val or "").lower()
         allowed_roles = {UserRole.OWNER.value, UserRole.ADMIN.value, "owner", "admin"}
 
         if role_val not in allowed_roles:
@@ -413,23 +414,17 @@ class ContractSignatureService:
         # 6. Notification par courriel transactionnel avec pièce jointe
         if self._notifier:
             try:
+                mail_body = (
+                    f"Bonjour {user_name},\n\n"
+                    f"Votre contrat {contract.title} (Réf : {contract.contract_type}-{contract.version}) "
+                    f"a été signé électroniquement avec succès le {now.strftime('%Y-%m-%d %H:%M UTC')}.\n\n"
+                    f"Empreinte cryptographique de sécurité (SHA-256) : {final_sha256}\n\n"
+                    f"Vous trouverez votre exemplaire certifié téléchargeable à tout moment dans votre espace Avenqo."
+                )
                 self._notifier.send_transactional(
-                    recipient_email=user.email,
-                    recipient_name=user_name,
+                    recipient=user.email,
                     subject=f"Avenqo — Contrat signé : {contract.title}",
-                    html_content=(
-                        f"<p>Bonjour {user_name},</p>"
-                        f"<p>Votre contrat <b>{contract.title}</b> (Réf : {contract.contract_type}-{contract.version}) "
-                        f"a été signé électroniquement avec succès le {now.strftime('%Y-%m-%d %H:%M UTC')}.</p>"
-                        f"<p>Empreinte cryptographique de sécurité (SHA-256) : <code>{final_sha256}</code></p>"
-                        f"<p>Vous trouverez votre exemplaire certifié en pièce jointe ou téléchargeable à tout moment dans votre espace Avenqo.</p>"
-                    ),
-                    text_content=(
-                        f"Votre contrat {contract.title} a été signé électroniquement avec succès.\n"
-                        f"Empreinte SHA-256 : {final_sha256}\n"
-                        f"Téléchargeable dans vos paramètres Avenqo."
-                    ),
-                    attachments=[(f"{contract_type}_Signe_{receipt_id}.pdf", pdf_bytes, "application/pdf")],
+                    body=mail_body,
                 )
             except Exception as mail_err:
                 logger.warning("Notification email failed (non-blocking): %s", mail_err)
