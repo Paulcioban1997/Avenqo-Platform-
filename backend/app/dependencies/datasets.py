@@ -1,6 +1,9 @@
 """Dépendances FastAPI de l'import de datasets."""
 
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from fastapi import Depends
 from sqlalchemy.orm import Session
@@ -57,20 +60,29 @@ def get_company_dataset_ingestion_service(
 ) -> CompanyDatasetIngestionService:
     settings = get_settings()
     local_storage = LocalDatasetStorage(Path(settings.artifact_root) / "company_datasets")
-    s3_enabled = getattr(settings, "backup_s3_enabled", False)
+    storage_status = getattr(settings, "dataset_storage_status", "LOCAL_PERSISTENCE")
+    if storage_status == "STORAGE_CONFIGURATION_MISSING":
+        logger.warning(
+            "dataset_storage_configuration_incomplete: Paramètres DATASET_S3_* partiels détectés. "
+            "Refus strict de basculement vers BACKUP_S3 pour préserver l'isolation des sauvegardes. "
+            "Repli sécurisé sur LocalDatasetStorage."
+        )
+
+    s3_enabled = getattr(settings, "dataset_s3_enabled", False)
     if callable(s3_enabled):
         s3_enabled = s3_enabled()
     storage: DatasetStorage
     if s3_enabled:
         storage = S3DatasetStorage(
-            bucket=settings.backup_s3_bucket or "",
-            access_key=settings.backup_s3_access_key or "",
-            secret_key=settings.backup_s3_secret_key or "",
-            endpoint_url=settings.backup_s3_endpoint_url,
-            region=settings.backup_s3_region,
+            bucket=settings.dataset_s3_bucket or "",
+            access_key=settings.dataset_s3_access_key or "",
+            secret_key=settings.dataset_s3_secret_key or "",
+            endpoint_url=settings.dataset_s3_endpoint_url,
+            region=settings.dataset_s3_region or "auto",
             local_fallback=local_storage,
         )
     else:
+        # Strictly local_storage! Aucun fallback vers backup_s3 pour étanchéité absolue.
         storage = local_storage
 
     return AutomaticCompanyDatasetIngestionService(

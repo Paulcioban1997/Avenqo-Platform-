@@ -249,13 +249,14 @@ def provider_status(
         select(BillingAccount).where(BillingAccount.company_id == identity.user.company_id)
     )
     subscription_linked = bool(account and account.stripe_subscription_id)
+    configured = bool(settings.stripe_secret_key and settings.stripe_webhook_secret)
     return {
         "provider": "stripe",
-        "configured": bool(settings.stripe_secret_key and settings.stripe_webhook_secret),
+        "configured": configured,
         "customer_linked": bool(account and account.stripe_customer_id),
         "subscription_linked": subscription_linked,
         "subscription_status": account.status if (account and subscription_linked) else "inactive",
-        "portal_available": bool(account and account.stripe_customer_id),
+        "portal_available": bool(configured and account and account.stripe_customer_id),
     }
 
 
