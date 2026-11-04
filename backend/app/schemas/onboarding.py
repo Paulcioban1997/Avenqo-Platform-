@@ -1,6 +1,6 @@
-"""Schémas HTTP du questionnaire d'onboarding post-inscription et personnalisation White-Label."""
-
 from __future__ import annotations
+
+"""Schémas HTTP du questionnaire d'onboarding post-inscription et personnalisation White-Label."""
 
 from datetime import datetime
 
