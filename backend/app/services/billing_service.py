@@ -80,10 +80,42 @@ class BillingService:
         plan = get_plan(plan_code)
         if plan.requires_sales_contact:
             raise BillingOperationError(f"{plan.name} nécessite un contact commercial")
-        price_id = self._required_price(plan.code, company.currency_code)
-        account = self.get_account(company.id)
+
+        # Verrou anti-double-abonnement : verrouillage transactionnel de la ligne account
+        account = self._session.scalar(
+            select(BillingAccount)
+            .where(BillingAccount.company_id == company.id)
+            .with_for_update()
+        )
+        if account is None:
+            account = self.get_account(company.id)
+
+        # 1. Vérification locale immédiate : abonnement déjà lié et actif
         if account.stripe_subscription_id and account.status not in {"canceled", "incomplete_expired"}:
-            raise BillingOperationError("Un abonnement existe déjà; utilisez le changement d'offre")
+            raise BillingOperationError("Un abonnement existe déjà; utilisez le portail client pour le gérer")
+
+        # 2. Protection locale : forfait Professional déjà actif
+        if account.plan_code == "professional" and account.status in {"active", "trialing"}:
+            raise BillingOperationError(
+                "Votre compte bénéficie déjà d'un forfait Professional actif. "
+                "Utilisez le portail Stripe pour gérer vos modalités de paiement sans créer de second abonnement."
+            )
+
+        # 3. Protection distante : vérification sur Stripe avant tout nouveau checkout
+        if account.stripe_customer_id:
+            remote_sub = self.provider.get_active_subscription(account.stripe_customer_id)
+            if remote_sub:
+                sub_id = remote_sub.get("id") if isinstance(remote_sub, dict) else getattr(remote_sub, "id", None)
+                sub_status = remote_sub.get("status") if isinstance(remote_sub, dict) else getattr(remote_sub, "status", "active")
+                if sub_id:
+                    account.stripe_subscription_id = sub_id
+                    account.status = sub_status
+                    self._session.commit()
+                raise BillingOperationError(
+                    f"Un abonnement actif ({sub_id or ''}) existe déjà sur votre compte Stripe. "
+                    "Votre compte a été synchronisé. Utilisez le portail Stripe pour le gérer sans créer de doublon."
+                )
+
         if not account.stripe_customer_id:
             account.stripe_customer_id = self.provider.create_customer(
                 company.email,
@@ -91,6 +123,8 @@ class BillingService:
                 str(company.id),
             )
             self._session.commit()
+
+        price_id = self._required_price(plan.code, company.currency_code)
         return self.provider.create_checkout(
             account.stripe_customer_id,
             price_id,
@@ -122,7 +156,7 @@ class BillingService:
         return account
 
     def create_portal(self, company: Company) -> str:
-        """Ouvre le portail Stripe et crée le Customer à la demande si nécessaire."""
+        """Ouvre le portail Stripe et réconcilie proactivement l'abonnement distant si nécessaire."""
         account = self.get_account(company.id)
         if not account.stripe_customer_id:
             account.stripe_customer_id = self.provider.create_customer(
@@ -131,6 +165,19 @@ class BillingService:
                 str(company.id),
             )
             self._session.commit()
+        if not account.stripe_subscription_id and account.stripe_customer_id:
+            try:
+                remote_sub = self.provider.get_active_subscription(account.stripe_customer_id)
+                if remote_sub:
+                    sub_id = remote_sub.get("id") if isinstance(remote_sub, dict) else getattr(remote_sub, "id", None)
+                    sub_status = remote_sub.get("status") if isinstance(remote_sub, dict) else getattr(remote_sub, "status", "active")
+                    if sub_id:
+                        account.stripe_subscription_id = sub_id
+                        account.status = sub_status
+                        self._session.commit()
+            except Exception as e:
+                logger.warning("Impossible de synchroniser l'abonnement distant à l'ouverture du portail: %s", e)
+
         return self.provider.create_portal(
             account.stripe_customer_id,
             f"{self._settings.frontend_url.rstrip('/')}/billing",

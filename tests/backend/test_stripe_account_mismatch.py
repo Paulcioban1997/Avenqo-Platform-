@@ -13,7 +13,7 @@ from backend.app.models.base import Base, UserRole, CompanyStatus
 from backend.app.models.billing import BillingAccount
 from backend.app.models.company import Company
 from backend.app.models.user import User
-from backend.app.services.billing_service import BillingService
+from backend.app.services.billing_service import BillingService, BillingOperationError
 from backend.app.services.stripe_gateway import (
     StripeGateway,
     StripeCustomerNotFoundError,
@@ -179,3 +179,150 @@ def test_portal_endpoint_returns_404_not_500_on_customer_not_found(db_session_an
         data = response.json()
         err_msg = data.get("error", {}).get("message", "") or data.get("detail", "")
         assert "cus_VBhfUdTZqnatYg" in err_msg
+
+
+def test_create_checkout_blocks_duplicate_when_active_subscription_exists_remotely(db_session_and_factory):
+    """Vérifie qu'un Checkout est bloqué si un abonnement actif existe déjà sur Stripe pour ce client."""
+    session, _ = db_session_and_factory
+    company_id = uuid4()
+    company = Company(
+        id=company_id,
+        name="Produits_Ero",
+        slug=f"produits-ero-{uuid4().hex[:6]}",
+        email="gauffy95@gmail.com",
+        country="Canada",
+        timezone="America/Toronto",
+        industry="Retail",
+        subscription_plan="professional",
+        status=CompanyStatus.ACTIVE,
+    )
+    session.add(company)
+    session.flush()
+
+    account = BillingAccount(
+        company_id=company_id,
+        plan_code="base",
+        status="inactive",
+        stripe_customer_id="cus_VBhfUdTZqnatYg",
+        stripe_subscription_id=None,  # Orphelin / non lié localement
+    )
+    session.add(account)
+    session.commit()
+
+    mock_provider = MagicMock()
+    # Stripe retourne l'abonnement Professional existant
+    mock_provider.get_active_subscription.return_value = {
+        "id": "sub_1UP3OUK4vojCzpX2Q6ETWK9y",
+        "status": "active",
+        "customer": "cus_VBhfUdTZqnatYg",
+    }
+
+    settings = MagicMock()
+    settings.frontend_url = "https://avenqo.ca"
+
+    service = BillingService(session, mock_provider, settings, MagicMock(), MagicMock())
+
+    with pytest.raises(BillingOperationError) as exc_info:
+        service.create_checkout(company, "professional")
+
+    assert "sub_1UP3OUK4vojCzpX2Q6ETWK9y" in str(exc_info.value)
+    assert "existe déjà sur votre compte Stripe" in str(exc_info.value)
+    # Vérification anti-doublon : create_checkout n'a JAMAIS été appelé sur Stripe
+    mock_provider.create_checkout.assert_not_called()
+
+    # Vérification de la synchronisation : l'abonnement orphelin a été automatiquement lié en base locale
+    reloaded_account = session.scalar(
+        select(BillingAccount).where(BillingAccount.company_id == company_id)
+    )
+    assert reloaded_account.stripe_subscription_id == "sub_1UP3OUK4vojCzpX2Q6ETWK9y"
+    assert reloaded_account.status == "active"
+
+
+def test_create_checkout_blocks_duplicate_when_active_professional_locally(db_session_and_factory):
+    """Vérifie qu'un compte déjà Professional actif localement ne peut pas relancer un Checkout Professional."""
+    session, _ = db_session_and_factory
+    company_id = uuid4()
+    company = Company(
+        id=company_id,
+        name="Produits_Ero",
+        slug=f"produits-ero-{uuid4().hex[:6]}",
+        email="gauffy95@gmail.com",
+        country="Canada",
+        timezone="America/Toronto",
+        industry="Retail",
+        subscription_plan="professional",
+        status=CompanyStatus.ACTIVE,
+    )
+    session.add(company)
+    session.flush()
+
+    account = BillingAccount(
+        company_id=company_id,
+        plan_code="professional",
+        status="active",
+        stripe_customer_id="cus_VBhfUdTZqnatYg",
+        stripe_subscription_id=None,
+    )
+    session.add(account)
+    session.commit()
+
+    mock_provider = MagicMock()
+    settings = MagicMock()
+    settings.frontend_url = "https://avenqo.ca"
+
+    service = BillingService(session, mock_provider, settings, MagicMock(), MagicMock())
+
+    with pytest.raises(BillingOperationError) as exc_info:
+        service.create_checkout(company, "professional")
+
+    assert "bénéficie déjà d'un forfait Professional actif" in str(exc_info.value)
+    mock_provider.create_checkout.assert_not_called()
+
+
+def test_create_portal_auto_reconciles_unlinked_remote_subscription(db_session_and_factory):
+    """Vérifie que l'ouverture du portail détecte et lie automatiquement l'abonnement Stripe existant sans paiement."""
+    session, _ = db_session_and_factory
+    company_id = uuid4()
+    company = Company(
+        id=company_id,
+        name="Produits_Ero",
+        slug=f"produits-ero-{uuid4().hex[:6]}",
+        email="gauffy95@gmail.com",
+        country="Canada",
+        timezone="America/Toronto",
+        industry="Retail",
+        subscription_plan="professional",
+        status=CompanyStatus.ACTIVE,
+    )
+    session.add(company)
+    session.flush()
+
+    account = BillingAccount(
+        company_id=company_id,
+        plan_code="professional",
+        status="active",
+        stripe_customer_id="cus_VBhfUdTZqnatYg",
+        stripe_subscription_id=None,  # Initialement non lié
+    )
+    session.add(account)
+    session.commit()
+
+    mock_provider = MagicMock()
+    mock_provider.get_active_subscription.return_value = {
+        "id": "sub_1UP3OUK4vojCzpX2Q6ETWK9y",
+        "status": "active",
+    }
+    mock_provider.create_portal.return_value = "https://billing.stripe.com/p/session/test_session_123"
+
+    settings = MagicMock()
+    settings.frontend_url = "https://avenqo.ca"
+
+    service = BillingService(session, mock_provider, settings, MagicMock(), MagicMock())
+    portal_url = service.create_portal(company)
+
+    assert portal_url == "https://billing.stripe.com/p/session/test_session_123"
+    # L'abonnement a été auto-réconcilié en DB
+    reloaded_account = session.scalar(
+        select(BillingAccount).where(BillingAccount.company_id == company_id)
+    )
+    assert reloaded_account.stripe_subscription_id == "sub_1UP3OUK4vojCzpX2Q6ETWK9y"

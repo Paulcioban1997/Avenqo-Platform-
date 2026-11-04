@@ -52,6 +52,7 @@ class BillingProvider(Protocol):
     def create_portal(self, customer_id: str, return_url: str) -> str: ...
     def construct_event(self, payload: bytes, signature: str, secret: str) -> dict[str, Any]: ...
     def get_account_id(self) -> str: ...
+    def get_active_subscription(self, customer_id: str) -> dict[str, Any] | None: ...
 
 
 class StripeGateway:
@@ -239,6 +240,34 @@ class StripeGateway:
             api_key=self._api_key,
         )
 
+    def get_account_id(self) -> str:
+        try:
+            account = stripe.Account.retrieve(api_key=self._api_key)
+            return account.id if hasattr(account, "id") else account.get("id", "")
+        except Exception as exc:
+            raise StripeGatewayError(f"Impossible de récupérer l'ID de compte Stripe: {exc}") from exc
+
+    def get_active_subscription(self, customer_id: str) -> dict[str, Any] | None:
+        try:
+            subscriptions = stripe.Subscription.list(
+                customer=customer_id,
+                status="all",
+                limit=10,
+                api_key=self._api_key,
+            )
+            data = getattr(subscriptions, "data", subscriptions)
+            for sub in data:
+                sub_dict = sub.to_dict() if hasattr(sub, "to_dict") else dict(sub)
+                if sub_dict.get("status") in {"active", "trialing", "past_due"}:
+                    return sub_dict
+            return None
+        except stripe.InvalidRequestError as exc:
+            if "No such customer" in str(exc):
+                raise StripeCustomerNotFoundError(
+                    f"Le client Stripe '{customer_id}' n'a pas été trouvé dans le compte Stripe configuré."
+                ) from exc
+            raise
+
     def create_portal(self, customer_id: str, return_url: str) -> str:
         try:
             portal = stripe.billing_portal.Session.create(
@@ -252,6 +281,10 @@ class StripeGateway:
                 raise StripeCustomerNotFoundError(
                     f"Le client Stripe '{customer_id}' n'a pas été trouvé dans le compte Stripe configuré. "
                     "Vérifiez que la clé STRIPE_SECRET_KEY correspond au bon compte Stripe (contexte multi-compte)."
+                ) from exc
+            if "configuration" in str(exc).lower() or "portal" in str(exc).lower():
+                raise StripeGatewayError(
+                    f"Le portail client Stripe n'est pas activé ou configuré dans le compte Stripe : {exc}"
                 ) from exc
             raise
 

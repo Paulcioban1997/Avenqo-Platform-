@@ -382,23 +382,14 @@ export function BillingView() {
       return;
     }
     const code = (subscription.plan_code || "").toLowerCase();
-    if (!subscription.stripe_subscription_linked) {
-      if (code === "professional") {
-        // Never redirect a Professional subscriber to Base: activate via Professional checkout
-        void handleConfirmUpgradeToProfessional();
-        return;
-      }
-      if (code === "base") {
-        void handleSubscribeToBase();
-        return;
-      }
-      setIsUpgradeModalOpen(true);
+    // Anti-double-subscription protection: an active Professional subscriber NEVER checks out again
+    if (code === "professional") {
+      void handleOpenStripePortal();
       return;
     }
     if (code === "demo" || code === "base") {
       setIsUpgradeModalOpen(true);
     } else {
-      // For active Professional subscribers with linked Stripe subscription, open Stripe Customer Portal directly
       void handleOpenStripePortal();
     }
   };

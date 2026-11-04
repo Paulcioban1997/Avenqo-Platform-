@@ -154,6 +154,12 @@ class FakeStripeProvider:
             raise ValueError("Signature incorrecte")
         return self.events.pop(0)
 
+    def get_account_id(self) -> str:
+        return "acct_fake_test"
+
+    def get_active_subscription(self, customer_id: str) -> dict[str, Any] | None:
+        return None
+
 
 @pytest.fixture
 def billing_environment(
