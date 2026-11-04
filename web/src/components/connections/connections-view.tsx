@@ -108,6 +108,8 @@ export function ConnectionsView() {
   // Datasets & Files
   const [datasets, setDatasets] = useState<DatasetItem[]>([]);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [uploadStage, setUploadStage] = useState<string | null>(null);
+  const [uploadBytes, setUploadBytes] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -275,7 +277,9 @@ export function ConnectionsView() {
       }
     }
 
-    setUploadProgress(15);
+    setUploadProgress(0);
+    setUploadStage(null);
+    setUploadBytes(null);
     setAlertError(null);
     setAlertSuccess(null);
 
@@ -286,38 +290,69 @@ export function ConnectionsView() {
         formData.append("file", file);
         formData.append("module_code", "retail");
 
-        setUploadProgress(Math.round(((i + 0.5) / fileList.length) * 100));
+        setUploadStage(`Téléversement de "${file.name}" en cours...`);
 
-        const res = await fetch("/api/v1/datasets/upload", {
-          method: "POST",
-          headers: getAuthHeaders(),
-          body: formData,
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("POST", "/api/v1/datasets/upload");
+          const headers = getAuthHeaders();
+          for (const [key, value] of Object.entries(headers)) {
+            xhr.setRequestHeader(key, value);
+          }
+
+          xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable && event.total > 0) {
+              const fileFraction = event.loaded / event.total;
+              const totalPercent = Math.min(99, Math.round(((i + fileFraction) / fileList.length) * 100));
+              const loadedMb = (event.loaded / (1024 * 1024)).toFixed(1);
+              const totalMb = (event.total / (1024 * 1024)).toFixed(1);
+              setUploadProgress(totalPercent);
+              setUploadBytes(`${loadedMb} Mo / ${totalMb} Mo`);
+              if (event.loaded >= event.total) {
+                setUploadStage(`Traitement et analyse du jeu de données "${file.name}"...`);
+              }
+            }
+          };
+
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve();
+            } else {
+              let detail = `Erreur lors de l'import de ${file.name}`;
+              try {
+                const data = JSON.parse(xhr.responseText);
+                detail = data.detail || data.error?.message || detail;
+              } catch {}
+              reject(new Error(`${detail} (HTTP ${xhr.status})`));
+            }
+          };
+
+          xhr.onerror = () => {
+            reject(new Error(`Échec réseau lors du téléversement de "${file.name}".`));
+          };
+
+          xhr.ontimeout = () => {
+            reject(new Error(`Délai d'attente dépassé lors du téléversement de "${file.name}".`));
+          };
+
+          xhr.send(formData);
         });
-
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          const detail = typeof errData?.detail === "string"
-            ? errData.detail
-            : typeof errData?.error?.message === "string"
-              ? errData.error.message
-              : `Erreur lors de l'import de ${file.name}`;
-          console.error("[Avenqo dataset upload] request failed", {
-            fileName: file.name,
-            status: res.status,
-            statusText: res.statusText,
-            detail,
-          });
-          throw new Error(`${detail} (HTTP ${res.status})`);
-        }
       }
 
       setUploadProgress(100);
+      setUploadStage("Import et analyse terminés avec succès !");
       setAlertSuccess(`${fileList.length} ${fileList.length === 1 ? company.connectionsUploadCountOne : company.connectionsUploadCountOther}`);
-      setTimeout(() => setUploadProgress(null), 1500);
+      setTimeout(() => {
+        setUploadProgress(null);
+        setUploadStage(null);
+        setUploadBytes(null);
+      }, 2000);
       setTimeout(() => setAlertSuccess(null), 5000);
       loadData();
     } catch (err: any) {
       setUploadProgress(null);
+      setUploadStage(null);
+      setUploadBytes(null);
       setAlertError(err.message || company.connectionsProcessingError);
     }
   };
@@ -625,8 +660,8 @@ export function ConnectionsView() {
         {uploadProgress !== null && (
           <div className="space-y-1.5 pt-2">
             <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 font-semibold">
-              <span>{company.connectionsPreparingData}</span>
-              <span>{uploadProgress}%</span>
+              <span>{uploadStage || company.connectionsPreparingData}</span>
+              <span>{uploadBytes ? `${uploadBytes} · ` : ""}{uploadProgress}%</span>
             </div>
             <div className="h-2 w-full rounded-full bg-slate-100 dark:bg-white/[0.08] overflow-hidden">
               <div

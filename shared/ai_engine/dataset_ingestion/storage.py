@@ -157,3 +157,151 @@ class LocalDatasetStorage(DatasetStorage):
             if temporary_path is not None:
                 temporary_path.unlink(missing_ok=True)
         return destination
+
+class S3DatasetStorage(DatasetStorage):
+    """Stockage S3-compatible (AWS S3, MinIO, Cloudflare R2, Railway Bucket)."""
+
+    def __init__(
+        self,
+        bucket: str,
+        access_key: str,
+        secret_key: str,
+        endpoint_url: str | None = None,
+        region: str = "auto",
+        local_fallback: DatasetStorage | None = None,
+    ) -> None:
+        self.bucket = bucket
+        self.endpoint_url = endpoint_url
+        self.region = region
+        self.local_fallback = local_fallback
+        try:
+            import boto3
+            from botocore.config import Config
+            s3_config = Config(connect_timeout=1, read_timeout=1, retries={"max_attempts": 0})
+            self._s3 = boto3.client(
+                "s3",
+                aws_access_key_id=access_key,
+                aws_secret_access_key=secret_key,
+                endpoint_url=endpoint_url,
+                region_name=region if region != "auto" else None,
+                config=s3_config,
+            )
+        except Exception:
+            self._s3 = None
+
+    def _s3_key(self, company_id: UUID, dataset_id: UUID, version: int, folder: str, filename: str) -> str:
+        safe_name = _SAFE_FILENAME.sub("_", Path(filename).name) or "dataset"
+        return f"{company_id}/datasets/{dataset_id}/v{version}/{folder}/{safe_name}"
+
+    def save_raw(
+        self,
+        company_id: UUID,
+        dataset_id: UUID,
+        version: int,
+        filename: str,
+        content: bytes,
+    ) -> str:
+        key = self._s3_key(company_id, dataset_id, version, "raw", filename)
+        if self._s3 is not None:
+            try:
+                self._s3.put_object(
+                    Bucket=self.bucket,
+                    Key=key,
+                    Body=content,
+                    ContentType="application/octet-stream",
+                )
+                if self.local_fallback:
+                    self.local_fallback.save_raw(company_id, dataset_id, version, filename, content)
+                return f"s3://{self.bucket}/{key}"
+            except Exception:
+                if self.local_fallback:
+                    return self.local_fallback.save_raw(company_id, dataset_id, version, filename, content)
+                raise
+        if self.local_fallback:
+            return self.local_fallback.save_raw(company_id, dataset_id, version, filename, content)
+        raise RuntimeError("Aucun stockage S3 ni fallback local disponible")
+
+    def save_prepared(
+        self,
+        company_id: UUID,
+        dataset_id: UUID,
+        version: int,
+        rows: list[dict[str, Any]],
+    ) -> str:
+        key = self._s3_key(company_id, dataset_id, version, "prepared", "prepared.json")
+        payload = json.dumps(rows, default=str).encode("utf-8")
+        if self._s3 is not None:
+            try:
+                self._s3.put_object(
+                    Bucket=self.bucket,
+                    Key=key,
+                    Body=payload,
+                    ContentType="application/json",
+                )
+                if self.local_fallback:
+                    self.local_fallback.save_prepared(company_id, dataset_id, version, rows)
+                return f"s3://{self.bucket}/{key}"
+            except Exception:
+                if self.local_fallback:
+                    return self.local_fallback.save_prepared(company_id, dataset_id, version, rows)
+                raise
+        if self.local_fallback:
+            return self.local_fallback.save_prepared(company_id, dataset_id, version, rows)
+        raise RuntimeError("Aucun stockage S3 ni fallback local disponible")
+
+    def save_metadata(
+        self,
+        company_id: UUID,
+        dataset_id: UUID,
+        version: int,
+        metadata: dict[str, Any],
+    ) -> str:
+        key = self._s3_key(company_id, dataset_id, version, "metadata", "metadata.json")
+        payload = json.dumps(metadata, default=str).encode("utf-8")
+        if self._s3 is not None:
+            try:
+                self._s3.put_object(
+                    Bucket=self.bucket,
+                    Key=key,
+                    Body=payload,
+                    ContentType="application/json",
+                )
+                if self.local_fallback:
+                    self.local_fallback.save_metadata(company_id, dataset_id, version, metadata)
+                return f"s3://{self.bucket}/{key}"
+            except Exception:
+                if self.local_fallback:
+                    return self.local_fallback.save_metadata(company_id, dataset_id, version, metadata)
+                raise
+        if self.local_fallback:
+            return self.local_fallback.save_metadata(company_id, dataset_id, version, metadata)
+        raise RuntimeError("Aucun stockage S3 ni fallback local disponible")
+
+    def save_canonical(
+        self,
+        company_id: UUID,
+        dataset_id: UUID,
+        version: int,
+        entities: dict[str, list[dict[str, Any]]],
+    ) -> str:
+        key = self._s3_key(company_id, dataset_id, version, "canonical", "entities.json")
+        payload = json.dumps(entities, default=str).encode("utf-8")
+        if self._s3 is not None:
+            try:
+                self._s3.put_object(
+                    Bucket=self.bucket,
+                    Key=key,
+                    Body=payload,
+                    ContentType="application/json",
+                )
+                if self.local_fallback:
+                    self.local_fallback.save_canonical(company_id, dataset_id, version, entities)
+                return f"s3://{self.bucket}/{key}"
+            except Exception:
+                if self.local_fallback:
+                    return self.local_fallback.save_canonical(company_id, dataset_id, version, entities)
+                raise
+        if self.local_fallback:
+            return self.local_fallback.save_canonical(company_id, dataset_id, version, entities)
+        raise RuntimeError("Aucun stockage S3 ni fallback local disponible")
+
