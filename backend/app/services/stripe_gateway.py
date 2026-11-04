@@ -97,7 +97,7 @@ class StripeGateway:
         try:
             price = (stripe.StripeClient(self._api_key).v1.prices.retrieve(price_id).to_dict()
                      if self._automatic_tax_enabled else stripe.Price.retrieve(price_id, api_key=self._api_key))
-        except stripe.error.InvalidRequestError as exc:
+        except stripe.InvalidRequestError as exc:
             if "No such price" in str(exc):
                 raise StripePriceNotFoundError(
                     f"Le tarif Stripe '{price_id}' n'a pas été trouvé dans le compte Stripe configuré."
@@ -145,7 +145,7 @@ class StripeGateway:
         try:
             checkout = (stripe.StripeClient(self._api_key).v1.checkout.sessions.create(params=params)
                         if tax_options else stripe.checkout.Session.create(**params, api_key=self._api_key))
-        except stripe.error.InvalidRequestError as exc:
+        except stripe.InvalidRequestError as exc:
             if "No such customer" in str(exc):
                 raise StripeCustomerNotFoundError(
                     f"Le client Stripe '{customer_id}' n'a pas été trouvé dans le compte Stripe configuré."
@@ -247,7 +247,7 @@ class StripeGateway:
                 api_key=self._api_key,
             )
             return portal.url
-        except stripe.error.InvalidRequestError as exc:
+        except stripe.InvalidRequestError as exc:
             if "No such customer" in str(exc):
                 raise StripeCustomerNotFoundError(
                     f"Le client Stripe '{customer_id}' n'a pas été trouvé dans le compte Stripe configuré. "

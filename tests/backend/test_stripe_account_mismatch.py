@@ -43,7 +43,7 @@ def test_stripe_gateway_create_portal_customer_not_found():
     """Vérifie que 'No such customer' lève StripeCustomerNotFoundError au lieu d'une exception non gérée."""
     gateway = StripeGateway("sk_test_mock_key")
     with patch("stripe.billing_portal.Session.create") as mock_portal:
-        mock_portal.side_effect = stripe.error.InvalidRequestError(
+        mock_portal.side_effect = stripe.InvalidRequestError(
             message="No such customer: 'cus_VBhfUdTZqnatYg'",
             param="customer",
             code="resource_missing",
@@ -58,7 +58,7 @@ def test_stripe_gateway_create_checkout_price_not_found():
     """Vérifie que 'No such price' lève StripePriceNotFoundError."""
     gateway = StripeGateway("sk_test_mock_key")
     with patch("stripe.Price.retrieve") as mock_price:
-        mock_price.side_effect = stripe.error.InvalidRequestError(
+        mock_price.side_effect = stripe.InvalidRequestError(
             message="No such price: 'price_missing_123'",
             param="id",
             code="resource_missing",
