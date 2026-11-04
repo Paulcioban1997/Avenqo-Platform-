@@ -22,7 +22,11 @@ from backend.app.services.dataset_cleaning_service import DatasetCleaningService
 from backend.app.services.dataset_import_service import DatasetImportService
 from backend.app.services.training_dispatcher import TrainingDispatcher
 from modules.entitlements import ModuleAccessService
-from shared.ai_engine.dataset_ingestion.storage import LocalDatasetStorage, S3DatasetStorage
+from shared.ai_engine.dataset_ingestion.storage import (
+    DatasetStorage,
+    LocalDatasetStorage,
+    S3DatasetStorage,
+)
 from shared.ai_engine.registry.registry import ModelRegistry
 
 
@@ -56,6 +60,7 @@ def get_company_dataset_ingestion_service(
     s3_enabled = getattr(settings, "backup_s3_enabled", False)
     if callable(s3_enabled):
         s3_enabled = s3_enabled()
+    storage: DatasetStorage
     if s3_enabled:
         storage = S3DatasetStorage(
             bucket=settings.backup_s3_bucket or "",

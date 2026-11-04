@@ -305,3 +305,37 @@ class S3DatasetStorage(DatasetStorage):
             return self.local_fallback.save_canonical(company_id, dataset_id, version, entities)
         raise RuntimeError("Aucun stockage S3 ni fallback local disponible")
 
+    @property
+    def _root(self) -> Path:
+        if self.local_fallback and hasattr(self.local_fallback, "_root"):
+            return self.local_fallback._root
+        return Path("data/artifacts/company_datasets").resolve()
+
+    def prepared_path(self, company_id: UUID, dataset_id: UUID, version: int) -> Path:
+        if self.local_fallback and hasattr(self.local_fallback, "prepared_path"):
+            return self.local_fallback.prepared_path(company_id, dataset_id, version)
+        return (self._root / str(company_id) / "datasets" / str(dataset_id) / f"v{version}" / "prepared" / "prepared.json").resolve()
+
+    def metadata_path(self, company_id: UUID, dataset_id: UUID, version: int) -> Path:
+        if self.local_fallback and hasattr(self.local_fallback, "metadata_path"):
+            return self.local_fallback.metadata_path(company_id, dataset_id, version)
+        return (self._root / str(company_id) / "datasets" / str(dataset_id) / f"v{version}" / "metadata" / "metadata.json").resolve()
+
+    def canonical_path(self, company_id: UUID, dataset_id: UUID, version: int) -> Path:
+        if self.local_fallback and hasattr(self.local_fallback, "canonical_path"):
+            return self.local_fallback.canonical_path(company_id, dataset_id, version)
+        return (self._root / str(company_id) / "datasets" / str(dataset_id) / f"v{version}" / "canonical" / "entities.json").resolve()
+
+    def delete_dataset(self, company_id: UUID, dataset_id: UUID) -> None:
+        if self.local_fallback and hasattr(self.local_fallback, "delete_dataset"):
+            self.local_fallback.delete_dataset(company_id, dataset_id)
+        if self._s3 is not None:
+            try:
+                prefix = f"{company_id}/datasets/{dataset_id}/"
+                response = self._s3.list_objects_v2(Bucket=self.bucket, Prefix=prefix)
+                objects = [{"Key": obj["Key"]} for obj in response.get("Contents", [])]
+                if objects:
+                    self._s3.delete_objects(Bucket=self.bucket, Delete={"Objects": objects})
+            except Exception:
+                pass
+

@@ -46,7 +46,7 @@ from backend.app.services.dataset_relationship_service import DatasetRelationshi
 from backend.app.services.training_dispatcher import TrainingDispatcher
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.dataset_ingestion.column_mapper import MappingConfidence, MappingProvenance
-from shared.ai_engine.dataset_ingestion.storage import LocalDatasetStorage
+from shared.ai_engine.dataset_ingestion.storage import DatasetStorage, LocalDatasetStorage
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ class AutomaticCompanyDatasetIngestionService(CompanyDatasetIngestionService):
     def __init__(
         self,
         session: Session,
-        storage: LocalDatasetStorage,
+        storage: DatasetStorage | LocalDatasetStorage,
         quota: DataImportPolicy,
         max_upload_bytes: int,
         dispatcher: TrainingDispatcher,
