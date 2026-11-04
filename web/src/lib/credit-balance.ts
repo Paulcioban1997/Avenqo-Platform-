@@ -14,10 +14,10 @@ export interface CreditBalanceViewModel {
   remaining: number | null;
   limit: number | null;
   used: number | null;
-  monthlyAllocation: number | null;
-  monthlyRemaining: number | null;
-  monthlyUsed: number | null;
-  purchasedRemaining: number;
+  monthlyAllocation?: number | null;
+  monthlyRemaining?: number | null;
+  monthlyUsed?: number | null;
+  purchasedRemaining?: number;
 }
 
 export function creditBalanceViewModel(

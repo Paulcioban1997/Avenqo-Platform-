@@ -487,7 +487,7 @@ export function BusinessHoursSettings() {
           ) : (
             <Save size={14} />
           )}
-          <span>{saved ? t.crm.actions.saved : t.crm.actions.save}</span>
+          <span>{saved ? (fr ? "Enregistré !" : "Saved!") : t.crm.actions.save}</span>
         </button>
       </div>
     </section>

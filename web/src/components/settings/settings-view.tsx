@@ -498,7 +498,7 @@ export function SettingsView() {
         <div className="bg-white dark:bg-[#0B132B] rounded-2xl p-6 border border-slate-200/80 dark:border-white/[0.08] shadow-xs space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              {t.shell.activeModules || "Modules Actifs"}
+              {locale.startsWith("fr") ? "Modules Actifs" : "Active Modules"}
             </span>
             <Layers className="w-4 h-4 text-purple-500" />
           </div>
