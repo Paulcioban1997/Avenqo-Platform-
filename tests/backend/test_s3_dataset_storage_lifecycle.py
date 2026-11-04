@@ -214,3 +214,24 @@ def test_s3_dataset_multi_tenant_isolation_and_fallback(tmp_path):
     fallback_path = broken_storage.save_raw(tenant_b, dataset_b, 2, "fallback.csv", b"fallback_safe")
     assert Path(fallback_path).exists()
     assert Path(fallback_path).read_bytes() == b"fallback_safe"
+    assert broken_storage.status == "STORAGE_DEGRADED"
+    assert broken_storage.is_degraded is True
+    assert broken_storage.last_error is not None
+
+
+def test_s3_failure_without_fallback_raises_storage_durability_error():
+    """Zero fake pass: If S3 fails and no local storage fallback is provided, raise StorageDurabilityError."""
+    from shared.ai_engine.dataset_ingestion.storage import StorageDurabilityError
+
+    unreliable_storage = S3DatasetStorage(
+        bucket="non-existent-bucket-xyz",
+        access_key="invalid_key",
+        secret_key="invalid_sec",
+        region="us-east-1",
+        local_fallback=None,
+    )
+    with pytest.raises(StorageDurabilityError, match="Durabilité non garantie"):
+        unreliable_storage.save_raw(uuid4(), uuid4(), 1, "test.csv", b"critical_payload")
+
+    assert unreliable_storage.status == "STORAGE_DEGRADED"
+    assert unreliable_storage.is_degraded is True

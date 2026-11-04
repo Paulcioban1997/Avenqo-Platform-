@@ -10,6 +10,9 @@ d'extension `DatasetStorage` sont prévus pour une Phase future.
 from __future__ import annotations
 
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 import os
 import re
 import shutil
@@ -158,6 +161,10 @@ class LocalDatasetStorage(DatasetStorage):
                 temporary_path.unlink(missing_ok=True)
         return destination
 
+class StorageDurabilityError(RuntimeError):
+    """Levée lorsque la durabilité des données ne peut être garantie (échec S3 et aucun stockage local persistant)."""
+
+
 class S3DatasetStorage(DatasetStorage):
     """Stockage S3-compatible (AWS S3, MinIO, Cloudflare R2, Railway Bucket)."""
 
@@ -174,6 +181,8 @@ class S3DatasetStorage(DatasetStorage):
         self.endpoint_url = endpoint_url
         self.region = region
         self.local_fallback = local_fallback
+        self.is_degraded: bool = False
+        self.last_error: str | None = None
         try:
             import boto3
             from botocore.config import Config
@@ -186,8 +195,17 @@ class S3DatasetStorage(DatasetStorage):
                 region_name=region if region != "auto" else None,
                 config=s3_config,
             )
-        except Exception:
+        except Exception as exc:
             self._s3 = None
+            self.is_degraded = True
+            self.last_error = f"{type(exc).__name__}: {exc}"
+
+    @property
+    def status(self) -> str:
+        """Expose le statut d'intégrité opérationnelle : STORAGE_HEALTHY ou STORAGE_DEGRADED."""
+        if self._s3 is None or self.is_degraded:
+            return "STORAGE_DEGRADED"
+        return "STORAGE_HEALTHY" 
 
     def _s3_key(self, company_id: UUID, dataset_id: UUID, version: int, folder: str, filename: str) -> str:
         safe_name = _SAFE_FILENAME.sub("_", Path(filename).name) or "dataset"
@@ -213,13 +231,22 @@ class S3DatasetStorage(DatasetStorage):
                 if self.local_fallback:
                     self.local_fallback.save_raw(company_id, dataset_id, version, filename, content)
                 return f"s3://{self.bucket}/{key}"
-            except Exception:
+            except Exception as exc:
+                self.is_degraded = True
+                self.last_error = f"{type(exc).__name__}: {exc}"
+                logger.error(
+                    "storage_degraded: Échec d'écriture S3 save_raw sur bucket=%s key=%s (%s). "
+                    "Bascule en mode dégradé sur LocalDatasetStorage persistant.",
+                    self.bucket, key, self.last_error
+                )
                 if self.local_fallback:
                     return self.local_fallback.save_raw(company_id, dataset_id, version, filename, content)
-                raise
+                raise StorageDurabilityError(f"Durabilité non garantie : échec S3 ({self.last_error}) et aucun fallback local disponible") from exc
+        self.is_degraded = True
+        self.last_error = "Client S3 non disponible"
         if self.local_fallback:
             return self.local_fallback.save_raw(company_id, dataset_id, version, filename, content)
-        raise RuntimeError("Aucun stockage S3 ni fallback local disponible")
+        raise StorageDurabilityError("Durabilité non garantie : aucun client S3 ni fallback local disponible")
 
     def save_prepared(
         self,
@@ -241,13 +268,22 @@ class S3DatasetStorage(DatasetStorage):
                 if self.local_fallback:
                     self.local_fallback.save_prepared(company_id, dataset_id, version, rows)
                 return f"s3://{self.bucket}/{key}"
-            except Exception:
+            except Exception as exc:
+                self.is_degraded = True
+                self.last_error = f"{type(exc).__name__}: {exc}"
+                logger.error(
+                    "storage_degraded: Échec d'écriture S3 save_prepared sur bucket=%s key=%s (%s). "
+                    "Bascule en mode dégradé sur LocalDatasetStorage persistant.",
+                    self.bucket, key, self.last_error
+                )
                 if self.local_fallback:
                     return self.local_fallback.save_prepared(company_id, dataset_id, version, rows)
-                raise
+                raise StorageDurabilityError(f"Durabilité non garantie : échec S3 ({self.last_error}) et aucun fallback local disponible") from exc
+        self.is_degraded = True
+        self.last_error = "Client S3 non disponible"
         if self.local_fallback:
             return self.local_fallback.save_prepared(company_id, dataset_id, version, rows)
-        raise RuntimeError("Aucun stockage S3 ni fallback local disponible")
+        raise StorageDurabilityError("Durabilité non garantie : aucun client S3 ni fallback local disponible")
 
     def save_metadata(
         self,
@@ -269,13 +305,22 @@ class S3DatasetStorage(DatasetStorage):
                 if self.local_fallback:
                     self.local_fallback.save_metadata(company_id, dataset_id, version, metadata)
                 return f"s3://{self.bucket}/{key}"
-            except Exception:
+            except Exception as exc:
+                self.is_degraded = True
+                self.last_error = f"{type(exc).__name__}: {exc}"
+                logger.error(
+                    "storage_degraded: Échec d'écriture S3 save_metadata sur bucket=%s key=%s (%s). "
+                    "Bascule en mode dégradé sur LocalDatasetStorage persistant.",
+                    self.bucket, key, self.last_error
+                )
                 if self.local_fallback:
                     return self.local_fallback.save_metadata(company_id, dataset_id, version, metadata)
-                raise
+                raise StorageDurabilityError(f"Durabilité non garantie : échec S3 ({self.last_error}) et aucun fallback local disponible") from exc
+        self.is_degraded = True
+        self.last_error = "Client S3 non disponible"
         if self.local_fallback:
             return self.local_fallback.save_metadata(company_id, dataset_id, version, metadata)
-        raise RuntimeError("Aucun stockage S3 ni fallback local disponible")
+        raise StorageDurabilityError("Durabilité non garantie : aucun client S3 ni fallback local disponible")
 
     def save_canonical(
         self,
@@ -297,13 +342,22 @@ class S3DatasetStorage(DatasetStorage):
                 if self.local_fallback:
                     self.local_fallback.save_canonical(company_id, dataset_id, version, entities)
                 return f"s3://{self.bucket}/{key}"
-            except Exception:
+            except Exception as exc:
+                self.is_degraded = True
+                self.last_error = f"{type(exc).__name__}: {exc}"
+                logger.error(
+                    "storage_degraded: Échec d'écriture S3 save_canonical sur bucket=%s key=%s (%s). "
+                    "Bascule en mode dégradé sur LocalDatasetStorage persistant.",
+                    self.bucket, key, self.last_error
+                )
                 if self.local_fallback:
                     return self.local_fallback.save_canonical(company_id, dataset_id, version, entities)
-                raise
+                raise StorageDurabilityError(f"Durabilité non garantie : échec S3 ({self.last_error}) et aucun fallback local disponible") from exc
+        self.is_degraded = True
+        self.last_error = "Client S3 non disponible"
         if self.local_fallback:
             return self.local_fallback.save_canonical(company_id, dataset_id, version, entities)
-        raise RuntimeError("Aucun stockage S3 ni fallback local disponible")
+        raise StorageDurabilityError("Durabilité non garantie : aucun client S3 ni fallback local disponible")
 
     @property
     def _root(self) -> Path:
