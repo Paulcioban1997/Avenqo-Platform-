@@ -183,9 +183,9 @@ def sign_contract_electronic(
 @router.post("/{contract_type}/upload-manuscript")
 async def upload_manuscript_signature(
     contract_type: str,
+    request: Request,
     file: UploadFile = File(...),
     signatory_title: str = Form("Dirigeant"),
-    request: Request = None,
     tenant: TenantContext = Depends(get_tenant_context),
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
