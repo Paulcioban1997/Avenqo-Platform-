@@ -72,6 +72,8 @@ export function TeamWorkspace() {
   const [inviteDepartment, setInviteDepartment] = useState("");
   const [inviting, setInviting] = useState(false);
   const [inviteSuccessToken, setInviteSuccessToken] = useState<string | null>(null);
+  const [generatedInvitations, setGeneratedInvitations] = useState<Array<{ email: string; invitation_code?: string; token?: string }>>([]);
+  const [copiedCodeIndex, setCopiedCodeIndex] = useState<number | null>(null);
 
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [taskTitle, setTaskTitle] = useState("");
@@ -109,32 +111,75 @@ export function TeamWorkspace() {
     setError("");
     setSuccessNotice("");
     setInviteSuccessToken(null);
+    setGeneratedInvitations([]);
 
     try {
-      const response = await apiFetch("/api/v1/workspace/invitations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: inviteEmail.trim(),
-          role: inviteRole,
-          job_title: inviteJobTitle.trim() || "Collaborateur",
-          department: inviteDepartment.trim() || undefined,
-        }),
-      });
+      const rawList = inviteEmail.split(/[\s,;]+/).map((s) => s.trim()).filter((s) => s.includes("@"));
+      if (rawList.length === 0) {
+        setError(fr ? "Veuillez entrer une adresse courriel valide." : "Please enter a valid email address.");
+        setInviting(false);
+        return;
+      }
 
-      if (response.ok) {
-        const payload = await response.json();
-        setSuccessNotice(
-          fr
-            ? `Invitation envoyée avec succès à ${inviteEmail}`
-            : `Invitation sent successfully to ${inviteEmail}`
-        );
-        if (payload?.token) {
-          setInviteSuccessToken(payload.token);
+      let payload: any = null;
+      if (rawList.length > 1) {
+        const response = await apiFetch("/api/v1/workspace/invitations/bulk", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            emails: rawList,
+            role: inviteRole,
+            job_title: inviteJobTitle.trim() || "Collaborateur",
+            department: inviteDepartment.trim() || undefined,
+          }),
+        });
+        if (response.ok) {
+          payload = await response.json();
+          setSuccessNotice(
+            fr
+              ? `${rawList.length} invitations créées avec succès.`
+              : `${rawList.length} invitations created successfully.`
+          );
+          if (Array.isArray(payload?.invitations)) {
+            setGeneratedInvitations(payload.invitations);
+          }
+          setInviteEmail("");
+          setInviteDepartment("");
+          await load();
         }
-        setInviteEmail("");
-        setInviteDepartment("");
-        await load();
+      } else {
+        const response = await apiFetch("/api/v1/workspace/invitations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: rawList[0],
+            role: inviteRole,
+            job_title: inviteJobTitle.trim() || "Collaborateur",
+            department: inviteDepartment.trim() || undefined,
+          }),
+        });
+
+        if (response.ok) {
+          payload = await response.json();
+          setSuccessNotice(
+            fr
+              ? `Invitation créée avec succès pour ${rawList[0]}`
+              : `Invitation created successfully for ${rawList[0]}`
+          );
+          setGeneratedInvitations([
+            {
+              email: rawList[0],
+              invitation_code: payload.invitation_code,
+              token: payload.token,
+            },
+          ]);
+          if (payload?.token) {
+            setInviteSuccessToken(payload.token);
+          }
+          setInviteEmail("");
+          setInviteDepartment("");
+          await load();
+        }
       }
     } catch (err) {
       if (err instanceof ApiRequestError) {
@@ -414,15 +459,15 @@ export function TeamWorkspace() {
             <form onSubmit={handleInvite} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                  {fr ? "Courriel professionnel" : "Work Email"}
+                  {fr ? "Courriels professionnels (séparés par des virgules pour invitations multiples)" : "Work Emails (comma or space separated for bulk invite)"}
                 </label>
-                <input
-                  type="email"
+                <textarea
+                  rows={2}
                   required
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="collaborateur@votre-entreprise.ca"
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
+                  placeholder="alice@votre-entreprise.ca, bob@votre-entreprise.ca"
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-mono"
                 />
               </div>
 
@@ -468,14 +513,48 @@ export function TeamWorkspace() {
                 />
               </div>
 
-              {inviteSuccessToken && (
-                <div className="p-3.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-xs space-y-1">
-                  <p className="font-bold text-blue-900 dark:text-blue-200">
-                    {fr ? "Jeton d'invitation généré (Sandbox) :" : "Invitation Token Generated (Sandbox):"}
-                  </p>
-                  <p className="font-mono break-all text-blue-700 dark:text-blue-300 select-all">
-                    {inviteSuccessToken}
-                  </p>
+              {generatedInvitations.length > 0 && (
+                <div className="p-4 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-xs space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-blue-900 dark:text-blue-200">
+                      {fr ? "Codes d'invitation sécurisés (8 chiffres) :" : "Secure Invitation Codes (8-digit CSPRNG):"}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900 text-[10px] font-bold text-[#0076FF] dark:text-[#00D4FF]">
+                      {fr ? "Valable 24h · Usage unique" : "Valid 24h · Single Use"}
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {generatedInvitations.map((inv, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between p-2.5 rounded-xl bg-white dark:bg-[#0B132B] border border-blue-100 dark:border-white/[0.08]"
+                      >
+                        <div className="min-w-0 pr-2">
+                          <div className="text-[11px] font-medium text-slate-600 dark:text-slate-300 truncate">
+                            {inv.email}
+                          </div>
+                          {inv.invitation_code && (
+                            <div className="font-mono font-extrabold text-base tracking-widest text-[#0076FF] dark:text-[#00D4FF] mt-0.5">
+                              {inv.invitation_code}
+                            </div>
+                          )}
+                        </div>
+                        {inv.invitation_code && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void navigator.clipboard?.writeText(inv.invitation_code || "");
+                              setCopiedCodeIndex(idx);
+                              setTimeout(() => setCopiedCodeIndex(null), 2500);
+                            }}
+                            className="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 dark:bg-white/[0.06] dark:hover:bg-white/[0.1] text-xs font-semibold text-[#0076FF] dark:text-[#00D4FF] transition-colors cursor-pointer shrink-0"
+                          >
+                            {copiedCodeIndex === idx ? (fr ? "Copié !" : "Copied!") : (fr ? "Copier code" : "Copy code")}
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 

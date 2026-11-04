@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     )
     artifact_root: str = Field(default="var/artifacts", alias="ARTIFACT_ROOT")
     model_registry_root: str = Field(default="var/models", alias="MODEL_REGISTRY_ROOT")
-    dataset_max_upload_mb: int = Field(default=50, alias="DATASET_MAX_UPLOAD_MB")
+    dataset_max_upload_mb: int = Field(default=250, alias="DATASET_MAX_UPLOAD_MB")
     training_execution_mode: str = Field(default="auto", alias="TRAINING_EXECUTION_MODE")
     training_search_max_rows: int = Field(default=50_000, ge=1, alias="TRAINING_SEARCH_MAX_ROWS")
     training_final_fit_max_rows: int = Field(default=120_000, ge=1, alias="TRAINING_FINAL_FIT_MAX_ROWS")

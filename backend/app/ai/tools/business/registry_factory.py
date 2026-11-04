@@ -43,6 +43,7 @@ from backend.app.ai.tools.business.crm_tools import (
     CheckAvailabilityTool,
     CreateAppointmentTool,
     GetCRMMetricsTool,
+    GetCrmServicesTool,
     GetCRMOverviewTool,
     GetClientHistoryTool,
     GetClientTool,
@@ -124,6 +125,7 @@ def build_business_tool_registry(
     registry.register(CancelAppointmentTool(session))
     registry.register(GetClientHistoryTool(session))
     registry.register(GetCRMMetricsTool(session))
+    registry.register(GetCrmServicesTool(session))
     # Phase 14 — Accounting AI Tools
     registry.register(GetFinancialOverviewTool(session))
     registry.register(GetMonthlyExpensesTool(session))

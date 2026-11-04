@@ -22,6 +22,7 @@ from backend.app.services.crm_intelligence_service import CRMIntelligenceService
 from backend.app.services.crm_search_service import CRMSearchService
 from backend.app.services.crm_service import CRMService
 from backend.app.models.company import Company
+from backend.app.models.crm import CRMService as CRMServiceModel
 
 
 # --- Arguments Schemas ---
@@ -756,3 +757,70 @@ class GetCRMMetricsTool(CRMAITool):
     async def run(self, context: ToolExecutionContext, arguments: CRMGenericArgs) -> ToolResult:
         kpis = self._crm.get_kpis(context.tenant.company_id)
         return ToolResult(success=True, data=kpis, source_refs=("crm_kpis",))
+
+
+class GetCrmServicesArgs(ToolArguments):
+    search: str | None = Field(default=None, description="Nom ou mot-clé de la prestation/service recherché (ex: consultation, physiothérapie, coupe).")
+    category: str | None = Field(default=None, description="Catégorie de services pour filtrer.")
+    limit: int = Field(default=20, ge=1, le=100, description="Nombre maximal de services à retourner.")
+
+
+class GetCrmServicesTool(CRMAITool):
+    name = "get_crm_services"
+    description = (
+        "Consulte la liste officielle des prestations et services réservables configurés par l'entreprise "
+        "(nom, durée en minutes, tarif en CAD/USD, catégorie, description). "
+        "Utilisez toujours cet outil pour connaître les prestations disponibles avant de proposer ou réserver un créneau."
+    )
+    input_schema = GetCrmServicesArgs
+    required_permissions = ("ai:use", "crm:appointments:read")
+    read_only = True
+    mutates = False
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    async def run(self, context: ToolExecutionContext, arguments: GetCrmServicesArgs) -> ToolResult:
+        stmt = select(CRMServiceModel).where(
+            CRMServiceModel.company_id == context.tenant.company_id,
+            CRMServiceModel.is_active.is_(True),
+        )
+        if context.voice_path:
+            stmt = stmt.where(
+                CRMServiceModel.is_published.is_(True),
+                CRMServiceModel.is_approved_by_owner.is_(True),
+            )
+        
+        services = list(self._session.scalars(stmt.order_by(CRMServiceModel.name)).all())
+        
+        if arguments.category:
+            cat = arguments.category.strip().casefold()
+            services = [s for s in services if s.category and s.category.strip().casefold() == cat]
+            
+        if arguments.search:
+            q = arguments.search.strip().casefold()
+            services = [s for s in services if q in s.name.casefold() or (s.description and q in s.description.casefold())]
+
+        services = services[:arguments.limit]
+        items = [
+            {
+                "id": str(s.id),
+                "name": s.name,
+                "description": s.description or "",
+                "duration_minutes": s.duration_minutes,
+                "price": s.price,
+                "currency": s.currency,
+                "category": s.category or "Général",
+                "is_published": s.is_published,
+                "is_approved_by_owner": s.is_approved_by_owner,
+            }
+            for s in services
+        ]
+        return ToolResult(
+            success=True,
+            data={
+                "services": items,
+                "count": len(items),
+            },
+            source_refs=("crm_services",),
+        )

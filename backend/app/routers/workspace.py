@@ -55,10 +55,19 @@ class InvitationCreate(BaseModel):
 
 
 class InvitationAccept(BaseModel):
-    token: str = Field(min_length=16, max_length=512)
+    token: str | None = Field(default=None, max_length=512)
+    code: str | None = Field(default=None, max_length=32)
+    email: EmailStr | None = None
     first_name: str = Field(min_length=1, max_length=100)
     last_name: str = Field(min_length=1, max_length=100)
     password: str = Field(min_length=10, max_length=128)
+
+
+class BulkInvitationCreate(BaseModel):
+    emails: list[EmailStr] = Field(min_length=1, max_length=50)
+    role: UserRole = UserRole.USER
+    job_title: str = Field(default="Employee", max_length=120)
+    department: str | None = Field(default=None, max_length=120)
 
 
 def _service(
@@ -173,13 +182,59 @@ def invite(
         raise HTTPException(400, str(exc)) from exc
     except PlanLimitReached as exc:
         raise plan_limit_exception(exc) from exc
-    return {"id": str(row.id), "email": row.email, "token": getattr(row, "_raw_token", None)}
+    return {
+        "id": str(row.id),
+        "email": row.email,
+        "token": getattr(row, "_raw_token", None),
+        "invitation_code": getattr(row, "_raw_code", None),
+        "expires_at": row.expires_at.isoformat(),
+    }
+
+
+@router.post("/invitations/bulk", status_code=201)
+def invite_bulk(
+    payload: BulkInvitationCreate,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    service: WorkspaceService = Depends(_service),
+) -> dict:
+    try:
+        rows = service.invite_bulk(
+            identity.user,
+            [str(e) for e in payload.emails],
+            payload.role,
+            payload.job_title,
+            payload.department,
+        )
+    except WorkspaceError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except PlanLimitReached as exc:
+        raise plan_limit_exception(exc) from exc
+    return {
+        "invitations": [
+            {
+                "id": str(r.id),
+                "email": r.email,
+                "token": getattr(r, "_raw_token", None),
+                "invitation_code": getattr(r, "_raw_code", None),
+                "expires_at": r.expires_at.isoformat(),
+            }
+            for r in rows
+        ],
+        "count": len(rows),
+    }
 
 
 @router.post("/invitations/accept", status_code=201)
 def accept_invitation(payload: InvitationAccept, service: WorkspaceService = Depends(_service)) -> dict:
     try:
-        user = service.accept_invitation(payload.token, payload.first_name, payload.last_name, payload.password)
+        user = service.accept_invitation(
+            payload.token,
+            payload.first_name,
+            payload.last_name,
+            payload.password,
+            code=payload.code,
+            email=str(payload.email) if payload.email else None,
+        )
     except WorkspaceError as exc:
         raise HTTPException(400, str(exc)) from exc
     except PlanLimitReached as exc:

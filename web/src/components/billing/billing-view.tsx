@@ -379,7 +379,8 @@ export function BillingView() {
     if (code === "demo" || code === "base") {
       setIsUpgradeModalOpen(true);
     } else {
-      setIsEnterpriseModalOpen(true);
+      // For active Professional subscribers, open Stripe Customer Portal directly
+      handleOpenStripePortal();
     }
   };
 
@@ -520,10 +521,11 @@ export function BillingView() {
   };
 
   const creditView = creditBalanceViewModel(credits);
-  const monthlyAlloc = creditView.limit;
-  const monthlyRem = creditView.remaining;
-  const monthlyUsed = creditView.used;
-  const totalAvail = credits.total_available ?? creditView.remaining;
+  const monthlyAlloc = credits.monthly_included ?? credits.monthly_allocation ?? creditView.monthlyAllocation ?? (subscription.plan_code === "professional" ? 20000 : 6500);
+  const monthlyUsed = credits.monthly_used ?? creditView.used ?? 0;
+  const monthlyRem = credits.monthly_remaining ?? (monthlyAlloc !== null ? Math.max(0, monthlyAlloc - monthlyUsed) : null);
+  const purchasedRem = credits.purchased_remaining ?? credits.purchased_total_available ?? creditView.purchasedRemaining ?? 0;
+  const totalAvail = credits.total_remaining ?? ((monthlyRem ?? 0) + purchasedRem);
   const progressPercent = monthlyAlloc && monthlyRem !== null
     ? Math.min(100, Math.max(0, Math.round((monthlyRem / monthlyAlloc) * 100)))
     : 0;
@@ -829,8 +831,8 @@ export function BillingView() {
           </div>
         </div>
 
-        {/* 4 Metric Boxes */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 my-4">
+        {/* 5 Distinct Credit Metric Boxes */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 my-4">
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-100 dark:border-white/[0.06]">
             <div className="text-[11px] font-semibold text-slate-500 dark:text-[#94A3B8]">
               {billingTranslations.monthlyAllowance}
@@ -842,7 +844,7 @@ export function BillingView() {
 
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-100 dark:border-white/[0.06]">
             <div className="text-[11px] font-semibold text-slate-500 dark:text-[#94A3B8]">
-              {locale.startsWith("fr") ? "Crédits utilisés" : "Credits used"}
+              {locale.startsWith("fr") ? "Consommé ce mois" : "Used this month"}
             </div>
             <div className="text-xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-1.5">
               {monthlyUsed?.toLocaleString() ?? "—"}
@@ -858,7 +860,16 @@ export function BillingView() {
             </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-blue-50/60 dark:bg-[#172652] border border-blue-100 dark:border-[#0076FF]/30">
+          <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-100 dark:border-white/[0.06]">
+            <div className="text-[11px] font-semibold text-slate-500 dark:text-[#94A3B8]">
+              {billingTranslations.purchasedRemaining}
+            </div>
+            <div className="text-xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-1.5">
+              {purchasedRem?.toLocaleString() ?? "0"}
+            </div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-blue-50/60 dark:bg-[#172652] border border-blue-100 dark:border-[#0076FF]/30 col-span-2 sm:col-span-1">
             <div className="text-[11px] font-semibold text-blue-700 dark:text-[#00D4FF]">
               {billingTranslations.totalRemaining}
             </div>

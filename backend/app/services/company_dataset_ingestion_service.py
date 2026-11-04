@@ -54,7 +54,7 @@ from shared.ai_engine.dataset_ingestion.prepared_dataset import PreparedCompanyD
 from shared.ai_engine.dataset_ingestion.profiling import CompanyDatasetProfile, DatasetProfiler
 from shared.ai_engine.dataset_ingestion.quality import DataQualityStatus, assess_quality
 from shared.ai_engine.dataset_ingestion.readiness import CapabilityReadiness, assess_capability_readiness
-from shared.ai_engine.dataset_ingestion.storage import LocalDatasetStorage
+from shared.ai_engine.dataset_ingestion.storage import DatasetStorage, LocalDatasetStorage
 from shared.ai_engine.dataset_management.service import DatasetManagementService
 from shared.ai_engine.schema_detection.detector import SchemaDetector
 
@@ -105,7 +105,7 @@ class CompanyDatasetIngestionService:
     def __init__(
         self,
         session: Session,
-        storage: LocalDatasetStorage,
+        storage: DatasetStorage | LocalDatasetStorage,
         quota: DataImportPolicy,
         max_upload_bytes: int,
     ) -> None:

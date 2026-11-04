@@ -22,7 +22,11 @@ from backend.app.services.dataset_cleaning_service import DatasetCleaningService
 from backend.app.services.dataset_import_service import DatasetImportService
 from backend.app.services.training_dispatcher import TrainingDispatcher
 from modules.entitlements import ModuleAccessService
-from shared.ai_engine.dataset_ingestion.storage import LocalDatasetStorage
+from shared.ai_engine.dataset_ingestion.storage import (
+    DatasetStorage,
+    LocalDatasetStorage,
+    S3DatasetStorage,
+)
 from shared.ai_engine.registry.registry import ModelRegistry
 
 
@@ -52,9 +56,26 @@ def get_company_dataset_ingestion_service(
     dispatcher: TrainingDispatcher = Depends(get_training_dispatcher),
 ) -> CompanyDatasetIngestionService:
     settings = get_settings()
+    local_storage = LocalDatasetStorage(Path(settings.artifact_root) / "company_datasets")
+    s3_enabled = getattr(settings, "backup_s3_enabled", False)
+    if callable(s3_enabled):
+        s3_enabled = s3_enabled()
+    storage: DatasetStorage
+    if s3_enabled:
+        storage = S3DatasetStorage(
+            bucket=settings.backup_s3_bucket or "",
+            access_key=settings.backup_s3_access_key or "",
+            secret_key=settings.backup_s3_secret_key or "",
+            endpoint_url=settings.backup_s3_endpoint_url,
+            region=settings.backup_s3_region,
+            local_fallback=local_storage,
+        )
+    else:
+        storage = local_storage
+
     return AutomaticCompanyDatasetIngestionService(
         session=db,
-        storage=LocalDatasetStorage(Path(settings.artifact_root) / "company_datasets"),
+        storage=storage,
         quota=quota,
         max_upload_bytes=settings.dataset_max_upload_mb * 1024 * 1024,
         dispatcher=dispatcher,
