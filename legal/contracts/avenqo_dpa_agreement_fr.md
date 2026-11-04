@@ -66,3 +66,4 @@ Date : {{EFFECTIVE_DATE}}
 Représentant autorisé : Mircea Paul Cioban  
 Titre : Fondateur, PMC Solutions AI  
 Date : {{EFFECTIVE_DATE}}  
+

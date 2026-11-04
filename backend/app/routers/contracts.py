@@ -14,7 +14,7 @@ from backend.app.dependencies.auth import CurrentIdentity, get_current_identity,
 from backend.app.models.company import Company
 from backend.app.services.account_notifications import AccountNotifier
 from backend.app.services.audit_log_service import AuditLogService
-from backend.app.services.contract_signature_service import (
+from ..services.contract_signature_service import (
     ContractAuthorityError,
     ContractNotFoundError,
     ContractSignatureService,
@@ -247,3 +247,4 @@ def download_contract_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+

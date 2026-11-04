@@ -110,3 +110,4 @@ class CompanyContract(TimestampMixin, Base):
 
     company: Mapped["Company"] = relationship(back_populates="contracts")
     signatory_user: Mapped["User | None"] = relationship()
+

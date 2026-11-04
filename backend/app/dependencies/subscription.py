@@ -8,6 +8,7 @@ from backend.app.database import get_db
 from backend.app.dependencies.auth import get_tenant_context
 from backend.app.models import BillingAccount, CompanyContract
 from shared.ai_engine.contracts import TenantContext
+from ..services.contract_signature_service import ContractSignatureService
 
 ALLOWED_SUBSCRIPTION_STATUSES = frozenset({"active", "trialing"})
 SUBSCRIPTION_REQUIRED_DETAIL = "Un abonnement actif est requis"
@@ -41,7 +42,6 @@ def require_active_subscription(
         select(CompanyContract.id).where(CompanyContract.company_id == tenant.company_id).limit(1)
     )
     if has_registered_contracts:
-        from backend.app.services.contract_signature_service import ContractSignatureService
         service = ContractSignatureService(db)
         if not service.has_signed_mandatory_contracts(tenant.company_id):
             raise HTTPException(
@@ -60,7 +60,6 @@ def require_signed_mandatory_contracts(
     db: Session = Depends(get_db),
 ) -> TenantContext:
     """Exige explicitement que tous les contrats obligatoires soient signés."""
-    from backend.app.services.contract_signature_service import ContractSignatureService
     service = ContractSignatureService(db)
     if not service.has_signed_mandatory_contracts(tenant.company_id):
         raise HTTPException(

@@ -25,7 +25,7 @@ from backend.app.models import (
 )
 from backend.app.models.base import OnboardingStatus
 from backend.app.schemas.onboarding import OnboardingDraftRequest, OnboardingStatusResponse, OnboardingSubmitRequest
-from backend.app.services.contract_signature_service import ContractSignatureService
+from .contract_signature_service import ContractSignatureService
 from backend.app.services.module_entitlement_service import (
     ModuleEntitlementError,
     ModuleEntitlementService,

@@ -51,3 +51,4 @@ def downgrade() -> None:
     op.drop_index("ix_company_contracts_contract_type", table_name="company_contracts")
     op.drop_index("ix_company_contracts_company_id", table_name="company_contracts")
     op.drop_table("company_contracts")
+

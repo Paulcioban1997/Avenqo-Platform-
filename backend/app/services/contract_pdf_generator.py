@@ -328,3 +328,4 @@ class ContractPdfGenerator:
         # Compilation du document PDF
         doc.build(elements, canvasmaker=NumberedCanvas)
         return buffer.getvalue()
+
