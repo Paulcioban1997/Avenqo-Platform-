@@ -55,7 +55,7 @@ from backend.app.services.invoice_fiscal_service import (
     InvoiceFiscalService,
     InvoiceNotFoundError,
 )
-from backend.app.services.stripe_gateway import BillingProvider, StripeTaxConfigurationError
+from backend.app.services.stripe_gateway import BillingProvider, StripeCustomerNotFoundError, StripePriceNotFoundError, StripeTaxConfigurationError
 from backend.app.services.stripe_invoice_sync import sync_customer_invoices
 from backend.app.models import BillingAccount, BillingInvoice, BillingTestDocument, Company, TenantAICreditBalance, TenantAICreditLedgerEntry, TenantAIProviderAttempt
 from payments import PLANS
@@ -272,6 +272,8 @@ def checkout(
 ) -> RedirectResponse:
     try:
         return RedirectResponse(url=service.create_checkout(identity.user.company, request.plan_code))
+    except (StripeCustomerNotFoundError, StripePriceNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except (BillingConfigurationError, StripeTaxConfigurationError) as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     except (BillingOperationError, ValueError) as exc:
@@ -299,9 +301,11 @@ def cancel(
 ) -> SubscriptionResponse:
     try:
         return subscription_response(service.cancel(identity.user.company_id))
+    except StripeCustomerNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except BillingConfigurationError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
-    except BillingOperationError as exc:
+    except (BillingOperationError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
@@ -312,9 +316,11 @@ def portal(
 ) -> RedirectResponse:
     try:
         return RedirectResponse(url=service.create_portal(identity.user.company))
+    except StripeCustomerNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except BillingConfigurationError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
-    except BillingOperationError as exc:
+    except (BillingOperationError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
@@ -680,6 +686,8 @@ def credit_pack_checkout(
         return RedirectResponse(
             url=service.create_credit_checkout(identity.user.company, request.pack_code)
         )
+    except (StripeCustomerNotFoundError, StripePriceNotFoundError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except (BillingConfigurationError, StripeTaxConfigurationError) as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     except BillingOperationError as exc:

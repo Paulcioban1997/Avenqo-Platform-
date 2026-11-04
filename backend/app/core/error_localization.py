@@ -986,6 +986,10 @@ def http_error_message(
         return ERROR_MESSAGES[locale]["invalid_credentials"]
     if isinstance(detail, dict) and detail.get("code") == "mfa_required":
         return "Un code d'authentification est requis." if locale.startswith("fr") else "An authentication code is required."
+    if "stripe" in detail_text:
+        if isinstance(detail, dict) and "message" in detail:
+            return str(detail["message"])
+        return str(detail)
     category = _STATUS_CATEGORY.get(status_code, "request_invalid")
     return ERROR_MESSAGES[locale][category]
 

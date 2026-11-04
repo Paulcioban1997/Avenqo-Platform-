@@ -351,6 +351,7 @@ export function BillingView() {
   };
 
   const handleOpenStripePortal = async () => {
+    setActionError(null);
     try {
       const res = await apiFetch("/api/v1/billing/portal", {
         method: "POST",
@@ -359,13 +360,19 @@ export function BillingView() {
       if (res.ok) {
         const data = await res.json();
         if (data.url) {
-          window.open(data.url, "_blank");
+          window.location.assign(data.url);
           return;
         }
       }
-      setActionError(companyTranslations.billingUnavailable);
-    } catch {
-      setActionError(companyTranslations.billingUnavailable);
+      let errorMsg = companyTranslations.billingUnavailable;
+      try {
+        const err = await res.json();
+        if (typeof err.detail === "string") errorMsg = err.detail;
+        else if (err.error?.message) errorMsg = err.error.message;
+      } catch {}
+      setActionError(errorMsg);
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : companyTranslations.billingUnavailable);
     }
   };
 
@@ -374,13 +381,25 @@ export function BillingView() {
       setActionError(companyTranslations.billingUnavailable);
       return;
     }
-    if (!subscription.stripe_subscription_linked) { void handleSubscribeToBase(); return; }
     const code = (subscription.plan_code || "").toLowerCase();
+    if (!subscription.stripe_subscription_linked) {
+      if (code === "professional") {
+        // Never redirect a Professional subscriber to Base: activate via Professional checkout
+        void handleConfirmUpgradeToProfessional();
+        return;
+      }
+      if (code === "base") {
+        void handleSubscribeToBase();
+        return;
+      }
+      setIsUpgradeModalOpen(true);
+      return;
+    }
     if (code === "demo" || code === "base") {
       setIsUpgradeModalOpen(true);
     } else {
-      // For active Professional subscribers, open Stripe Customer Portal directly
-      handleOpenStripePortal();
+      // For active Professional subscribers with linked Stripe subscription, open Stripe Customer Portal directly
+      void handleOpenStripePortal();
     }
   };
 
@@ -399,9 +418,15 @@ export function BillingView() {
           return;
         }
       }
-      handleOpenStripePortal();
-    } catch {
-      handleOpenStripePortal();
+      let errorMsg = companyTranslations.billingUnavailable;
+      try {
+        const err = await res.json();
+        if (typeof err.detail === "string") errorMsg = err.detail;
+        else if (err.error?.message) errorMsg = err.error.message;
+      } catch {}
+      setActionError(errorMsg);
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : companyTranslations.billingUnavailable);
     }
   };
 
@@ -420,9 +445,15 @@ export function BillingView() {
           return;
         }
       }
-      handleOpenStripePortal();
-    } catch {
-      handleOpenStripePortal();
+      let errorMsg = companyTranslations.billingUnavailable;
+      try {
+        const err = await res.json();
+        if (typeof err.detail === "string") errorMsg = err.detail;
+        else if (err.error?.message) errorMsg = err.error.message;
+      } catch {}
+      setActionError(errorMsg);
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : companyTranslations.billingUnavailable);
     }
   };
 
@@ -462,6 +493,7 @@ export function BillingView() {
   };
 
   const handleBuyCredits = async (packCode: string) => {
+    setActionError(null);
     try {
       const res = await apiFetch("/api/v1/billing/credit-packs/checkout", {
         method: "POST",
@@ -475,9 +507,15 @@ export function BillingView() {
           return;
         }
       }
-      setActionError(companyTranslations.billingUnavailable);
-    } catch {
-      setActionError(companyTranslations.billingUnavailable);
+      let errorMsg = companyTranslations.billingUnavailable;
+      try {
+        const err = await res.json();
+        if (typeof err.detail === "string") errorMsg = err.detail;
+        else if (err.error?.message) errorMsg = err.error.message;
+      } catch {}
+      setActionError(errorMsg);
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : companyTranslations.billingUnavailable);
     }
   };
 
