@@ -116,6 +116,8 @@ class FakeStripeProvider:
         company_id: str,
         success_url: str,
         cancel_url: str,
+        *,
+        idempotency_key: str | None = None,
     ) -> str:
         return f"https://checkout.stripe.test/{price_id}"
 

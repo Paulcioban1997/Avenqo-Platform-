@@ -37,6 +37,8 @@ class BillingProvider(Protocol):
         company_id: str,
         success_url: str,
         cancel_url: str,
+        *,
+        idempotency_key: str | None = None,
     ) -> str: ...
     def create_credit_checkout(
         self,
@@ -129,6 +131,8 @@ class StripeGateway:
         company_id: str,
         success_url: str,
         cancel_url: str,
+        *,
+        idempotency_key: str | None = None,
     ) -> str:
         self._require_monthly_price(price_id)
         tax_options = self._tax_options()
@@ -143,9 +147,10 @@ class StripeGateway:
             cancel_url=cancel_url,
             **tax_options,
         )
+        extra_kwargs = {"idempotency_key": idempotency_key} if idempotency_key else {}
         try:
-            checkout = (stripe.StripeClient(self._api_key).v1.checkout.sessions.create(params=params)
-                        if tax_options else stripe.checkout.Session.create(**params, api_key=self._api_key))
+            checkout = (stripe.StripeClient(self._api_key).v1.checkout.sessions.create(params=params, options=extra_kwargs)
+                        if tax_options else stripe.checkout.Session.create(**params, api_key=self._api_key, **extra_kwargs))
         except stripe.InvalidRequestError as exc:
             if "No such customer" in str(exc):
                 raise StripeCustomerNotFoundError(

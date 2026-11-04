@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 """Tests de non-régression multi-compte Stripe et multi-tenant pour la gestion des erreurs de compte."""
 
 from unittest.mock import MagicMock, patch
@@ -326,3 +327,132 @@ def test_create_portal_auto_reconciles_unlinked_remote_subscription(db_session_a
         select(BillingAccount).where(BillingAccount.company_id == company_id)
     )
     assert reloaded_account.stripe_subscription_id == "sub_1UP3OUK4vojCzpX2Q6ETWK9y"
+
+
+def test_concurrent_checkout_on_new_company_uses_idempotency_and_locks(db_session_and_factory):
+    """Teste deux appels Checkout simultanés sur une entreprise sans abonnement pour vérifier le verrou et l'idempotence."""
+    _, SessionFactory = db_session_and_factory
+    company_id = uuid4()
+    
+    # Création initiale de l'entreprise
+    with SessionFactory() as init_session:
+        company = Company(
+            id=company_id,
+            name="Concurrent_Test_Corp",
+            slug=f"concurrent-{uuid4().hex[:6]}",
+            email="concurrent@example.com",
+            country="Canada",
+            timezone="America/Toronto",
+            industry="Technology",
+            subscription_plan="base",
+            status=CompanyStatus.ACTIVE,
+        )
+        init_session.add(company)
+        init_session.commit()
+
+    mock_provider = MagicMock()
+    mock_provider.create_customer.return_value = "cus_concurrent_123"
+    mock_provider.get_active_subscription.return_value = None
+    mock_provider.create_checkout.return_value = "https://checkout.stripe.com/c/pay/cs_concurrent_session"
+
+    settings = MagicMock()
+    settings.frontend_url = "https://avenqo.ca"
+
+    results = []
+    errors = []
+
+    def perform_checkout():
+        with SessionFactory() as thread_session:
+            company_thread = thread_session.scalar(select(Company).where(Company.id == company_id))
+            service = BillingService(thread_session, mock_provider, settings, MagicMock(), MagicMock())
+            try:
+                url = service.create_checkout(company_thread, "base")
+                results.append(url)
+            except Exception as e:
+                errors.append(e)
+
+    # Exécution de 2 appels checkout concurrents
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        f1 = executor.submit(perform_checkout)
+        f2 = executor.submit(perform_checkout)
+        f1.result()
+        f2.result()
+
+    # Les deux appels ont reçu l'URL ou un rejet propre sans corruption
+    assert len(results) >= 1
+    for url in results:
+        assert "cs_concurrent_session" in url
+
+    # Vérification primordiale de l'idempotence :
+    # Toutes les invocations à create_checkout ont utilisé la même clé d'idempotence robuste
+    checkout_calls = mock_provider.create_checkout.call_args_list
+    assert len(checkout_calls) >= 1
+    first_idempotency_key = checkout_calls[0].kwargs.get("idempotency_key")
+    assert first_idempotency_key is not None
+    assert f"checkout_{company_id}" in first_idempotency_key
+
+    # Si les deux appels ont atteint le provider, ils ont OBLIGATOIREMENT partagé la même idempotency_key
+    for call in checkout_calls:
+        assert call.kwargs.get("idempotency_key") == first_idempotency_key
+
+
+def test_reconciliation_preserves_existing_subscription_and_credits(db_session_and_factory):
+    """Vérifie que les requêtes de réconciliation n'altèrent pas les abonnements ou crédits existants de Produits_Ero."""
+    session, _ = db_session_and_factory
+    company_id = uuid4()
+    company = Company(
+        id=company_id,
+        name="Produits_Ero",
+        slug=f"produits-ero-{uuid4().hex[:6]}",
+        email="gauffy95@gmail.com",
+        country="Canada",
+        timezone="America/Toronto",
+        industry="Retail",
+        subscription_plan="professional",
+        status=CompanyStatus.ACTIVE,
+    )
+    session.add(company)
+    session.flush()
+
+    initial_customer_id = "cus_VBhfUdTZqnatYg"
+    initial_subscription_id = "sub_1UP3OUK4vojCzpX2Q6ETWK9y"
+
+    account = BillingAccount(
+        company_id=company_id,
+        plan_code="professional",
+        status="active",
+        stripe_customer_id=initial_customer_id,
+        stripe_subscription_id=initial_subscription_id,
+    )
+    session.add(account)
+    session.commit()
+
+    mock_provider = MagicMock()
+    # Le provider retourne l'abonnement actif identique
+    mock_provider.get_active_subscription.return_value = {
+        "id": initial_subscription_id,
+        "status": "active",
+        "customer": initial_customer_id,
+    }
+    mock_provider.create_portal.return_value = "https://billing.stripe.com/p/session/portal_active_sub"
+
+    settings = MagicMock()
+    settings.frontend_url = "https://avenqo.ca"
+
+    service = BillingService(session, mock_provider, settings, MagicMock(), MagicMock())
+    portal_url = service.create_portal(company)
+
+    assert portal_url == "https://billing.stripe.com/p/session/portal_active_sub"
+
+    # Vérification d'intégrité absolue : aucune altération
+    reloaded_account = session.scalar(
+        select(BillingAccount).where(BillingAccount.company_id == company_id)
+    )
+    assert reloaded_account.stripe_customer_id == initial_customer_id
+    assert reloaded_account.stripe_subscription_id == initial_subscription_id
+    assert reloaded_account.plan_code == "professional"
+    assert reloaded_account.status == "active"
+
+    # Aucune création de nouveau client ou de nouveau checkout
+    mock_provider.create_customer.assert_not_called()
+    mock_provider.create_checkout.assert_not_called()

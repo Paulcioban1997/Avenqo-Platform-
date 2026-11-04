@@ -1,3 +1,4 @@
+import time
 """Cas d'usage de facturation Stripe limités au tenant authentifié."""
 
 from datetime import datetime, timezone
@@ -125,12 +126,15 @@ class BillingService:
             self._session.commit()
 
         price_id = self._required_price(plan.code, company.currency_code)
+        window_bucket = int(time.time() // 300)
+        idempotency_key = f"checkout_{company.id}_{price_id}_{window_bucket}"
         return self.provider.create_checkout(
             account.stripe_customer_id,
             price_id,
             str(company.id),
             f"{self._settings.frontend_url.rstrip('/')}/billing?checkout=success",
             f"{self._settings.frontend_url.rstrip('/')}/pricing?checkout=cancelled",
+            idempotency_key=idempotency_key,
         )
 
     def change_plan(self, company_id: UUID, plan_code: str) -> BillingAccount:
