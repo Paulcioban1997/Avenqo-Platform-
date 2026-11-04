@@ -23,6 +23,11 @@ CONTRACT_TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent.parent / 
 CONTRACT_ARCHIVES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "legal" / "archives"
 
 AVAILABLE_CONTRACTS = {
+    "MUTUAL_NDA": {
+        "fr": "avenqo_nda_agreement_fr.md",
+        "en": "avenqo_nda_agreement_en.md",
+        "version": "2026-V1",
+    },
     "SAAS_SUBSCRIPTION": {
         "fr": "avenqo_saas_subscription_agreement_fr.md",
         "en": "avenqo_saas_subscription_agreement_en.md",
