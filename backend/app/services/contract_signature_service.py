@@ -158,9 +158,15 @@ class ContractSignatureService:
         active_modules_list = [
             cm.module.name for cm in (company.company_modules or []) if getattr(cm, "status", None) and cm.status.value == "ACTIVE" and cm.module
         ]
-        if not active_modules_list:
-            active_modules_list = ["Commerce Retail", "CRM & Calendrier"]
-        modules_str = ", ".join(active_modules_list)
+        modules_str = ", ".join(active_modules_list) if active_modules_list else "Aucun module sélectionné (accès socle de base)"
+        
+        # Adresse légale et d'affaires réelle
+        addr_parts = []
+        if getattr(company, "region", None) and company.region not in ("North America", "Global", ""):
+            addr_parts.append(company.region)
+        if getattr(company, "country", None):
+            addr_parts.append(company.country)
+        company_address = ", ".join(addr_parts) if addr_parts else (company.country or "Non renseignée")
 
         tax_terms = (
             f"TPS (5 %) et TVQ (9,975 %) applicables selon les lois du Québec et du Canada (Devise : {currency})"
@@ -176,7 +182,7 @@ class ContractSignatureService:
         interpolated = (
             raw_text
             .replace("{{COMPANY_NAME}}", company.name or "L'Entreprise Locataire")
-            .replace("{{COMPANY_ADDRESS}}", f"{company.country} ({company.timezone})")
+            .replace("{{COMPANY_ADDRESS}}", company_address)
             .replace("{{COMPANY_ID}}", str(company.id))
             .replace("{{SIGNATORY_NAME}}", signatory_name or "Représentant Autorisé")
             .replace("{{SIGNATORY_TITLE}}", signatory_title or "Dirigeant d'entreprise")
@@ -458,8 +464,20 @@ class ContractSignatureService:
         """Téléverse et scelle un contrat signé manuellement au stylo (scan / photo / PDF)."""
         self.verify_signatory_authority(user, company.id, declared_authority=True)
 
-        if not file_bytes:
-            raise ValueError("Le fichier téléversé est vide.")
+        # Contrôle strict fail-closed de format et taille
+        if not file_bytes or len(file_bytes) < 100:
+            raise ValueError("Fichier trop court ou vide. Un document numérisé valide est requis.")
+        if len(file_bytes) > 15 * 1024 * 1024:
+            raise ValueError("Fichier trop volumineux. La taille maximale permise est de 15 Mo.")
+
+        # Vérification par magic bytes (types MIME réels autorisés : PDF, PNG, JPEG)
+        is_pdf = file_bytes.startswith(b"%PDF-")
+        is_png = file_bytes.startswith(b"\x89PNG\r\n\x1a\n")
+        is_jpg = file_bytes.startswith(b"\xff\xd8\xff")
+        if not (is_pdf or is_png or is_jpg):
+            raise ValueError(
+                "Format de fichier non supporté. Formats acceptés : PDF certifié, image PNG ou JPEG haute résolution."
+            )
 
         contract = self.get_contract(company.id, contract_type)
         if contract.status == "SIGNED":
@@ -502,7 +520,7 @@ class ContractSignatureService:
             commit=False,
         )
 
-        contract.status = "SIGNED"
+        contract.status = "PENDING_VERIFICATION"
         contract.signature_mode = "MANUSCRIPT_WET_INK"
         contract.signatory_user_id = user.id
         contract.signatory_name = user_name
@@ -520,7 +538,7 @@ class ContractSignatureService:
         return {
             "contract_id": str(contract.id),
             "contract_type": contract.contract_type,
-            "status": "SIGNED",
+            "status": "PENDING_VERIFICATION",
             "signature_mode": "MANUSCRIPT_WET_INK",
             "signed_at": now.isoformat(),
             "sha256_hash": file_sha256,
@@ -577,3 +595,45 @@ class ContractSignatureService:
             )
         ).all()
         return all(m in signed_contracts for m in mandatory_types)
+
+
+    def verify_wet_ink_signature(
+        self,
+        company_id: UUID,
+        contract_type: str,
+        *,
+        approved: bool,
+        verifier_user: User,
+        rejection_reason: str | None = None,
+    ) -> CompanyContract:
+        """Permet à l'administrateur ou au fondateur de valider ou rejeter un document manuscrit téléversé."""
+        contract = self.get_contract(company_id, contract_type)
+        if contract.status != "PENDING_VERIFICATION":
+            raise ValueError(f"Le contrat n'est pas en attente de vérification (statut actuel : {contract.status}).")
+
+        now = datetime.now(timezone.utc)
+        if approved:
+            contract.status = "SIGNED"
+            action = "contract.wet_ink_approved"
+        else:
+            contract.status = "PENDING_SIGNATURE"
+            action = "contract.wet_ink_rejected"
+
+        audit_meta = {
+            "contract_type": contract_type,
+            "contract_id": str(contract.id),
+            "approved": approved,
+            "verifier_email": verifier_user.email,
+            "verified_at": now.isoformat(),
+            "rejection_reason": rejection_reason,
+        }
+        self._audit.record(
+            actor_user_id=verifier_user.id,
+            action=action,
+            target_type="commercial_contract",
+            target_id=str(contract.id),
+            company_id=company_id,
+            metadata=audit_meta,
+        )
+        self._db.commit()
+        return contract

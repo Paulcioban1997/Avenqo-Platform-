@@ -106,6 +106,11 @@ def test_contract_templates_dynamic_interpolation(db_session):
     assert "entreprise en cours d'incorporation au Québec, Canada" in nda.content_text
     assert "{{COMPANY_NAME}}" not in nda.content_text
     assert "{{EFFECTIVE_DATE}}" not in nda.content_text
+    priv_raw = service.get_template_raw("PRIVATE_LICENSE", language="fr")
+    priv_interp = service.interpolate_contract_text(priv_raw["content"], company=company)
+    assert "PMC SOLUTIONS AI" in priv_interp
+    assert "entreprise en cours d'incorporation au Québec, Canada" in priv_interp
+    assert "{{COMPANY_NAME}}" not in priv_interp
 
 
 def test_certified_pdf_generation(tmp_path):
@@ -207,14 +212,26 @@ def test_electronic_signature_flow(db_session, tmp_path):
 
 
 def test_wet_ink_manuscript_flow(db_session):
-    """Vérifie l'archivage d'un contrat signé manuscritement (wet-ink)."""
+    """Vérifie le cycle complet d'un contrat manuscrit : rejet format, PENDING_VERIFICATION puis validation."""
     company = _create_test_company(db_session)
     owner = _create_user(db_session, company, role=UserRole.OWNER)
 
     service = ContractSignatureService(db_session)
     service.ensure_contracts_for_company(company)
 
-    mock_pdf_bytes = b"%PDF-1.4 Mock manuscript scan signed with wet ink"
+    # 1. Rejet fail-closed sur format non autorisé
+    with pytest.raises(ValueError, match="Format de fichier non supporté"):
+        service.upload_wet_ink_signature(
+            company=company,
+            user=owner,
+            contract_type="SAAS_SUBSCRIPTION",
+            signatory_title="Président",
+            file_bytes=b"invalid plain text document that is not pdf or image" * 4,
+            filename="contrat.txt",
+        )
+
+    # 2. Upload valide avec magic bytes PDF
+    mock_pdf_bytes = b"%PDF-1.4 Mock manuscript scan signed with wet ink and verified signature block" + (b"0" * 100)
 
     res = service.upload_wet_ink_signature(
         company=company,
@@ -225,13 +242,22 @@ def test_wet_ink_manuscript_flow(db_session):
         filename="contrat_signe_scan.pdf",
     )
 
-    assert res["status"] == "SIGNED"
+    assert res["status"] == "PENDING_VERIFICATION"
     assert res["signature_mode"] == "MANUSCRIPT_WET_INK"
 
     contract_db = service.get_contract(company.id, "SAAS_SUBSCRIPTION")
-    assert contract_db.status == "SIGNED"
+    assert contract_db.status == "PENDING_VERIFICATION"
     assert contract_db.signature_mode == "MANUSCRIPT_WET_INK"
     assert contract_db.storage_path is not None
+
+    # 3. Validation formelle par l'administrateur
+    verified = service.verify_wet_ink_signature(
+        company_id=company.id,
+        contract_type="SAAS_SUBSCRIPTION",
+        approved=True,
+        verifier_user=owner,
+    )
+    assert verified.status == "SIGNED" 
 
 
 def test_contracts_multi_tenant_isolation(db_session):

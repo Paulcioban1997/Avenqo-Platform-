@@ -7,7 +7,7 @@
 ### BETWEEN THE PARTIES:
 
 **1. THE LICENSOR:**
-**PMC SOLUTIONS AI INC.**, a corporation duly incorporated under the laws of Quebec, having its head office in Quebec, Canada, represented by its authorized officers (hereinafter referred to as "**PMC Solutions AI**" or the "**Licensor**").
+**PMC SOLUTIONS AI** (enterprise pending incorporation in Quebec, Canada), having its registered office in Quebec, Canada, operating the Avenqo AI technology (hereinafter referred to as "**PMC Solutions AI**" or the "**Licensor**").
 
 **AND**
 

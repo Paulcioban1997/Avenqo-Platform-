@@ -69,10 +69,7 @@ class OnboardingService:
         # Provisionner les contrats obligatoires pour signature immédiate
         company = self._session.get(Company, tenant.company_id)
         if company:
-            try:
-                ContractSignatureService(self._session).ensure_contracts_for_company(company)
-            except Exception:
-                pass
+            ContractSignatureService(self._session).ensure_contracts_for_company(company)
 
         self._session.commit()
         return self._to_response(record, tenant, unavailable_modules=unavailable)

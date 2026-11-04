@@ -7,7 +7,7 @@
 ### ENTRE LES PARTIES :
 
 **1. LE CONCÉDANT :**
-**PMC SOLUTIONS AI INC.**, société par actions dûment constituée en vertu des lois du Québec, ayant son siège social au Québec, Canada, représentée par ses dirigeants autorisés (ci-après désignée « **PMC Solutions AI** » ou le « **Concédant** »).
+**PMC SOLUTIONS AI** (entreprise en cours d'incorporation au Québec, Canada), ayant son siège social au Québec, Canada, exploitant la technologie Avenqo (ci-après désignée « **PMC Solutions AI** » ou le « **Concédant** »).
 
 **ET**
 

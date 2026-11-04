@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.database import get_db
 from backend.app.dependencies.auth import get_tenant_context
-from backend.app.models import BillingAccount, CompanyContract
+from backend.app.models import BillingAccount, Company, CompanyContract
 from shared.ai_engine.contracts import TenantContext
 from ..services.contract_signature_service import ContractSignatureService
 
@@ -37,20 +37,17 @@ def require_active_subscription(
             detail=SUBSCRIPTION_REQUIRED_DETAIL,
         )
 
-    # Vérification conditionnelle de la signature des contrats obligatoires
-    has_registered_contracts = db.scalar(
-        select(CompanyContract.id).where(CompanyContract.company_id == tenant.company_id).limit(1)
-    )
-    if has_registered_contracts:
-        service = ContractSignatureService(db)
-        if not service.has_signed_mandatory_contracts(tenant.company_id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail={
-                    "code": CONTRACT_SIGNATURE_REQUIRED_CODE,
-                    "message": "La signature des documents juridiques obligatoires (NDA mutuel et contrat d'abonnement SaaS) est requise avant d'activer vos modules payants.",
-                },
-            )
+    # Contrôle strict FAIL-CLOSED : les contrats obligatoires doivent être signés
+    # L'absence de lignes CompanyContract ne permet jamais de contourner la signature.
+    service = ContractSignatureService(db)
+    if not service.has_signed_mandatory_contracts(tenant.company_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": CONTRACT_SIGNATURE_REQUIRED_CODE,
+                "message": "La signature des documents juridiques obligatoires (NDA mutuel et contrat d'abonnement SaaS) est requise avant d'activer vos modules payants.",
+            },
+        )
 
     return tenant
 

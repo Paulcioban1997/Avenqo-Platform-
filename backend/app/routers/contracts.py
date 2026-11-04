@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 from uuid import UUID
 
@@ -27,6 +28,7 @@ from ..services.contract_signature_service import (
 from shared.ai_engine.contracts import TenantContext
 
 router = APIRouter(prefix="/contracts", tags=["contracts"])
+logger = logging.getLogger(__name__)
 
 
 class ContractSignRequest(BaseModel):
@@ -233,26 +235,93 @@ def download_contract_pdf(
 
     contract = service.get_contract(tenant.company_id, contract_type)
 
-    # Si déjà signé et stocké sur disque
-    if contract.storage_path:
+    # Si document déjà signé ou soumis pour vérification : FAIL-CLOSED strict
+    if contract.status in ("SIGNED", "PENDING_VERIFICATION"):
+        if not contract.storage_path:
+            logger.critical(
+                "Document %s absent du stockage en base pour company_id=%s, type=%s",
+                contract.status,
+                tenant.company_id,
+                contract_type,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Document signé introuvable dans le stockage sécurisé. Un incident d'intégrité a été consigné.",
+            )
         from pathlib import Path
         full_path = Path(service._settings.artifact_root) / contract.storage_path
-        if full_path.exists():
-            pdf_bytes = full_path.read_bytes()
-            media_type = "application/pdf"
-            filename = f"{contract_type}_Signe_{contract.version}.pdf"
-            return Response(
-                content=pdf_bytes,
-                media_type=media_type,
-                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        if not full_path.exists():
+            logger.critical(
+                "Fichier introuvable sur le disque: %s pour company_id=%s",
+                full_path,
+                tenant.company_id,
             )
+            raise HTTPException(
+                status_code=500,
+                detail="Fichier certifié manquant sur le disque persistant. Un incident d'intégrité a été consigné.",
+            )
+        pdf_bytes = full_path.read_bytes()
+        media_type = "application/pdf"
+        filename = f"{contract_type}_{contract.status}_{contract.version}.pdf"
+        return Response(
+            content=pdf_bytes,
+            media_type=media_type,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
-    # Sinon générer le PDF brouillon / d'impression
-    pdf_bytes = service.generate_draft_pdf(company, contract_type)
-    filename = f"{contract_type}_Brouillon_{contract.version}.pdf"
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    # Document brouillon / vierge pré-rempli
+    if contract.status == "PENDING_SIGNATURE":
+        pdf_bytes = service.generate_draft_pdf(company, contract_type)
+        filename = f"{contract_type}_Brouillon_{contract.version}.pdf"
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    raise HTTPException(
+        status_code=400,
+        detail=f"Statut contractuel invalide pour le téléchargement ({contract.status}).",
     )
 
+
+
+
+class VerifyWetInkRequest(BaseModel):
+    approved: bool
+    rejection_reason: str | None = None
+
+
+@router.post("/{contract_type}/verify-wet-ink")
+def verify_wet_ink_contract(
+    contract_type: str,
+    payload: VerifyWetInkRequest,
+    tenant: TenantContext = Depends(get_tenant_context),
+    identity: CurrentIdentity = Depends(get_current_identity),
+    service: ContractSignatureService = Depends(_get_service),
+) -> dict:
+    """Permet au dirigeant / admin de valider ou rejeter un document manuscrit soumis."""
+    user = identity.user
+    role_str = str(getattr(user, "role", "") or "").lower()
+    if role_str not in ("owner", "admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Seul un propriétaire ou un administrateur peut valider une signature manuscrite.",
+        )
+
+    try:
+        updated = service.verify_wet_ink_signature(
+            company_id=tenant.company_id,
+            contract_type=contract_type,
+            approved=payload.approved,
+            verifier_user=user,
+            rejection_reason=payload.rejection_reason,
+        )
+        return {
+            "contract_id": str(updated.id),
+            "contract_type": updated.contract_type,
+            "status": updated.status,
+            "signature_mode": updated.signature_mode,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
