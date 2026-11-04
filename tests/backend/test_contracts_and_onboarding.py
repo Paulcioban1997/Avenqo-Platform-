@@ -19,10 +19,8 @@ from backend.app.models.user import User
 from backend.app.services.contract_pdf_generator import ContractPdfGenerator
 from backend.app.services.contract_signature_service import (
     ContractSignatureService,
-    ContractNotFoundError,
     ContractAlreadySignedError,
     ContractAuthorityError,
-    InvalidSignatureModeError,
 )
 from backend.app.services.onboarding_service import OnboardingService
 from backend.app.schemas.onboarding import OnboardingDraftRequest, OnboardingSubmitRequest
