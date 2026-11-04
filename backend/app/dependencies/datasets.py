@@ -57,17 +57,17 @@ def get_company_dataset_ingestion_service(
 ) -> CompanyDatasetIngestionService:
     settings = get_settings()
     local_storage = LocalDatasetStorage(Path(settings.artifact_root) / "company_datasets")
-    s3_enabled = getattr(settings, "backup_s3_enabled", False)
+    s3_enabled = getattr(settings, "dataset_s3_enabled", getattr(settings, "backup_s3_enabled", False))
     if callable(s3_enabled):
         s3_enabled = s3_enabled()
     storage: DatasetStorage
     if s3_enabled:
         storage = S3DatasetStorage(
-            bucket=settings.backup_s3_bucket or "",
-            access_key=settings.backup_s3_access_key or "",
-            secret_key=settings.backup_s3_secret_key or "",
-            endpoint_url=settings.backup_s3_endpoint_url,
-            region=settings.backup_s3_region,
+            bucket=getattr(settings, "dataset_s3_bucket", None) or settings.backup_s3_bucket or "",
+            access_key=getattr(settings, "dataset_s3_access_key", None) or settings.backup_s3_access_key or "",
+            secret_key=getattr(settings, "dataset_s3_secret_key", None) or settings.backup_s3_secret_key or "",
+            endpoint_url=getattr(settings, "dataset_s3_endpoint_url", None) or settings.backup_s3_endpoint_url,
+            region=getattr(settings, "dataset_s3_region", None) or settings.backup_s3_region,
             local_fallback=local_storage,
         )
     else:

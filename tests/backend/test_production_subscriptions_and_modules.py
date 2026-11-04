@@ -265,3 +265,48 @@ def test_multi_tenant_isolation_subscription_and_invoices(db: Session) -> None:
 
     assert service.get_active_modules(TenantContext(company_a.id)) == ("retail",)
     assert service.get_active_modules(TenantContext(company_b.id)) == ("crm",)
+
+
+def test_provider_status_portal_available_requires_configured_stripe(db: Session):
+    from backend.app.config.settings import Settings
+    from backend.app.routers.billing import provider_status
+    from unittest.mock import MagicMock
+
+    company = _create_company(db, "professional", "Portal Test Co")
+    user = User(
+        id=uuid4(),
+        email="portal@test.ca",
+        password_hash="hash",
+        first_name="Portal",
+        last_name="User",
+        company_id=company.id,
+        role="OWNER",
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+
+    identity = MagicMock()
+    identity.user = user
+
+    # 1. Stripe NOT configured in settings -> portal_available must be False even if customer_id exists
+    settings_unconfigured = Settings(
+        AUTH_JWT_SECRET="secret" * 8,
+        STRIPE_SECRET_KEY="",
+        STRIPE_WEBHOOK_SECRET="",
+    )
+    status_unconfigured = provider_status(identity, db, settings_unconfigured)
+    assert status_unconfigured["configured"] is False
+    assert status_unconfigured["customer_linked"] is True
+    assert status_unconfigured["portal_available"] is False
+
+    # 2. Stripe configured -> portal_available is True
+    settings_configured = Settings(
+        AUTH_JWT_SECRET="secret" * 8,
+        STRIPE_SECRET_KEY="sk_test_dummy",
+        STRIPE_WEBHOOK_SECRET="whsec_dummy",
+    )
+    status_configured = provider_status(identity, db, settings_configured)
+    assert status_configured["configured"] is True
+    assert status_configured["customer_linked"] is True
+    assert status_configured["portal_available"] is True

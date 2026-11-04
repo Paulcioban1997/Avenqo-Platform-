@@ -442,6 +442,13 @@ class Settings(BaseSettings):
     backup_s3_secret_key: str | None = Field(default=None, alias="BACKUP_S3_SECRET_KEY")
     backup_s3_region: str = Field(default="auto", alias="BACKUP_S3_REGION")
 
+    # Stockage S3 dédié aux datasets et fichiers clients (séparation stricte avec les backups DB).
+    dataset_s3_endpoint_url: str | None = Field(default=None, alias="DATASET_S3_ENDPOINT_URL")
+    dataset_s3_bucket: str | None = Field(default=None, alias="DATASET_S3_BUCKET")
+    dataset_s3_access_key: str | None = Field(default=None, alias="DATASET_S3_ACCESS_KEY")
+    dataset_s3_secret_key: str | None = Field(default=None, alias="DATASET_S3_SECRET_KEY")
+    dataset_s3_region: str | None = Field(default=None, alias="DATASET_S3_REGION")
+
     # Bootstrap sécurisé du compte platform_admin propriétaire (scripts/bootstrap_platform_admin.py).
     # Jamais loggé ni exposé via une réponse API. Voir docs/platform-admin-setup.md.
     platform_admin_email: str | None = Field(default=None, alias="PLATFORM_ADMIN_EMAIL")
@@ -684,6 +691,14 @@ class Settings(BaseSettings):
             and self.backup_s3_access_key
             and self.backup_s3_secret_key
         )
+
+    @property
+    def dataset_s3_enabled(self) -> bool:
+        """Stockage S3 dédié aux datasets clients (distinct ou repli sur backup_s3)."""
+
+        if self.dataset_s3_bucket and self.dataset_s3_access_key and self.dataset_s3_secret_key:
+            return True
+        return self.backup_s3_enabled
 
     @property
     def app_title(self) -> str:
