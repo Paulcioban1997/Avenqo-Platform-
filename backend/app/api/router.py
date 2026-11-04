@@ -29,6 +29,7 @@ from backend.app.routers.internal_connector_ai import router as internal_connect
 from backend.app.routers.internal_versioning import router as internal_versioning_router
 from backend.app.routers.modules import router as modules_router
 from backend.app.routers.onboarding import router as onboarding_router
+from backend.app.routers.contracts import router as contracts_router
 from backend.app.routers.performance import router as performance_router
 from backend.app.routers.retail import router as retail_router
 from backend.app.routers.sectors import router as sectors_router
@@ -117,6 +118,7 @@ api_router.include_router(
 api_router.include_router(datasets_router, prefix="/api/v1")
 api_router.include_router(dataset_archives_router, prefix="/api/v1")
 api_router.include_router(onboarding_router, prefix="/api/v1")
+api_router.include_router(contracts_router, prefix="/api/v1")
 api_router.include_router(sectors_router, prefix="/api/v1")
 api_router.include_router(
 	modules_router,

@@ -62,6 +62,7 @@ def _user_response(user: User) -> UserResponse:
 
 def _company_response(company: Company) -> CompanyResponse:
     onboarding_status = company.onboarding.status if company.onboarding else OnboardingStatus.PENDING
+    draft = company.onboarding.draft_payload if company.onboarding and company.onboarding.draft_payload else {}
     return CompanyResponse(
         id=company.id,
         name=company.name,
@@ -73,6 +74,8 @@ def _company_response(company: Company) -> CompanyResponse:
         preferred_language=company.preferred_language,
         currency_code=getattr(company, "currency_code", None),
         timezone=company.timezone,
+        logo_url=draft.get("company_logo_url"),
+        brand_color=draft.get("brand_color"),
     )
 
 

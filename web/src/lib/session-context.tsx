@@ -10,7 +10,7 @@ export interface OrganizationItem {
 }
 interface Identity {
   user: { id: string; first_name: string; last_name: string; job_title?: string; role: string; is_platform_admin: boolean };
-  company: { id: string; name: string; subscription_plan: string; preferred_language?: string | null };
+  company: { id: string; name: string; subscription_plan: string; preferred_language?: string | null; logo_url?: string | null; brand_color?: string | null };
   organizations: OrganizationItem[];
 }
 interface SessionState {

@@ -23,6 +23,7 @@ import {
   X,
   ChevronDown,
   Sliders,
+  FileText,
 } from "lucide-react";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
@@ -517,6 +518,38 @@ export function SettingsView() {
             {companyTranslations.settingsSessionSection}
           </div>
         </div>
+      </div>
+
+      {/* Contracts & Legal Section Quick Access */}
+      <div className="bg-gradient-to-r from-blue-50/80 via-white to-indigo-50/80 dark:from-[#0B132B] dark:via-[#111D3D]/50 dark:to-[#0B132B] rounded-2xl p-6 border border-blue-200/60 dark:border-blue-900/40 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="flex items-start gap-4">
+          <div className="p-3 rounded-xl bg-blue-600 text-white shrink-0 shadow-sm">
+            <FileText className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                {locale.startsWith("fr") ? "Documents Juridiques & Contrats d'Entreprise" : "Enterprise Legal Documents & Contracts"}
+              </h3>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 font-semibold uppercase">
+                {locale.startsWith("fr") ? "Espace Officiel" : "Official Space"}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-2xl">
+              {locale.startsWith("fr")
+                ? "Consultez, téléchargez et signez électroniquement ou par manuscrit vos accords d'entreprise (NDA mutuel, contrat d'abonnement SaaS, licence privée et addenda Loi 25 / PIPEDA)."
+                : "View, download and sign electronically or wet-ink your enterprise agreements (Mutual NDA, SaaS Subscription, Private License, and Law 25 / PIPEDA DPA)."}
+            </p>
+          </div>
+        </div>
+
+        <Link
+          href="/settings/contracts"
+          className="px-4 py-2.5 text-xs font-semibold rounded-xl bg-[#0076FF] text-white hover:bg-blue-600 transition-colors shadow-xs flex items-center gap-2 shrink-0"
+        >
+          <span>{locale.startsWith("fr") ? "Accéder à Mes Contrats" : "Access My Contracts"}</span>
+          <ChevronRight className="w-4 h-4" />
+        </Link>
       </div>
 
       {(user?.role?.toLowerCase() === "owner" || user?.role?.toLowerCase() === "admin") && (

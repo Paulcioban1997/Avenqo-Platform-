@@ -7,7 +7,7 @@
 ### BETWEEN THE UNDERSIGNED PARTIES:
 
 **1. THE PROVIDER:**
-**PMC SOLUTIONS AI INC.**, a legal person duly incorporated under the laws of the Province of Quebec, having its head office in Quebec, Canada, represented by its duly authorized officers (hereinafter referred to as "**PMC Solutions AI**" or the "**Provider**").
+**PMC SOLUTIONS AI** (business entity in the process of incorporation in Quebec, Canada, with formal contractual update upon official registration with the Registraire des entreprises du Québec), having its head office in Quebec, Canada, represented by its duly authorized officers (hereinafter referred to as "**PMC Solutions AI**" or the "**Provider**").
 
 **AND**
 

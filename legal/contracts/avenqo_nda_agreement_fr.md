@@ -7,12 +7,12 @@
 ### ENTRE LES SOUSSIGNÉS :
 
 **1. LE FOURNISSEUR :**
-**PMC SOLUTIONS AI INC.**, personne morale légalement constituée selon les lois de la province de Québec, ayant son siège social au Québec, Canada, exploitant la plateforme technologique **Avenqo** (ci-après désignée « **PMC Solutions AI** »).
+**PMC SOLUTIONS AI** (entreprise en cours d'incorporation au Québec, Canada), ayant son siège au Québec, Canada, exploitant la plateforme technologique **Avenqo** (ci-après désignée « **PMC Solutions AI** »).
 
 **ET**
 
 **2. LE CLIENT :**
-L'entreprise, personne morale ou entreprise individuelle, identifiée lors de son inscription sur la plateforme Avenqo par sa dénomination sociale, son adresse d'affaires, son représentant habilité et son identifiant unique de locataire (ci-après désignée le « **Client** »).
+L'entreprise cliente **{{COMPANY_NAME}}**, ayant son adresse d'affaires à {{COMPANY_ADDRESS}} (Identifiant Unique Locataire : `{{COMPANY_ID}}`), représentée par {{SIGNATORY_NAME}}, agissant en qualité de {{SIGNATORY_TITLE}} (ci-après désignée le « **Client** »).
 
 (Chacune désignée individuellement une « **Partie** » ou conjointement les « **Parties** »).
 
@@ -44,18 +44,18 @@ Les obligations du présent accord ne s'appliquent pas aux informations qui :
 
 ### 4. PROTECTION DES DONNÉES ET CONFORMITÉ (LOI 25 QUÉBEC & PIPEDA)
 1. **Propriété exclusive du Client :** Le Client demeure le propriétaire unique et exclusif de l'ensemble des jeux de données, catalogues, listes de clients et documents comptables téléversés sur Avenqo.
-2. **Entraînement des modèles publics proscrit :** PMC Solutions AI Inc. garantit formellement que les données confidentielles du Client ne sont **JAMAIS** utilisées pour entraîner des modèles d'IA publics ou tiers sans consentement explicite.
+2. **Entraînement des modèles publics proscrit :** PMC Solutions AI garantit formellement que les données confidentielles du Client ne sont **JAMAIS** utilisées pour entraîner des modèles d'IA publics ou tiers sans consentement explicite.
 3. **Chiffrement :** Les données au repos sont chiffrées selon la norme AES-256 et les transferts sont protégés par le protocole TLS 1.3.
 
 ### 5. DURÉE ET SURVIE
-Le présent accord prend effet à la date de signature (numérique ou manuscrite) et demeure en vigueur pendant toute la durée de la relation commerciale entre les Parties, puis pour une durée de **trois (3) ans** suivant la cessation de l'utilisation de la plateforme Avenqo (et sans limite de temps pour les secrets de fabrication et le code source propriétaire).
+Le présent accord prend effet à la date de signature pour une durée de deux (2) ans. Les obligations de confidentialité relatives aux secrets commerciaux et de fabrication survivent indéfiniment à l'extinction du présent accord.
 
 ### 6. LOI APPLICABLE ET TRIBUNAUX COMPÉTENTS
-Le présent accord est régi et interprété conformément aux lois en vigueur dans la **province de Québec** et aux lois fédérales du **Canada** applicables. Tout litige relatif à sa validité ou son exécution sera soumis à la juridiction exclusive des tribunaux du district judiciaire de **Montréal, Québec, Canada**.
+Le présent accord est régi et interprété conformément aux lois en vigueur dans la province de Québec et aux lois fédérales du Canada qui s'y appliquent. Tout litige relatif à sa validité, son interprétation ou son exécution sera soumis à la compétence exclusive des tribunaux du district judiciaire de Montréal, Québec.
 
 ---
 
-### MODALITÉS DE SIGNATURE (AU CHOIX DU CLIENT)
+### SIGNATURES ET MODALITÉS D'ACCEPTATION
 
 #### OPTION A — SIGNATURE NUMÉRIQUE SÉCURISÉE EN LIGNE
 Conforme à la *Loi concernant le cadre juridique des technologies de l'information (RLRQ c. C-1.1)*.  
@@ -63,23 +63,21 @@ Conforme à la *Loi concernant le cadre juridique des technologies de l'informat
 - **Preuve d'horodatage :** Horodatage UTC immuable consigné dans le journal d'audit Avenqo.
 
 #### OPTION B — SIGNATURE MANUSCRITE AU STYLO (PRINT & WET-INK SIGN)
-Le Client peut imprimer le présent contrat, y apposer une signature manuscrite à l'encre ci-dessous, numériser ou photographier le document complet et le téléverser sur la plateforme Avenqo sous `/legal` pour archivage permanent certifié.
+Le Client peut imprimer le présent contrat, y apposer une signature manuscrite à l'encre ci-dessous, numériser ou photographier le document complet et le téléverser sur la plateforme Avenqo sous `/settings/contracts` pour archivage permanent certifié.
 
 ---
 
 **POUR LE CLIENT :**  
-Dénomination sociale : ____________________________________________  
-Nom du signataire habilité : ______________________________________  
-Titre / Fonction : _______________________________________________  
-Date de signature : _____________________________________________  
-Signature (manuscrite au stylo) :  
+Dénomination sociale : {{COMPANY_NAME}}  
+Nom du signataire habilité : {{SIGNATORY_NAME}}  
+Titre / Fonction : {{SIGNATORY_TITLE}}  
+Date d'effet : {{EFFECTIVE_DATE}}  
+Signature : {{SIGNATURE_BLOCK_CLIENT}}
 
-`X__________________________________________________________________`  
-
-**POUR PMC SOLUTIONS AI INC. (AVENQO) :**  
+**POUR PMC SOLUTIONS AI :**  
+Dénomination : PMC SOLUTIONS AI (entreprise en cours d'incorporation au Québec, Canada)  
 Nom du représentant : Mircea Paul Cioban  
-Titre : Président & Fondateur, PMC Solutions AI Inc.  
-Date : ___________________________________________________________  
+Titre : Fondateur & Dirigeant  
+Date : {{EFFECTIVE_DATE}}  
 Signature autorisée :  
-
-`X__________________________________________________________________`
+`[Signé numériquement / Mircea Paul Cioban / Fondateur]`

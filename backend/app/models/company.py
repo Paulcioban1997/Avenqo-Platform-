@@ -80,3 +80,7 @@ class Company(TimestampMixin, Base):
         cascade="all, delete-orphan",
         uselist=False,
     )
+    contracts: Mapped[list["CompanyContract"]] = relationship(
+        back_populates="company",
+        cascade="all, delete-orphan",
+    )
