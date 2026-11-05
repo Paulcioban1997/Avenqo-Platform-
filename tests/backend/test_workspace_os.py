@@ -265,13 +265,13 @@ def test_automation_idempotency_and_module_gate(auth_environment):
     assert any(task["title"] == "Analyser la commande" for task in follow)
 
 
-def test_marketplace_marks_etsy_and_outlook_as_future(auth_environment):
+def test_marketplace_marks_etsy_partner_approval_and_outlook_available(auth_environment):
     client, factory, notifier = auth_environment
     owner = _ready(client, factory, notifier, "market@example.ca", "Market Co")
     catalog = client.get("/api/v1/marketplace", headers=headers(owner)).json()
     etsy = next(item for item in catalog["connectors"] if item["key"] == "etsy")
     outlook = next(item for item in catalog["connectors"] if item["key"] == "outlook_calendar")
-    assert etsy["availability"] == "coming_soon"
+    assert etsy["availability"] == "partner_approval_pending"
     assert outlook["availability"] == "available"
     assert next(item for item in catalog["connectors"] if item["key"] == "shopify")["availability"] == "available"
 
