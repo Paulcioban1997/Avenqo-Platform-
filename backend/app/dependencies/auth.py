@@ -196,3 +196,31 @@ def require_platform_admin(
             detail="Accès réservé aux administrateurs Avenqo",
         )
     return identity
+
+
+def require_platform_role(*allowed_roles: str):
+    """Contrôle d'accès à moindre privilège pour les rôles plateforme Avenqo (CEO Command Center).
+
+    Rôles supportés :
+    - PLATFORM_SUPER_ADMIN : accès complet à tous les modules et actions sensibles (contreseing, configuration)
+    - PLATFORM_FINANCE : vue d'ensemble, entreprises, revenus/Stripe, métriques IA, contrats (lecture)
+    - PLATFORM_SUPPORT_READONLY : vue d'ensemble, entreprises (lecture), connecteurs, santé, messages support
+    - PLATFORM_SECURITY_AUDITOR : sécurité, logs d'audit, connecteurs, santé, statut de configuration
+    """
+    def dependency(
+        identity: CurrentIdentity = Depends(get_current_identity),
+    ) -> CurrentIdentity:
+        if not identity.user.is_platform_admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Accès réservé aux administrateurs de la plateforme Avenqo",
+            )
+        current_role = identity.user.platform_role or "PLATFORM_SUPER_ADMIN"
+        if allowed_roles and current_role not in allowed_roles and current_role != "PLATFORM_SUPER_ADMIN":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Privilège plateforme insuffisant ({current_role}). Nécessite : {', '.join(allowed_roles)}",
+            )
+        return identity
+
+    return dependency

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import StrEnum
 from uuid import UUID, uuid4
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, JSON, String, Text, UniqueConstraint
@@ -8,6 +9,38 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.models.base import Base, TimestampMixin
+
+
+class ContractLifecycleStatus(StrEnum):
+    """Machine d'état explicite du cycle de vie contractuel Avenqo."""
+
+    DRAFT = "DRAFT"
+    READY_FOR_REVIEW = "READY_FOR_REVIEW"
+    IN_REVIEW = "IN_REVIEW"
+    READY_FOR_SIGNATURE = "READY_FOR_SIGNATURE"
+    CUSTOMER_SIGNED = "CUSTOMER_SIGNED"
+    PROVIDER_SIGNING_REQUIRED = "PROVIDER_SIGNING_REQUIRED"
+    FULLY_EXECUTED = "FULLY_EXECUTED"
+    UPLOADED_FOR_REVIEW = "UPLOADED_FOR_REVIEW"
+    PENDING_VERIFICATION = "PENDING_VERIFICATION"  # Compatibilité manuscript
+    PENDING_SIGNATURE = "PENDING_SIGNATURE"        # Rétrocompatibilité
+    SIGNED = "SIGNED"                              # Rétrocompatibilité
+    BLOCKED = "BLOCKED"
+    DECLINED = "DECLINED"
+    EXPIRED = "EXPIRED"
+    VOIDED = "VOIDED"
+    SUPERSEDED = "SUPERSEDED"
+
+
+class ContractExecutionPartyState(StrEnum):
+    """État d'exécution par partie contractuelle."""
+
+    PENDING_CUSTOMER = "PENDING_CUSTOMER"
+    PENDING_PROVIDER = "PENDING_PROVIDER"
+    COMPLETED = "COMPLETED"
+    DECLINED = "DECLINED"
+    EXPIRED = "EXPIRED"
+    VOIDED = "VOIDED"
 
 
 class CompanyContract(TimestampMixin, Base):
@@ -41,8 +74,13 @@ class CompanyContract(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(
         String(32),
         nullable=False,
-        default="PENDING_SIGNATURE",
+        default=ContractLifecycleStatus.PENDING_SIGNATURE.value,
         index=True,
+    )
+    execution_state: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default=ContractExecutionPartyState.PENDING_CUSTOMER.value,
     )
     version: Mapped[str] = mapped_column(
         String(32),
@@ -58,6 +96,8 @@ class CompanyContract(TimestampMixin, Base):
         String(32),
         nullable=True,
     )
+
+    # Signataire Client
     signatory_user_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
@@ -84,6 +124,26 @@ class CompanyContract(TimestampMixin, Base):
         DateTime(timezone=True),
         nullable=True,
     )
+
+    # Contresignataire Fournisseur (Avenqo / PMC Solutions AI)
+    provider_signatory_name: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+    provider_signatory_title: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+    provider_signed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    provider_signature_hash: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+
+    # Intégrité & Preuve
     sha256_hash: Mapped[str] = mapped_column(
         String(64),
         nullable=False,
@@ -102,6 +162,16 @@ class CompanyContract(TimestampMixin, Base):
         PGUUID(as_uuid=True),
         nullable=True,
     )
+    commercial_schedule_json: Mapped[dict] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict,
+    )
+    completion_record_json: Mapped[dict] = mapped_column(
+        JSON,
+        nullable=False,
+        default=dict,
+    )
     metadata_json: Mapped[dict] = mapped_column(
         JSON,
         nullable=False,
@@ -110,4 +180,3 @@ class CompanyContract(TimestampMixin, Base):
 
     company: Mapped["Company"] = relationship(back_populates="contracts")
     signatory_user: Mapped["User | None"] = relationship()
-

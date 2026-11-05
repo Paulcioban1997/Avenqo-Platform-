@@ -457,6 +457,13 @@ class Settings(BaseSettings):
     billing_business_address: str | None = Field(default=None, alias="BILLING_BUSINESS_ADDRESS")
     billing_business_tax_ids: dict[str, str] = Field(default_factory=dict, alias="BILLING_BUSINESS_TAX_IDS")
     billing_support_email: str = Field(default="info@avenqo.ca", alias="BILLING_SUPPORT_EMAIL")
+    # Provider Legal Entity & Corporate Verification Gate
+    provider_legal_name: str = Field(default="PMC SOLUTIONS AI", alias="PROVIDER_LEGAL_NAME")
+    provider_incorporation_status: str = Field(default="UNVERIFIED_PENDING_INCORPORATION", alias="PROVIDER_INCORPORATION_STATUS")
+    provider_incorporation_verified: bool = Field(default=False, alias="PROVIDER_INCORPORATION_VERIFIED")
+    provider_legal_jurisdiction: str = Field(default="Québec, Canada", alias="PROVIDER_LEGAL_JURISDICTION")
+    provider_authorized_signatory_name: str | None = Field(default=None, alias="PROVIDER_AUTHORIZED_SIGNATORY_NAME")
+    provider_contracts_published: bool = Field(default=False, alias="PROVIDER_CONTRACTS_PUBLISHED")
 
     @field_validator("cors_origins", "allowed_hosts", mode="before")
     @classmethod

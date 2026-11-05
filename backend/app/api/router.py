@@ -7,6 +7,7 @@ from backend.app.routers.ai_memory import router as ai_memory_router
 from backend.app.routers.ai_support import router as ai_support_router
 from backend.app.routers.accounting import router as accounting_router
 from backend.app.routers.admin import router as admin_router
+from backend.app.routers.ceo_command_center import router as ceo_command_center_router
 from backend.app.routers.assistants import router as assistants_router
 from backend.app.routers.auth import router as auth_router
 from backend.app.routers.billing import router as billing_router
@@ -76,6 +77,7 @@ api_router.include_router(
 )
 api_router.include_router(ai_support_router, prefix="/api/v1")
 api_router.include_router(admin_router, prefix="/api/v1")
+api_router.include_router(ceo_command_center_router, prefix="/api/v1")
 api_router.include_router(
 	assistants_router,
 	prefix="/api/v1",

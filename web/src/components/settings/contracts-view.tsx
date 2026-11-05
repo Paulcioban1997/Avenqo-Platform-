@@ -21,6 +21,9 @@ import {
   Building,
   UserCheck,
   Calendar,
+  AlertTriangle,
+  Send,
+  FileBadge,
 } from "lucide-react";
 import { apiFetch, ApiRequestError } from "@/lib/api-request";
 import { RequestFailure } from "@/components/ui/request-failure";
@@ -34,7 +37,8 @@ export interface ContractItem {
   company_id: string;
   contract_type: string;
   title: string;
-  status: "DRAFT" | "SENT" | "VIEWED" | "PENDING_SIGNATURE" | "SIGNED" | "REJECTED" | "EXPIRED" | "SUPERSEDED";
+  status: string;
+  execution_state?: string;
   version: string;
   language: string;
   signature_mode: "ELECTRONIC" | "MANUSCRIPT_WET_INK" | null;
@@ -42,6 +46,7 @@ export interface ContractItem {
   signatory_title: string | null;
   signatory_email: string | null;
   signed_at: string | null;
+  provider_signed_at?: string | null;
   sha256_hash: string;
   has_pdf: boolean;
 }
@@ -51,6 +56,7 @@ export interface ContractDetail {
   contract_type: string;
   title: string;
   status: string;
+  execution_state?: string;
   version: string;
   language: string;
   content_text: string;
@@ -59,6 +65,7 @@ export interface ContractDetail {
   signatory_title: string | null;
   signatory_email: string | null;
   signed_at: string | null;
+  provider_signed_at?: string | null;
   signature_mode: string | null;
 }
 
@@ -68,14 +75,46 @@ export function ContractsView() {
   const session = useOptionalSession();
   const isFrench = locale.startsWith("fr");
 
+  const [activeMainTab, setActiveMainTab] = useState<"wizard" | "archive">("wizard");
+  const [currentWizardStep, setCurrentWizardStep] = useState<1 | 2 | 3 | 4>(1);
+
   const [contracts, setContracts] = useState<ContractItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<ApiRequestError | null>(null);
-  const [actionBusy, setActionBusy] = useState(false);
   const [alertSuccess, setAlertSuccess] = useState<string | null>(null);
   const [alertError, setAlertError] = useState<string | null>(null);
 
-  // Modal Review & Sign State
+  // Étape 1 : Formulaire Profil Juridique
+  const [legalProfile, setLegalProfile] = useState<any>({
+    legal_name: "",
+    trade_name: "",
+    country: "Canada",
+    province_state: "Québec",
+    registration_number: "",
+    business_number: "",
+    tax_id_gst: "",
+    tax_id_qst: "",
+    registered_address_street: "",
+    registered_address_city: "",
+    registered_address_state_province: "",
+    registered_address_postal_code: "",
+    registered_address_country: "Canada",
+    phone: "",
+    general_email: "",
+    billing_email: "",
+    authorized_representative_first_name: "",
+    authorized_representative_last_name: "",
+    authorized_representative_email: "",
+    authorized_representative_title: "Président / CEO",
+    authorized_representative_capacity: "President",
+    authorized_representative_authority_confirmed: false,
+  });
+  const [profileSaving, setProfileSaving] = useState(false);
+
+  // Étape 2 : Bordereau Commercial
+  const [commercialSchedule, setCommercialSchedule] = useState<any>(null);
+
+  // Étape 3 & 4 : Modal Review & Sign State
   const [selectedContract, setSelectedContract] = useState<ContractDetail | null>(null);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [signatoryTitle, setSignatoryTitle] = useState("Président / CEO");
@@ -83,36 +122,89 @@ export function ContractsView() {
   const [consentCheckbox, setConsentCheckbox] = useState(false);
   const [signSubmitting, setSignSubmitting] = useState(false);
 
+  // Défi de signature à usage unique
+  const [challengeId, setChallengeId] = useState<string | null>(null);
+  const [challengeCode, setChallengeCode] = useState<string>("");
+  const [challengeIssuedCode, setChallengeIssuedCode] = useState<string | null>(null);
+  const [challengeLoading, setChallengeLoading] = useState(false);
+
   // Wet-ink scan upload modal
   const [wetInkContract, setWetInkContract] = useState<ContractItem | null>(null);
   const [wetInkFile, setWetInkFile] = useState<File | null>(null);
   const [wetInkSubmitting, setWetInkSubmitting] = useState(false);
   const wetInkInputRef = useRef<HTMLInputElement | null>(null);
 
-  const loadContracts = useCallback(async () => {
+  const loadContractsAndWizard = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
     try {
-      const res = await apiFetch("/api/v1/contracts", { headers: getAuthHeaders() });
-      if (!res.ok) {
-        throw new Error(isFrench ? "Impossible de charger vos contrats" : "Failed to load contracts");
+      const headers = getAuthHeaders();
+      const [resContracts, resWizard, resProfile, resOrder] = await Promise.all([
+        apiFetch("/api/v1/contracts", { headers }),
+        apiFetch("/api/v1/contracts/wizard/status", { headers }),
+        apiFetch("/api/v1/contracts/legal-profile", { headers }),
+        apiFetch("/api/v1/contracts/commercial-order", { headers }),
+      ]);
+
+      if (resContracts.ok) {
+        const data = await resContracts.json();
+        if (Array.isArray(data)) setContracts(data);
       }
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        setContracts(data);
+      if (resWizard.ok) {
+        const wizardData = await resWizard.json();
+        if (wizardData.current_step) setCurrentWizardStep(wizardData.current_step);
+      }
+      if (resProfile.ok) {
+        const prof = await resProfile.json();
+        if (prof) setLegalProfile((prev: any) => ({ ...prev, ...prof }));
+      }
+      if (resOrder.ok) {
+        const orderData = await resOrder.json();
+        setCommercialSchedule(orderData);
       }
     } catch (err: any) {
       setLoadError(err instanceof ApiRequestError ? err : new ApiRequestError("backend_error"));
     } finally {
       setLoading(false);
     }
-  }, [isFrench]);
+  }, []);
 
   useEffect(() => {
-    void loadContracts();
-  }, [loadContracts]);
+    void loadContractsAndWizard();
+  }, [loadContractsAndWizard]);
 
-  // Open contract for review & signing
+  const handleSaveLegalProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setProfileSaving(true);
+    setAlertError(null);
+    try {
+      const headers = { ...getAuthHeaders(), "Content-Type": "application/json" };
+      const res = await apiFetch("/api/v1/contracts/legal-profile", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(legalProfile),
+      });
+      if (!res.ok) {
+        const errJson = await res.json();
+        const errDetail = Array.isArray(errJson.detail)
+          ? errJson.detail.map((d: any) => d.message).join(" ")
+          : errJson.detail || "Erreur de validation du profil juridique";
+        throw new Error(errDetail);
+      }
+      setAlertSuccess(
+        isFrench
+          ? "Profil juridique et représentant légal enregistrés avec succès."
+          : "Corporate legal profile and representative saved successfully."
+      );
+      void loadContractsAndWizard();
+      setCurrentWizardStep(2);
+    } catch (err: any) {
+      setAlertError(err.message);
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
   const handleOpenReview = async (item: ContractItem) => {
     setReviewLoading(true);
     setAlertError(null);
@@ -125,6 +217,9 @@ export function ContractsView() {
       setSelectedContract(detail);
       setDeclaredAuthority(false);
       setConsentCheckbox(false);
+      setChallengeId(null);
+      setChallengeCode("");
+      setChallengeIssuedCode(null);
     } catch (err: any) {
       setAlertError(err.message);
     } finally {
@@ -132,7 +227,28 @@ export function ContractsView() {
     }
   };
 
-  // Submit electronic signature
+  const handleRequestChallenge = async () => {
+    if (!selectedContract) return;
+    setChallengeLoading(true);
+    try {
+      const headers = { ...getAuthHeaders(), "Content-Type": "application/json" };
+      const res = await apiFetch(`/api/v1/contracts/signing-challenge?contract_type=${selectedContract.contract_type}`, {
+        method: "POST",
+        headers,
+      });
+      if (res.ok) {
+        const ch = await res.json();
+        setChallengeId(ch.challenge_id);
+        setChallengeIssuedCode(ch.verification_code);
+        setChallengeCode(ch.verification_code); // Pré-saisi pour fluidité sandbox
+      }
+    } catch (e: any) {
+      setAlertError("Impossible d'émettre le jeton de sécurité.");
+    } finally {
+      setChallengeLoading(false);
+    }
+  };
+
   const handleSubmitSignature = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedContract) return;
@@ -140,45 +256,51 @@ export function ContractsView() {
     if (!declaredAuthority) {
       setAlertError(
         isFrench
-          ? "Vous devez expressément déclarer votre autorité légale pour engager l'entreprise."
-          : "You must expressly declare your legal authority to bind the company."
+          ? "Vous devez attester disposer du pouvoir d'engagement légal pour l'entreprise."
+          : "You must declare having the legal authority to bind the company."
       );
       return;
     }
     if (!consentCheckbox) {
       setAlertError(
         isFrench
-          ? "Le consentement explicite aux termes contractuels est obligatoire."
-          : "Explicit consent to contractual terms is mandatory."
+          ? "Le consentement exprès et explicite aux termes du contrat est obligatoire."
+          : "Explicit consent to the contractual terms is required."
       );
       return;
     }
 
     setSignSubmitting(true);
     setAlertError(null);
+
     try {
+      const headers = { ...getAuthHeaders(), "Content-Type": "application/json" };
+      const body = {
+        signatory_title: signatoryTitle,
+        declared_authority: declaredAuthority,
+        consent_checkbox: consentCheckbox,
+        challenge_id: challengeId,
+        challenge_code: challengeCode,
+      };
+
       const res = await apiFetch(`/api/v1/contracts/${selectedContract.contract_type}/sign`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({
-          signatory_title: signatoryTitle.trim(),
-          declared_authority: declaredAuthority,
-          consent_checkbox: consentCheckbox,
-        }),
+        headers,
+        body: JSON.stringify(body),
       });
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || (isFrench ? "Échec de la signature électronique." : "Signature failed."));
+        const errJson = await res.json();
+        throw new Error(errJson.detail || (isFrench ? "Échec de signature" : "Signing failed"));
       }
 
-      setSelectedContract(null);
       setAlertSuccess(
         isFrench
-          ? "Contrat signé électroniquement avec succès ! Un exemplaire certifié a été archivé et envoyé par courriel."
-          : "Contract electronically signed! A certified copy has been archived and emailed."
+          ? `Le contrat ${selectedContract.title} a été signé avec succès (en attente de contreseing autorisée du fournisseur).`
+          : `Agreement ${selectedContract.title} has been signed successfully (pending provider countersignature).`
       );
-      await loadContracts();
+      setSelectedContract(null);
+      void loadContractsAndWizard();
     } catch (err: any) {
       setAlertError(err.message);
     } finally {
@@ -186,37 +308,38 @@ export function ContractsView() {
     }
   };
 
-  // Upload wet-ink scanned contract
   const handleUploadWetInk = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!wetInkContract || !wetInkFile) return;
 
     setWetInkSubmitting(true);
     setAlertError(null);
+
     try {
       const formData = new FormData();
       formData.append("file", wetInkFile);
       formData.append("signatory_title", signatoryTitle);
 
-      const res = await fetch(`/api/v1/contracts/${wetInkContract.contract_type}/upload-manuscript`, {
+      const headers = getAuthHeaders();
+      const res = await apiFetch(`/api/v1/contracts/${wetInkContract.contract_type}/upload-manuscript`, {
         method: "POST",
-        headers: { ...getAuthHeaders() },
+        headers,
         body: formData,
       });
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || (isFrench ? "Échec du téléversement du contrat manuscrit." : "Upload failed."));
+        const errJson = await res.json();
+        throw new Error(errJson.detail || (isFrench ? "Échec du téléversement" : "Upload failed"));
       }
 
-      setWetInkContract(null);
-      setWetInkFile(null);
       setAlertSuccess(
         isFrench
-          ? "Contrat signé au stylo téléversé et archivé avec succès !"
-          : "Signed manuscript contract successfully uploaded and archived!"
+          ? "Contrat manuscrit téléversé. Il a été placé en attente de vérification par l'administrateur."
+          : "Manuscript agreement uploaded and queued for administrative review."
       );
-      await loadContracts();
+      setWetInkContract(null);
+      setWetInkFile(null);
+      void loadContractsAndWizard();
     } catch (err: any) {
       setAlertError(err.message);
     } finally {
@@ -224,16 +347,8 @@ export function ContractsView() {
     }
   };
 
-  // Trigger PDF download
-  const handleDownloadPdf = (contractType: string) => {
-    const url = `/api/v1/contracts/${contractType}/download`;
-    window.open(url, "_blank");
-  };
-
-  if (loadError) return <RequestFailure error={loadError} retry={() => { void loadContracts(); }} />;
-
-  const signedCount = contracts.filter((c) => c.status === "SIGNED").length;
-  const pendingCount = contracts.filter((c) => c.status !== "SIGNED").length;
+  const signedCount = contracts.filter((c) => c.status === "SIGNED" || c.status === "FULLY_EXECUTED").length;
+  const pendingCount = contracts.filter((c) => c.status === "PENDING_SIGNATURE" || c.status === "DRAFT").length;
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto pb-16">
@@ -246,12 +361,12 @@ export function ContractsView() {
             </div>
             <div>
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-[#F4F7FB]">
-                {isFrench ? "Documents juridiques — Mes contrats" : "Legal Documents — My Contracts"}
+                {isFrench ? "Contrats d'Entreprise & Onboarding Juridique" : "Enterprise Agreements & Legal Onboarding"}
               </h1>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-[#94A3B8]">
                 {isFrench
-                  ? "Accords de confidentialité, contrats d'abonnement SaaS et licences privées certifiés conformes (Loi 25 Québec & PIPEDA Canada)."
-                  : "Certified enterprise NDA, SaaS subscription agreements, and private software licenses."}
+                  ? "Parcours contractuel 4 étapes certifié : identité corporative, bordereau commercial, revue légale et signature sécurisée."
+                  : "4-step contractual onboarding journey: legal identity, commercial order, legal review, and secure execution."}
               </p>
             </div>
           </div>
@@ -259,14 +374,38 @@ export function ContractsView() {
 
         <div className="flex items-center gap-2.5">
           <button
-            onClick={() => void loadContracts()}
+            onClick={() => void loadContractsAndWizard()}
             disabled={loading}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-white/[0.08] hover:bg-slate-100 dark:hover:bg-white/[0.04] text-xs font-semibold text-slate-700 dark:text-[#F4F7FB] transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-white/[0.08] hover:bg-slate-100 dark:hover:bg-white/[0.04] text-xs font-semibold text-slate-700 dark:text-[#F4F7FB] transition-colors"
           >
             <RefreshCw size={14} className={loading ? "animate-spin text-[#0076FF]" : ""} />
             <span>{isFrench ? "Actualiser" : "Refresh"}</span>
           </button>
         </div>
+      </div>
+
+      {/* Main Tab Switcher */}
+      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-white/[0.08] pb-1">
+        <button
+          onClick={() => setActiveMainTab("wizard")}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            activeMainTab === "wizard"
+              ? "bg-[#0076FF] text-white shadow-md shadow-blue-500/20"
+              : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
+          }`}
+        >
+          {isFrench ? "Parcours d'Onboarding Contractuel (4 Étapes)" : "Contractual Onboarding (4 Steps)"}
+        </button>
+        <button
+          onClick={() => setActiveMainTab("archive")}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            activeMainTab === "archive"
+              ? "bg-[#0076FF] text-white shadow-md shadow-blue-500/20"
+              : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
+          }`}
+        >
+          {isFrench ? "Mes Contrats & Registre d'Achèvement" : "Executed Agreements & Archive"}
+        </button>
       </div>
 
       {/* Alerts */}
@@ -276,7 +415,7 @@ export function ContractsView() {
             <AlertCircle size={16} className="text-amber-600 shrink-0" />
             <span>{alertError}</span>
           </div>
-          <button onClick={() => setAlertError(null)} className="cursor-pointer">
+          <button onClick={() => setAlertError(null)}>
             <X size={14} />
           </button>
         </div>
@@ -288,359 +427,707 @@ export function ContractsView() {
             <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
             <span>{alertSuccess}</span>
           </div>
-          <button onClick={() => setAlertSuccess(null)} className="cursor-pointer">
+          <button onClick={() => setAlertSuccess(null)}>
             <X size={14} />
           </button>
         </div>
       )}
 
-      {/* KPI Overview */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="p-5 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
-          <span className="text-xs font-semibold text-slate-500">{isFrench ? "Total Contrats" : "Total Contracts"}</span>
-          <div className="text-2xl font-black text-slate-900 dark:text-white mt-1">{contracts.length}</div>
-          <p className="text-[11px] text-slate-400 mt-1">{isFrench ? "Applicables à votre entreprise" : "Applicable to your company"}</p>
-        </div>
-
-        <div className="p-5 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
-          <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">{isFrench ? "Signés & Certifiés" : "Signed & Certified"}</span>
-          <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">{signedCount}</div>
-          <p className="text-[11px] text-slate-400 mt-1">{isFrench ? "Preuves d'audit SHA-256 scellées" : "SHA-256 sealed audit trails"}</p>
-        </div>
-
-        <div className="p-5 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
-          <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">{isFrench ? "En Attente de Signature" : "Pending Signature"}</span>
-          <div className="text-2xl font-black text-amber-600 dark:text-amber-400 mt-1">{pendingCount}</div>
-          <p className="text-[11px] text-slate-400 mt-1">{isFrench ? "Requis pour activation complète" : "Required for full activation"}</p>
-        </div>
-      </div>
-
-      {/* Notice de conformité */}
-      <div className="p-4 rounded-2xl bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200/60 dark:border-blue-800/40 text-xs text-blue-900 dark:text-blue-300 flex items-start gap-3">
-        <ShieldCheck size={18} className="text-[#0076FF] shrink-0 mt-0.5" />
-        <div>
-          <span className="font-bold">{isFrench ? "Cadre d'intégrité et validité juridique :" : "Legal integrity framework:"}</span>
-          <p className="mt-0.5 text-blue-800/90 dark:text-blue-300/80 leading-relaxed">
-            {isFrench
-              ? "Tous les contrats signés numériquement sur Avenqo sont conformes à la Loi concernant le cadre juridique des technologies de l'information (Québec, c. C-1.1). Chaque document bénéficie d'une empreinte cryptographique SHA-256 immuable, d'un horodatage UTC certifié et d'un archivage privé accessible aux deux parties. Les exemplaires signés à la main au stylo peuvent également être téléversés et scellés."
-              : "All contracts digitally signed on Avenqo comply with Quebec IT legal frameworks (CQLR c. C-1.1) and PIPEDA. Documents are cryptographically sealed with SHA-256 and immutable UTC timestamps."}
-          </p>
-        </div>
-      </div>
-
-      {/* Contracts List */}
-      <div className="p-6 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs space-y-4">
-        <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-white/[0.06]">
-          <h2 className="text-base font-extrabold text-slate-900 dark:text-[#F4F7FB] flex items-center gap-2">
-            <FileText size={18} className="text-[#0076FF]" />
-            <span>{isFrench ? "Registres contractuels du locataire" : "Tenant Contractual Registry"}</span>
-          </h2>
-          <span className="text-xs text-slate-400">
-            {isFrench ? "Version contractuelle officielle 2026-V1" : "Official 2026-V1 contract version"}
-          </span>
-        </div>
-
-        {loading ? (
-          <div className="py-12 text-center text-xs text-slate-400">
-            <RefreshCw size={20} className="animate-spin text-[#0076FF] mx-auto mb-2" />
-            <span>{isFrench ? "Chargement de vos contrats..." : "Loading contracts..."}</span>
-          </div>
-        ) : contracts.length === 0 ? (
-          <div className="py-12 text-center text-xs text-slate-400">
-            <FileText size={24} className="mx-auto mb-2 text-slate-300" />
-            <span>{isFrench ? "Aucun contrat disponible pour le moment." : "No contracts available."}</span>
-          </div>
-        ) : (
-          <div className="divide-y divide-slate-100 dark:divide-white/[0.06]">
-            {contracts.map((item) => {
-              const isSigned = item.status === "SIGNED";
-
+      {/* WIZARD VIEW */}
+      {activeMainTab === "wizard" && (
+        <div className="space-y-6">
+          {/* Progress Indicator */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {[
+              { step: 1, label: isFrench ? "1. Profil Juridique" : "1. Business Info" },
+              { step: 2, label: isFrench ? "2. Bordereau Commercial" : "2. Commercial Order" },
+              { step: 3, label: isFrench ? "3. Revue des Accords" : "3. Review Agreements" },
+              { step: 4, label: isFrench ? "4. Signature Sécurisée" : "4. Verify & Sign" },
+            ].map((s) => {
+              const isDone = s.step < currentWizardStep;
+              const isCurr = s.step === currentWizardStep;
               return (
-                <div key={item.id} className="py-4.5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="space-y-1 min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-extrabold text-sm text-slate-900 dark:text-white">{item.title}</span>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-white/[0.06] text-slate-600 dark:text-slate-300">
-                        {item.contract_type}
-                      </span>
-                      {isSigned ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200/50">
-                          <CheckCircle2 size={11} />
-                          <span>{isFrench ? "Signé & Certifié" : "Signed & Certified"}</span>
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200/50">
-                          <Clock size={11} />
-                          <span>{isFrench ? "En attente de signature" : "Pending Signature"}</span>
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="text-xs text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-x-4 gap-y-1">
-                      <span>Réf : {item.contract_type}-{item.version}</span>
-                      {isSigned && item.signed_at && (
-                        <span>Signé le : {new Date(item.signed_at).toLocaleDateString(locale, { year: "numeric", month: "long", day: "numeric" })}</span>
-                      )}
-                      {isSigned && item.signatory_name && (
-                        <span>Par : {item.signatory_name} ({item.signatory_title || "Dirigeant"})</span>
-                      )}
-                      {isSigned && item.signature_mode && (
-                        <span>Mode : {item.signature_mode === "ELECTRONIC" ? "Numérique 1-Clic" : "Manuscrit (Stylo)"}</span>
-                      )}
-                      {item.sha256_hash && (
-                        <span className="font-mono text-[10px] text-slate-400 truncate max-w-xs" title={item.sha256_hash}>
-                          SHA : {item.sha256_hash.slice(0, 16)}...
-                        </span>
-                      )}
-                    </div>
+                <button
+                  key={s.step}
+                  onClick={() => setCurrentWizardStep(s.step as any)}
+                  className={`p-3 rounded-2xl text-left border transition-all ${
+                    isCurr
+                      ? "bg-blue-50/70 dark:bg-[#111D3D] border-[#0076FF] text-[#0076FF]"
+                      : isDone
+                      ? "bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800 text-emerald-700"
+                      : "bg-slate-50 dark:bg-white/[0.03] border-slate-200/80 dark:border-white/[0.08] text-slate-500"
+                  }`}
+                >
+                  <div className="text-[10px] font-bold uppercase tracking-wider">
+                    {isDone ? "✓ Terminé" : isCurr ? "En cours" : "À venir"}
                   </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => handleDownloadPdf(item.contract_type)}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-white/[0.08] hover:bg-slate-100 dark:hover:bg-white/[0.04] text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors cursor-pointer"
-                      title={isSigned ? "Télécharger le PDF signé" : "Télécharger le PDF pour impression"}
-                    >
-                      <Download size={13} />
-                      <span>{isSigned ? (isFrench ? "PDF Signé" : "Signed PDF") : (isFrench ? "Imprimer PDF" : "Print PDF")}</span>
-                    </button>
-
-                    {!isSigned && (
-                      <>
-                        <button
-                          onClick={() => void handleOpenReview(item)}
-                          disabled={reviewLoading}
-                          className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
-                        >
-                          <FileCheck size={13} />
-                          <span>{isFrench ? "Signer en ligne" : "E-Sign Online"}</span>
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            setWetInkContract(item);
-                            setWetInkFile(null);
-                          }}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-white/[0.08] hover:bg-slate-100 dark:hover:bg-white/[0.04] text-xs font-semibold text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
-                          title="Téléverser le contrat signé au stylo"
-                        >
-                          <Upload size={13} />
-                          <span>{isFrench ? "Scan Stylo" : "Upload Scan"}</span>
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
+                  <div className="text-xs font-extrabold mt-0.5">{s.label}</div>
+                </button>
               );
             })}
           </div>
-        )}
-      </div>
 
-      {/* Modal: Review & E-Sign Contract */}
-      {selectedContract && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs">
-          <div className="w-full max-w-3xl max-h-[90vh] flex flex-col rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200 dark:border-white/[0.08] shadow-2xl overflow-hidden">
-            {/* Header */}
-            <div className="p-5 border-b border-slate-100 dark:border-white/[0.06] flex items-center justify-between">
+          {/* STEP 1: BUSINESS INFORMATION */}
+          {currentWizardStep === 1 && (
+            <div className="p-6 rounded-3xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-sm space-y-6">
               <div>
                 <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
-                  {selectedContract.title}
+                  {isFrench ? "Étape 1 : Identité Corporative & Représentant Légal" : "Step 1: Legal Entity & Signatory"}
                 </h3>
-                <span className="text-xs text-slate-500">
-                  Réf : {selectedContract.contract_type} — Version {selectedContract.version}
-                </span>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {isFrench
+                    ? "Veuillez renseigner les coordonnées officielles exactes qui figureront sur vos contrats certifiés (Loi 25 et LCCJTI)."
+                    : "Enter your official company details to be interpolated into your certified legal agreements."}
+                </p>
               </div>
-              <button
-                onClick={() => setSelectedContract(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-            </div>
 
-            {/* Contract Body (Scrollable) */}
-            <div className="p-6 overflow-y-auto flex-1 font-mono text-xs leading-relaxed text-slate-800 dark:text-slate-200 bg-slate-50/50 dark:bg-white/[0.02] border-b border-slate-100 dark:border-white/[0.06] whitespace-pre-wrap select-text">
-              {selectedContract.content_text}
-            </div>
-
-            {/* Signature Form */}
-            <form onSubmit={handleSubmitSignature} className="p-5 bg-white dark:bg-[#0B132B] space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    {isFrench ? "Signataire (Nom & Prénom)" : "Signatory (Full Name)"}
-                  </label>
-                  <input
-                    type="text"
-                    disabled
-                    value={session?.identity?.user ? `${session.identity.user.first_name} ${session.identity.user.last_name}` : "Utilisateur connecté"}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-white/[0.05] border border-slate-200 dark:border-white/[0.08] text-slate-600 dark:text-slate-400 cursor-not-allowed"
-                  />
+              <form onSubmit={handleSaveLegalProfile} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      {isFrench ? "Dénomination légale complète *" : "Full Legal Entity Name *"}
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={legalProfile.legal_name || ""}
+                      onChange={(e) => setLegalProfile({ ...legalProfile, legal_name: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-white/[0.02] text-xs font-semibold text-slate-900 dark:text-white"
+                      placeholder="Ex: Acme Solutions Canada Inc."
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      {isFrench ? "Nom commercial / Nom d'usage (si différent)" : "Trade Name (optional)"}
+                    </label>
+                    <input
+                      type="text"
+                      value={legalProfile.trade_name || ""}
+                      onChange={(e) => setLegalProfile({ ...legalProfile, trade_name: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-white/[0.02] text-xs font-semibold text-slate-900 dark:text-white"
+                      placeholder="Ex: Acme AI"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    {isFrench ? "Fonction / Titre légal dans l'entreprise *" : "Corporate Title / Authority *"}
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={signatoryTitle}
-                    onChange={(e) => setSignatoryTitle(e.target.value)}
-                    placeholder="ex. Président, CEO, Directeur Général"
-                    className="w-full px-3 py-2 rounded-xl bg-white dark:bg-white/[0.04] border border-slate-300 dark:border-white/[0.1] text-slate-900 dark:text-white focus:outline-none focus:border-[#0076FF]"
-                  />
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      {isFrench ? "Pays d'immatriculation *" : "Country *"}
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={legalProfile.country || ""}
+                      onChange={(e) => setLegalProfile({ ...legalProfile, country: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-white/[0.02] text-xs font-semibold text-slate-900 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      {isFrench ? "Province / État / Région *" : "Province / State *"}
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={legalProfile.province_state || ""}
+                      onChange={(e) => setLegalProfile({ ...legalProfile, province_state: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-white/[0.02] text-xs font-semibold text-slate-900 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      {legalProfile.country?.toLowerCase() === "canada" &&
+                      legalProfile.province_state?.toLowerCase().includes("qu")
+                        ? "NEQ (10 chiffres) *"
+                        : isFrench
+                        ? "N° d'enregistrement / Registre"
+                        : "Registration / State Number"}
+                    </label>
+                    <input
+                      type="text"
+                      value={legalProfile.registration_number || ""}
+                      onChange={(e) => setLegalProfile({ ...legalProfile, registration_number: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-white/[0.02] text-xs font-semibold text-slate-900 dark:text-white font-mono"
+                      placeholder="Ex: 1178945612"
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div className="space-y-2 pt-1 text-xs text-slate-700 dark:text-slate-300">
-                <label className="flex items-start gap-2.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={declaredAuthority}
-                    onChange={(e) => setDeclaredAuthority(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 rounded accent-[#0076FF]"
-                  />
-                  <span>
-                    {isFrench
-                      ? "Je déclare sur l'honneur détenir le pouvoir légal et statutaire nécessaire pour engager juridiquement l'entreprise au présent contrat."
-                      : "I declare under penalty of law that I hold the legal authority to bind the company to this agreement."}
-                  </span>
-                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      {isFrench ? "Adresse du siège légal *" : "Registered Street Address *"}
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={legalProfile.registered_address_street || ""}
+                      onChange={(e) => setLegalProfile({ ...legalProfile, registered_address_street: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-white/[0.02] text-xs font-semibold text-slate-900 dark:text-white"
+                      placeholder="Ex: 1250 Boulevard René-Lévesque O"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      {isFrench ? "Ville *" : "City *"}
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={legalProfile.registered_address_city || ""}
+                      onChange={(e) => setLegalProfile({ ...legalProfile, registered_address_city: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-white/[0.02] text-xs font-semibold text-slate-900 dark:text-white"
+                      placeholder="Montréal"
+                    />
+                  </div>
+                </div>
 
-                <label className="flex items-start gap-2.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={consentCheckbox}
-                    onChange={(e) => setConsentCheckbox(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 rounded accent-[#0076FF]"
-                  />
-                  <span>
-                    {isFrench
-                      ? "J'ai lu, compris et j'accepte expressément l'intégralité des termes et conditions du contrat ci-dessus (signature électronique conforme RLRQ c. C-1.1)."
-                      : "I have read, understood, and agree to the full terms and conditions above (compliant digital e-signature)."}
-                  </span>
-                </label>
-              </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      {isFrench ? "Code Postal *" : "Postal Code *"}
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={legalProfile.registered_address_postal_code || ""}
+                      onChange={(e) => setLegalProfile({ ...legalProfile, registered_address_postal_code: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-white/[0.02] text-xs font-semibold text-slate-900 dark:text-white"
+                      placeholder="H3B 4W8"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      {isFrench ? "Téléphone professionnel *" : "Phone *"}
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={legalProfile.phone || ""}
+                      onChange={(e) => setLegalProfile({ ...legalProfile, phone: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-white/[0.02] text-xs font-semibold text-slate-900 dark:text-white"
+                      placeholder="+1-514-555-0100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      {isFrench ? "Courriel de facturation *" : "Billing Email *"}
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      value={legalProfile.billing_email || ""}
+                      onChange={(e) => setLegalProfile({ ...legalProfile, billing_email: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-white/[0.02] text-xs font-semibold text-slate-900 dark:text-white"
+                      placeholder="facturation@acme.ca"
+                    />
+                  </div>
+                </div>
 
-              <div className="flex items-center justify-between pt-2">
-                <button
-                  type="button"
-                  onClick={() => handleDownloadPdf(selectedContract.contract_type)}
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-700 dark:hover:text-white"
-                >
-                  <Download size={13} />
-                  <span>{isFrench ? "Télécharger pour signature au stylo" : "Download to sign by hand"}</span>
-                </button>
+                <div className="pt-4 border-t border-slate-100 dark:border-white/[0.06]">
+                  <h4 className="text-xs font-black uppercase text-slate-500 mb-3">
+                    {isFrench ? "Signataire & Représentant Autorisé" : "Authorized Signatory"}
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        {isFrench ? "Prénom *" : "First Name *"}
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={legalProfile.authorized_representative_first_name || ""}
+                        onChange={(e) =>
+                          setLegalProfile({ ...legalProfile, authorized_representative_first_name: e.target.value })
+                        }
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-white/[0.02] text-xs font-semibold text-slate-900 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        {isFrench ? "Nom de famille *" : "Last Name *"}
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={legalProfile.authorized_representative_last_name || ""}
+                        onChange={(e) =>
+                          setLegalProfile({ ...legalProfile, authorized_representative_last_name: e.target.value })
+                        }
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-white/[0.02] text-xs font-semibold text-slate-900 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        {isFrench ? "Courriel professionnel *" : "Professional Email *"}
+                      </label>
+                      <input
+                        type="email"
+                        required
+                        value={legalProfile.authorized_representative_email || ""}
+                        onChange={(e) =>
+                          setLegalProfile({ ...legalProfile, authorized_representative_email: e.target.value })
+                        }
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-white/[0.02] text-xs font-semibold text-slate-900 dark:text-white"
+                      />
+                    </div>
+                  </div>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedContract(null)}
-                    className="px-4 py-2 rounded-xl border border-slate-200 dark:border-white/[0.08] hover:bg-slate-100 dark:hover:bg-white/[0.04] text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer"
-                  >
-                    {isFrench ? "Annuler" : "Cancel"}
-                  </button>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        {isFrench ? "Fonction / Titre *" : "Job Title *"}
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={legalProfile.authorized_representative_title || ""}
+                        onChange={(e) =>
+                          setLegalProfile({ ...legalProfile, authorized_representative_title: e.target.value })
+                        }
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-white/[0.02] text-xs font-semibold text-slate-900 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        {isFrench ? "Qualité d'engagement légal *" : "Legal Capacity *"}
+                      </label>
+                      <select
+                        value={legalProfile.authorized_representative_capacity || "Owner"}
+                        onChange={(e) =>
+                          setLegalProfile({ ...legalProfile, authorized_representative_capacity: e.target.value })
+                        }
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-white/[0.02] text-xs font-semibold text-slate-900 dark:text-white"
+                      >
+                        <option value="Owner">Owner / Propriétaire</option>
+                        <option value="President">President / Président</option>
+                        <option value="CEO">CEO / Directeur Général</option>
+                        <option value="Authorized Director">Authorized Director / Administrateur</option>
+                        <option value="Authorized Officer">Authorized Officer / Dirigeant</option>
+                        <option value="Authorized Representative">Authorized Representative / Mandataire</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 p-3.5 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08]">
+                    <label className="flex items-start gap-2.5 cursor-pointer text-xs font-semibold text-slate-800 dark:text-slate-200">
+                      <input
+                        type="checkbox"
+                        checked={legalProfile.authorized_representative_authority_confirmed || false}
+                        onChange={(e) =>
+                          setLegalProfile({
+                            ...legalProfile,
+                            authorized_representative_authority_confirmed: e.target.checked,
+                          })
+                        }
+                        className="mt-0.5 rounded text-[#0076FF]"
+                      />
+                      <span>
+                        {isFrench
+                          ? "J'atteste expressément disposer de l'autorité et du pouvoir d'engagement légal pour représenter et lier l'entreprise dans le cadre des accords commerciaux Avenqo."
+                          : "I expressly declare that I possess the legal authority and binding power to represent the company in Avenqo enterprise agreements."}
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2">
                   <button
                     type="submit"
-                    disabled={signSubmitting || !declaredAuthority || !consentCheckbox}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] disabled:opacity-50 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                    disabled={profileSaving}
+                    className="px-6 py-2.5 rounded-xl bg-[#0076FF] hover:bg-blue-600 text-white font-bold text-xs shadow-md transition-all"
                   >
-                    <ShieldCheck size={14} />
-                    <span>{signSubmitting ? (isFrench ? "Signature en cours..." : "Signing...") : (isFrench ? "Signer électroniquement" : "Sign Electronically")}</span>
+                    {profileSaving
+                      ? "Enregistrement..."
+                      : isFrench
+                      ? "Enregistrer & Passer à l'Étape 2 →"
+                      : "Save & Proceed to Step 2 →"}
                   </button>
                 </div>
+              </form>
+            </div>
+          )}
+
+          {/* STEP 2: COMMERCIAL CONFIGURATION */}
+          {currentWizardStep === 2 && commercialSchedule && (
+            <div className="p-6 rounded-3xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-sm space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                    {isFrench ? "Étape 2 : Bordereau de Commande Commerciale Dynamique" : "Step 2: Commercial Order Schedule"}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {isFrench
+                      ? "Réconciliation stricte entre votre forfait souscrit, les modules activés et la tarification Stripe."
+                      : "Strict reconciliation between plan, active modules, and configured Stripe price IDs."}
+                  </p>
+                </div>
+                <div>
+                  {commercialSchedule.is_blocked ? (
+                    <span className="px-3 py-1 rounded-full bg-red-100 text-red-800 text-xs font-bold flex items-center gap-1.5">
+                      <AlertTriangle size={14} /> COMMERCIAL_CONFIG_MISMATCH
+                    </span>
+                  ) : (
+                    <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center gap-1.5">
+                      <CheckCircle2 size={14} /> CONCORDANCE VÉRIFIÉE
+                    </span>
+                  )}
+                </div>
               </div>
-            </form>
+
+              {commercialSchedule.is_blocked && (
+                <div className="p-4 rounded-2xl bg-red-50 dark:bg-red-950/30 border border-red-300 dark:border-red-800/40 text-red-900 dark:text-red-200 text-xs space-y-1">
+                  <div className="font-bold flex items-center gap-1.5">
+                    <AlertTriangle size={16} /> Signature bloquée (Divergence commerciale détectée) :
+                  </div>
+                  <ul className="list-disc pl-5 space-y-0.5">
+                    {commercialSchedule.mismatches?.map((m: string, i: number) => (
+                      <li key={i}>{m}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.06]">
+                  <span className="text-xs text-slate-500">Forfait Souscrit</span>
+                  <div className="text-lg font-black text-slate-900 dark:text-white mt-0.5 uppercase">
+                    {commercialSchedule.plan_name}
+                  </div>
+                  <div className="text-xs text-slate-400 mt-1">
+                    {commercialSchedule.monthly_price} {commercialSchedule.currency} / mois
+                  </div>
+                </div>
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.06]">
+                  <span className="text-xs text-slate-500">Plafond de Modules</span>
+                  <div className="text-lg font-black text-slate-900 dark:text-white mt-0.5">
+                    {commercialSchedule.selected_modules?.length || 0} / {commercialSchedule.max_selectable_modules || "∞"}
+                  </div>
+                  <div className="text-xs text-slate-400 mt-1">
+                    {commercialSchedule.selected_modules?.join(", ") || "Accès socle"}
+                  </div>
+                </div>
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.06]">
+                  <span className="text-xs text-slate-500">Crédits IA Mensuels</span>
+                  <div className="text-lg font-black text-slate-900 dark:text-white mt-0.5">
+                    {commercialSchedule.included_ai_credits?.toLocaleString() || "Illimité"}
+                  </div>
+                  <div className="text-xs text-slate-400 mt-1">Rechargements optionnels</div>
+                </div>
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.06]">
+                  <span className="text-xs text-slate-500">Cycle & Résiliation</span>
+                  <div className="text-lg font-black text-slate-900 dark:text-white mt-0.5">Libre</div>
+                  <div className="text-xs text-slate-400 mt-1">Sans pénalité à tout moment</div>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.03] text-xs text-slate-600 dark:text-slate-300 space-y-1">
+                <div>
+                  <b>Conditions fiscales :</b> {commercialSchedule.applicable_taxes}
+                </div>
+                <div>
+                  <b>Renouvellement :</b> {commercialSchedule.renewal_terms}
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center pt-2">
+                <button
+                  onClick={() => setCurrentWizardStep(1)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                >
+                  ← {isFrench ? "Modifier Profil Juridique" : "Edit Business Info"}
+                </button>
+                <button
+                  disabled={commercialSchedule.is_blocked}
+                  onClick={() => setCurrentWizardStep(3)}
+                  className={`px-6 py-2.5 rounded-xl text-white font-bold text-xs shadow-md transition-all ${
+                    commercialSchedule.is_blocked ? "bg-slate-400 cursor-not-allowed" : "bg-[#0076FF] hover:bg-blue-600"
+                  }`}
+                >
+                  {isFrench ? "Examiner les Contrats (Étape 3) →" : "Review Agreements (Step 3) →"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 3 & 4: REVIEW & SIGN */}
+          {(currentWizardStep === 3 || currentWizardStep === 4) && (
+            <div className="p-6 rounded-3xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-sm space-y-6">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                  {currentWizardStep === 3
+                    ? isFrench
+                      ? "Étape 3 : Revue Exhaustive des Accords Contractuels"
+                      : "Step 3: Comprehensive Agreements Review"
+                    : isFrench
+                    ? "Étape 4 : Vérification, Défi Anti-Rejeu & Signature"
+                    : "Step 4: Verify Identity & Sign"}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {isFrench
+                    ? "Tous les documents ci-dessous intègrent votre profil juridique vérifié et les barèmes officiels."
+                    : "The agreements below incorporate your verified corporate identity and official order schedule."}
+                </p>
+              </div>
+
+              {/* Notice Bac à sable */}
+              <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-300 dark:border-amber-800/40 text-amber-900 dark:text-amber-300 text-xs leading-relaxed flex items-start gap-3">
+                <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold">
+                    {isFrench ? "Environnement Bac à Sable (Sandbox) :" : "Sandbox Environment Notice:"}
+                  </span>
+                  <p className="mt-0.5">
+                    {isFrench
+                      ? "PMC Solutions AI est actuellement en cours d'incorporation au Québec, Canada. Vos signatures apposées constituent une validation pilote d'entreprise dans l'environnement bac à sable. La contresignature finale sera effectuée dès publication du certificat officiel d'incorporation."
+                      : "PMC Solutions AI is currently in the process of incorporation in Quebec, Canada. Contracts signed in this environment are sandbox-verified and await official corporate countersignature."}
+                  </p>
+                </div>
+              </div>
+
+              {/* Grid of Contracts to Review/Sign */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {contracts.map((item) => {
+                  const isSigned = item.status === "SIGNED" || item.status === "FULLY_EXECUTED";
+                  return (
+                    <div
+                      key={item.id}
+                      className="p-5 rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-slate-50/50 dark:bg-white/[0.02] flex flex-col justify-between gap-4"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-200/60 dark:bg-white/[0.06] text-slate-600 dark:text-slate-300 font-bold">
+                            {item.contract_type} ({item.version})
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              isSigned
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-amber-100 text-amber-800"
+                            }`}
+                          >
+                            {item.status}
+                          </span>
+                        </div>
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white mt-2">{item.title}</h4>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-2 border-t border-slate-200/60 dark:border-white/[0.06]">
+                        <button
+                          onClick={() => handleOpenReview(item)}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/[0.1] text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 shadow-xs"
+                        >
+                          <Eye size={13} />
+                          {isFrench ? "Consulter & Signer" : "Review & Sign"}
+                        </button>
+                        <a
+                          href={`/api/v1/contracts/${item.contract_type}/download`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/[0.1] text-slate-600 hover:text-[#0076FF]"
+                          title={isFrench ? "Télécharger le PDF" : "Download PDF"}
+                        >
+                          <Download size={15} />
+                        </a>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ARCHIVE VIEW */}
+      {activeMainTab === "archive" && (
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-slate-200/80 dark:border-white/[0.08] overflow-hidden bg-white dark:bg-[#0B132B]">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-slate-50 dark:bg-white/[0.03] text-slate-500 border-b border-slate-200/80 dark:border-white/[0.08]">
+                <tr>
+                  <th className="p-3 font-bold">{isFrench ? "Contrat" : "Agreement"}</th>
+                  <th className="p-3 font-bold">{isFrench ? "Statut" : "Status"}</th>
+                  <th className="p-3 font-bold">{isFrench ? "Signataire" : "Signatory"}</th>
+                  <th className="p-3 font-bold">{isFrench ? "Empreinte SHA-256" : "SHA-256"}</th>
+                  <th className="p-3 font-bold">{isFrench ? "Téléchargement" : "Download"}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
+                {contracts.map((c) => (
+                  <tr key={c.id} className="hover:bg-slate-50/50 dark:hover:bg-white/[0.02]">
+                    <td className="p-3 font-semibold text-slate-900 dark:text-white">
+                      <div>{c.title}</div>
+                      <div className="text-[10px] text-slate-400 font-mono">{c.contract_type}</div>
+                    </td>
+                    <td className="p-3">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          c.status === "FULLY_EXECUTED"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : c.status === "SIGNED"
+                            ? "bg-blue-100 text-blue-800"
+                            : "bg-amber-100 text-amber-800"
+                        }`}
+                      >
+                        {c.status}
+                      </span>
+                    </td>
+                    <td className="p-3 text-slate-600 dark:text-slate-300">
+                      {c.signatory_name || "En attente"}
+                      {c.signed_at && <div className="text-[10px] text-slate-400">{c.signed_at.slice(0, 10)}</div>}
+                    </td>
+                    <td className="p-3 font-mono text-[10px] text-slate-500">
+                      {c.sha256_hash ? `${c.sha256_hash.slice(0, 16)}...` : "—"}
+                    </td>
+                    <td className="p-3">
+                      <a
+                        href={`/api/v1/contracts/${c.contract_type}/download`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-[#0076FF] hover:underline font-bold"
+                      >
+                        <Download size={13} /> PDF
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
 
-      {/* Modal: Wet-Ink Scan Upload */}
-      {wetInkContract && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs">
-          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200 dark:border-white/[0.08] shadow-2xl p-6 space-y-4">
-            <div className="flex items-start justify-between gap-3">
+      {/* MODAL : CONSULTATION & SIGNATURE ÉLECTRONIQUE */}
+      {selectedContract && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-white dark:bg-[#0B132B] rounded-3xl border border-slate-200 dark:border-white/[0.1] max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="p-5 border-b border-slate-200 dark:border-white/[0.08] flex items-center justify-between">
               <div>
-                <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
-                  {isFrench ? "Téléverser le contrat signé au stylo" : "Upload Wet-Ink Signed Contract"}
+                <span className="text-[10px] font-mono font-bold text-slate-400 uppercase">
+                  {selectedContract.contract_type} • {selectedContract.version}
+                </span>
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white mt-0.5">
+                  {selectedContract.title}
                 </h3>
-                <span className="text-xs text-slate-500">{wetInkContract.title}</span>
               </div>
-              <button
-                onClick={() => setWetInkContract(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
-              >
-                <X size={16} />
+              <button onClick={() => setSelectedContract(null)} className="text-slate-400 hover:text-slate-600">
+                <X size={18} />
               </button>
             </div>
 
-            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-              {isFrench
-                ? "Téléchargez le contrat PDF, imprimez-le, apposez votre signature manuscrite à l'encre, puis numérisez ou photographiez le document complet pour archivage permanent certifié."
-                : "Print the PDF contract, sign with ink, and upload the scanned document for certified permanent archiving."}
-            </p>
+            <div className="p-5 overflow-y-auto flex-1 font-mono text-xs leading-relaxed text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-[#060A17] whitespace-pre-wrap select-text">
+              {selectedContract.content_text}
+            </div>
 
-            <form onSubmit={handleUploadWetInk} className="space-y-4 pt-1">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  {isFrench ? "Titre / Fonction du signataire" : "Signatory Title"}
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={signatoryTitle}
-                  onChange={(e) => setSignatoryTitle(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 dark:bg-white/[0.04] border border-slate-300 dark:border-white/[0.08] text-slate-900 dark:text-white"
-                />
-              </div>
-
-              <div>
-                <input
-                  ref={wetInkInputRef}
-                  type="file"
-                  accept=".pdf,.png,.jpg,.jpeg"
-                  className="hidden"
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      setWetInkFile(e.target.files[0]);
-                    }
-                  }}
-                />
-                <div
-                  onClick={() => wetInkInputRef.current?.click()}
-                  className="p-6 border-2 border-dashed rounded-xl text-center cursor-pointer hover:border-[#0076FF] transition-colors bg-slate-50 dark:bg-white/[0.02]"
-                >
-                  <Upload size={22} className="mx-auto mb-2 text-[#0076FF]" />
-                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                    {wetInkFile ? wetInkFile.name : (isFrench ? "Cliquer pour sélectionner le scan / photo du contrat signé" : "Click to select signed scan")}
-                  </span>
-                  <p className="text-[10px] text-slate-400 mt-1">PDF, PNG, JPG jusqu'à 25 Mo</p>
+            <div className="p-5 border-t border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#0B132B] space-y-4">
+              {/* Jeton / Défi de signature anti-rejeu */}
+              {!challengeId ? (
+                <div className="p-3.5 rounded-xl bg-blue-50 dark:bg-[#111D3D] border border-blue-200 dark:border-blue-900 flex items-center justify-between">
+                  <div className="text-xs text-blue-900 dark:text-blue-200">
+                    <b>Émission du jeton de sécurité :</b> Un code de signature à usage unique est requis.
+                  </div>
+                  <button
+                    onClick={handleRequestChallenge}
+                    disabled={challengeLoading}
+                    className="px-3 py-1.5 rounded-xl bg-[#0076FF] text-white text-xs font-bold"
+                  >
+                    {challengeLoading ? "Génération..." : "Obtenir mon code"}
+                  </button>
                 </div>
-              </div>
+              ) : (
+                <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 text-xs text-emerald-900 dark:text-emerald-200 flex items-center justify-between">
+                  <div>
+                    <b>Code de confirmation émis :</b>{" "}
+                    <span className="font-mono text-sm font-black tracking-widest text-[#0076FF]">
+                      {challengeIssuedCode}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400">Usage unique • 15 min</span>
+                </div>
+              )}
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-white/[0.06]">
-                <button
-                  type="button"
-                  onClick={() => setWetInkContract(null)}
-                  className="px-4 py-2 rounded-xl border border-slate-200 dark:border-white/[0.08] hover:bg-slate-100 dark:hover:bg-white/[0.04] text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer"
-                >
-                  {isFrench ? "Annuler" : "Cancel"}
-                </button>
-                <button
-                  type="submit"
-                  disabled={wetInkSubmitting || !wetInkFile}
-                  className="px-4 py-2 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] disabled:opacity-50 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
-                >
-                  {wetInkSubmitting ? (isFrench ? "Téléversement..." : "Uploading...") : (isFrench ? "Valider et Archiver" : "Submit & Archive")}
-                </button>
-              </div>
-            </form>
+              <form onSubmit={handleSubmitSignature} className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      {isFrench ? "Titre / Fonction légale *" : "Job Title *"}
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={signatoryTitle}
+                      onChange={(e) => setSignatoryTitle(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-white/[0.02] text-xs font-semibold text-slate-900 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      {isFrench ? "Code de signature à 6 chiffres *" : "Verification Code *"}
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={challengeCode}
+                      onChange={(e) => setChallengeCode(e.target.value)}
+                      placeholder="Ex: 849201"
+                      className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-white/[0.02] text-xs font-mono font-bold text-slate-900 dark:text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2 pt-1">
+                  <label className="flex items-start gap-2 cursor-pointer text-xs font-medium text-slate-700 dark:text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={declaredAuthority}
+                      onChange={(e) => setDeclaredAuthority(e.target.checked)}
+                      className="mt-0.5 rounded text-[#0076FF]"
+                    />
+                    <span>
+                      {isFrench
+                        ? "Je confirme expressément avoir l'autorité légale et le pouvoir d'engagement pour lier l'entreprise."
+                        : "I expressly confirm having the legal authority and binding power to commit the company."}
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-2 cursor-pointer text-xs font-medium text-slate-700 dark:text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={consentCheckbox}
+                      onChange={(e) => setConsentCheckbox(e.target.checked)}
+                      className="mt-0.5 rounded text-[#0076FF]"
+                    />
+                    <span>
+                      {isFrench
+                        ? "J'accepte expressément les termes légaux et consens à l'utilisation de la signature électronique."
+                        : "I expressly agree to the terms and consent to the use of electronic records and signatures."}
+                    </span>
+                  </label>
+                </div>
+
+                <div className="flex justify-between items-center pt-3 border-t border-slate-100 dark:border-white/[0.06]">
+                  <a
+                    href={`/api/v1/contracts/${selectedContract.contract_type}/download`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800"
+                  >
+                    <Download size={13} /> {isFrench ? "Télécharger le brouillon PDF" : "Download Draft PDF"}
+                  </a>
+                  <button
+                    type="submit"
+                    disabled={signSubmitting || !declaredAuthority || !consentCheckbox || !challengeId}
+                    className="px-6 py-2 rounded-xl bg-[#0076FF] hover:bg-blue-600 disabled:bg-slate-300 text-white font-bold text-xs shadow-md transition-all"
+                  >
+                    {signSubmitting ? "Signature en cours..." : isFrench ? "Signer Numériquement (1-Clic)" : "Sign Digitally (1-Click)"}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}
     </div>
   );
 }
-

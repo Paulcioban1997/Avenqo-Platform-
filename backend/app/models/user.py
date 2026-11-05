@@ -47,6 +47,9 @@ class User(TimestampMixin, Base):
     # Indépendant du rôle tenant (owner/admin/...) : jamais activé automatiquement,
     # doit être positionné explicitement (ex. script d'exploitation Avenqo).
     is_platform_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Rôle plateforme audité à moindre privilège :
+    # PLATFORM_SUPER_ADMIN, PLATFORM_FINANCE, PLATFORM_SUPPORT_READONLY, PLATFORM_SECURITY_AUDITOR
+    platform_role: Mapped[str | None] = mapped_column(String(64), nullable=True)
     email_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,

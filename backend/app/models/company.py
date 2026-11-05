@@ -84,3 +84,9 @@ class Company(TimestampMixin, Base):
         back_populates="company",
         cascade="all, delete-orphan",
     )
+    legal_profile: Mapped["CompanyLegalProfile | None"] = relationship(
+        "CompanyLegalProfile",
+        back_populates="company",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
