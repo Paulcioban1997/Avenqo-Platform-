@@ -381,3 +381,14 @@ def test_ceo_command_center_rbac_matrix(db_session: Session):
     super_identity = CurrentIdentity(auth_session=None, user=super_user, raw_token="token")
     assert dep_sec(super_identity) == super_identity
     assert dep_fin(super_identity) == super_identity
+
+
+def test_platform_admin_without_explicit_role_cannot_use_executive_endpoints(db_session: Session):
+    company = _create_company(db_session)
+    legacy_admin = _create_user(
+        db_session, company, role=UserRole.OWNER, is_platform_admin=True, platform_role=None
+    )
+    identity = CurrentIdentity(auth_session=None, user=legacy_admin, raw_token="test-token")
+    with pytest.raises(Exception) as exc:
+        require_platform_role("PLATFORM_SUPER_ADMIN")(identity)
+    assert exc.value.status_code == 403

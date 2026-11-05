@@ -215,7 +215,19 @@ def require_platform_role(*allowed_roles: str):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Accès réservé aux administrateurs de la plateforme Avenqo",
             )
-        current_role = identity.user.platform_role or "PLATFORM_SUPER_ADMIN"
+        # A legacy platform-admin flag does not imply executive privileges.
+        # The role must be assigned explicitly by a trusted operator.
+        current_role = identity.user.platform_role
+        if current_role not in {
+            "PLATFORM_SUPER_ADMIN",
+            "PLATFORM_FINANCE",
+            "PLATFORM_SUPPORT_READONLY",
+            "PLATFORM_SECURITY_AUDITOR",
+        }:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Rôle plateforme explicite requis",
+            )
         if allowed_roles and current_role not in allowed_roles and current_role != "PLATFORM_SUPER_ADMIN":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

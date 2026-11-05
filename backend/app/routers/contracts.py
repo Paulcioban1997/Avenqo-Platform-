@@ -16,7 +16,7 @@ from backend.app.dependencies.auth import (
     get_account_notifier,
     get_current_identity,
     get_tenant_context,
-    require_platform_admin,
+    require_platform_role,
 )
 from backend.app.models.company import Company
 from backend.app.models.company_contract import (
@@ -463,7 +463,7 @@ def countersign_contract_provider(
     contract_type: str,
     company_id: UUID,
     payload: CountersignRequest,
-    identity: CurrentIdentity = Depends(require_platform_admin),
+    identity: CurrentIdentity = Depends(require_platform_role("PLATFORM_SUPER_ADMIN")),
     service: ContractSignatureService = Depends(_get_service),
 ) -> dict[str, Any]:
     """Réservé aux administrateurs de plateforme Avenqo pour contresigner un contrat client."""
