@@ -105,6 +105,8 @@ class CompanyResponse(BaseModel):
     preferred_language: str | None = None
     currency_code: str | None = None
     timezone: str | None = None
+    logo_url: str | None = None
+    brand_color: str | None = None
 
     model_config = {"from_attributes": True}
 

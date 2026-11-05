@@ -9,6 +9,18 @@ import stripe
 class StripeTaxConfigurationError(RuntimeError):
     """Requested tax collection is not configured; do not silently collect zero."""
 
+class StripeGatewayError(RuntimeError):
+    """Erreur de base pour les anomalies d'accès ou de configuration Stripe."""
+
+
+class StripeCustomerNotFoundError(StripeGatewayError, ValueError):
+    """Le client Stripe n'existe pas dans le compte Stripe configuré."""
+
+
+class StripePriceNotFoundError(StripeGatewayError, ValueError):
+    """Le tarif Stripe n'existe pas dans le compte Stripe configuré."""
+
+
 
 @dataclass(frozen=True, slots=True)
 class CreditCheckoutSession:
@@ -25,6 +37,8 @@ class BillingProvider(Protocol):
         company_id: str,
         success_url: str,
         cancel_url: str,
+        *,
+        idempotency_key: str | None = None,
     ) -> str: ...
     def create_credit_checkout(
         self,
@@ -39,6 +53,8 @@ class BillingProvider(Protocol):
     def cancel_subscription(self, subscription_id: str) -> None: ...
     def create_portal(self, customer_id: str, return_url: str) -> str: ...
     def construct_event(self, payload: bytes, signature: str, secret: str) -> dict[str, Any]: ...
+    def get_account_id(self) -> str: ...
+    def get_active_subscription(self, customer_id: str) -> dict[str, Any] | None: ...
 
 
 class StripeGateway:
@@ -81,8 +97,15 @@ class StripeGateway:
         return invoice
 
     def _require_monthly_price(self, price_id: str) -> None:
-        price = (stripe.StripeClient(self._api_key).v1.prices.retrieve(price_id).to_dict()
-                 if self._automatic_tax_enabled else stripe.Price.retrieve(price_id, api_key=self._api_key))
+        try:
+            price = (stripe.StripeClient(self._api_key).v1.prices.retrieve(price_id).to_dict()
+                     if self._automatic_tax_enabled else stripe.Price.retrieve(price_id, api_key=self._api_key))
+        except stripe.InvalidRequestError as exc:
+            if "No such price" in str(exc):
+                raise StripePriceNotFoundError(
+                    f"Le tarif Stripe '{price_id}' n'a pas été trouvé dans le compte Stripe configuré."
+                ) from exc
+            raise
         # Stripe SDK resources expose to_dict(), but do not always expose get().
         if hasattr(price, "to_dict"):
             price = price.to_dict()
@@ -108,6 +131,8 @@ class StripeGateway:
         company_id: str,
         success_url: str,
         cancel_url: str,
+        *,
+        idempotency_key: str | None = None,
     ) -> str:
         self._require_monthly_price(price_id)
         tax_options = self._tax_options()
@@ -122,8 +147,20 @@ class StripeGateway:
             cancel_url=cancel_url,
             **tax_options,
         )
-        checkout = (stripe.StripeClient(self._api_key).v1.checkout.sessions.create(params=params)
-                    if tax_options else stripe.checkout.Session.create(**params, api_key=self._api_key))
+        extra_kwargs = {"idempotency_key": idempotency_key} if idempotency_key else {}
+        try:
+            checkout = (stripe.StripeClient(self._api_key).v1.checkout.sessions.create(params=params, options=extra_kwargs)
+                        if tax_options else stripe.checkout.Session.create(**params, api_key=self._api_key, **extra_kwargs))
+        except stripe.InvalidRequestError as exc:
+            if "No such customer" in str(exc):
+                raise StripeCustomerNotFoundError(
+                    f"Le client Stripe '{customer_id}' n'a pas été trouvé dans le compte Stripe configuré."
+                ) from exc
+            if "No such price" in str(exc):
+                raise StripePriceNotFoundError(
+                    f"Le tarif Stripe '{price_id}' n'a pas été trouvé dans le compte Stripe configuré."
+                ) from exc
+            raise
         if not checkout.url:
             raise RuntimeError("Stripe n'a pas retournÃ© d'URL Checkout")
         return checkout.url
@@ -208,13 +245,53 @@ class StripeGateway:
             api_key=self._api_key,
         )
 
+    def get_account_id(self) -> str:
+        try:
+            account = stripe.Account.retrieve(api_key=self._api_key)
+            return account.id if hasattr(account, "id") else account.get("id", "")
+        except Exception as exc:
+            raise StripeGatewayError(f"Impossible de récupérer l'ID de compte Stripe: {exc}") from exc
+
+    def get_active_subscription(self, customer_id: str) -> dict[str, Any] | None:
+        try:
+            subscriptions = stripe.Subscription.list(
+                customer=customer_id,
+                status="all",
+                limit=10,
+                api_key=self._api_key,
+            )
+            data = getattr(subscriptions, "data", subscriptions)
+            for sub in data:
+                sub_dict = sub.to_dict() if hasattr(sub, "to_dict") else dict(sub)
+                if sub_dict.get("status") in {"active", "trialing", "past_due"}:
+                    return sub_dict
+            return None
+        except stripe.InvalidRequestError as exc:
+            if "No such customer" in str(exc):
+                raise StripeCustomerNotFoundError(
+                    f"Le client Stripe '{customer_id}' n'a pas été trouvé dans le compte Stripe configuré."
+                ) from exc
+            raise
+
     def create_portal(self, customer_id: str, return_url: str) -> str:
-        portal = stripe.billing_portal.Session.create(
-            customer=customer_id,
-            return_url=return_url,
-            api_key=self._api_key,
-        )
-        return portal.url
+        try:
+            portal = stripe.billing_portal.Session.create(
+                customer=customer_id,
+                return_url=return_url,
+                api_key=self._api_key,
+            )
+            return portal.url
+        except stripe.InvalidRequestError as exc:
+            if "No such customer" in str(exc):
+                raise StripeCustomerNotFoundError(
+                    f"Le client Stripe '{customer_id}' n'a pas été trouvé dans le compte Stripe configuré. "
+                    "Vérifiez que la clé STRIPE_SECRET_KEY correspond au bon compte Stripe (contexte multi-compte)."
+                ) from exc
+            if "configuration" in str(exc).lower() or "portal" in str(exc).lower():
+                raise StripeGatewayError(
+                    f"Le portail client Stripe n'est pas activé ou configuré dans le compte Stripe : {exc}"
+                ) from exc
+            raise
 
     def construct_event(self, payload: bytes, signature: str, secret: str) -> dict[str, Any]:
         return stripe.Webhook.construct_event(payload, signature, secret)

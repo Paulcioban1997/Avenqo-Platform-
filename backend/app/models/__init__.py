@@ -1,3 +1,4 @@
+from backend.app.models.company_contract import CompanyContract
 from backend.app.models.account_token import AccountToken
 from backend.app.models.accounting import AccountingInvoice, AccountingTransaction
 from backend.app.models.ai_job import AIJob
@@ -113,6 +114,7 @@ __all__ = [
     "BillingAccount",
     "BillingInvoice",
     "Company",
+    "CompanyContract",
     "CompanyLocaleProfile",
     "CompanyModule",
     "CompanyModuleStatus",

@@ -173,6 +173,7 @@ export function AppShell({ children }: AppShellProps) {
     { href: "/data", label: t.navigation.dataHub, icon: Database },
     { href: "/employees", label: locale.startsWith("fr") ? "Équipe" : "Team", icon: Users },
     { href: "/billing", label: t.navigation.billing, icon: CreditCard },
+    { href: "/settings/contracts", label: locale.startsWith("fr") ? "Mes contrats" : "Contracts", icon: FileScan },
     { href: "/settings", label: t.navigation.settings, icon: Settings },
     { href: "/security", label: locale.startsWith("fr") ? "Sécurité & Confiance" : "Security & Trust", icon: ShieldAlert },
   ];
@@ -203,17 +204,25 @@ export function AppShell({ children }: AppShellProps) {
             {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
 
-          {/* Official Avenqo brand logo for mobile/topbar */}
+          {/* Official Avenqo brand logo or custom tenant logo for mobile/topbar */}
           <Link href="/dashboard" className="flex items-center gap-2.5 group">
-            <Image
-              src="/brand/avenqo-icon.png"
-              alt="Avenqo"
-              width={32}
-              height={32}
-              className="rounded-xl object-contain shadow-xs shadow-blue-500/20 group-hover:scale-105 transition-transform"
-            />
+            {session.identity?.company?.logo_url ? (
+              <img
+                src={session.identity.company.logo_url}
+                alt={activeTenant || t.brand.name}
+                className="w-8 h-8 rounded-xl object-contain border border-slate-200/80 dark:border-white/10 group-hover:scale-105 transition-transform"
+              />
+            ) : (
+              <Image
+                src="/brand/avenqo-icon.png"
+                alt="Avenqo"
+                width={32}
+                height={32}
+                className="rounded-xl object-contain shadow-xs shadow-blue-500/20 group-hover:scale-105 transition-transform"
+              />
+            )}
             <span className="font-extrabold tracking-tight text-slate-900 dark:text-[#F4F7FB] text-base hidden sm:inline-block">
-              {t.brand.name}
+              {session.identity?.company?.logo_url ? activeTenant : t.brand.name}
             </span>
           </Link>
 
@@ -377,19 +386,27 @@ export function AppShell({ children }: AppShellProps) {
               onClick={() => setIsSidebarOpen(false)}
               className="flex items-center gap-3 group"
             >
-              <Image
-                src="/brand/avenqo-icon.png"
-                alt="Avenqo"
-                width={38}
-                height={38}
-                className="rounded-xl object-contain shadow-sm shadow-blue-500/25 group-hover:scale-105 transition-transform"
-              />
+              {session.identity?.company?.logo_url ? (
+                <img
+                  src={session.identity.company.logo_url}
+                  alt={activeTenant || t.brand.name}
+                  className="w-9 h-9 rounded-xl object-contain border border-slate-200/80 dark:border-white/10 group-hover:scale-105 transition-transform"
+                />
+              ) : (
+                <Image
+                  src="/brand/avenqo-icon.png"
+                  alt="Avenqo"
+                  width={38}
+                  height={38}
+                  className="rounded-xl object-contain shadow-sm shadow-blue-500/25 group-hover:scale-105 transition-transform"
+                />
+              )}
               <div>
-                <div className="font-extrabold tracking-tight text-slate-900 dark:text-[#F4F7FB] text-base leading-none">
-                  {t.brand.name}
+                <div className="font-extrabold tracking-tight text-slate-900 dark:text-[#F4F7FB] text-base leading-none truncate max-w-[150px]">
+                  {session.identity?.company?.logo_url ? activeTenant : t.brand.name}
                 </div>
                 <div className="text-[9px] font-bold text-slate-400 dark:text-[#94A3B8] tracking-widest uppercase mt-1">
-                  {t.brand.tagline}
+                  {session.identity?.company?.logo_url ? "White-Label Workspace" : t.brand.tagline}
                 </div>
               </div>
             </Link>
