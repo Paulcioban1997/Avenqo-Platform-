@@ -1,14 +1,20 @@
 # Avenqo P0 release decision — 2026-11-05
 
+## Re-audit verdict: NO-GO remains
+
+The implementation branch is now published at the reviewed SHA, and the audit branch has substantial local security remediation with 30 focused tests passing. This does not authorize release. Isolated PostgreSQL migration/concurrency proof, final GitHub CI/GitGuardian, cross-tenant HTTP workflow, authoritative Stripe revenue and catalog reconciliation, historical contract evidence retention, legal approval, and real browser acceptance are still missing. No Production deployment, merge, signing, payment, or legal publication has occurred.
+
+The separate remediation PR may be reviewed for further **Sandbox-only** testing once opened; it is not permission to activate commercial signatures or real customer onboarding.
+
 ## Verdict: NO-GO
 
-The implementation at `4e4e2130ded9c49ac66ae98bbaf5ae4e88d0ed28` is not in PR #87 and is not published on GitHub. The tested feature branch has critical signature/governance bypasses, a wet-ink self-approval path, an existing-customer 403 risk, unsupported financial metrics and unverified PostgreSQL migration behavior. Targeted backend tests and the web build pass, but they do not cover these release gates.
+The original implementation at `4e4e2130ded9c49ac66ae98bbaf5ae4e88d0ed28` was subsequently published on its feature branch, separate from PR #87. The remediation above addresses the listed signature, wet-ink, existing-customer, and unsupported financial display defects in an isolated audit branch. The remaining release gates in the re-audit verdict still apply.
 
 **Safe to merge for further testing:** the small role-based access fix may be reviewed separately; the full implementation is not yet safe to promote as a customer-facing release. **Safe to activate for real customers:** no.
 
 ## GO conditions for a new review
 
-1. Publish the implementation branch through its owner after review, correct PR provenance, then rerun full CI/GitGuardian on the exact proposed feature SHA. Do not open a misleading remediation PR based on an unpublished feature commit.
+1. Verify full CI/GitGuardian on the exact proposed remediation SHA and keep PR #87's unrelated provenance separate.
 2. Fail closed on signing challenge, independent out-of-band code delivery, durable atomic consumption, verified signatory identity, legal publication/incorporation gates and independent wet-ink approval.
 3. Define an explicit transition for existing subscribers without forcing 403 or silently bypassing required agreements.
 4. Reconcile actual Stripe catalog/subscription state and approved add-on catalog; distinguish MRR from billed and collected revenue.

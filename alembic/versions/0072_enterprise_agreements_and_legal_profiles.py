@@ -88,11 +88,11 @@ def upgrade() -> None:
     )
     op.add_column(
         "company_contracts",
-        sa.Column("commercial_schedule_json", sa.JSON(), nullable=False, server_default=sa.text("'{}'::json")),
+        sa.Column("commercial_schedule_json", sa.JSON(), nullable=False, server_default=sa.text("'{}'")),
     )
     op.add_column(
         "company_contracts",
-        sa.Column("completion_record_json", sa.JSON(), nullable=False, server_default=sa.text("'{}'::json")),
+        sa.Column("completion_record_json", sa.JSON(), nullable=False, server_default=sa.text("'{}'")),
     )
 
     # 3. Add platform_role column to users

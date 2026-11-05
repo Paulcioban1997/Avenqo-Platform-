@@ -154,6 +154,7 @@ class CompanyContract(TimestampMixin, Base):
         nullable=False,
         default="",
     )
+    pdf_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     content_text: Mapped[str] = mapped_column(
         Text,
         nullable=False,

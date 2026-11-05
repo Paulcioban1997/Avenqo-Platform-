@@ -8,7 +8,6 @@ from backend.app.dependencies.subscription import require_active_subscription
 from backend.app.models import Base, BillingAccount, Company
 from backend.app.models.base import UserRole
 from backend.app.models.user import User
-from backend.app.services.contract_signature_service import ContractSignatureService
 from shared.ai_engine.contracts import TenantContext
 
 
@@ -21,7 +20,7 @@ def db_session(tmp_path):
         yield session
 
 
-def _tenant(db_session, *, plan: str, subscription_status: str, sign_contracts: bool = True):
+def _tenant(db_session, *, plan: str, subscription_status: str):
     suffix = str(len(db_session.identity_map))
     company = Company(
         name=f"{plan}-{subscription_status}",
@@ -42,37 +41,6 @@ def _tenant(db_session, *, plan: str, subscription_status: str, sign_contracts: 
         )
     )
     db_session.flush()
-
-    if sign_contracts and subscription_status in ("active", "trialing"):
-        user = User(
-            id=uuid4(),
-            company_id=company.id,
-            email=f"owner-{suffix}@example.com",
-            first_name="Admin",
-            last_name="Test",
-            password_hash="pw",
-            role=UserRole.OWNER,
-        )
-        db_session.add(user)
-        db_session.flush()
-        service = ContractSignatureService(db_session)
-        service.ensure_contracts_for_company(company)
-        service.sign_contract_electronic(
-            company=company,
-            user=user,
-            contract_type="MUTUAL_NDA",
-            signatory_title="CEO",
-            declared_authority=True,
-            consent_checkbox=True,
-        )
-        service.sign_contract_electronic(
-            company=company,
-            user=user,
-            contract_type="SAAS_SUBSCRIPTION",
-            signatory_title="CEO",
-            declared_authority=True,
-            consent_checkbox=True,
-        )
 
     db_session.commit()
     return TenantContext(company_id=company.id)

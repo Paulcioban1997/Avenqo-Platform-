@@ -1,5 +1,15 @@
 # Avenqo P0 independent audit — 2026-11-05
 
+## Re-audit after implementation publication (supersedes the initial provenance finding)
+
+`origin/feat/p0-enterprise-contracts-ceo-command-center` now resolves to `4e4e2130ded9c49ac66ae98bbaf5ae4e88d0ed28`, exactly the reviewed implementation. PR #87 remains OPEN at `ed07cf3` and unchanged. The audit branch contains security commit `11ed7d9`, report commits `8c6dfb8` and `3c540cb`, and compatible local typing fix `876a983` (cherry-pick of `93316c4`). No implementation commit was duplicated or force-pushed.
+
+The current remediation adds a database-backed signing challenge and migration 0073, removes the returned verification code from the browser, requires verified email and explicit legal release, rejects tenant wet-ink self-approval, prevents countersigning pending uploads, preserves existing active subscription access, guards new checkout/plan changes, and records the SHA-256 of generated PDF bytes. These changes are **local until the separate remediation PR is reviewed and CI passes**. The original findings below describe the implementation baseline and remain the reason for the initial NO-GO; they are not claims that the remediated code still has every listed defect.
+
+The CEO dashboard now counts locally recorded active Stripe subscriptions only when a subscription ID exists, and displays MRR/ARR/churn as unavailable instead of deriving them from list prices or company status. Connector health is likewise unverified until observed. This prevents false claims, but does not implement full Stripe-reconciled revenue, annual normalization or period-specific churn. The old extra-credit amounts were removed from contract prose without changing the live catalog or prices; catalog mismatch remains open.
+
+Migration 0071/0072 JSON defaults were made portable. A disposable SQLite upgrade through 0073 passed, but the required isolated PostgreSQL rehearsal, historical-data retention check and safe rollback have not been demonstrated. Company-contract cascade retention remains unresolved. Browser journeys, live Stripe TEST records and independent legal approval are also outstanding. **The release verdict remains NO-GO.**
+
 ## Scope and provenance
 
 Repository: `Paulcioban1997/Avenqo-Platform-`. PR #87 is OPEN, head `fix/p0-stripe-billing-account-context-mismatch` at `ed07cf39474cd2e1deed6bd2f72e8bfd4b032d97`, base `integ/phase-f-pr83-pr84-sandbox` at `3dc87e7fb32f8b1b0c130693df300e5f9a464555`. The claimed implementation `4e4e2130ded9c49ac66ae98bbaf5ae4e88d0ed28` is a *child* of the PR head on the **local, unpublished** `feat/p0-enterprise-contracts-ceo-command-center` branch; it is not in PR #87. GitHub's commit API returned 422 for this SHA and `git ls-remote` found no matching feature branch. That local branch has advanced independently to `93316c4`; it was not modified by this audit. The cited Antigravity report was not found in the repository. Review used the local implementation commit, not the PR preview, as source of truth.

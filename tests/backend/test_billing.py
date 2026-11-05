@@ -17,6 +17,7 @@ from backend.app.config.settings import get_settings
 from backend.app.ai.usage.policy import AIQuotaPolicy, MONTHLY_AI_REQUESTS
 from backend.app.database import get_db
 from backend.app.dependencies.auth import get_account_notifier
+from backend.app.dependencies.subscription import require_signed_mandatory_contracts
 from backend.app.dependencies.billing import get_billing_provider
 from backend.app.models import (
     AICreditPurchase,
@@ -423,6 +424,8 @@ def test_country_currency_selects_base_price_and_webhook_plan(
     )
 
     assert login["company"]["currency_code"] == "EUR"
+    # This test isolates currency routing; contract authorization is covered separately.
+    client.app.dependency_overrides[require_signed_mandatory_contracts] = lambda: None
     checkout = client.post(
         "/api/v1/billing/checkout",
         json={"plan_code": "demo"},
@@ -433,6 +436,20 @@ def test_country_currency_selects_base_price_and_webhook_plan(
     assert checkout.json()["url"].endswith("price_base_eur")
     assert get_settings().stripe_plan_code("price_base_eur") == "base"
     assert get_settings().stripe_plan_code("price_demo_eur") == "base"
+
+
+def test_checkout_rejects_unapproved_contract_governance(billing_environment) -> None:
+    client, _, notifier = billing_environment
+    login = create_owner(client, notifier, email="unsigned@acme.ca", company_name="Unsigned")
+
+    response = client.post(
+        "/api/v1/billing/checkout",
+        json={"plan_code": "base"},
+        headers=auth_headers(login),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "contract_governance_unavailable"
 
 
 def subscription_event(
@@ -514,6 +531,8 @@ def test_checkout_et_cycle_abonnement(billing_environment) -> None:
     client, provider, notifier = billing_environment
     login = create_owner(client, notifier)
     headers = auth_headers(login)
+    # Synthetic approved-contract fixture for the billing-flow test only.
+    client.app.dependency_overrides[require_signed_mandatory_contracts] = lambda: None
 
     plans = client.get("/api/v1/billing/plans")
     assert plans.status_code == 200

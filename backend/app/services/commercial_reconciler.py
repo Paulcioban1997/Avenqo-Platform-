@@ -117,9 +117,11 @@ class CommercialReconciler:
             "Résiliation libre et sans frais à tout moment depuis le portail de facturation client, effective à la fin du cycle payé."
         )
 
+        # Add-ons are a separate voluntary checkout. Never embed stale catalog
+        # amounts in the recurring agreement or imply automatic overage charges.
         extra_credits_terms = (
-            "Packs de rechargement optionnels disponibles à la demande (6 500 crédits / 10 $, 25 000 crédits / 35 $, 65 000 crédits / 80 $). "
-            "Les crédits inclus n'expirent pas pendant la durée de l'abonnement actif."
+            "Les crédits additionnels sont optionnels, achetés séparément au tarif affiché avant paiement. "
+            "Aucun dépassement n'est facturé automatiquement."
         )
 
         effective_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")

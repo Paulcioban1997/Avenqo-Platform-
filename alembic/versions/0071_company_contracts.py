@@ -36,7 +36,7 @@ def upgrade() -> None:
         sa.Column("content_text", sa.Text(), nullable=False, server_default=""),
         sa.Column("storage_path", sa.String(512), nullable=True),
         sa.Column("audit_receipt_id", postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column("metadata_json", sa.JSON(), nullable=False, server_default=sa.text("'{}'::json")),
+        sa.Column("metadata_json", sa.JSON(), nullable=False, server_default=sa.text("'{}'")),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), onupdate=sa.func.now(), nullable=False),
         sa.UniqueConstraint("company_id", "contract_type", "version", name="uq_company_contracts_type_version"),

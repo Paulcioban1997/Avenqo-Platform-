@@ -1,5 +1,23 @@
 # Avenqo P0 QA evidence matrix — 2026-11-05
 
+## Re-audit results (newer than the baseline table below)
+
+| Requirement | Evidence | Test | Actual result | Status |
+|---|---|---|---|---|
+| Published source SHA | GitHub remote branch and local graph | `git fetch origin feat/p0-enterprise-contracts-ceo-command-center`; `git rev-parse origin/feat/...` | Exact `4e4e2130ded9c49ac66ae98bbaf5ae4e88d0ed28` | VERIFIED |
+| Security/contracts/subscription regressions | Synthetic SQLite fixtures | `python -m pytest -q tests/backend/test_enterprise_contracts_and_ceo_command_center.py tests/backend/test_contracts_and_onboarding.py tests/backend/test_subscription_gate.py --tb=short` | 30 passed after remediation | VERIFIED |
+| Billing regressions and contract gate | Synthetic billing fixtures | `python -m pytest -q tests/backend/test_billing.py tests/backend/test_master_security_and_billing.py tests/backend/test_phase33_billing_admin.py --tb=short` | 54 passed; separate negative checkout test rejects unapproved legal governance with 403. Two billing-only positive tests use a local dependency override to isolate currency/subscription mechanics. | VERIFIED in test |
+| Out-of-band challenge | Fake notifier and direct route test | `test_challenge_is_sent_out_of_band_and_not_returned_to_browser` | Browser result contains ID/expiry only; one fake email captured | VERIFIED in mock |
+| Legal release | Default settings false; synthetic approved settings confined to test objects | `test_unpublished_provider_and_absent_challenge_fail_closed` | Unpublished signing and missing challenge rejected | VERIFIED in test |
+| PDF tampering | Synthetic signed PDF under temporary artifact root | `test_electronic_signature_flow` | Stored digest matches; modified bytes produce HTTP 500 | VERIFIED in test |
+| CEO financial provenance | Inactive synthetic BillingAccount | `test_ceo_financials_do_not_invent_paid_customers_or_mrr` | Paying count 0; MRR/ARR/churn unavailable; connector heartbeat UNKNOWN | VERIFIED in test |
+| SQLite migration compatibility | Disposable SQLite file | `python -m alembic upgrade 0073_contract_signing_challenges`; `python -m alembic current` | Chain 0071→0072→0073 succeeded; head 0073 | VERIFIED on SQLite |
+| PostgreSQL migration and concurrency | No local PostgreSQL daemon; Docker Desktop daemon unavailable | Isolated PostgreSQL rehearsal | Not run; no active DB touched | NOT_VERIFIED |
+| Web checks | Modified contract/CEO components | `npx tsc --noEmit`; `npm run build` | Both exit 0 | VERIFIED |
+| Source secret scan | Staged changes and source directories | Gitleaks v8.30.1 | Prior staged and source scans found no leaks; rerun required on final diff | PENDING |
+
+The baseline table below records the original implementation and should not be read as the status of the remediated branch.
+
 | Requirement | Evidence | Test | Actual result | Status |
 |---|---|---|---|---|
 | PR/commit identity | `gh pr view 87`, `git show 4e4e213`, GitHub commit API and `git ls-remote` | Compare ancestry and refs | PR head `ed07cf3`; `4e4e213` is later on an unpublished local branch; GitHub returned 422 for its SHA | VERIFIED |

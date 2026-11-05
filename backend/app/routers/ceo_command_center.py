@@ -65,10 +65,12 @@ def get_executive_overview(
 
     active_paid_stmt = (
         select(func.count(Company.id))
-        .join(BillingAccount, BillingAccount.company_id == Company.id, isouter=True)
+        .join(BillingAccount, BillingAccount.company_id == Company.id)
         .where(
             Company.status == "active",
-            Company.subscription_plan.in_(["base", "professional", "enterprise"]),
+            BillingAccount.status == "active",
+            BillingAccount.stripe_subscription_id.is_not(None),
+            BillingAccount.plan_code.in_(["base", "professional", "enterprise"]),
         )
     )
     active_paid_customers = db.scalar(active_paid_stmt) or 0
@@ -77,16 +79,11 @@ def get_executive_overview(
         select(func.count(BillingAccount.id)).where(BillingAccount.status == "trialing")
     ) or 0
 
-    churn_stmt = select(func.count(Company.id)).where(Company.status.in_(["inactive", "suspended", "archived"]))
-    churn_count = db.scalar(churn_stmt) or 0
-    churn_rate_pct = round((churn_count / total_companies * 100) if total_companies > 0 else 0.0, 1)
-
-    # 2. MRR et ARR calculés depuis les forfaits réels
-    # Base: 29.99 CAD, Pro: 49.99 CAD
-    base_count = db.scalar(select(func.count(Company.id)).where(Company.subscription_plan == "base", Company.status == "active")) or 0
-    pro_count = db.scalar(select(func.count(Company.id)).where(Company.subscription_plan == "professional", Company.status == "active")) or 0
-    mrr_cad = round((base_count * 29.99) + (pro_count * 49.99), 2)
-    arr_cad = round(mrr_cad * 12, 2)
+    # BillingAccount stores no authoritative price, cadence or discount. An
+    # inferred list-price MRR or churn percentage would mislead operators.
+    churn_rate_pct = None
+    mrr_cad = None
+    arr_cad = None
 
     # 3. Incidents de facturation
     failed_payments = db.scalar(
@@ -119,8 +116,8 @@ def get_executive_overview(
         "kpis": {
             "active_paid_customers": {
                 "value": active_paid_customers,
-                "label": "Clients Payants Actifs",
-                "tooltip": "Entreprises actives disposant d'un abonnement Base, Professional ou Enterprise vérifié.",
+                "label": "Abonnements Stripe actifs enregistrés",
+                "tooltip": "Comptes actifs avec identifiant d'abonnement Stripe enregistré; paiements non vérifiés en direct.",
                 "source": "companies + billing_accounts",
             },
             "trials_count": {
@@ -138,22 +135,22 @@ def get_executive_overview(
             "churn_rate_pct": {
                 "value": churn_rate_pct,
                 "label": "Taux d'Érosion (Churn)",
-                "tooltip": "Proportion des comptes suspendus, inactifs ou archivés sur le total des locataires.",
-                "source": "companies (status in inactive/suspended)",
+                "tooltip": "Indisponible : cohortes d'abonnements et annulations datées requises.",
+                "source": "not_verified",
             },
             "mrr_cad": {
                 "value": mrr_cad,
                 "currency": "CAD",
                 "label": "Revenu Récurrent Mensuel (MRR)",
-                "tooltip": "Somme mensuelle récurrente basée sur les forfaits Base (29.99 CAD) et Pro (49.99 CAD).",
-                "source": "Canonical pricing x active subscriptions",
+                "tooltip": "Indisponible : montants, cadence, remises et devise Stripe non rapprochés.",
+                "source": "not_verified",
             },
             "arr_cad": {
                 "value": arr_cad,
                 "currency": "CAD",
                 "label": "Revenu Récurrent Annualisé (ARR)",
-                "tooltip": "Projection annualisée du MRR courant (MRR x 12).",
-                "source": "MRR x 12",
+                "tooltip": "Indisponible tant que le MRR n'est pas rapproché.",
+                "source": "not_verified",
             },
             "failed_payments": {
                 "value": failed_payments,
@@ -270,7 +267,10 @@ def get_revenue_and_subscriptions(
     """Analyse fine du cycle de vie des abonnements Stripe, mix d'offres et factures impayées."""
     plan_counts: dict[str, int] = {}
     for plan in ("base", "professional", "enterprise"):
-        cnt = db.scalar(select(func.count(Company.id)).where(Company.subscription_plan == plan, Company.status == "active")) or 0
+        cnt = db.scalar(select(func.count(BillingAccount.id)).where(
+            BillingAccount.plan_code == plan, BillingAccount.status == "active",
+            BillingAccount.stripe_subscription_id.is_not(None),
+        )) or 0
         plan_counts[plan] = cnt
 
     invoices_stmt = (
@@ -300,9 +300,9 @@ def get_revenue_and_subscriptions(
             "enterprise": plan_counts.get("enterprise", 0),
         },
         "mrr_by_plan": {
-            "base_cad": round(plan_counts.get("base", 0) * 29.99, 2),
-            "professional_cad": round(plan_counts.get("professional", 0) * 49.99, 2),
-            "enterprise_cad": "Sur devis",
+            "base_cad": None,
+            "professional_cad": None,
+            "enterprise_cad": None,
         },
         "stripe_gateway_status": {
             "configured": bool(settings.stripe_secret_key),
@@ -360,7 +360,7 @@ def get_contracts_queue(
             "provider_signed_at": c.provider_signed_at.isoformat() if c.provider_signed_at else None,
             "sha256_hash": c.sha256_hash,
             "has_pdf": bool(c.storage_path),
-            "is_countersign_ready": c.status in (ContractLifecycleStatus.CUSTOMER_SIGNED.value, ContractLifecycleStatus.SIGNED.value) and not c.provider_signed_at,
+            "is_countersign_ready": c.status == ContractLifecycleStatus.CUSTOMER_SIGNED.value and not c.provider_signed_at,
         }
         queue.append(item)
 
@@ -473,9 +473,9 @@ def get_connectors_health(
             "name": c["name"],
             "category": c["category"],
             "active_connections_count": count,
-            "status": "OPERATIONAL" if count > 0 else c["default_status"],
-            "heartbeat": "HEALTHY",
-            "secrets_encrypted": True,
+            "status": "CONFIGURED_UNVERIFIED" if count > 0 else "NOT_CONFIGURED",
+            "heartbeat": "UNKNOWN",
+            "secrets_encrypted": None,
         })
 
     return {

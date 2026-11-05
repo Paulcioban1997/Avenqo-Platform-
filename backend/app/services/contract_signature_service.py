@@ -324,6 +324,17 @@ class ContractSignatureService:
                 "La déclaration expresse d'autorité légale et du pouvoir d'engagement légal est obligatoire pour engager l'entreprise."
             )
 
+        if not user.is_active or user.email_verified_at is None:
+            raise ContractAuthorityError("Le compte et son adresse email doivent être vérifiés avant la signature.")
+
+    def require_legal_release(self) -> None:
+        if not (
+            self._settings.provider_incorporation_verified
+            and self._settings.provider_contracts_published
+            and self._settings.provider_incorporation_status != "UNVERIFIED_PENDING_INCORPORATION"
+        ):
+            raise ContractAuthorityError("Signature commerciale indisponible : validation juridique du fournisseur requise.")
+
     def sign_contract_electronic(
         self,
         *,
@@ -339,22 +350,11 @@ class ContractSignatureService:
         challenge_code: str | None = None,
     ) -> dict[str, Any]:
         """Exécute la signature électronique numérique avec preuve d'audit, réconciliation et génération de PDF certifié."""
+        self.require_legal_release()
         self.verify_signatory_authority(user, company.id, declared_authority)
 
         if not consent_checkbox:
             raise ValueError("Le consentement exprès et explicite est obligatoire pour valider la signature.")
-
-        # Vérification du défi de signature à usage unique si transmis
-        if challenge_id and challenge_code:
-            valid_challenge = SigningChallengeService.verify_and_consume_challenge(
-                challenge_id=challenge_id,
-                code=challenge_code,
-                company_id=company.id,
-                user_id=user.id,
-                contract_type=contract_type,
-            )
-            if not valid_challenge:
-                raise ValueError("Défi ou code de sécurité de signature invalide, expiré ou déjà utilisé (anti-rejeu).")
 
         contract = self.get_contract(company.id, contract_type)
         if contract.status in (ContractLifecycleStatus.SIGNED.value, ContractLifecycleStatus.CUSTOMER_SIGNED.value, ContractLifecycleStatus.FULLY_EXECUTED.value):
@@ -366,6 +366,25 @@ class ContractSignatureService:
             raise CommercialConfigMismatchError(
                 f"Signature bloquée : divergence commerciale détectée ({', '.join(schedule.mismatches)}). Réconciliation requise."
             )
+
+        if not challenge_id or not challenge_code:
+            raise ValueError("Un défi de signature délivré hors session et son code sont obligatoires.")
+        try:
+            parsed_challenge_id = UUID(challenge_id)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Identifiant de défi invalide.") from exc
+        valid_challenge = SigningChallengeService(self._db).verify_and_consume_challenge(
+            challenge_id=parsed_challenge_id,
+            code=challenge_code,
+            company_id=company.id,
+            user_id=user.id,
+            contract_id=contract.id,
+            contract_version=contract.version,
+            content_hash=self.compute_sha256(contract.content_text),
+            commercial_hash=SigningChallengeService.snapshot_hash(schedule.to_dict()),
+        )
+        if not valid_challenge:
+            raise ValueError("Défi de signature invalide, expiré, modifié ou déjà utilisé.")
 
         now = datetime.now(timezone.utc)
         receipt_id = uuid4()
@@ -427,6 +446,7 @@ class ContractSignatureService:
         full_storage_path = Path(self._settings.artifact_root) / storage_rel_path
         full_storage_path.parent.mkdir(parents=True, exist_ok=True)
         full_storage_path.write_bytes(pdf_bytes)
+        pdf_sha256 = self.compute_sha256(pdf_bytes)
 
         # 5. Registre d'achèvement électronique Avenqo (tamper-evident completion record)
         completion_record = {
@@ -463,7 +483,7 @@ class ContractSignatureService:
         )
 
         # 6. Mise à jour de l'enregistrement de contrat
-        contract.status = "SIGNED"
+        contract.status = ContractLifecycleStatus.CUSTOMER_SIGNED.value
         contract.execution_state = ContractExecutionPartyState.PENDING_PROVIDER.value
         contract.signature_mode = "ELECTRONIC"
         contract.signatory_user_id = user.id
@@ -473,6 +493,7 @@ class ContractSignatureService:
         contract.signatory_authority_declared = True
         contract.signed_at = now
         contract.sha256_hash = final_sha256
+        contract.pdf_sha256 = pdf_sha256
         contract.content_text = interpolated_text
         contract.storage_path = storage_rel_path
         contract.audit_receipt_id = receipt_id
@@ -529,13 +550,11 @@ class ContractSignatureService:
         provider_title: str = "Président Fondateur",
     ) -> CompanyContract:
         """Applique la contresignature autorisée du fournisseur (CEO / Super Admin) pour rendre le contrat FULLY_EXECUTED."""
+        self.require_legal_release()
+        if not provider_user.is_platform_admin or provider_user.platform_role != "PLATFORM_SUPER_ADMIN":
+            raise ContractAuthorityError("Contreseing réservé au rôle plateforme autorisé.")
         contract = self.get_contract(company_id, contract_type)
-        allowed_prior_statuses = {
-            ContractLifecycleStatus.CUSTOMER_SIGNED.value,
-            ContractLifecycleStatus.SIGNED.value,
-            ContractLifecycleStatus.PENDING_VERIFICATION.value,
-            ContractLifecycleStatus.UPLOADED_FOR_REVIEW.value,
-        }
+        allowed_prior_statuses = {ContractLifecycleStatus.CUSTOMER_SIGNED.value}
         if contract.status not in allowed_prior_statuses:
             raise ValueError(
                 f"Impossible de contresigner un contrat non encore signé par le client (statut actuel : {contract.status})."
@@ -593,6 +612,7 @@ class ContractSignatureService:
             full_path = Path(self._settings.artifact_root) / contract.storage_path
             full_path.parent.mkdir(parents=True, exist_ok=True)
             full_path.write_bytes(pdf_bytes)
+            contract.pdf_sha256 = self.compute_sha256(pdf_bytes)
 
         # Mise à jour du registre d'achèvement
         rec = dict(contract.completion_record_json or {})
@@ -699,6 +719,7 @@ class ContractSignatureService:
         contract.signatory_authority_declared = True
         contract.signed_at = now
         contract.sha256_hash = file_sha256
+        contract.pdf_sha256 = file_sha256
         contract.storage_path = storage_rel_path
         contract.audit_receipt_id = receipt_id
         contract.metadata_json = audit_metadata
@@ -757,12 +778,8 @@ class ContractSignatureService:
 
     def has_signed_mandatory_contracts(self, company_id: UUID) -> bool:
         """Vérifie si les contrats obligatoires sont dûment signés avant l'activation des modules payants."""
-        mandatory_types = ["MUTUAL_NDA", "SAAS_SUBSCRIPTION"]
-        valid_statuses = {
-            ContractLifecycleStatus.SIGNED.value,
-            ContractLifecycleStatus.CUSTOMER_SIGNED.value,
-            ContractLifecycleStatus.FULLY_EXECUTED.value,
-        }
+        mandatory_types = ["MUTUAL_NDA", "SAAS_SUBSCRIPTION", "DATA_PROCESSING_ADDENDUM"]
+        valid_statuses = {ContractLifecycleStatus.FULLY_EXECUTED.value}
         signed_contracts = self._db.scalars(
             select(CompanyContract.contract_type).where(
                 CompanyContract.company_id == company_id,
@@ -781,14 +798,19 @@ class ContractSignatureService:
         rejection_reason: str | None = None,
     ) -> CompanyContract:
         """Permet à l'administrateur ou au fondateur de valider ou rejeter un document manuscrit téléversé."""
+        self.require_legal_release()
+        if not verifier_user.is_platform_admin or verifier_user.platform_role != "PLATFORM_SUPER_ADMIN":
+            raise ContractAuthorityError("Vérification manuscrite réservée à la plateforme.")
         contract = self.get_contract(company_id, contract_type)
+        if contract.signatory_user_id == verifier_user.id:
+            raise ContractAuthorityError("Un signataire ne peut pas vérifier sa propre signature.")
         if contract.status != ContractLifecycleStatus.PENDING_VERIFICATION.value:
             raise ValueError(f"Le contrat n'est pas en attente de vérification (statut actuel : {contract.status}).")
 
         now = datetime.now(timezone.utc)
         if approved:
-            contract.status = "SIGNED"
-            contract.execution_state = ContractExecutionPartyState.COMPLETED.value
+            contract.status = ContractLifecycleStatus.CUSTOMER_SIGNED.value
+            contract.execution_state = ContractExecutionPartyState.PENDING_PROVIDER.value
             action = "contract.wet_ink_approved"
         else:
             contract.status = ContractLifecycleStatus.PENDING_SIGNATURE.value

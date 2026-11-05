@@ -15,6 +15,7 @@ from backend.app.config.settings import Settings, get_settings
 from backend.app.core.error_localization import localized_api_message
 from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_account_notifier, get_current_identity, require_permission
+from backend.app.dependencies.subscription import require_signed_mandatory_contracts
 from backend.app.services.account_notifications import AccountNotifier
 from backend.app.dependencies.billing import (
     get_billing_provider,
@@ -263,7 +264,8 @@ def provider_status(
 @router.post(
     "/checkout",
     response_model=RedirectResponse,
-    dependencies=[Depends(rate_limit("billing_checkout", "rate_limit_billing_per_minute"))],
+    dependencies=[Depends(rate_limit("billing_checkout", "rate_limit_billing_per_minute")),
+                  Depends(require_signed_mandatory_contracts)],
 )
 def checkout(
     request: CheckoutRequest,
@@ -280,7 +282,8 @@ def checkout(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
-@router.post("/change-plan", response_model=SubscriptionResponse)
+@router.post("/change-plan", response_model=SubscriptionResponse,
+             dependencies=[Depends(require_signed_mandatory_contracts)])
 def change_plan(
     request: ChangePlanRequest,
     identity: CurrentIdentity = Depends(manage_billing),
