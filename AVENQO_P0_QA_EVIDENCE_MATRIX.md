@@ -2,7 +2,7 @@
 
 | Requirement | Evidence | Test | Actual result | Status |
 |---|---|---|---|---|
-| PR/commit identity | `gh pr view 87` and `git show 4e4e213` | Compare ancestry and refs | PR head `ed07cf3`; `4e4e213` is later on another branch | VERIFIED |
+| PR/commit identity | `gh pr view 87`, `git show 4e4e213`, GitHub commit API and `git ls-remote` | Compare ancestry and refs | PR head `ed07cf3`; `4e4e213` is later on an unpublished local branch; GitHub returned 422 for its SHA | VERIFIED |
 | Backend targeted regression | Three backend test files | `python -m pytest -q tests/backend/test_enterprise_contracts_and_ceo_command_center.py tests/backend/test_contracts_and_onboarding.py tests/backend/test_subscription_gate.py` | 26 PASS baseline; 27 PASS after RBAC fix | VERIFIED |
 | TypeScript | `web` | `npx tsc --noEmit` | Exit 0 | VERIFIED |
 | Next.js production build | `web` | `npm run build` | Exit 0; 57 static pages generated | VERIFIED |
@@ -20,6 +20,7 @@
 | Migration 0072 | Disposable local SQLite DB | `python -m alembic upgrade 0072_enterprise_agreements_and_legal_profiles` with isolated `ALEMBIC_DATABASE_URL` | Failed in 0071 on PostgreSQL-only `::json`; no PostgreSQL instance available | NOT_VERIFIED |
 | Full GitHub CI/GitGuardian for implementation | PR #87 checks | `gh pr view 87 --json statusCheckRollup` | GitGuardian SUCCESS applies to `ed07cf3`, not `4e4e213` | NOT_VERIFIED |
 | Staged secret scan | Audit changes only | Gitleaks v8.30.1 `git --staged --redact=100 --config .gitleaks.toml` via required pre-commit hook | No leaks found in ~15.84 KB staged changes; not a full-history scan | VERIFIED |
+| Source secret scan | `backend`, `web/src`, `alembic`, `tests/backend` | Gitleaks v8.30.1 `dir <path> --config .gitleaks.toml --redact=100` | All four source directories exit 0, no leaks; whole-worktree scan found eight `generic-api-key` detections only in ignored, generated `web/.next` build files | PARTIALLY_VERIFIED |
 | Production safety | Isolated audit worktree | Git diff and operation log | No deploy, merge, active DB write, payment or real signature | VERIFIED |
 
 Statuses describe this audit only. A passing synthetic test is not live integration evidence.

@@ -2,7 +2,7 @@
 
 ## Scope and provenance
 
-Repository: `Paulcioban1997/Avenqo-Platform-`. PR #87 is OPEN, head `fix/p0-stripe-billing-account-context-mismatch` at `ed07cf39474cd2e1deed6bd2f72e8bfd4b032d97`, base `integ/phase-f-pr83-pr84-sandbox` at `3dc87e7fb32f8b1b0c130693df300e5f9a464555`. The claimed implementation `4e4e2130ded9c49ac66ae98bbaf5ae4e88d0ed28` is a *child* of the PR head on `feat/p0-enterprise-contracts-ceo-command-center`; it is not in PR #87. The cited Antigravity report was not found in the repository. Review used the implementation commit, not the PR preview, as source of truth.
+Repository: `Paulcioban1997/Avenqo-Platform-`. PR #87 is OPEN, head `fix/p0-stripe-billing-account-context-mismatch` at `ed07cf39474cd2e1deed6bd2f72e8bfd4b032d97`, base `integ/phase-f-pr83-pr84-sandbox` at `3dc87e7fb32f8b1b0c130693df300e5f9a464555`. The claimed implementation `4e4e2130ded9c49ac66ae98bbaf5ae4e88d0ed28` is a *child* of the PR head on the **local, unpublished** `feat/p0-enterprise-contracts-ceo-command-center` branch; it is not in PR #87. GitHub's commit API returned 422 for this SHA and `git ls-remote` found no matching feature branch. That local branch has advanced independently to `93316c4`; it was not modified by this audit. The cited Antigravity report was not found in the repository. Review used the local implementation commit, not the PR preview, as source of truth.
 
 This is a code and local synthetic-test audit. No live Stripe, tenant, legal, database, Vercel, or Railway operation was performed. It does not certify legal validity or live financial accuracy.
 
@@ -40,6 +40,6 @@ The audit branch removes the implicit superadmin fallback for a platform-admin u
 
 ## Residual risk
 
-No live multi-tenant HTTP attack suite, real Stripe test flows, provider signature verification, isolated PostgreSQL 0072 run, PDF visual review or full GitHub CI for `4e4e213` was established. Gitleaks v8.30.1 scanned the staged audit changes with no leaks; full repository/history scanning was not done. No Production system was modified. Verdict: **NO-GO**.
+No live multi-tenant HTTP attack suite, real Stripe test flows, provider signature verification, isolated PostgreSQL 0072 run, PDF visual review or full GitHub CI for `4e4e213` was established. Gitleaks v8.30.1 found no leaks in staged audit changes or the `backend`, `web/src`, `alembic`, and `tests/backend` source directories. A whole-worktree scan reported eight generic-key detections only in ignored, generated `web/.next` build files; this does not establish a source leak or validate history. No Production system was modified. Verdict: **NO-GO**.
 
 The existing `web` lint command exited 1 with 5,524 errors, including the vendored CanvasKit browser bundle and application files. No lint rule was weakened to make the audit pass.
