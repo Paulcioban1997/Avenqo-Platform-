@@ -42,12 +42,14 @@ The Parties covenant to execute their respective duties in full compliance with:
 
 ### SECTION 4 — AUTHORIZED SUB-PROCESSORS AND HOSTING
 4.1 **List of Approved Technical Sub-Processors**: The Client grants specific authorization for the engagement of the following essential infrastructure sub-processors:
-- **Railway Corp.** (Application hosting and PostgreSQL databases - United States / Canada).
+- **Vercel Inc.** (Frontend web user interface and Edge functions hosting and deployment - United States / Global).
+- **Railway Corp.** (Backend application server hosting and PostgreSQL databases - United States / Canada).
 - **Cloudflare Inc.** (Content Delivery Network CDN, DNS, Edge encryption, and DDoS protection - Global / Canada).
 - **Stripe Payments Canada / Stripe Inc.** (Billing gateway and payment transaction processing - Canada / United States).
 - **Resend Inc.** (Transactional email delivery infrastructure and alerts - United States).
 - **Anthropic PBC / OpenAI LLC / Google LLC** (Artificial intelligence foundation model providers for Central AI advanced reasoning - United States, under non-training data privacy agreements).
-- **Telnyx LLC** (Cloud telecommunications and carrier network provider for Voice AI module - United States / Canada).
+- **Telnyx LLC** (Cloud telecommunications and SIP carrier network provider for Voice AI module - United States / Canada).
+- **Retell AI (Retell Inc.)** (Conversational voice orchestration engine and real-time audio processing - United States).
 4.2 **Cross-Border Transfers (Law 25)**: The Client acknowledges that certain sub-processors maintain facilities in the United States or abroad. The Processor ensures that such transfers are governed by contractual safeguards providing data protection equivalent to Quebec and Canadian statutory requirements.
 
 ---
@@ -71,7 +73,7 @@ The Processor maintains robust administrative, technical, and physical safeguard
 ### SECTION 7 — RETENTION, RETURN, AND IRREVOCABLE DELETION
 7.1 **Operational Retention**: Personal data is retained solely during the term of the Client's active subscription.
 7.2 **Reversibility Window**: Upon subscription termination, the Client enjoys a thirty (30) day retrieval window to export its records in standard structured formats (CSV/JSON).
-7.3 **Irrevocable Deletion**: Following the 30-day retrieval window, the Processor permanently and irreversibly purges production data within sixty (60) days, excepting financial ledgers subject to statutory tax retention duties (7 years in Canada).
+7.3 **Irrevocable Deletion and Backup Purge**: Following the 30-day retrieval window, the Processor permanently and irreversibly purges production data within sixty (60) days. Encrypted automated security backups operate on a rolling retention cycle with automatic overwriting and definitive purge completed within a maximum of thirty (30) days following production deletion. Accounting ledgers and invoices are retained pursuant to mandatory Canadian seven (7) year statutory tax requirements.
 
 ---
 

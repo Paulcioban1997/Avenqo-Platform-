@@ -42,12 +42,14 @@ Les Parties s'engagent à exécuter leurs obligations respectives en conformité
 
 ### ARTICLE 4 — SOUS-TRAITANTS ULTÉRIEURS ET HÉBERGEMENT
 4.1 **Liste des sous-traitants autorisés** : Le Client autorise expressément le recours aux sous-traitants techniques suivants, indispensables à l'exploitation d'Avenqo :
-- **Railway Corp.** (Hébergement des serveurs d'application et bases de données PostgreSQL - États-Unis / Canada).
+- **Vercel Inc.** (Hébergement et déploiement de l'interface utilisateur web et fonctions Edge - États-Unis / International).
+- **Railway Corp.** (Hébergement des serveurs d'application backend et bases de données PostgreSQL - États-Unis / Canada).
 - **Cloudflare Inc.** (Réseau de diffusion de contenu CDN, DNS, chiffrement Edge et protection anti-DDoS - International / Canada).
 - **Stripe Payments Canada / Stripe Inc.** (Passerelle de facturation et traitement sécurisé des paiements - Canada / États-Unis).
 - **Resend Inc.** (Infrastructure d'expédition des courriels transactionnels et notifications - États-Unis).
 - **Anthropic PBC / OpenAI LLC / Google LLC** (Fournisseurs de modèles d'IA pour les inférences avancées de Central AI - États-Unis, sous engagement contractuel de non-utilisation des données pour l'entraînement).
-- **Telnyx LLC** (Téléphonie infonuagique et passerelle de télécommunications pour le module Voice AI - États-Unis / Canada).
+- **Telnyx LLC** (Téléphonie infonuagique et passerelle de télécommunications SIP pour le module Voice AI - États-Unis / Canada).
+- **Retell AI (Retell Inc.)** (Moteur d'orchestration vocale conversationnelle et de traitement de flux audio en temps réel - États-Unis).
 4.2 **Transferts transfrontaliers (Loi 25)** : Le Client reconnaît que certains sous-traitants ultérieurs opèrent des infrastructures aux États-Unis ou à l'international. Le Sous-traitant s'assure que ces transferts font l'objet d'accords contractuels imposant des mesures de protection comparables à celles requises au Québec et au Canada.
 
 ---
@@ -71,7 +73,7 @@ Le Sous-traitant applique des mesures techniques et organisationnelles conformes
 ### ARTICLE 7 — CONSERVATION, RESTITUTION ET SUPPRESSION DES DONNÉES
 7.1 **Durée de conservation opérationnelle** : Les données personnelles ne sont conservées que pendant la durée de l'abonnement actif du Client.
 7.2 **Délai de réversibilité** : À compter de la résiliation de l'abonnement, le Client bénéficie d'une fenêtre de trente (30) jours pour exporter ses données au format structuré standard (CSV/JSON).
-7.3 **Suppression définitive** : À l'expiration du délai de réversibilité, le Sous-traitant procède à la suppression irréversible des données de production dans un délai maximal de soixante (60) jours, à l'exception des registres financiers et factures soumis à une obligation légale de conservation fiscale (7 ans au Canada).
+7.3 **Suppression définitive et purge des sauvegardes** : À l'expiration du délai de réversibilité, le Sous-traitant procède à la suppression irréversible des données de production opérationnelles dans un délai maximal de soixante (60) jours. Les sauvegardes chiffrées automatisées de sécurité sont soumises à un cycle de rétention tournant avec écrasement automatique et purge définitive dans un délai maximal de trente (30) jours suivant l'effacement de production. Les pièces comptables et factures demeurent conservées selon l'obligation fiscale légale de sept (7) ans au Canada.
 
 ---
 

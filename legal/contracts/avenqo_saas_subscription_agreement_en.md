@@ -54,7 +54,7 @@ The Client wishes to subscribe to a Software-as-a-Service (SaaS) access to the P
 ---
 
 ### SECTION 4 — SERVICE AVAILABILITY (SLA) AND SUPPORT
-4.1 **Sustainable Availability Commitment**: The Provider shall deploy commercially reasonable efforts to achieve a monthly target availability of **99.0%** for the production Platform.
+4.1 **Sustainable Availability Commitment**: The Provider shall deploy commercially reasonable efforts to achieve a monthly target availability of **99.0%** for the production Platform. For clients subscribing to an Enterprise plan, customized service level agreements (SLAs) and extended support tiers are governed by a distinct executed Enterprise Addendum.
 4.2 **Calculation Methodology and SLA Exclusions**: Availability is calculated monthly as follows: `[(Total Monthly Minutes - Non-Excluded Downtime Minutes) / Total Monthly Minutes] x 100`. The following circumstances are strictly excluded from downtime calculations:
 - Scheduled maintenance windows announced with at least 48 hours advance notice.
 - Outages or degradations originating from third-party hosting, infrastructure, or network transit providers (e.g., Cloudflare, Railway, AWS).
@@ -106,7 +106,7 @@ This Agreement is governed by and construed in accordance with the laws of the P
 
 ### EXECUTION AND SIGNATURE MODALITIES
 
-#### ELECTRONIC SIGNATURE (CQLR c. C-1.1)
+#### SECURE ELECTRONIC SIGNATURE (CQLR c. C-1.1)
 Secured by real-time SHA-256 hash digest, immutable UTC timestamp, and permanent inclusion in the Avenqo audit registry.
 
 #### MANUSCRIPT WET-INK SIGNATURE

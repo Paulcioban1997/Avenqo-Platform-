@@ -54,7 +54,7 @@ Le Client désire souscrire un accès en mode logiciel-service (SaaS) à la Plat
 ---
 
 ### ARTICLE 4 — DISPONIBILITÉ DU SERVICE (SLA) ET SOUTIEN
-4.1 **Objectif de disponibilité soutenable** : Le Fournisseur s'engage à déployer des efforts commercialement raisonnables pour assurer un taux de disponibilité mensuel cible de **99,0 %** de la Plateforme en production.
+4.1 **Objectif de disponibilité soutenable** : Le Fournisseur s'engage à déployer des efforts commercialement raisonnables pour assurer un taux de disponibilité mensuel cible de **99,0 %** de la Plateforme en production. Pour les clients souscrivant une offre Enterprise, les engagements de niveau de service (SLA) personnalisés et les modalités de support étendu sont régis par un avenant d'entreprise (Enterprise Addendum) distinct.
 4.2 **Méthode de calcul et exclusions du SLA** : La disponibilité est calculée mensuellement selon la formule : `[(Minutes totales du mois - Minutes d'indisponibilité non exclues) / Minutes totales du mois] x 100`. Sont formellement exclues du calcul de l'indisponibilité :
 - Les fenêtres de maintenance planifiée préalablement notifiées avec au moins 48 heures de préavis.
 - Les pannes ou dégradations attribuables aux fournisseurs d'infrastructure d'hébergement ou de réseau tiers (ex. Cloudflare, Railway, AWS).
@@ -106,7 +106,7 @@ Le présent contrat est régi et interprété conformément aux lois en vigueur 
 
 ### MODALITÉS D'EXÉCUTION ET DE SIGNATURE
 
-#### OPTION A — SIGNATURE ÉLECTRONIQUE QUALIFIÉE (LCCJTI c. C-1.1)
+#### OPTION A — SIGNATURE ÉLECTRONIQUE SÉCURISÉE (LCCJTI c. C-1.1)
 Scellée numériquement par empreinte SHA-256, horodatage UTC et journal d'audit infalsifiable.
 
 #### OPTION B — SIGNATURE MANUSCRITE AU STYLO
