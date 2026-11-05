@@ -16,7 +16,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
+    bind = op.get_bind()
+    if not sa.inspect(bind).has_table("company_contracts"):
+        op.create_table(
         "company_contracts",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column("company_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("companies.id", ondelete="CASCADE"), nullable=False),
@@ -40,10 +42,15 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), onupdate=sa.func.now(), nullable=False),
         sa.UniqueConstraint("company_id", "contract_type", "version", name="uq_company_contracts_type_version"),
-    )
-    op.create_index("ix_company_contracts_company_id", "company_contracts", ["company_id"])
-    op.create_index("ix_company_contracts_contract_type", "company_contracts", ["contract_type"])
-    op.create_index("ix_company_contracts_status", "company_contracts", ["status"])
+        )
+    indexes = {index["name"] for index in sa.inspect(bind).get_indexes("company_contracts")}
+    for name, column in (
+        ("ix_company_contracts_company_id", "company_id"),
+        ("ix_company_contracts_contract_type", "contract_type"),
+        ("ix_company_contracts_status", "status"),
+    ):
+        if name not in indexes:
+            op.create_index(name, "company_contracts", [column])
 
 
 def downgrade() -> None:

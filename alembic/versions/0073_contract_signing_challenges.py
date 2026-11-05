@@ -15,8 +15,11 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("company_contracts", sa.Column("pdf_sha256", sa.String(64), nullable=True))
-    op.create_table(
+    bind = op.get_bind()
+    if "pdf_sha256" not in {column["name"] for column in sa.inspect(bind).get_columns("company_contracts")}:
+        op.add_column("company_contracts", sa.Column("pdf_sha256", sa.String(64), nullable=True))
+    if not sa.inspect(bind).has_table("contract_signing_challenges"):
+        op.create_table(
         "contract_signing_challenges",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column("company_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("companies.id"), nullable=False),
@@ -31,8 +34,11 @@ def upgrade() -> None:
         sa.Column("attempts", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("used_at", sa.DateTime(timezone=True), nullable=True),
-    )
-    op.create_index("ix_contract_signing_challenges_company_id", "contract_signing_challenges", ["company_id"])
+        )
+    if "ix_contract_signing_challenges_company_id" not in {
+        index["name"] for index in sa.inspect(bind).get_indexes("contract_signing_challenges")
+    }:
+        op.create_index("ix_contract_signing_challenges_company_id", "contract_signing_challenges", ["company_id"])
 
 
 def downgrade() -> None:
