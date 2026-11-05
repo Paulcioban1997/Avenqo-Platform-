@@ -1,5 +1,9 @@
 # Avenqo P0 release decision — 2026-11-05
 
+## PR #88 CEO hotfix review
+
+The two reported CEO API HTTP 500 defects and fabricated AI telemetry are corrected in the isolated draft PR branch, with synthetic HTTP, authorization, billing, migration and web verification. The technical Sandbox verdict remains **PENDING** until the exact final commit has passed GitHub CI, GitGuardian and the remaining acceptance checks; no live Sandbox deployment is claimed. Production remains **NO-GO** for the legal, Stripe, retention and browser acceptance gates below.
+
 ## Re-audit verdict: NO-GO remains
 
 The implementation branch is now published at the reviewed SHA, and the audit branch has substantial local security remediation with 30 focused tests passing. This does not authorize release. Isolated PostgreSQL migration/concurrency proof, final GitHub CI/GitGuardian, cross-tenant HTTP workflow, authoritative Stripe revenue and catalog reconciliation, historical contract evidence retention, legal approval, and real browser acceptance are still missing. No Production deployment, merge, signing, payment, or legal publication has occurred.

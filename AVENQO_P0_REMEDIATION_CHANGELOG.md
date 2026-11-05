@@ -1,5 +1,12 @@
 # Avenqo P0 remediation changelog — 2026-11-05
 
+## PR #88 CEO API hotfix
+
+- `/ceo/revenue` now sorts by mapped `BillingInvoice.issued_at` and serializes the stored total in currency units, replacing nonexistent attributes that caused HTTP 500.
+- `/ceo/security-audit` reads `AuditLogEntry.safe_metadata` and redacts sensitive nested keys before serialization. Empty/populated CEO requests return HTTP 200; unauthorized roles return 403 in synthetic HTTP tests.
+- `/ceo/ai-usage` uses dated credit-settlement ledger entries and provider-attempt cost records. It no longer invents tier calls, CAD exchange rates or anomaly counts. The web view displays the selected period and explicit unavailable states.
+- Three new HTTP regression tests pass; the combined focused contract/security/migration suite passes 42/42, billing regression suite 54/54, and TypeScript/Next.js build pass. No active data or Production service was changed.
+
 ## Re-audit changes on the same isolated branch
 
 | Severity | Change and test evidence | Remaining limitation |

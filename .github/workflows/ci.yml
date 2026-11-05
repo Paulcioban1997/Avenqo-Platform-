@@ -117,6 +117,7 @@ jobs:
           python -m pytest
           tests/security
           tests/backend/test_connector_secret_cipher.py
+          tests/backend/test_ceo_api_hotfix.py
           tests/backend/test_connector_key_rotation.py
           tests/backend/test_internal_commerce.py
           tests/backend/test_scheduler_http.py

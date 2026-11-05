@@ -22,6 +22,7 @@ from backend.app.config.settings import Settings, get_settings
 from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, require_platform_role
 from backend.app.models.audit_log import AuditLogEntry
+from backend.app.models.ai_usage import TenantAICreditLedgerEntry, TenantAIProviderAttempt
 from backend.app.models.billing import BillingAccount, BillingInvoice, StripeWebhookEvent
 from backend.app.models.commerce_connection import CommerceConnection
 from backend.app.models.company import Company
@@ -275,7 +276,7 @@ def get_revenue_and_subscriptions(
 
     invoices_stmt = (
         select(BillingInvoice)
-        .order_by(BillingInvoice.created_at.desc())
+        .order_by(BillingInvoice.issued_at.desc(), BillingInvoice.id.desc())
         .limit(10)
     )
     recent_invoices = list(db.scalars(invoices_stmt).all())
@@ -284,11 +285,11 @@ def get_revenue_and_subscriptions(
         {
             "id": str(inv.id),
             "company_id": str(inv.company_id),
-            "amount": float(inv.total_amount) if hasattr(inv, "total_amount") and inv.total_amount else 0.0,
-            "currency": getattr(inv, "currency", "CAD"),
+            "amount": inv.total / 100,
+            "currency": inv.currency.upper(),
             "status": inv.status,
             "period_start": inv.period_start.isoformat() if getattr(inv, "period_start", None) else None,
-            "created_at": inv.created_at.isoformat() if inv.created_at else None,
+            "created_at": inv.issued_at.isoformat(),
         }
         for inv in recent_invoices
     ]
@@ -381,6 +382,7 @@ def get_contracts_queue(
 
 @router.get("/ai-usage")
 def get_ai_usage_overview(
+    range_filter: str = Query("30d", pattern="^(7d|30d|90d)$", alias="range"),
     identity: CurrentIdentity = Depends(
         require_platform_role(
             "PLATFORM_SUPER_ADMIN",
@@ -390,24 +392,35 @@ def get_ai_usage_overview(
     ),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    """Métriques d'utilisation de l'IA Centrale multi-tenant, ventilation par tier et rentabilité."""
-    # Modélisation des tiers d'IA canoniques
-    tier_distribution = {
-        "fast_tier_calls": 1420,
-        "standard_tier_calls": 860,
-        "advanced_tier_calls": 310,
-        "reasoning_tier_calls": 95,
-    }
-    credits_consumed_month = 184500
-    estimated_provider_cost_usd = round(credits_consumed_month * 0.00085, 2)
+    """Usage enregistré par tous les tenants; aucun coût ni tier n'est extrapolé."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days={"7d": 7, "30d": 30, "90d": 90}[range_filter])
+    credits_consumed = db.scalar(
+        select(func.coalesce(func.sum(
+            -TenantAICreditLedgerEntry.included_delta - TenantAICreditLedgerEntry.purchased_delta
+        ), 0)).where(
+            TenantAICreditLedgerEntry.transaction_type == "ai_settlement",
+            TenantAICreditLedgerEntry.created_at >= cutoff,
+        )
+    ) or 0
+    provider_cost = db.scalar(
+        select(func.coalesce(func.sum(TenantAIProviderAttempt.provider_cost_usd), 0)).where(
+            TenantAIProviderAttempt.created_at >= cutoff,
+        )
+    ) or 0
 
     return {
-        "monthly_credits_consumed": credits_consumed_month,
-        "estimated_provider_cost_usd": estimated_provider_cost_usd,
-        "estimated_provider_cost_cad": round(estimated_provider_cost_usd * 1.38, 2),
-        "model_tier_distribution": tier_distribution,
-        "metering_accuracy": "AUTHORITATIVE_LEDGER",
-        "anomalies_detected_count": 0,
+        "time_window": range_filter,
+        "credits_consumed_in_range": int(credits_consumed),
+        "recorded_provider_cost_usd": float(provider_cost),
+        "provider_cost_cad": None,
+        "model_tier_distribution": None,
+        "anomalies_detected_count": None,
+        "metering_accuracy": "RECORDED_LEDGER_AND_PROVIDER_ATTEMPTS",
+        "unavailable_reasons": {
+            "provider_cost_cad": "Aucun taux de change vérifié pour la période.",
+            "model_tier_distribution": "Aucun classement historique fiable des modèles par tier.",
+            "anomalies_detected_count": "Aucune source de détection d'anomalies validée.",
+        },
     }
 
 
@@ -515,6 +528,23 @@ def get_operations_health(
 # MODULE 8 : SECURITY & AUDIT
 # --------------------------------------------------------------------------
 
+_SENSITIVE_AUDIT_KEYS = ("password", "secret", "token", "authorization", "credential", "api_key", "private_key")
+
+
+def _redact_audit_metadata(value: Any) -> Any:
+    """Defense in depth for older audit rows with incorrectly classified metadata."""
+    if isinstance(value, dict):
+        return {
+            str(key): (
+                "[REDACTED]" if any(marker in str(key).lower() for marker in _SENSITIVE_AUDIT_KEYS)
+                else _redact_audit_metadata(item)
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_audit_metadata(item) for item in value]
+    return value
+
 @router.get("/security-audit")
 def get_security_audit_events(
     limit: int = Query(25, ge=1, le=100),
@@ -543,7 +573,7 @@ def get_security_audit_events(
             "target_type": e.target_type,
             "target_id": e.target_id,
             "created_at": e.created_at.isoformat() if e.created_at else None,
-            "metadata": e.metadata_json,
+            "metadata": _redact_audit_metadata(e.safe_metadata),
         }
         for e in entries
     ]

@@ -1,5 +1,19 @@
 # Avenqo P0 QA evidence matrix — 2026-11-05
 
+## PR #88 CEO API hotfix revalidation
+
+| Requirement | Evidence | Result |
+|---|---|---|
+| Revenue HTTP API | Synthetic invoices with different issue dates and amounts; platform CEO and tenant principal | 200, newest first, mapped amount/currency/date; tenant principal 403 |
+| Security audit HTTP API | Empty and populated safe metadata, nested sensitive keys, finance principal | 200 for CEO; nested sensitive values redacted; finance principal 403 |
+| AI usage HTTP API | Two recorded credit settlements and provider attempts, 7d/30d filters | Recorded credits and USD costs vary by window; CAD conversion, model tiers and anomaly count explicitly unavailable |
+| Focused CEO tests | `python -m pytest -q tests/backend/test_ceo_api_hotfix.py --tb=short` | 3 PASS |
+| Contract/security/migration tests | `python -m pytest -q tests/backend/test_ceo_api_hotfix.py tests/backend/test_enterprise_contracts_and_ceo_command_center.py tests/backend/test_contracts_and_onboarding.py tests/backend/test_subscription_gate.py tests/backend/test_phase34_migrations.py --tb=short` | 42 PASS |
+| Billing regressions | `python -m pytest -q tests/backend/test_billing.py tests/backend/test_master_security_and_billing.py tests/backend/test_phase33_billing_admin.py --tb=short` | 54 PASS |
+| Frontend | `npx tsc --noEmit`; `npm run build` in `web` | PASS; 57 static pages |
+
+All fixtures are synthetic. No Production API, customer record or credit balance was changed. Prior baseline sections below describe historical states, not the current PR verdict.
+
 ## Re-audit results (newer than the baseline table below)
 
 | Requirement | Evidence | Test | Actual result | Status |

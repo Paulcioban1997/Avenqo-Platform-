@@ -78,7 +78,7 @@ export function CEOCommandCenter({ isFr }: CEOCommandCenterProps) {
         const res = await apiFetch(`/api/v1/ceo/contracts-queue`, { headers });
         if (res.ok) setContractsData(await res.json());
       } else if (activeTab === "ai") {
-        const res = await apiFetch(`/api/v1/ceo/ai-usage`, { headers });
+        const res = await apiFetch(`/api/v1/ceo/ai-usage?range=${range}`, { headers });
         if (res.ok) setAiData(await res.json());
       } else if (activeTab === "connectors") {
         const res = await apiFetch(`/api/v1/ceo/connectors`, { headers });
@@ -458,25 +458,25 @@ export function CEOCommandCenter({ isFr }: CEOCommandCenterProps) {
         <div className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="p-4 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-sm">
-              <span className="text-xs text-slate-500">Crédits IA Mensuels Consommés</span>
+              <span className="text-xs text-slate-500">Crédits IA consommés ({range})</span>
               <div className="text-2xl font-black mt-1 text-slate-900 dark:text-white">
-                {aiData.monthly_credits_consumed.toLocaleString()}
+                {aiData.credits_consumed_in_range.toLocaleString()}
               </div>
               <div className="text-xs text-slate-400 mt-1">Précision: {aiData.metering_accuracy}</div>
             </div>
             <div className="p-4 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-sm">
-              <span className="text-xs text-slate-500">Coût Fournisseurs LLM Estimé (CAD)</span>
+              <span className="text-xs text-slate-500">Coût fournisseur enregistré (USD)</span>
               <div className="text-2xl font-black mt-1 text-slate-900 dark:text-white">
-                {aiData.estimated_provider_cost_cad} CAD
+                {aiData.recorded_provider_cost_usd} USD
               </div>
-              <div className="text-xs text-slate-400 mt-1">({aiData.estimated_provider_cost_usd} USD)</div>
+              <div className="text-xs text-slate-400 mt-1">CAD : indisponible sans taux vérifié</div>
             </div>
             <div className="p-4 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-sm">
               <span className="text-xs text-slate-500">Anomalies de Consommation</span>
               <div className="text-2xl font-black mt-1 text-emerald-600">
-                {aiData.anomalies_detected_count}
+                {aiData.anomalies_detected_count ?? "Non évalué"}
               </div>
-              <div className="text-xs text-slate-400 mt-1">Aucun abus ou fuite détectée</div>
+              <div className="text-xs text-slate-400 mt-1">Détection d'anomalies non validée</div>
             </div>
           </div>
         </div>
