@@ -7,7 +7,7 @@
 | P0 | A user with `is_platform_admin=True` and `platform_role=None` was treated as `PLATFORM_SUPER_ADMIN` by `require_platform_role`. | `backend/app/dependencies/auth.py`: require one of four explicit platform roles; reject missing/unknown roles with 403. | New `test_platform_admin_without_explicit_role_cannot_use_executive_endpoints`; targeted backend suite 27/27 PASS. | Role assignment provenance and live sessions were not tested. |
 | P0 | Countersign route used `require_platform_admin`, admitting every platform admin role. | `backend/app/routers/contracts.py`: require `PLATFORM_SUPER_ADMIN`. | Dependency code inspection and targeted suite 27/27 PASS. | End-to-end HTTP negative test and founder signature authorization remain outstanding. |
 
-Remediation commit SHA: recorded in the audit branch Git history after commit; these files are generated before commit. No deployed artifact exists.
+Remediation commit SHA: `11ed7d9d7a6035a3655a26eef7b50a44255a9438`. No deployed artifact exists.
 
 ## Confirmed but unresolved
 

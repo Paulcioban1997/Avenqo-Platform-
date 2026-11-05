@@ -40,6 +40,6 @@ The audit branch removes the implicit superadmin fallback for a platform-admin u
 
 ## Residual risk
 
-No live multi-tenant HTTP attack suite, real Stripe test flows, provider signature verification, isolated PostgreSQL 0072 run, PDF visual review, Gitleaks run or full GitHub CI for `4e4e213` was established. No Production system was modified. Verdict: **NO-GO**.
+No live multi-tenant HTTP attack suite, real Stripe test flows, provider signature verification, isolated PostgreSQL 0072 run, PDF visual review or full GitHub CI for `4e4e213` was established. Gitleaks v8.30.1 scanned the staged audit changes with no leaks; full repository/history scanning was not done. No Production system was modified. Verdict: **NO-GO**.
 
 The existing `web` lint command exited 1 with 5,524 errors, including the vendored CanvasKit browser bundle and application files. No lint rule was weakened to make the audit pass.

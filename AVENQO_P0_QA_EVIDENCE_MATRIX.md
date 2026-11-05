@@ -19,6 +19,7 @@
 | PDF byte integrity | PDF generator/signature service | Code inspection | Hash covers text, not final PDF bytes | FAILED |
 | Migration 0072 | Disposable local SQLite DB | `python -m alembic upgrade 0072_enterprise_agreements_and_legal_profiles` with isolated `ALEMBIC_DATABASE_URL` | Failed in 0071 on PostgreSQL-only `::json`; no PostgreSQL instance available | NOT_VERIFIED |
 | Full GitHub CI/GitGuardian for implementation | PR #87 checks | `gh pr view 87 --json statusCheckRollup` | GitGuardian SUCCESS applies to `ed07cf3`, not `4e4e213` | NOT_VERIFIED |
+| Staged secret scan | Audit changes only | Gitleaks v8.30.1 `git --staged --redact=100 --config .gitleaks.toml` via required pre-commit hook | No leaks found in ~15.84 KB staged changes; not a full-history scan | VERIFIED |
 | Production safety | Isolated audit worktree | Git diff and operation log | No deploy, merge, active DB write, payment or real signature | VERIFIED |
 
 Statuses describe this audit only. A passing synthetic test is not live integration evidence.
