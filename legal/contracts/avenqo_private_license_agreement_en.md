@@ -1,71 +1,96 @@
-# AVENQO CENTRAL PRIVATE LICENSE AGREEMENT
-**CONTRACT REFERENCE: AVENQO-LIC-PRIVATE-2026-V1-EN**
-*(DRAFT SUBJECT TO LEGAL REVIEW BY A QUEBEC ATTORNEY — PRE-COMMERCIAL USAGE)*
+# AVENQO CENTRAL PRIVATE SOFTWARE LICENSE AGREEMENT
+**CONTRACT REFERENCE: AVENQO-LIC-PRIVATE-2026-V1.1-EN**
+**DOCUMENT STATUS: UNDER LEGAL REVIEW (UNDER_REVIEW / LEGAL_REVIEW_REQUIRED)**
+*(DRAFT FOR FOUNDER AND QUEBEC BAR LEGAL COUNSEL EXAMINATION — NOT APPROVED FOR CLIENT SIGNATURE)*
 
 ---
 
-### BETWEEN THE PARTIES:
+### BETWEEN THE UNDERSIGNED PARTIES:
 
 **1. THE LICENSOR:**
-**PMC SOLUTIONS AI** (enterprise pending incorporation in Quebec, Canada), having its registered office in Quebec, Canada, operating the Avenqo AI technology (hereinafter referred to as "**PMC Solutions AI**" or the "**Licensor**").
+**PMC SOLUTIONS AI** (enterprise pending incorporation in Quebec, Canada, represented by Mircea Paul Cioban, Founder), having its principal place of business in Quebec, Canada, operating the proprietary software technology **Avenqo** (hereinafter referred to as "**PMC Solutions AI**" or the "**Licensor**").
+*Incorporation Notice: Upon official issuance of the certificate of incorporation by the Registraire des entreprises du Québec (REQ), all rights and obligations of the Licensor hereunder shall automatically transfer to PMC Solutions AI Inc.*
 
 **AND**
 
 **2. THE LICENSEE:**
-The client corporate entity, identified during registration by its legal name, designated authorized representative, and Avenqo tenant identifier (hereinafter referred to as the "**Licensee**").
+The client corporate entity **{{COMPANY_NAME}}**, having its business address at {{COMPANY_ADDRESS}} (Avenqo Unique Tenant Identifier: `{{COMPANY_ID}}`), represented by {{SIGNATORY_NAME}}, acting in their capacity as {{SIGNATORY_TITLE}} duly authorized (hereinafter referred to as the "**Licensee**").
+
+(The Licensor and the Licensee are individually referred to as a "**Party**" and collectively as the "**Parties**").
 
 ---
 
 ### PREAMBLE
-The Licensor is the creator, developer, and sole proprietor of the proprietary software technology known as the **Avenqo Central Engine** (the "**Central AI Engine**"), comprising multi-agent orchestration mechanisms, grounded contextual reasoning, and strict business data partitioning.
-The Licensee desires to obtain a private license to deploy and query the Central AI Engine for its internal operational requirements within a dedicated environment.
+The Licensor is the creator, author, and exclusive owner of the proprietary software technology known as the **Avenqo Central AI Engine** (the "**Central Engine**"), comprising proprietary mechanisms for multi-agent orchestration, contextual query routing, analytical tools, and strict business data partitioning.
+The Licensee desires to obtain a private software license to operate the Central Engine for integration into its internal enterprise systems or dedicated deployment environment.
 
 ---
 
-### SECTION 1 — STRICT NON-EXCLUSIVE NATURE OF THE LICENSE
-1.1 **Principle of Non-Exclusivity**: This license is granted on an expressly **NON-EXCLUSIVE BASIS**. The Licensor retains full and unencumbered rights to grant identical, similar, or equivalent licenses to any third party, whether or not competing with the Licensee, without restriction as to territory, sector, or market.
-1.2 **No Implied Exclusivity**: No sectorial, geographical, or temporal exclusivity is conferred unless established by a separate, express written Exclusive Addendum executed by authorized executive officers and subject to substantial distinct exclusivity royalties.
+### SECTION 1 — TECHNICAL SCOPE AND STRICT NON-EXCLUSIVE NATURE
+1.1 **Technical Scope**: This license covers solely application-level access, API integration, and orchestrated execution of the Central Engine. It conveys no assignment, transfer, or sale of source code, low-level deployment scripts, or foundational model weight matrices.
+1.2 **Strict Non-Exclusivity**: This license is granted on an expressly **NON-EXCLUSIVE BASIS**. The Licensor retains unrestricted rights to grant identical or similar licenses to any third party, including direct competitors of the Licensee, without sectorial or geographical limitation. No exclusivity can be implied or granted without a separate executed exclusive addendum and distinct substantial royalties.
 
 ---
 
-### SECTION 2 — GRANTED RIGHTS AND USAGE RESTRICTIONS
-2.1 **Scope of Grant**: Subject to timely payment of applicable license fees, the Licensor grants to the Licensee a personal, non-transferable, non-sublicensable license to query, integrate via API, and utilize the Central AI Engine solely for internal business processes.
-2.2 **Strict Restrictions**: The Licensee shall not:
-- Reverse engineer, decompile, or disassemble any portion of the Central AI Engine binaries or model weights;
-- Attempt to extract neural embeddings, proprietary prompts, or weight tensors;
-- Resell, sub-license, rent, or white-label the Central AI Engine to third parties without prior written consent;
-- Use the Central AI Engine or its outputs to train or benchmark a direct competitive commercial foundation model.
+### SECTION 2 — DEPLOYMENT PARAMETERS AND USAGE RESTRICTIONS
+2.1 **Deployment Runtime**: The Central Engine is deployed within a dedicated tenant environment bounded by strict tenant contextual barriers (`TenantContext`), ensuring data isolation for the Licensee's queries.
+2.2 **Strict Restrictions**: The Licensee shall strictly refrain from:
+- Decompiling, disassembling, or reverse engineering binaries, libraries, or algorithms of the Central Engine;
+- Extracting or attempting to intercept embedding weights, context memory caches, or proprietary system prompts;
+- Reselling, sub-licensing, leasing, or white-labeling the Central Engine to third parties without prior written consent;
+- Using the Central Engine to train, tune, or commercialize any product directly competing with PMC Solutions AI solutions.
 
 ---
 
-### SECTION 3 — DATA ISOLATION AND PROPRIETARY CONTEXT
-3.1 **Tenant Isolation**: Every inference execution of the Central AI Engine is strictly bounded by an isolated tenant context (`TenantContext`), preventing any cross-tenant data contamination.
-3.2 **Confidentiality of Queries**: Input prompts and synthesized outputs remain the confidential property of the Licensee. The Licensor maintains no persistent cross-tenant memory of the Licensee's proprietary records beyond required transactional audit logging.
+### SECTION 3 — FINANCIAL TERMS, ROYALTIES, AND CREDIT CONSUMPTION
+3.1 **Fee Structure**: The Licensee agrees to pay the recurring base software license fee together with algorithmic inference charges computed via AI Credit consumption.
+3.2 **Invoicing and Taxes**: Amounts are payable in Canadian Dollars (CAD). Applicable taxes (GST/QST) are invoiced in accordance with the Licensor's official tax registrations.
+3.3 **Fail-Closed Quota Protection**: If allotted execution quotas are exhausted without prior recharge, API execution suspends (*fail-closed*) to maintain platform stability and prevent unexpected operational liabilities.
 
 ---
 
-### SECTION 4 — FINANCIAL TERMS AND ROYALTY SCHEDULE
-4.1 **License Fees**: The Licensee agrees to pay the recurring base license fee specified in the commercial schedule, together with consumption charges based on AI Credit utilization.
-4.2 **Currency and Payment**: All amounts are stated and payable in Canadian Dollars (CAD). Payments are due upon invoice presentation or via authorized automated payment rails.
+### SECTION 4 — MAINTENANCE AND TECHNICAL SUPPORT
+4.1 **System Maintenance**: The Licensor shall provide corrective software maintenance and critical security patches for the Central Engine.
+4.2 **Support Channels**: Technical assistance is delivered electronically during standard business days and hours applicable in the Province of Quebec (Eastern Time Zone).
 
 ---
 
-### SECTION 5 — AUDIT TRAILS AND RATE ENFORCEMENT
-5.1 **Immutable Audit Registry**: The Licensor maintains an immutable, time-stamped log of inference transactions. In the event of resource limit exhaustion, a fail-closed throttle or suspension is automatically enacted to protect system integrity.
+### SECTION 5 — INTELLECTUAL PROPERTY AND CONFIDENTIALITY
+5.1 **Exclusive Licensor Ownership**: PMC Solutions AI retains full, unencumbered, and exclusive ownership of all copyrights, patents, trade secrets, trademarks, and proprietary methodologies underlying the Central Engine.
+5.2 **Licensee Queries and Outputs**: Operational inputs submitted and analytical outputs generated for the Licensee remain the confidential property of the Licensee.
 
 ---
 
-### SECTION 6 — WARRANTY DISCLAIMER AND LIMITATION OF LIABILITY
-6.1 The Central AI Engine is provided to assist in business decision-making. While the Licensor warrants that the Engine operates substantially in accordance with published specifications, the Licensor does not guarantee that AI-synthesized outputs are entirely free from context interpretation nuances.
-6.2 The Licensee retains final accountability for validating business decisions and confirming the accuracy of artificial intelligence recommendations before operational deployment.
+### SECTION 6 — WARRANTIES, LIABILITY, AND ARTICLE 1474 OF THE CIVIL CODE OF QUEBEC
+6.1 **Decision Support Tool**: The Central Engine is provided as an analytical support asset. While the Licensor warrants substantial conformance with published technical specifications, the Licensor does not guarantee that algorithmic inferences are free from interpretive nuance. The Licensee remains solely accountable for its business decisions.
+6.2 **Liability Cap**: The aggregate cumulative liability of the Licensor shall not exceed the total license fees actually paid by the Licensee during the six (6) months preceding the incident.
+6.3 **Application of Article 1474 CCQ**: Pursuant to mandatory public order provisions of Article 1474 of the Civil Code of Quebec, no limitation or exclusion of liability shall apply to gross negligence, intentional fault, or bodily or moral harm.
 
 ---
 
-### SECTION 7 — TERM AND TERMINATION
-7.1 This Agreement takes effect upon electronic execution for an initial term of one (1) year, renewable upon mutual consent.
-7.2 Breach of Section 2 restrictions causes immediate and automatic termination of the license without refund of paid royalties.
+### SECTION 7 — TERM, TERMINATION, AND EFFECT
+7.1 **Term**: This Agreement remains in force for a fixed term of one (1) year from the Effective Date, renewable upon mutual written agreement.
+7.2 **Immediate Termination for Cause**: Material breach of Section 2 restrictions causes immediate and automatic revocation of the license without refund of paid royalties.
 
 ---
 
-### SECTION 8 — GOVERNING LAW AND VENUE
-This Agreement is governed exclusively by the laws of the Province of Quebec and the federal laws of Canada applicable therein. The courts of the Province of Quebec sitting in the judicial district of Montreal have exclusive jurisdiction.
+### SECTION 8 — LINGUISTIC COMPLIANCE (QUEBEC) AND GOVERNING LAW
+8.1 **French Language Compliance**: The Parties expressly confirm that the French version of this Agreement was made available to the Licensee prior to examining or executing any translated version (Charter of the French Language).
+8.2 **Governing Law and Forum**: This Agreement is governed by the laws of the Province of Quebec and the federal laws of Canada applicable therein. The competent courts sitting in the judicial district of Montreal, Quebec, Canada, have exclusive jurisdiction.
+
+---
+
+**FOR THE LICENSEE:**  
+Company Name: {{COMPANY_NAME}}  
+Authorized Signatory: {{SIGNATORY_NAME}}  
+Title: {{SIGNATORY_TITLE}}  
+Date: {{EFFECTIVE_DATE}}  
+Signature: {{SIGNATURE_BLOCK_CLIENT}}
+
+**FOR PMC SOLUTIONS AI:**  
+Entity: PMC SOLUTIONS AI (enterprise pending incorporation in Quebec, Canada)  
+Representative: Mircea Paul Cioban  
+Title: Founder  
+Date: {{EFFECTIVE_DATE}}  
+Authorized Countersignature:  
+`[Pending authorized countersignature by PMC Solutions AI]`

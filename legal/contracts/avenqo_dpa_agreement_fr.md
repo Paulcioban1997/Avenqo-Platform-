@@ -1,58 +1,88 @@
 # ACCORD DE TRAITEMENT DES DONNÉES PERSONNELLES (DPA)
-**RÉFÉRENCE CONTRACTUELLE : AVENQO-DPA-2026-V1**
-*(CONFORME À LA LOI 25 DU QUÉBEC ET À LA LPRPDE / PIPEDA DU CANADA)*
+**RÉFÉRENCE CONTRACTUELLE : AVENQO-DPA-2026-V1.1-FR**
+**STATUT DU DOCUMENT : SOUMIS À RÉVISION JURIDIQUE (UNDER_REVIEW / LEGAL_REVIEW_REQUIRED)**
+*(PROJET DESTINÉ À L'EXAMEN DU FONDATEUR ET D'UN AVOCAT DU BARREAU DU QUÉBEC — NON APPROUVÉ POUR LA SIGNATURE CLIENT)*
 
 ---
 
-### ENTRE LES SOUSSIGNÉS :
+### ENTRE LES PARTIES SOUSSIGNÉES :
 
-**1. LE FOURNISSEUR (SOUS-TRAITANT) :**
-**PMC SOLUTIONS AI** (entreprise en cours d'incorporation au Québec, Canada), exploitant la plateforme technologique **Avenqo**, représentée par ses fondateurs autorisés (avec mise à jour contractuelle formelle dès immatriculation officielle au Registraire des entreprises du Québec) (ci-après désignée « **PMC Solutions AI** » ou le « **Sous-traitant** »).
+**1. LE SOUS-TRAITANT :**
+**PMC SOLUTIONS AI** (entreprise en cours d'incorporation au Québec, Canada, représentée par Mircea Paul Cioban, fondateur), ayant son établissement d'affaires au Québec, Canada, exploitant la plateforme technologique **Avenqo** (ci-après désignée « **PMC Solutions AI** » ou le « **Sous-traitant** »).
+*Note d'incorporation : Dès la délivrance officielle du certificat de constitution par le Registraire des entreprises du Québec (REQ), les droits et obligations du Sous-traitant aux présentes seront automatiquement transférés à PMC Solutions AI Inc.*
 
 **ET**
 
-**2. LE CLIENT (RESPONSABLE DU TRAITEMENT) :**
-L'entreprise cliente **{{COMPANY_NAME}}**, identifiée par son identifiant unique de locataire `{{COMPANY_ID}}`, représentée par **{{SIGNATORY_NAME}}**, agissant en qualité de **{{SIGNATORY_TITLE}}** (ci-après désignée le « **Client** » ou le « **Responsable du traitement** »).
+**2. LE RESPONSABLE DU TRAITEMENT :**
+L'entreprise cliente **{{COMPANY_NAME}}**, ayant son établissement d'affaires à {{COMPANY_ADDRESS}} (Identifiant Unique Locataire : `{{COMPANY_ID}}`), représentée par {{SIGNATORY_NAME}}, agissant en qualité de {{SIGNATORY_TITLE}} dûment mandaté(e) (ci-après désignée le « **Client** » ou le « **Responsable du traitement** »).
+
+(Le Sous-traitant et le Responsable du traitement étant individuellement désignés une « **Partie** » et conjointement les « **Parties** »).
 
 ---
 
-### 1. OBJET ET CHAMP D'APPLICATION
-Le présent Accord de traitement des données (« DPA ») régit le traitement des renseignements personnels et des données d'entreprise effectué par PMC Solutions AI pour le compte du Client dans le cadre de l'utilisation de la plateforme infonuagique Avenqo (Forfait : **{{SUBSCRIPTION_PLAN}}**, Modules actifs : **{{ACTIVE_MODULES}}**).
-
-### 2. CONFORMITÉ AUX LOIS SUR LA PROTECTION DE LA VIE PRIVÉE
-Les Parties s'engagent à respecter l'ensemble des lois applicables en matière de protection des renseignements personnels, notamment :
-- La *Loi sur la protection des renseignements personnels dans le secteur privé* (Québec, RLRQ c. P-39.1, modifiée par la **Loi 25**).
-- La *Loi sur la protection des renseignements personnels et les documents électroniques* (Canada, **LPRPDE / PIPEDA**).
-- Le cas échéant, le *Règlement Général sur la Protection des Données* (UE 2016/679, **RGPD**).
-
-### 3. PROPRIÉTÉ EXCLUSIVE ET INSTRUCTIONS DE TRAITEMENT
-1. **Propriété exclusive :** Le Client conserve la propriété entière, exclusive et inaliénable de toutes les données personnelles et commerciales téléversées, synchronisées ou traitées via Avenqo.
-2. **Instructions documentées :** Le Sous-traitant traite les données personnelles exclusivement sur instruction documentée du Client et aux seules fins de fournir les services souscrits.
-3. **Interdiction d'entraînement de modèles publics :** Le Sous-traitant s'interdit formellement d'utiliser les données personnelles du Client pour entraîner ou affiner des modèles d'intelligence artificielle publics ou mutualisés entre entreprises.
-
-### 4. MESURES DE SÉCURITÉ ET CHIFFREMENT
-Le Sous-traitant applique des mesures techniques et organisationnelles de premier ordre :
-- **Chiffrement au repos :** Chiffrement matériel AES-256 de toutes les bases de données et pièces jointes.
-- **Chiffrement en transit :** Protocoles TLS 1.3 obligatoires pour tous les flux API et webhooks.
-- **Isolation multi-tenant stricte :** Chaque enregistrement est cloisonné par `company_id` sans possibilité de fuite inter-entreprises.
-
-### 5. NOTIFICATION DES INCIDENTS DE CONFIDENTIALITÉ (LOI 25)
-En cas d'incident de sécurité présentant un risque de préjudice sérieux pour les personnes concernées, le Sous-traitant s'engage à :
-1. Aviser le Client par écrit avec diligence raisonnable (sous un délai maximal de **48 heures**).
-2. Prendre immédiatement toutes les mesures raisonnables pour atténuer les risques et limiter la portée de l'incident.
-3. Collaborer pleinement avec le Client pour répondre aux obligations légales de déclaration envers la Commission d'accès à l'information du Québec (CAI) ou le Commissariat à la protection de la vie privée du Canada.
-
-### 6. RESTITUTION ET SUPPRESSION DES DONNÉES
-À l'expiration ou à la résiliation de l'abonnement du Client, le Sous-traitant s'engage, au choix du Client, à :
-1. Permettre l'exportation complète de ses données dans un format structuré et standard (CSV, JSON, PDF).
-2. Supprimer de manière sécurisée et irréversible toutes les copies des données du Client conservées sur ses serveurs de production, sous réserve des obligations légales de conservation fiscale (7 ans au Canada).
+### ARTICLE 1 — OBJET ET PORTÉE DU TRAITEMENT
+Le présent Accord de traitement des données (« DPA ») encadre les opérations de traitement de renseignements personnels et de données commerciales effectuées par PMC Solutions AI pour le compte du Client dans le cadre de la fourniture des services infonuagiques Avenqo (Forfait : **{{SUBSCRIPTION_PLAN}}**, Modules actifs : **{{ACTIVE_MODULES}}**).
 
 ---
 
-### DATE DE PRISE D'EFFET ET VERSIONS
-- **Date d'entrée en vigueur :** {{EFFECTIVE_DATE}}
-- **Version contractuelle :** {{CONTRACT_VERSION}}
-- **Statut légal :** DOCUMENT CONTRACTUEL SOUMIS À VALIDATION JURIDIQUE AVANT UTILISATION COMMERCIALE
+### ARTICLE 2 — CONFORMITÉ LÉGISLATIVE APPLICABLE
+Les Parties s'engagent à exécuter leurs obligations respectives en conformité avec :
+1. La *Loi sur la protection des renseignements personnels dans le secteur privé* (Québec, RLRQ c. P-39.1, modifiée par la **Loi 25**).
+2. La *Loi sur la protection des renseignements personnels et les documents électroniques* (Canada, **LPRPDE / PIPEDA**).
+3. Le cas échéant pour les résidents européens, le *Règlement Général sur la Protection des Données* (UE 2016/679, **RGPD**).
+
+---
+
+### ARTICLE 3 — RÔLES ET INSTRUCTIONS DOCUMENTÉES
+3.1 **Propriété exclusive des données** : Le Client conserve la titularité exclusive, inaliénable et entière de l'ensemble des données d'entreprise et renseignements personnels confiés à Avenqo.
+3.2 **Instructions du Client** : Le Sous-traitant traite les données personnelles exclusivement sur instruction documentée du Client, aux seules fins de l'exécution, de la maintenance et de la sécurisation des services souscrits.
+3.3 **Proscription absolue d'entraînement de modèles publics d'IA** : Le Sous-traitant s'interdit formellement d'utiliser les données personnelles ou commerciales du Client pour entraîner, affiner ou enrichir des modèles d'intelligence artificielle publics, mutualisés ou accessibles à des tiers sans le consentement exprès écrit du Client.
+
+---
+
+### ARTICLE 4 — SOUS-TRAITANTS ULTÉRIEURS ET HÉBERGEMENT
+4.1 **Liste des sous-traitants autorisés** : Le Client autorise expressément le recours aux sous-traitants techniques suivants, indispensables à l'exploitation d'Avenqo :
+- **Railway Corp.** (Hébergement des serveurs d'application et bases de données PostgreSQL - États-Unis / Canada).
+- **Cloudflare Inc.** (Réseau de diffusion de contenu CDN, DNS, chiffrement Edge et protection anti-DDoS - International / Canada).
+- **Stripe Payments Canada / Stripe Inc.** (Passerelle de facturation et traitement sécurisé des paiements - Canada / États-Unis).
+- **Resend Inc.** (Infrastructure d'expédition des courriels transactionnels et notifications - États-Unis).
+- **Anthropic PBC / OpenAI LLC / Google LLC** (Fournisseurs de modèles d'IA pour les inférences avancées de Central AI - États-Unis, sous engagement contractuel de non-utilisation des données pour l'entraînement).
+- **Telnyx LLC** (Téléphonie infonuagique et passerelle de télécommunications pour le module Voice AI - États-Unis / Canada).
+4.2 **Transferts transfrontaliers (Loi 25)** : Le Client reconnaît que certains sous-traitants ultérieurs opèrent des infrastructures aux États-Unis ou à l'international. Le Sous-traitant s'assure que ces transferts font l'objet d'accords contractuels imposant des mesures de protection comparables à celles requises au Québec et au Canada.
+
+---
+
+### ARTICLE 5 — SÉCURITÉ DE L'INFORMATION ET SAUVEGARDES
+Le Sous-traitant applique des mesures techniques et organisationnelles conformes aux standards reconnus :
+- **Chiffrement au repos** : Chiffrement matériel AES-256 appliqué aux bases de données, disques persistants et volumes d'archivage.
+- **Chiffrement en transit** : Utilisation obligatoire des protocoles TLS 1.3 pour l'ensemble des flux réseau web et des appels API.
+- **Cloisonnement multi-tenant** : Isolation logique et physique rigoureuse des tables et requêtes par identifiant d'entreprise (`company_id`) via Row-Level Security (RLS).
+- **Sauvegardes régulières** : Sauvegardes automatisées quotidiennes des bases de données de production conservées dans des environnements chiffrés isolés.
+
+---
+
+### ARTICLE 6 — GESTION ET NOTIFICATION DES INCIDENTS DE CONFIDENTIALITÉ (LOI 25)
+6.1 **Délai d'avis (48 heures)** : En cas d'incident de sécurité avéré présentant un risque de préjudice sérieux pour les personnes concernées, le Sous-traitant s'engage à notifier le Client par écrit dans un délai maximal de **quarante-huit (48) heures** suivant sa confirmation.
+6.2 **Atténuation immédiate** : Le Sous-traitant prend sans délai toutes les mesures correctives raisonnables pour neutraliser la brèche, limiter l'impact et préserver l'intégrité des systèmes.
+6.3 **Coopération légale** : Le Sous-traitant collabore activement avec le Client afin de lui permettre d'accomplir ses obligations légales d'avis auprès de la Commission d'accès à l'information du Québec (CAI), du Commissariat à la protection de la vie privée du Canada (CPVP) ou des personnes touchées.
+
+---
+
+### ARTICLE 7 — CONSERVATION, RESTITUTION ET SUPPRESSION DES DONNÉES
+7.1 **Durée de conservation opérationnelle** : Les données personnelles ne sont conservées que pendant la durée de l'abonnement actif du Client.
+7.2 **Délai de réversibilité** : À compter de la résiliation de l'abonnement, le Client bénéficie d'une fenêtre de trente (30) jours pour exporter ses données au format structuré standard (CSV/JSON).
+7.3 **Suppression définitive** : À l'expiration du délai de réversibilité, le Sous-traitant procède à la suppression irréversible des données de production dans un délai maximal de soixante (60) jours, à l'exception des registres financiers et factures soumis à une obligation légale de conservation fiscale (7 ans au Canada).
+
+---
+
+### ARTICLE 8 — RESPONSABILITÉ ET CONTACT
+La responsabilité du Sous-traitant dans le cadre du présent DPA est soumise aux plafonds et stipulations de l'Article 8 du Contrat d'Abonnement SaaS principal (MSA), sous réserve expresse de l'article 1474 du Code civil du Québec.  
+Personne désignée responsable de la protection des renseignements personnels : Mircea Paul Cioban (privacy@avenqo.ca).
+
+---
+
+### CONFORMITÉ LINGUISTIQUE (QUÉBEC)
+Conformément aux exigences de la *Charte de la langue française* (Loi 96), les Parties attestent que la version française du présent accord a été consultée préalablement à toute version traduite.
 
 ---
 
@@ -61,9 +91,12 @@ Dénomination : {{COMPANY_NAME}}
 Signataire autorisé : {{SIGNATORY_NAME}}  
 Titre / Fonction : {{SIGNATORY_TITLE}}  
 Date : {{EFFECTIVE_DATE}}  
+Signature : {{SIGNATURE_BLOCK_CLIENT}}
 
 **POUR PMC SOLUTIONS AI (SOUS-TRAITANT) :**  
-Représentant autorisé : Mircea Paul Cioban  
-Titre : Fondateur, PMC Solutions AI  
+Dénomination : PMC SOLUTIONS AI (entreprise en cours d'incorporation au Québec, Canada)  
+Représentant : Mircea Paul Cioban  
+Titre : Fondateur  
 Date : {{EFFECTIVE_DATE}}  
-
+Contresignature autorisée :  
+`[En attente de contresignature autorisée par PMC Solutions AI]`
