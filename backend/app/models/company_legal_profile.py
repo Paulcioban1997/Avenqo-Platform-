@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from sqlalchemy import Boolean, ForeignKey, String
@@ -7,6 +8,9 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.models.base import Base, TimestampMixin
+
+if TYPE_CHECKING:
+    from backend.app.models.company import Company
 
 
 class CompanyLegalProfile(TimestampMixin, Base):
@@ -79,3 +83,4 @@ class CompanyLegalProfile(TimestampMixin, Base):
     )
 
     company: Mapped["Company"] = relationship(back_populates="legal_profile")
+
