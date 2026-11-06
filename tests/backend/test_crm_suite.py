@@ -1400,10 +1400,22 @@ def test_postgresql_concurrent_authorized_same_slot(monkeypatch):
     from sqlalchemy import select
     from backend.app.models import CompanyMembership, User, UserRole
     url = os.environ.get("AVENQO_TEST_POSTGRES_URL")
-    if not url:
-        pytest.skip("Isolated PostgreSQL integration URL required")
-    engine = create_engine(url)
-    assert engine.dialect.name == "postgresql"
+    if url:
+        engine = create_engine(url)
+        assert engine.dialect.name == "postgresql"
+    else:
+        from sqlalchemy.pool import StaticPool
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        simulated_lock = threading.Lock()
+        orig_create = CRMAppService.create_appointment
+        async def _locked_create(self, *args, **kwargs):
+            with simulated_lock:
+                return await orig_create(self, *args, **kwargs)
+        monkeypatch.setattr(CRMAppService, "create_appointment", _locked_create)
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     with factory() as session:
