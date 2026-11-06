@@ -52,6 +52,15 @@ class CurrentIdentity:
 def get_account_notifier() -> AccountNotifier:
     settings = get_settings()
     env = settings.environment.lower()
+    if env in {"production", "prod"}:
+        if settings.email_provider == "sandbox_capture" or settings.sandbox_email_capture_enabled:
+            raise RuntimeError("CRITICAL SECURITY ERROR: Sandbox email capture is strictly prohibited in Production.")
+        if settings.email_provider == "https_api" and settings.email_delivery_configured:
+            return HTTPSAccountNotifier(settings)
+        if settings.email_delivery_configured:
+            return SMTPAccountNotifier(settings)
+        return LoggingAccountNotifier()
+
     if settings.email_provider == "sandbox_capture":
         return get_sandbox_capture_notifier(settings)
     if env in {"sandbox", "staging", "test"}:

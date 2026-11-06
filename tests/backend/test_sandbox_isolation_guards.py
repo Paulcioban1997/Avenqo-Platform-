@@ -202,3 +202,89 @@ def test_commerce_sync_service_raises_when_isolated(monkeypatch):
             loop.run_until_complete(service.synchronize(tenant, uuid4()))
     finally:
         loop.close()
+
+
+def test_production_strictly_prohibits_sandbox_email_capture():
+    """Verify that attempting to configure sandbox_capture in Production raises validation error."""
+    with pytest.raises(ValueError, match="strictly prohibited in production"):
+        Settings(
+            ENVIRONMENT="production",
+            AUTH_JWT_SECRET=SAFE_JWT,
+            DATABASE_URL="postgresql://user:test-only-password@prod.db:5432/db",
+            STRIPE_SECRET_KEY="sk_live_dummy",
+            STRIPE_WEBHOOK_SECRET="whsec_dummy",
+            STRIPE_PRICE_DEMO="price_1",
+            STRIPE_PRICE_PROFESSIONAL="price_2",
+            FRONTEND_URL="https://avenqo.ca",
+            CORS_ORIGINS=["https://avenqo.ca"],
+            ALLOWED_HOSTS=["api.avenqo.ca"],
+            EMAIL_PROVIDER="sandbox_capture",
+        )
+
+
+def test_production_auth_dependency_raises_runtime_error_if_capture_configured():
+    """Verify get_account_notifier() raises a critical error if capture is somehow set in production."""
+    from backend.app.config.settings import get_settings
+    from backend.app.dependencies.auth import get_account_notifier
+    
+    settings = get_settings()
+    orig_env = settings.environment
+    orig_prov = settings.email_provider
+    try:
+        settings.environment = "production"
+        settings.email_provider = "sandbox_capture"
+        with pytest.raises(RuntimeError, match="CRITICAL SECURITY ERROR: Sandbox email capture is strictly prohibited in Production"):
+            get_account_notifier()
+    finally:
+        settings.environment = orig_env
+        settings.email_provider = orig_prov
+
+
+def test_sandbox_capture_tenant_scoping():
+    """Verify multi-tenant isolation and zero leakage in captured emails."""
+    notifier = SandboxCaptureAccountNotifier()
+    notifier.clear()
+    
+    tenant_a = str(uuid4())
+    tenant_b = str(uuid4())
+    
+    notifier._record("user_a@tenant-a.com", "Challenge A", "code 11112222", "", company_id=tenant_a)
+    notifier._record("user_b@tenant-b.com", "Challenge B", "code 33334444", "", company_id=tenant_b)
+    
+    # Assert tenant A scoping
+    emails_a = notifier.get_captured_emails(company_id=tenant_a)
+    assert len(emails_a) == 1
+    assert emails_a[0].verification_code == "11112222"
+    assert notifier.get_latest_code_for("user_a@tenant-a.com", company_id=tenant_a) == "11112222"
+    assert notifier.get_latest_code_for("user_a@tenant-a.com", company_id=tenant_b) is None
+    
+    # Assert tenant B scoping
+    emails_b = notifier.get_captured_emails(company_id=tenant_b)
+    assert len(emails_b) == 1
+    assert emails_b[0].verification_code == "33334444"
+    assert notifier.get_latest_code_for("user_b@tenant-b.com", company_id=tenant_b) == "33334444"
+
+
+def test_async_background_task_run_reserved_blocked_in_sandbox(monkeypatch):
+    """Verify CommerceSyncRunner.run_reserved immediately rejects async background execution."""
+    fake_settings = Settings(
+        ENVIRONMENT="sandbox",
+        AUTH_JWT_SECRET=SAFE_JWT,
+        SANDBOX_COMMERCE_SYNC_ENABLED=False,
+    )
+    monkeypatch.setattr("backend.app.config.settings.get_settings", lambda: fake_settings)
+    
+    mock_service_factory = MagicMock()
+    runner = CommerceSyncRunner(
+        session_factory=MagicMock(),
+        service_factory=mock_service_factory,
+    )
+    
+    tenant = TenantContext(company_id=uuid4())
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(runner.run_reserved(tenant, uuid4()))
+        # Ensure service factory and synchronize were NEVER invoked
+        mock_service_factory.assert_not_called()
+    finally:
+        loop.close()

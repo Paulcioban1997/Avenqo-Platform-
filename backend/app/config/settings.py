@@ -598,6 +598,10 @@ class Settings(BaseSettings):
                 missing.append("CORS_ORIGINS")
             if not self.allowed_hosts or "*" in self.allowed_hosts:
                 missing.append("ALLOWED_HOSTS")
+            if self.email_provider == "sandbox_capture":
+                raise ValueError("EMAIL_PROVIDER 'sandbox_capture' is strictly prohibited in production")
+            if self.sandbox_email_capture_enabled:
+                raise ValueError("SANDBOX_EMAIL_CAPTURE_ENABLED is strictly prohibited in production")
             if self._connectors_or_calendar_enabled() and not self.connector_encryption_keys:
                 missing.append("CONNECTOR_ENCRYPTION_KEYS")
             if missing:

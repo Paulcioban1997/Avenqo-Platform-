@@ -373,6 +373,7 @@ class CapturedEmail:
     html_body: str
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     verification_code: str | None = None
+    company_id: str | None = None
 
 
 class SandboxCaptureAccountNotifier:
@@ -407,7 +408,7 @@ class SandboxCaptureAccountNotifier:
     def send_transactional(self, recipient: str, subject: str, body: str) -> None:
         self._record(recipient, subject, body, body)
 
-    def _record(self, recipient: str, subject: str, text_body: str, html_body: str) -> None:
+    def _record(self, recipient: str, subject: str, text_body: str, html_body: str, company_id: str | None = None) -> None:
         code = None
         match = re.search(r"\b(\d{8})\b", text_body)
         if match:
@@ -418,21 +419,25 @@ class SandboxCaptureAccountNotifier:
             text_body=text_body,
             html_body=html_body,
             verification_code=code,
+            company_id=company_id,
         )
         with self._lock:
             self._captured.append(item)
         logger.info("Sandbox captured email recipient=%s subject=%s code_present=%s", recipient, subject, bool(code))
 
-    def get_captured_emails(self, recipient: str | None = None) -> list[CapturedEmail]:
+    def get_captured_emails(self, recipient: str | None = None, company_id: str | None = None) -> list[CapturedEmail]:
         with self._lock:
-            if recipient is None:
-                return list(self._captured)
-            return [e for e in self._captured if e.recipient == recipient]
+            emails = list(self._captured)
+            if recipient is not None:
+                emails = [e for e in emails if e.recipient == recipient]
+            if company_id is not None:
+                emails = [e for e in emails if e.company_id == company_id]
+            return emails
 
-    def get_latest_code_for(self, recipient: str) -> str | None:
+    def get_latest_code_for(self, recipient: str, company_id: str | None = None) -> str | None:
         with self._lock:
             for e in reversed(self._captured):
-                if e.recipient == recipient and e.verification_code:
+                if e.recipient == recipient and (company_id is None or e.company_id == company_id) and e.verification_code:
                     return e.verification_code
         return None
 
