@@ -265,6 +265,10 @@ class CommerceSyncService:
         reserved: bool = False,
         max_pages_per_entity: int | None = None,
     ) -> CommerceSyncResult:
+        from backend.app.config.settings import get_settings
+
+        if not get_settings().is_commerce_sync_allowed:
+            raise CommerceSyncError("Commerce synchronization disabled in isolated Sandbox mode.")
         connection = self._connections.get_connection(tenant, connection_id)
         if connection.status in {CommerceConnectionStatus.DISCONNECTED.value, CommerceConnectionStatus.REAUTH_REQUIRED.value}:
             raise CommerceSyncError("Commerce authorization is required before synchronization")

@@ -16,6 +16,11 @@ from backend.app.models.company import Company
 from backend.app.models.company_contract import CompanyContract
 from backend.app.models.company_onboarding import CompanyOnboarding
 from backend.app.models.user import User
+from backend.app.config.settings import get_settings
+from backend.app.services.commercial_reconciler import CommercialReconciler
+from backend.app.services.signing_challenge_service import SigningChallengeService
+from backend.app.routers.contracts import download_contract_pdf
+from backend.app.dependencies.subscription import require_signed_mandatory_contracts
 from backend.app.services.contract_pdf_generator import ContractPdfGenerator
 from backend.app.services.contract_signature_service import (
     ContractSignatureService,
@@ -86,10 +91,26 @@ def _create_user(session, company, role=UserRole.OWNER):
         last_name="Gauffre",
         password_hash="hashed_pw_test",
         role=role,
+        email_verified_at=datetime.now(timezone.utc),
     )
     session.add(user)
     session.commit()
     return user
+
+
+def _synthetic_sign(service, company, user, contract_type):
+    contract = service.get_contract(company.id, contract_type)
+    schedule = CommercialReconciler.reconcile(company, service._settings)
+    challenge, code = SigningChallengeService(service._db).create_challenge(
+        company_id=company.id, user_id=user.id, contract_id=contract.id,
+        contract_version=contract.version, content_hash=service.compute_sha256(contract.content_text),
+        commercial_hash=SigningChallengeService.snapshot_hash(schedule.to_dict()),
+    )
+    return service.sign_contract_electronic(
+        company=company, user=user, contract_type=contract_type,
+        signatory_title="Chef de la Direction", declared_authority=True, consent_checkbox=True,
+        challenge_id=str(challenge.id), challenge_code=code,
+    )
 
 
 def test_contract_templates_dynamic_interpolation(db_session):
@@ -176,19 +197,15 @@ def test_electronic_signature_flow(db_session, tmp_path):
     company = _create_test_company(db_session)
     owner = _create_user(db_session, company, role=UserRole.OWNER)
 
-    service = ContractSignatureService(db_session)
+    settings = get_settings().model_copy(update={"provider_incorporation_verified": True, "provider_contracts_published": True,
+                                                "provider_incorporation_status": "VERIFIED",
+                                                "artifact_root": str(tmp_path)})
+    service = ContractSignatureService(db_session, settings=settings)
     service.ensure_contracts_for_company(company)
 
-    res = service.sign_contract_electronic(
-        company=company,
-        user=owner,
-        contract_type="MUTUAL_NDA",
-        signatory_title="Chef de la Direction",
-        declared_authority=True,
-        consent_checkbox=True,
-    )
+    res = _synthetic_sign(service, company, owner, "MUTUAL_NDA")
 
-    assert res["status"] == "SIGNED"
+    assert res["status"] == "CUSTOMER_SIGNED"
     assert res["signature_mode"] == "ELECTRONIC"
     assert res["signatory_name"] == "Paul Gauffre"
     assert res["signatory_title"] == "Chef de la Direction"
@@ -196,8 +213,13 @@ def test_electronic_signature_flow(db_session, tmp_path):
     assert res["storage_path"] is not None
 
     contract_db = service.get_contract(company.id, "MUTUAL_NDA")
-    assert contract_db.status == "SIGNED"
+    assert contract_db.status == "CUSTOMER_SIGNED"
     assert contract_db.storage_path is not None
+    assert contract_db.pdf_sha256 == service.compute_sha256((tmp_path / contract_db.storage_path).read_bytes())
+    (tmp_path / contract_db.storage_path).write_bytes(b"tampered synthetic PDF")
+    with pytest.raises(HTTPException) as integrity_error:
+        download_contract_pdf("MUTUAL_NDA", TenantContext(company_id=company.id), db_session, service)
+    assert integrity_error.value.status_code == 500
 
     # Tentative de re-signature d'un contrat déjà signé -> rejet
     with pytest.raises(ContractAlreadySignedError):
@@ -216,7 +238,9 @@ def test_wet_ink_manuscript_flow(db_session):
     company = _create_test_company(db_session)
     owner = _create_user(db_session, company, role=UserRole.OWNER)
 
-    service = ContractSignatureService(db_session)
+    settings = get_settings().model_copy(update={"provider_incorporation_verified": True, "provider_contracts_published": True,
+                                                "provider_incorporation_status": "VERIFIED"})
+    service = ContractSignatureService(db_session, settings=settings)
     service.ensure_contracts_for_company(company)
 
     # 1. Rejet fail-closed sur format non autorisé
@@ -250,14 +274,28 @@ def test_wet_ink_manuscript_flow(db_session):
     assert contract_db.signature_mode == "MANUSCRIPT_WET_INK"
     assert contract_db.storage_path is not None
 
-    # 3. Validation formelle par l'administrateur
+    # 3. Le signataire ne peut jamais approuver sa propre pièce.
+    with pytest.raises(ContractAuthorityError):
+        service.verify_wet_ink_signature(
+            company_id=company.id, contract_type="SAAS_SUBSCRIPTION", approved=True,
+            verifier_user=owner,
+        )
+    verifier = _create_user(db_session, company, role=UserRole.ADMIN)
+    verifier.is_platform_admin = True
+    verifier.platform_role = "PLATFORM_SUPER_ADMIN"
+    db_session.commit()
+    with pytest.raises(ValueError, match="non encore signé"):
+        service.countersign_contract_provider(
+            company_id=company.id, contract_type="SAAS_SUBSCRIPTION", provider_user=verifier,
+        )
     verified = service.verify_wet_ink_signature(
         company_id=company.id,
         contract_type="SAAS_SUBSCRIPTION",
         approved=True,
-        verifier_user=owner,
+        verifier_user=verifier,
     )
-    assert verified.status == "SIGNED" 
+    assert verified.status == "CUSTOMER_SIGNED"
+    assert verified.execution_state == "PENDING_PROVIDER"
 
 
 def test_contracts_multi_tenant_isolation(db_session):
@@ -281,10 +319,8 @@ def test_contracts_multi_tenant_isolation(db_session):
 
 
 def test_mandatory_contracts_gate_blocks_and_activates(db_session):
-    """Vérifie que les services payants sont bloqués (403 contract_signature_required) tant que les contrats ne sont pas signés."""
+    """An established paid tenant keeps access; new contract onboarding has its own gate."""
     company = _create_test_company(db_session, name="Entreprise Gate Test", plan="professional")
-    owner = _create_user(db_session, company, role=UserRole.OWNER)
-
     service = ContractSignatureService(db_session)
     service.ensure_contracts_for_company(company)
 
@@ -293,37 +329,15 @@ def test_mandatory_contracts_gate_blocks_and_activates(db_session):
     # 1. Avant signature: has_signed_mandatory_contracts est FAUX
     assert service.has_signed_mandatory_contracts(company.id) is False
 
-    # 2. require_active_subscription lève HTTP 403 avec code explicite
+    # The historical subscription is not silently canceled by a new legal workflow.
+    assert require_active_subscription(tenant, db_session) is tenant
+
+    # Explicit prospective onboarding remains fail closed until complete execution.
     with pytest.raises(HTTPException) as exc_info:
-        require_active_subscription(tenant, db_session)
+        require_signed_mandatory_contracts(tenant, db_session)
     assert exc_info.value.status_code == 403
     assert isinstance(exc_info.value.detail, dict)
-    assert exc_info.value.detail.get("code") == CONTRACT_SIGNATURE_REQUIRED_CODE
-
-    # 3. Signature du Mutual NDA seulement: toujours pas complet
-    service.sign_contract_electronic(
-        company=company,
-        user=owner,
-        contract_type="MUTUAL_NDA",
-        signatory_title="CEO",
-        declared_authority=True,
-        consent_checkbox=True,
-    )
-    assert service.has_signed_mandatory_contracts(company.id) is False
-
-    # 4. Signature du SaaS Subscription: désormais complet
-    service.sign_contract_electronic(
-        company=company,
-        user=owner,
-        contract_type="SAAS_SUBSCRIPTION",
-        signatory_title="CEO",
-        declared_authority=True,
-        consent_checkbox=True,
-    )
-    assert service.has_signed_mandatory_contracts(company.id) is True
-
-    # 5. require_active_subscription passe avec succès !
-    assert require_active_subscription(tenant, db_session) is tenant
+    assert exc_info.value.detail.get("code") == "contract_governance_unavailable"
 
 
 def test_onboarding_customization_and_checklist(db_session):

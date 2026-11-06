@@ -1,93 +1,101 @@
-"""Service de défis et jetons de signature électronique à usage unique (anti-rejeu)."""
+"""Database-backed, single-use contract signing challenges."""
 
 from __future__ import annotations
 
+import hashlib
+import json
 import secrets
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from pydantic import BaseModel
+from sqlalchemy import update
+from sqlalchemy.orm import Session
 
-
-class SigningChallenge(BaseModel):
-    challenge_id: str
-    company_id: UUID
-    user_id: UUID
-    contract_type: str
-    code: str
-    expires_at: datetime
-    used: bool = False
-
-
-# Cache mémoire sécurisé pour les défis de signature de session
-_CHALLENGES: dict[str, SigningChallenge] = {}
+from backend.app.models.contract_signing_challenge import ContractSigningChallenge
 
 
 class SigningChallengeService:
-    """Émet et valide les jetons de signature électronique à usage unique."""
-
     TTL_MINUTES = 15
+    MAX_ATTEMPTS = 5
+    ACTION = "ELECTRONIC_SIGN"
 
-    @classmethod
+    def __init__(self, db: Session) -> None:
+        self._db = db
+
+    @staticmethod
+    def snapshot_hash(value: object) -> str:
+        return hashlib.sha256(json.dumps(value, sort_keys=True, default=str, ensure_ascii=False).encode()).hexdigest()
+
+    @staticmethod
+    def _code_hash(code: str, salt: str) -> str:
+        return hashlib.pbkdf2_hmac("sha256", code.encode(), bytes.fromhex(salt), 150_000).hex()
+
     def create_challenge(
-        cls,
+        self,
+        *,
         company_id: UUID,
         user_id: UUID,
-        contract_type: str,
-    ) -> SigningChallenge:
-        # Purge des défis expirés
-        now = datetime.now(timezone.utc)
-        expired_keys = [k for k, c in _CHALLENGES.items() if c.expires_at < now or c.used]
-        for k in expired_keys:
-            _CHALLENGES.pop(k, None)
-
-        challenge_id = secrets.token_urlsafe(24)
-        # Code de confirmation à 6 chiffres
-        code = f"{secrets.randbelow(900000) + 100000}"
-        expires_at = now + timedelta(minutes=cls.TTL_MINUTES)
-
-        challenge = SigningChallenge(
-            challenge_id=challenge_id,
+        contract_id: UUID,
+        contract_version: str,
+        content_hash: str,
+        commercial_hash: str,
+    ) -> tuple[ContractSigningChallenge, str]:
+        code = f"{secrets.randbelow(100_000_000):08d}"
+        salt = secrets.token_hex(16)
+        challenge = ContractSigningChallenge(
             company_id=company_id,
             user_id=user_id,
-            contract_type=contract_type,
-            code=code,
-            expires_at=expires_at,
-            used=False,
+            contract_id=contract_id,
+            contract_version=contract_version,
+            content_hash=content_hash,
+            commercial_hash=commercial_hash,
+            action=self.ACTION,
+            code_hash=self._code_hash(code, salt),
+            salt=salt,
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=self.TTL_MINUTES),
         )
-        _CHALLENGES[challenge_id] = challenge
-        return challenge
+        self._db.add(challenge)
+        self._db.flush()
+        return challenge, code
 
-    @classmethod
     def verify_and_consume_challenge(
-        cls,
-        challenge_id: str,
+        self,
+        *,
+        challenge_id: UUID,
         code: str,
         company_id: UUID,
         user_id: UUID,
-        contract_type: str,
+        contract_id: UUID,
+        contract_version: str,
+        content_hash: str,
+        commercial_hash: str,
     ) -> bool:
-        challenge = _CHALLENGES.get(challenge_id)
-        if not challenge:
+        challenge = self._db.get(ContractSigningChallenge, challenge_id)
+        if challenge is None or not code or not code.isdigit() or len(code) != 8:
             return False
-
         now = datetime.now(timezone.utc)
-        if challenge.expires_at < now:
-            _CHALLENGES.pop(challenge_id, None)
+        digest = self._code_hash(code, challenge.salt)
+        bound = (
+            challenge.company_id == company_id
+            and challenge.user_id == user_id
+            and challenge.contract_id == contract_id
+            and challenge.contract_version == contract_version
+            and challenge.content_hash == content_hash
+            and challenge.commercial_hash == commercial_hash
+            and challenge.action == self.ACTION
+        )
+        if not bound:
             return False
-
-        if challenge.used:
-            return False
-
-        # Vérification stricte des correspondances d'identité
-        if (
-            challenge.company_id != company_id
-            or challenge.user_id != user_id
-            or challenge.contract_type != contract_type
-            or not secrets.compare_digest(challenge.code, code.strip())
-        ):
-            return False
-
-        # Consommation immédiate (anti-rejeu)
-        challenge.used = True
-        return True
+        # The conditional SQL update can succeed only once across PostgreSQL workers.
+        stmt = update(ContractSigningChallenge).where(
+            ContractSigningChallenge.id == challenge_id,
+            ContractSigningChallenge.used_at.is_(None),
+            ContractSigningChallenge.expires_at > now,
+            ContractSigningChallenge.attempts < self.MAX_ATTEMPTS,
+        ).execution_options(synchronize_session=False)
+        if secrets.compare_digest(challenge.code_hash, digest):
+            result = self._db.execute(stmt.values(used_at=now))
+            return result.rowcount == 1
+        self._db.execute(stmt.values(attempts=ContractSigningChallenge.attempts + 1))
+        self._db.commit()
+        return False

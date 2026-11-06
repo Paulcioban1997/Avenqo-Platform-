@@ -22,6 +22,7 @@ from backend.app.config.settings import Settings, get_settings
 from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, require_platform_role
 from backend.app.models.audit_log import AuditLogEntry
+from backend.app.models.ai_usage import TenantAICreditLedgerEntry, TenantAIProviderAttempt
 from backend.app.models.billing import BillingAccount, BillingInvoice, StripeWebhookEvent
 from backend.app.models.commerce_connection import CommerceConnection
 from backend.app.models.company import Company
@@ -65,10 +66,12 @@ def get_executive_overview(
 
     active_paid_stmt = (
         select(func.count(Company.id))
-        .join(BillingAccount, BillingAccount.company_id == Company.id, isouter=True)
+        .join(BillingAccount, BillingAccount.company_id == Company.id)
         .where(
             Company.status == "active",
-            Company.subscription_plan.in_(["base", "professional", "enterprise"]),
+            BillingAccount.status == "active",
+            BillingAccount.stripe_subscription_id.is_not(None),
+            BillingAccount.plan_code.in_(["base", "professional", "enterprise"]),
         )
     )
     active_paid_customers = db.scalar(active_paid_stmt) or 0
@@ -77,16 +80,11 @@ def get_executive_overview(
         select(func.count(BillingAccount.id)).where(BillingAccount.status == "trialing")
     ) or 0
 
-    churn_stmt = select(func.count(Company.id)).where(Company.status.in_(["inactive", "suspended", "archived"]))
-    churn_count = db.scalar(churn_stmt) or 0
-    churn_rate_pct = round((churn_count / total_companies * 100) if total_companies > 0 else 0.0, 1)
-
-    # 2. MRR et ARR calculés depuis les forfaits réels
-    # Base: 29.99 CAD, Pro: 49.99 CAD
-    base_count = db.scalar(select(func.count(Company.id)).where(Company.subscription_plan == "base", Company.status == "active")) or 0
-    pro_count = db.scalar(select(func.count(Company.id)).where(Company.subscription_plan == "professional", Company.status == "active")) or 0
-    mrr_cad = round((base_count * 29.99) + (pro_count * 49.99), 2)
-    arr_cad = round(mrr_cad * 12, 2)
+    # BillingAccount stores no authoritative price, cadence or discount. An
+    # inferred list-price MRR or churn percentage would mislead operators.
+    churn_rate_pct = None
+    mrr_cad = None
+    arr_cad = None
 
     # 3. Incidents de facturation
     failed_payments = db.scalar(
@@ -119,8 +117,8 @@ def get_executive_overview(
         "kpis": {
             "active_paid_customers": {
                 "value": active_paid_customers,
-                "label": "Clients Payants Actifs",
-                "tooltip": "Entreprises actives disposant d'un abonnement Base, Professional ou Enterprise vérifié.",
+                "label": "Abonnements Stripe actifs enregistrés",
+                "tooltip": "Comptes actifs avec identifiant d'abonnement Stripe enregistré; paiements non vérifiés en direct.",
                 "source": "companies + billing_accounts",
             },
             "trials_count": {
@@ -138,22 +136,22 @@ def get_executive_overview(
             "churn_rate_pct": {
                 "value": churn_rate_pct,
                 "label": "Taux d'Érosion (Churn)",
-                "tooltip": "Proportion des comptes suspendus, inactifs ou archivés sur le total des locataires.",
-                "source": "companies (status in inactive/suspended)",
+                "tooltip": "Indisponible : cohortes d'abonnements et annulations datées requises.",
+                "source": "not_verified",
             },
             "mrr_cad": {
                 "value": mrr_cad,
                 "currency": "CAD",
                 "label": "Revenu Récurrent Mensuel (MRR)",
-                "tooltip": "Somme mensuelle récurrente basée sur les forfaits Base (29.99 CAD) et Pro (49.99 CAD).",
-                "source": "Canonical pricing x active subscriptions",
+                "tooltip": "Indisponible : montants, cadence, remises et devise Stripe non rapprochés.",
+                "source": "not_verified",
             },
             "arr_cad": {
                 "value": arr_cad,
                 "currency": "CAD",
                 "label": "Revenu Récurrent Annualisé (ARR)",
-                "tooltip": "Projection annualisée du MRR courant (MRR x 12).",
-                "source": "MRR x 12",
+                "tooltip": "Indisponible tant que le MRR n'est pas rapproché.",
+                "source": "not_verified",
             },
             "failed_payments": {
                 "value": failed_payments,
@@ -270,12 +268,15 @@ def get_revenue_and_subscriptions(
     """Analyse fine du cycle de vie des abonnements Stripe, mix d'offres et factures impayées."""
     plan_counts: dict[str, int] = {}
     for plan in ("base", "professional", "enterprise"):
-        cnt = db.scalar(select(func.count(Company.id)).where(Company.subscription_plan == plan, Company.status == "active")) or 0
+        cnt = db.scalar(select(func.count(BillingAccount.id)).where(
+            BillingAccount.plan_code == plan, BillingAccount.status == "active",
+            BillingAccount.stripe_subscription_id.is_not(None),
+        )) or 0
         plan_counts[plan] = cnt
 
     invoices_stmt = (
         select(BillingInvoice)
-        .order_by(BillingInvoice.created_at.desc())
+        .order_by(BillingInvoice.issued_at.desc(), BillingInvoice.id.desc())
         .limit(10)
     )
     recent_invoices = list(db.scalars(invoices_stmt).all())
@@ -284,11 +285,11 @@ def get_revenue_and_subscriptions(
         {
             "id": str(inv.id),
             "company_id": str(inv.company_id),
-            "amount": float(inv.total_amount) if hasattr(inv, "total_amount") and inv.total_amount else 0.0,
-            "currency": getattr(inv, "currency", "CAD"),
+            "amount": inv.total / 100,
+            "currency": inv.currency.upper(),
             "status": inv.status,
             "period_start": inv.period_start.isoformat() if getattr(inv, "period_start", None) else None,
-            "created_at": inv.created_at.isoformat() if inv.created_at else None,
+            "created_at": inv.issued_at.isoformat(),
         }
         for inv in recent_invoices
     ]
@@ -300,9 +301,9 @@ def get_revenue_and_subscriptions(
             "enterprise": plan_counts.get("enterprise", 0),
         },
         "mrr_by_plan": {
-            "base_cad": round(plan_counts.get("base", 0) * 29.99, 2),
-            "professional_cad": round(plan_counts.get("professional", 0) * 49.99, 2),
-            "enterprise_cad": "Sur devis",
+            "base_cad": None,
+            "professional_cad": None,
+            "enterprise_cad": None,
         },
         "stripe_gateway_status": {
             "configured": bool(settings.stripe_secret_key),
@@ -360,7 +361,7 @@ def get_contracts_queue(
             "provider_signed_at": c.provider_signed_at.isoformat() if c.provider_signed_at else None,
             "sha256_hash": c.sha256_hash,
             "has_pdf": bool(c.storage_path),
-            "is_countersign_ready": c.status in (ContractLifecycleStatus.CUSTOMER_SIGNED.value, ContractLifecycleStatus.SIGNED.value) and not c.provider_signed_at,
+            "is_countersign_ready": c.status == ContractLifecycleStatus.CUSTOMER_SIGNED.value and not c.provider_signed_at,
         }
         queue.append(item)
 
@@ -381,6 +382,7 @@ def get_contracts_queue(
 
 @router.get("/ai-usage")
 def get_ai_usage_overview(
+    range_filter: str = Query("30d", pattern="^(7d|30d|90d)$", alias="range"),
     identity: CurrentIdentity = Depends(
         require_platform_role(
             "PLATFORM_SUPER_ADMIN",
@@ -390,24 +392,35 @@ def get_ai_usage_overview(
     ),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    """Métriques d'utilisation de l'IA Centrale multi-tenant, ventilation par tier et rentabilité."""
-    # Modélisation des tiers d'IA canoniques
-    tier_distribution = {
-        "fast_tier_calls": 1420,
-        "standard_tier_calls": 860,
-        "advanced_tier_calls": 310,
-        "reasoning_tier_calls": 95,
-    }
-    credits_consumed_month = 184500
-    estimated_provider_cost_usd = round(credits_consumed_month * 0.00085, 2)
+    """Usage enregistré par tous les tenants; aucun coût ni tier n'est extrapolé."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days={"7d": 7, "30d": 30, "90d": 90}[range_filter])
+    credits_consumed = db.scalar(
+        select(func.coalesce(func.sum(
+            -TenantAICreditLedgerEntry.included_delta - TenantAICreditLedgerEntry.purchased_delta
+        ), 0)).where(
+            TenantAICreditLedgerEntry.transaction_type == "ai_settlement",
+            TenantAICreditLedgerEntry.created_at >= cutoff,
+        )
+    ) or 0
+    provider_cost = db.scalar(
+        select(func.coalesce(func.sum(TenantAIProviderAttempt.provider_cost_usd), 0)).where(
+            TenantAIProviderAttempt.created_at >= cutoff,
+        )
+    ) or 0
 
     return {
-        "monthly_credits_consumed": credits_consumed_month,
-        "estimated_provider_cost_usd": estimated_provider_cost_usd,
-        "estimated_provider_cost_cad": round(estimated_provider_cost_usd * 1.38, 2),
-        "model_tier_distribution": tier_distribution,
-        "metering_accuracy": "AUTHORITATIVE_LEDGER",
-        "anomalies_detected_count": 0,
+        "time_window": range_filter,
+        "credits_consumed_in_range": int(credits_consumed),
+        "recorded_provider_cost_usd": float(provider_cost),
+        "provider_cost_cad": None,
+        "model_tier_distribution": None,
+        "anomalies_detected_count": None,
+        "metering_accuracy": "RECORDED_LEDGER_AND_PROVIDER_ATTEMPTS",
+        "unavailable_reasons": {
+            "provider_cost_cad": "Aucun taux de change vérifié pour la période.",
+            "model_tier_distribution": "Aucun classement historique fiable des modèles par tier.",
+            "anomalies_detected_count": "Aucune source de détection d'anomalies validée.",
+        },
     }
 
 
@@ -473,9 +486,9 @@ def get_connectors_health(
             "name": c["name"],
             "category": c["category"],
             "active_connections_count": count,
-            "status": "OPERATIONAL" if count > 0 else c["default_status"],
-            "heartbeat": "HEALTHY",
-            "secrets_encrypted": True,
+            "status": "CONFIGURED_UNVERIFIED" if count > 0 else "NOT_CONFIGURED",
+            "heartbeat": "UNKNOWN",
+            "secrets_encrypted": None,
         })
 
     return {
@@ -515,6 +528,23 @@ def get_operations_health(
 # MODULE 8 : SECURITY & AUDIT
 # --------------------------------------------------------------------------
 
+_SENSITIVE_AUDIT_KEYS = ("password", "secret", "token", "authorization", "credential", "api_key", "private_key")
+
+
+def _redact_audit_metadata(value: Any) -> Any:
+    """Defense in depth for older audit rows with incorrectly classified metadata."""
+    if isinstance(value, dict):
+        return {
+            str(key): (
+                "[REDACTED]" if any(marker in str(key).lower() for marker in _SENSITIVE_AUDIT_KEYS)
+                else _redact_audit_metadata(item)
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_audit_metadata(item) for item in value]
+    return value
+
 @router.get("/security-audit")
 def get_security_audit_events(
     limit: int = Query(25, ge=1, le=100),
@@ -543,7 +573,7 @@ def get_security_audit_events(
             "target_type": e.target_type,
             "target_id": e.target_id,
             "created_at": e.created_at.isoformat() if e.created_at else None,
-            "metadata": e.metadata_json,
+            "metadata": _redact_audit_metadata(e.safe_metadata),
         }
         for e in entries
     ]

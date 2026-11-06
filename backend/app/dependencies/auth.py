@@ -21,6 +21,8 @@ from backend.app.services.account_notifications import (
     HTTPSAccountNotifier,
     LoggingAccountNotifier,
     SMTPAccountNotifier,
+    SandboxCaptureAccountNotifier,
+    get_sandbox_capture_notifier,
 )
 from backend.app.services.auth_service import AuthenticationError, AuthService
 from backend.app.services.tenant_rls import apply_tenant_rls
@@ -49,6 +51,23 @@ class CurrentIdentity:
 
 def get_account_notifier() -> AccountNotifier:
     settings = get_settings()
+    env = settings.environment.lower()
+    if env in {"production", "prod"}:
+        if settings.email_provider == "sandbox_capture" or settings.sandbox_email_capture_enabled:
+            raise RuntimeError("CRITICAL SECURITY ERROR: Sandbox email capture is strictly prohibited in Production.")
+        if settings.email_provider == "https_api" and settings.email_delivery_configured:
+            return HTTPSAccountNotifier(settings)
+        if settings.email_delivery_configured:
+            return SMTPAccountNotifier(settings)
+        return LoggingAccountNotifier()
+
+    if settings.email_provider == "sandbox_capture":
+        return get_sandbox_capture_notifier(settings)
+    if env in {"sandbox", "staging"}:
+        if settings.sandbox_email_capture_enabled or not settings.is_external_email_allowed:
+            if settings.sandbox_email_capture_enabled or settings.email_provider == "https_api" or settings.email_delivery_configured:
+                return get_sandbox_capture_notifier(settings)
+            return LoggingAccountNotifier()
     if settings.email_provider == "https_api" and settings.email_delivery_configured:
         return HTTPSAccountNotifier(settings)
     if settings.email_delivery_configured:
@@ -215,7 +234,19 @@ def require_platform_role(*allowed_roles: str):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Accès réservé aux administrateurs de la plateforme Avenqo",
             )
-        current_role = identity.user.platform_role or "PLATFORM_SUPER_ADMIN"
+        # A legacy platform-admin flag does not imply executive privileges.
+        # The role must be assigned explicitly by a trusted operator.
+        current_role = identity.user.platform_role
+        if current_role not in {
+            "PLATFORM_SUPER_ADMIN",
+            "PLATFORM_FINANCE",
+            "PLATFORM_SUPPORT_READONLY",
+            "PLATFORM_SECURITY_AUDITOR",
+        }:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Rôle plateforme explicite requis",
+            )
         if allowed_roles and current_role not in allowed_roles and current_role != "PLATFORM_SUPER_ADMIN":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

@@ -151,6 +151,9 @@ class Settings(BaseSettings):
     def public_frontend_origin(self) -> str:
         return self.frontend_url.strip().rstrip("/")
     email_provider: str = Field(default="smtp", alias="EMAIL_PROVIDER")
+    sandbox_allow_external_email: bool = Field(default=False, alias="SANDBOX_ALLOW_EXTERNAL_EMAIL")
+    sandbox_email_capture_enabled: bool = Field(default=False, alias="SANDBOX_EMAIL_CAPTURE_ENABLED")
+    sandbox_commerce_sync_enabled: bool = Field(default=False, alias="SANDBOX_COMMERCE_SYNC_ENABLED")
     email_api_key: str | None = Field(default=None, alias="EMAIL_API_KEY")
     email_from_email: str = Field(default="noreply@avenqo.ca", alias="EMAIL_FROM_EMAIL")
     email_from_name: str = Field(default="Avenqo", alias="EMAIL_FROM_NAME")
@@ -523,7 +526,7 @@ class Settings(BaseSettings):
     @classmethod
     def validate_email_provider(cls, value: str) -> str:
         normalized = value.strip().lower()
-        if normalized not in {"smtp", "https_api"}:
+        if normalized not in {"smtp", "https_api", "sandbox_capture", "logging"}:
             raise ValueError("EMAIL_PROVIDER doit être 'smtp' ou 'https_api'")
         return normalized
 
@@ -595,6 +598,10 @@ class Settings(BaseSettings):
                 missing.append("CORS_ORIGINS")
             if not self.allowed_hosts or "*" in self.allowed_hosts:
                 missing.append("ALLOWED_HOSTS")
+            if self.email_provider == "sandbox_capture":
+                raise ValueError("EMAIL_PROVIDER 'sandbox_capture' is strictly prohibited in production")
+            if self.sandbox_email_capture_enabled:
+                raise ValueError("SANDBOX_EMAIL_CAPTURE_ENABLED is strictly prohibited in production")
             if self._connectors_or_calendar_enabled() and not self.connector_encryption_keys:
                 missing.append("CONNECTOR_ENCRYPTION_KEYS")
             if missing:
@@ -627,7 +634,29 @@ class Settings(BaseSettings):
         return self.environment.lower() in {"production", "prod", "staging", "sandbox"}
 
     @property
+    def is_commerce_sync_allowed(self) -> bool:
+        env = self.environment.lower()
+        if env in {"production", "prod"}:
+            return True
+        if env in {"sandbox", "staging"}:
+            return self.sandbox_commerce_sync_enabled
+        return True
+
+    @property
+    def is_external_email_allowed(self) -> bool:
+        env = self.environment.lower()
+        if env in {"production", "prod"}:
+            return True
+        if env in {"sandbox", "staging"}:
+            return self.sandbox_allow_external_email
+        return True
+
+    @property
     def email_delivery_configured(self) -> bool:
+        if self.email_provider == "sandbox_capture":
+            return True
+        if self.environment.lower() in {"sandbox", "staging", "test"} and self.sandbox_email_capture_enabled:
+            return True
         if self.email_provider == "https_api":
             return self.https_email_delivery_configured
         return self.smtp_delivery_configured

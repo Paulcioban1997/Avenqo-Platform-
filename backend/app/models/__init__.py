@@ -1,4 +1,5 @@
 from backend.app.models.company_contract import CompanyContract, ContractLifecycleStatus, ContractExecutionPartyState
+from backend.app.models.contract_signing_challenge import ContractSigningChallenge
 from backend.app.models.company_legal_profile import CompanyLegalProfile
 from backend.app.models.account_token import AccountToken
 from backend.app.models.accounting import AccountingInvoice, AccountingTransaction

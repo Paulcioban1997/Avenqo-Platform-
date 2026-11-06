@@ -1,0 +1,19 @@
+# syntax=docker/dockerfile:1
+FROM python:3.11-slim AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /srv
+
+COPY backend/requirements.txt backend/requirements.txt
+RUN pip install --no-cache-dir -r backend/requirements.txt
+
+COPY backend backend
+COPY alembic.ini alembic.ini
+COPY alembic alembic
+COPY shared shared
+
+ENV PYTHONPATH=/srv
+CMD ["python", "-m", "backend.app.services.commerce_reconciliation_cron_trigger"]

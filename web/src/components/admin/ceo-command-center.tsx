@@ -78,7 +78,7 @@ export function CEOCommandCenter({ isFr }: CEOCommandCenterProps) {
         const res = await apiFetch(`/api/v1/ceo/contracts-queue`, { headers });
         if (res.ok) setContractsData(await res.json());
       } else if (activeTab === "ai") {
-        const res = await apiFetch(`/api/v1/ceo/ai-usage`, { headers });
+        const res = await apiFetch(`/api/v1/ceo/ai-usage?range=${range}`, { headers });
         if (res.ok) setAiData(await res.json());
       } else if (activeTab === "connectors") {
         const res = await apiFetch(`/api/v1/ceo/connectors`, { headers });
@@ -266,7 +266,7 @@ export function CEOCommandCenter({ isFr }: CEOCommandCenterProps) {
                     ? `${item.value.toLocaleString()} ${item.currency}`
                     : typeof item.value === "number"
                     ? item.value.toLocaleString()
-                    : item.value}
+                    : item.value ?? (isFr ? "Non vérifié" : "Unverified")}
                 </div>
                 <p className="text-[11px] text-slate-400 leading-tight">{item.tooltip}</p>
               </div>
@@ -352,14 +352,14 @@ export function CEOCommandCenter({ isFr }: CEOCommandCenterProps) {
               <div className="text-2xl font-black mt-1 text-slate-900 dark:text-white">
                 {revenueData.plan_distribution.base}
               </div>
-              <div className="text-xs text-slate-400 mt-1">MRR: {revenueData.mrr_by_plan.base_cad} CAD</div>
+              <div className="text-xs text-slate-400 mt-1">MRR: {revenueData.mrr_by_plan.base_cad ?? "Non vérifié"}</div>
             </div>
             <div className="p-4 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-sm">
               <span className="text-xs text-slate-500">Forfaits Professional (49.99 CAD)</span>
               <div className="text-2xl font-black mt-1 text-slate-900 dark:text-white">
                 {revenueData.plan_distribution.professional}
               </div>
-              <div className="text-xs text-slate-400 mt-1">MRR: {revenueData.mrr_by_plan.professional_cad} CAD</div>
+              <div className="text-xs text-slate-400 mt-1">MRR: {revenueData.mrr_by_plan.professional_cad ?? "Non vérifié"}</div>
             </div>
             <div className="p-4 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-sm">
               <span className="text-xs text-slate-500">Passerelle Stripe</span>
@@ -458,25 +458,25 @@ export function CEOCommandCenter({ isFr }: CEOCommandCenterProps) {
         <div className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="p-4 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-sm">
-              <span className="text-xs text-slate-500">Crédits IA Mensuels Consommés</span>
+              <span className="text-xs text-slate-500">Crédits IA consommés ({range})</span>
               <div className="text-2xl font-black mt-1 text-slate-900 dark:text-white">
-                {aiData.monthly_credits_consumed.toLocaleString()}
+                {aiData.credits_consumed_in_range.toLocaleString()}
               </div>
               <div className="text-xs text-slate-400 mt-1">Précision: {aiData.metering_accuracy}</div>
             </div>
             <div className="p-4 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-sm">
-              <span className="text-xs text-slate-500">Coût Fournisseurs LLM Estimé (CAD)</span>
+              <span className="text-xs text-slate-500">Coût fournisseur enregistré (USD)</span>
               <div className="text-2xl font-black mt-1 text-slate-900 dark:text-white">
-                {aiData.estimated_provider_cost_cad} CAD
+                {aiData.recorded_provider_cost_usd} USD
               </div>
-              <div className="text-xs text-slate-400 mt-1">({aiData.estimated_provider_cost_usd} USD)</div>
+              <div className="text-xs text-slate-400 mt-1">CAD : indisponible sans taux vérifié</div>
             </div>
             <div className="p-4 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-sm">
               <span className="text-xs text-slate-500">Anomalies de Consommation</span>
               <div className="text-2xl font-black mt-1 text-emerald-600">
-                {aiData.anomalies_detected_count}
+                {aiData.anomalies_detected_count ?? "Non évalué"}
               </div>
-              <div className="text-xs text-slate-400 mt-1">Aucun abus ou fuite détectée</div>
+              <div className="text-xs text-slate-400 mt-1">Détection d'anomalies non validée</div>
             </div>
           </div>
         </div>
@@ -489,7 +489,7 @@ export function CEOCommandCenter({ isFr }: CEOCommandCenterProps) {
             <h3 className="text-sm font-bold text-slate-900 dark:text-white">
               {isFr ? `Catalogue Canonique des 22 Connecteurs` : `22 Canonical Connectors Catalog`}
             </h3>
-            <span className="text-xs text-slate-400">Chiffrement matériel des secrets actif</span>
+            <span className="text-xs text-slate-400">État des connexions à vérifier individuellement</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">

@@ -54,9 +54,15 @@ from backend.app.services.company_legal_profile_service import (
 )
 from backend.app.services.contract_signature_service import (
     CommercialConfigMismatchError,
+    ContractAuthorityError,
     ContractSignatureService,
 )
 from backend.app.services.signing_challenge_service import SigningChallengeService
+from backend.app.routers.contracts import create_signing_challenge
+from backend.app.routers.ceo_command_center import get_executive_overview, get_connectors_health
+from backend.app.models.billing import BillingAccount
+from backend.app.models.contract_signing_challenge import ContractSigningChallenge
+from shared.ai_engine.contracts import TenantContext
 from payments.plans import PlanCode
 
 
@@ -98,6 +104,7 @@ def _create_user(
         is_platform_admin=is_platform_admin,
         platform_role=platform_role,
         is_active=True,
+        email_verified_at=datetime.now(timezone.utc),
     )
     db.add(user)
     db.commit()
@@ -223,6 +230,8 @@ def test_commercial_reconciler_baseline_plans(db_session: Session):
     assert schedule_base.monthly_price == 29.99
     assert schedule_base.max_selectable_modules == 2
     assert schedule_base.included_ai_credits == 6_500
+    assert "Aucun dépassement" in schedule_base.extra_credits_terms
+    assert "25 000 crédits" not in schedule_base.extra_credits_terms
 
     company_pro = _create_company(db_session, plan="professional")
     schedule_pro = CommercialReconciler.reconcile(company_pro)
@@ -262,33 +271,58 @@ def test_commercial_reconciler_detects_module_overrun_and_blocks(db_session: Ses
 # 3. TESTS DE DÉFI DE SIGNATURE & ANTI-REJEU (SigningChallengeService)
 # ==========================================================================
 
-def test_signing_challenge_lifecycle_and_replay_protection():
+def test_signing_challenge_lifecycle_and_replay_protection(db_session: Session):
     """Vérifie l'émission, la validation et l'interdiction de rejeu d'un défi de signature."""
-    c_id = uuid4()
-    u_id = uuid4()
-    challenge = SigningChallengeService.create_challenge(c_id, u_id, "MUTUAL_NDA")
-
-    assert len(challenge.code) == 6
-    assert challenge.code.isdigit()
-    assert not challenge.used
+    company = _create_company(db_session)
+    user = _create_user(db_session, company)
+    contract = ContractSignatureService(db_session).ensure_contracts_for_company(company)[0]
+    challenge_service = SigningChallengeService(db_session)
+    challenge, code = challenge_service.create_challenge(
+        company_id=company.id, user_id=user.id, contract_id=contract.id,
+        contract_version=contract.version, content_hash="content", commercial_hash="terms",
+    )
+    db_session.commit()
+    arguments = dict(challenge_id=challenge.id, code=code, company_id=company.id,
+                     user_id=user.id, contract_id=contract.id, contract_version=contract.version,
+                     content_hash="content", commercial_hash="terms")
+    assert len(code) == 8 and code.isdigit()
+    assert challenge.used_at is None
 
     # 1. Échec avec mauvais code
-    ok_bad = SigningChallengeService.verify_and_consume_challenge(
-        challenge.challenge_id, "000000", c_id, u_id, "MUTUAL_NDA"
-    )
-    assert not ok_bad
+    assert not challenge_service.verify_and_consume_challenge(**{**arguments, "code": "00000000"})
+    assert not challenge_service.verify_and_consume_challenge(**{**arguments, "company_id": uuid4()})
+    assert not challenge_service.verify_and_consume_challenge(**{**arguments, "commercial_hash": "changed"})
 
     # 2. Succès avec code valide
-    ok_good = SigningChallengeService.verify_and_consume_challenge(
-        challenge.challenge_id, challenge.code, c_id, u_id, "MUTUAL_NDA"
-    )
-    assert ok_good
+    assert challenge_service.verify_and_consume_challenge(**arguments)
+    db_session.commit()
 
     # 3. Rejet immédiat au rejeu (jeton déjà consommé)
-    replayed = SigningChallengeService.verify_and_consume_challenge(
-        challenge.challenge_id, challenge.code, c_id, u_id, "MUTUAL_NDA"
+    assert not SigningChallengeService(db_session).verify_and_consume_challenge(**arguments)
+
+    expired, expired_code = challenge_service.create_challenge(
+        company_id=company.id, user_id=user.id, contract_id=contract.id,
+        contract_version=contract.version, content_hash="content", commercial_hash="terms",
     )
-    assert not replayed
+    from datetime import timedelta
+    expired.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    db_session.commit()
+    assert not challenge_service.verify_and_consume_challenge(**{
+        **arguments, "challenge_id": expired.id, "code": expired_code,
+    })
+
+    locked, locked_code = challenge_service.create_challenge(
+        company_id=company.id, user_id=user.id, contract_id=contract.id,
+        contract_version=contract.version, content_hash="content", commercial_hash="terms",
+    )
+    db_session.commit()
+    for _ in range(SigningChallengeService.MAX_ATTEMPTS):
+        assert not challenge_service.verify_and_consume_challenge(**{
+            **arguments, "challenge_id": locked.id, "code": "00000000" if locked_code != "00000000" else "11111111",
+        })
+    assert not challenge_service.verify_and_consume_challenge(**{
+        **arguments, "challenge_id": locked.id, "code": locked_code,
+    })
 
 
 # ==========================================================================
@@ -300,7 +334,9 @@ def test_full_contract_lifecycle_customer_to_provider_countersign(db_session: Se
     company = _create_company(db_session, name="FinTech Corp")
     owner = _create_user(db_session, company, role=UserRole.OWNER)
 
-    service = ContractSignatureService(db_session)
+    settings = get_settings().model_copy(update={"provider_incorporation_verified": True, "provider_contracts_published": True,
+                                                "provider_incorporation_status": "VERIFIED"})
+    service = ContractSignatureService(db_session, settings=settings)
     service.ensure_contracts_for_company(company)
 
     contract = service.get_contract(company.id, "MUTUAL_NDA")
@@ -309,6 +345,12 @@ def test_full_contract_lifecycle_customer_to_provider_countersign(db_session: Se
     assert contract.provider_signed_at is None
 
     # Signature client
+    schedule = CommercialReconciler.reconcile(company, settings)
+    challenge, code = SigningChallengeService(db_session).create_challenge(
+        company_id=company.id, user_id=owner.id, contract_id=contract.id,
+        contract_version=contract.version, content_hash=service.compute_sha256(contract.content_text),
+        commercial_hash=SigningChallengeService.snapshot_hash(schedule.to_dict()),
+    )
     res = service.sign_contract_electronic(
         company=company,
         user=owner,
@@ -316,8 +358,9 @@ def test_full_contract_lifecycle_customer_to_provider_countersign(db_session: Se
         signatory_title="Chef de la Direction",
         declared_authority=True,
         consent_checkbox=True,
+        challenge_id=str(challenge.id), challenge_code=code,
     )
-    assert res["status"] == "SIGNED"
+    assert res["status"] == "CUSTOMER_SIGNED"
     assert res["execution_state"] == "PENDING_PROVIDER"
     assert res["transaction_id"].startswith("TX-")
 
@@ -326,7 +369,8 @@ def test_full_contract_lifecycle_customer_to_provider_countersign(db_session: Se
     assert contract.completion_record_json["execution_party_states"]["provider"] == "PENDING_COUNTERSIGNATURE"
 
     # Contreseing par le fondateur / super admin de plateforme
-    admin_user = _create_user(db_session, company, role=UserRole.ADMIN, is_platform_admin=True)
+    admin_user = _create_user(db_session, company, role=UserRole.ADMIN, is_platform_admin=True,
+                              platform_role="PLATFORM_SUPER_ADMIN")
     executed = service.countersign_contract_provider(
         company_id=company.id,
         contract_type="MUTUAL_NDA",
@@ -381,3 +425,84 @@ def test_ceo_command_center_rbac_matrix(db_session: Session):
     super_identity = CurrentIdentity(auth_session=None, user=super_user, raw_token="token")
     assert dep_sec(super_identity) == super_identity
     assert dep_fin(super_identity) == super_identity
+
+
+def test_platform_admin_without_explicit_role_cannot_use_executive_endpoints(db_session: Session):
+    company = _create_company(db_session)
+    legacy_admin = _create_user(
+        db_session, company, role=UserRole.OWNER, is_platform_admin=True, platform_role=None
+    )
+    identity = CurrentIdentity(auth_session=None, user=legacy_admin, raw_token="test-token")
+    with pytest.raises(Exception) as exc:
+        require_platform_role("PLATFORM_SUPER_ADMIN")(identity)
+    assert exc.value.status_code == 403
+
+
+def test_unpublished_provider_and_absent_challenge_fail_closed(db_session: Session):
+    company = _create_company(db_session)
+    owner = _create_user(db_session, company)
+    unpublished = ContractSignatureService(db_session)
+    unpublished.ensure_contracts_for_company(company)
+    with pytest.raises(ContractAuthorityError, match="validation juridique"):
+        unpublished.sign_contract_electronic(
+            company=company, user=owner, contract_type="MUTUAL_NDA",
+            signatory_title="Président", declared_authority=True, consent_checkbox=True,
+        )
+
+    approved_in_synthetic_test = get_settings().model_copy(update={
+        "provider_incorporation_verified": True, "provider_contracts_published": True,
+        "provider_incorporation_status": "VERIFIED",
+    })
+    service = ContractSignatureService(db_session, settings=approved_in_synthetic_test)
+    with pytest.raises(ValueError, match="défi de signature"):
+        service.sign_contract_electronic(
+            company=company, user=owner, contract_type="MUTUAL_NDA",
+            signatory_title="Président", declared_authority=True, consent_checkbox=True,
+        )
+
+
+def test_challenge_is_sent_out_of_band_and_not_returned_to_browser(db_session: Session):
+    company = _create_company(db_session)
+    owner = _create_user(db_session, company)
+    settings = get_settings().model_copy(update={
+        "provider_incorporation_verified": True, "provider_contracts_published": True,
+        "provider_incorporation_status": "VERIFIED",
+    })
+    service = ContractSignatureService(db_session, settings=settings)
+    service.ensure_contracts_for_company(company)
+
+    class FakeNotifier:
+        email_delivery_configured = True
+        deliveries: list[tuple[str, str, str]] = []
+
+        def send_transactional(self, recipient: str, subject: str, body: str) -> None:
+            self.deliveries.append((recipient, subject, body))
+
+    notifier = FakeNotifier()
+    result = create_signing_challenge(
+        contract_type="MUTUAL_NDA", tenant=TenantContext(company_id=company.id),
+        identity=CurrentIdentity(auth_session=None, user=owner, raw_token="synthetic"),
+        db=db_session, notifier=notifier, service=service,
+    )
+    assert set(result) == {"challenge_id", "contract_type", "expires_at", "delivery"}
+    assert result["delivery"] == "email"
+    assert len(notifier.deliveries) == 1
+    assert notifier.deliveries[0][0] == owner.email
+    challenge = db_session.get(ContractSigningChallenge, UUID(result["challenge_id"]))
+    assert challenge is not None and challenge.code_hash not in notifier.deliveries[0][2]
+
+
+def test_ceo_financials_do_not_invent_paid_customers_or_mrr(db_session: Session):
+    company = _create_company(db_session, plan="base")
+    db_session.add(BillingAccount(company_id=company.id, plan_code="base", status="inactive"))
+    db_session.commit()
+    overview = get_executive_overview(range_filter="30d", db=db_session, settings=get_settings())
+    assert overview["kpis"]["active_paid_customers"]["value"] == 0
+    assert overview["kpis"]["mrr_cad"]["value"] is None
+    assert overview["kpis"]["arr_cad"]["value"] is None
+    assert overview["kpis"]["churn_rate_pct"]["value"] is None
+
+    connectors = get_connectors_health(db=db_session)
+    assert len(connectors["connectors"]) == 22
+    assert all(c["heartbeat"] == "UNKNOWN" for c in connectors["connectors"])
+    assert all(c["status"] != "OPERATIONAL" for c in connectors["connectors"])

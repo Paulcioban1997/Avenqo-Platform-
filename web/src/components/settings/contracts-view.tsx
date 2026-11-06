@@ -125,7 +125,6 @@ export function ContractsView() {
   // Défi de signature à usage unique
   const [challengeId, setChallengeId] = useState<string | null>(null);
   const [challengeCode, setChallengeCode] = useState<string>("");
-  const [challengeIssuedCode, setChallengeIssuedCode] = useState<string | null>(null);
   const [challengeLoading, setChallengeLoading] = useState(false);
 
   // Wet-ink scan upload modal
@@ -219,7 +218,6 @@ export function ContractsView() {
       setConsentCheckbox(false);
       setChallengeId(null);
       setChallengeCode("");
-      setChallengeIssuedCode(null);
     } catch (err: any) {
       setAlertError(err.message);
     } finally {
@@ -239,8 +237,7 @@ export function ContractsView() {
       if (res.ok) {
         const ch = await res.json();
         setChallengeId(ch.challenge_id);
-        setChallengeIssuedCode(ch.verification_code);
-        setChallengeCode(ch.verification_code); // Pré-saisi pour fluidité sandbox
+        setChallengeCode("");
       }
     } catch (e: any) {
       setAlertError("Impossible d'émettre le jeton de sécurité.");
@@ -347,7 +344,7 @@ export function ContractsView() {
     }
   };
 
-  const signedCount = contracts.filter((c) => c.status === "SIGNED" || c.status === "FULLY_EXECUTED").length;
+  const signedCount = contracts.filter((c) => c.status === "CUSTOMER_SIGNED" || c.status === "SIGNED" || c.status === "FULLY_EXECUTED").length;
   const pendingCount = contracts.filter((c) => c.status === "PENDING_SIGNATURE" || c.status === "DRAFT").length;
 
   return (
@@ -889,7 +886,7 @@ export function ContractsView() {
               {/* Grid of Contracts to Review/Sign */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {contracts.map((item) => {
-                  const isSigned = item.status === "SIGNED" || item.status === "FULLY_EXECUTED";
+                  const isSigned = item.status === "CUSTOMER_SIGNED" || item.status === "SIGNED" || item.status === "FULLY_EXECUTED";
                   return (
                     <div
                       key={item.id}
@@ -966,7 +963,7 @@ export function ContractsView() {
                         className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                           c.status === "FULLY_EXECUTED"
                             ? "bg-emerald-100 text-emerald-800"
-                            : c.status === "SIGNED"
+                            : c.status === "CUSTOMER_SIGNED" || c.status === "SIGNED"
                             ? "bg-blue-100 text-blue-800"
                             : "bg-amber-100 text-amber-800"
                         }`}
@@ -1039,10 +1036,7 @@ export function ContractsView() {
               ) : (
                 <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 text-xs text-emerald-900 dark:text-emerald-200 flex items-center justify-between">
                   <div>
-                    <b>Code de confirmation émis :</b>{" "}
-                    <span className="font-mono text-sm font-black tracking-widest text-[#0076FF]">
-                      {challengeIssuedCode}
-                    </span>
+                    <b>Code envoyé à votre adresse vérifiée.</b>
                   </div>
                   <span className="text-[10px] text-slate-400">Usage unique • 15 min</span>
                 </div>
@@ -1064,14 +1058,16 @@ export function ContractsView() {
                   </div>
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      {isFrench ? "Code de signature à 6 chiffres *" : "Verification Code *"}
+                      {isFrench ? "Code reçu par email à 8 chiffres *" : "8-digit email verification code *"}
                     </label>
                     <input
                       type="text"
                       required
                       value={challengeCode}
                       onChange={(e) => setChallengeCode(e.target.value)}
-                      placeholder="Ex: 849201"
+                      inputMode="numeric"
+                      pattern="[0-9]{8}"
+                      placeholder="Ex: 84920137"
                       className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-white/[0.02] text-xs font-mono font-bold text-slate-900 dark:text-white"
                     />
                   </div>

@@ -16,7 +16,7 @@ from backend.app.dependencies.auth import (
     get_account_notifier,
     get_current_identity,
     get_tenant_context,
-    require_platform_admin,
+    require_platform_role,
 )
 from backend.app.models.company import Company
 from backend.app.models.company_contract import (
@@ -85,8 +85,8 @@ class ContractSignRequest(BaseModel):
     signatory_title: str = Field(..., min_length=2, max_length=120, description="Titre ou fonction légale du signataire (ex: Président, CEO)")
     declared_authority: bool = Field(..., description="Déclaration expresse d'autorité pour engager l'entreprise")
     consent_checkbox: bool = Field(..., description="Consentement exprès et explicite aux termes du contrat")
-    challenge_id: str | None = None
-    challenge_code: str | None = None
+    challenge_id: str = Field(..., min_length=36, max_length=36)
+    challenge_code: str = Field(..., pattern=r"^\d{8}$")
 
 
 class CountersignRequest(BaseModel):
@@ -217,7 +217,7 @@ def get_company_legal_profile(
             "legal_name": company.name if company else "",
             "country": company.country if company else "Canada",
             "province_state": "Québec" if (company and company.country == "Canada") else "",
-            "phone": company.phone or "",
+            "phone": (company.phone or "") if company else "",
             "general_email": company.email if company else "",
             "billing_email": company.billing_email if company else "",
             "preferred_language": company.preferred_language if company else "fr",
@@ -270,7 +270,8 @@ def save_company_legal_profile(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Enregistre ou met à jour le profil juridique vérifié de l'entreprise cliente."""
-    role_str = str(getattr(identity.user, "role", "") or "").lower()
+    user_role = getattr(identity.user.role, "value", identity.user.role) if identity.user.role is not None else ""
+    role_str = str(user_role or "").lower()
     if role_str not in ("owner", "admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -309,18 +310,48 @@ def create_signing_challenge(
     contract_type: str,
     tenant: TenantContext = Depends(get_tenant_context),
     identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+    notifier: AccountNotifier = Depends(get_account_notifier),
+    service: ContractSignatureService = Depends(_get_service),
 ) -> dict[str, Any]:
-    """Émet un défi de signature à usage unique avec code de sécurité éphémère (anti-rejeu)."""
-    challenge = SigningChallengeService.create_challenge(
-        company_id=tenant.company_id,
-        user_id=identity.user.id,
-        contract_type=contract_type,
-    )
+    """Envoie un code à l'adresse vérifiée du signataire sans l'exposer au navigateur."""
+    if not notifier.email_delivery_configured:
+        raise HTTPException(status_code=503, detail="Livraison sécurisée du code indisponible.")
+    company = db.get(Company, tenant.company_id)
+    if company is None:
+        raise HTTPException(status_code=404, detail="Entreprise introuvable")
+    try:
+        service.require_legal_release()
+        service.verify_signatory_authority(identity.user, company.id, declared_authority=True)
+        contract = service.get_contract(company.id, contract_type)
+        schedule = CommercialReconciler.reconcile(company, service._settings)
+        if schedule.is_blocked:
+            raise CommercialConfigMismatchError("Configuration commerciale divergente.")
+        challenge, code = SigningChallengeService(db).create_challenge(
+            company_id=company.id,
+            user_id=identity.user.id,
+            contract_id=contract.id,
+            contract_version=contract.version,
+            content_hash=service.compute_sha256(contract.content_text),
+            commercial_hash=SigningChallengeService.snapshot_hash(schedule.to_dict()),
+        )
+        notifier.send_transactional(
+            identity.user.email,
+            "Code de signature Avenqo",
+            f"Votre code de confirmation de signature est {code}. Il expire dans 15 minutes.",
+        )
+        db.commit()
+    except (ContractAuthorityError, CommercialConfigMismatchError) as exc:
+        db.rollback()
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=503, detail="Livraison du code impossible; aucun défi actif créé.") from None
     return {
-        "challenge_id": challenge.challenge_id,
-        "contract_type": challenge.contract_type,
+        "challenge_id": str(challenge.id),
+        "contract_type": contract_type,
         "expires_at": challenge.expires_at.isoformat(),
-        "verification_code": challenge.code,
+        "delivery": "email",
     }
 
 
@@ -463,7 +494,7 @@ def countersign_contract_provider(
     contract_type: str,
     company_id: UUID,
     payload: CountersignRequest,
-    identity: CurrentIdentity = Depends(require_platform_admin),
+    identity: CurrentIdentity = Depends(require_platform_role("PLATFORM_SUPER_ADMIN")),
     service: ContractSignatureService = Depends(_get_service),
 ) -> dict[str, Any]:
     """Réservé aux administrateurs de plateforme Avenqo pour contresigner un contrat client."""
@@ -589,6 +620,9 @@ def download_contract_pdf(
                 detail="Fichier certifié manquant sur le disque persistant. Un incident d'intégrité a été consigné.",
             )
         pdf_bytes = full_path.read_bytes()
+        if contract.pdf_sha256 and service.compute_sha256(pdf_bytes) != contract.pdf_sha256:
+            logger.critical("Contract PDF digest mismatch company_id=%s type=%s", tenant.company_id, contract_type)
+            raise HTTPException(status_code=500, detail="Intégrité du document PDF non vérifiée.")
         media_type = "application/pdf"
         filename = f"{contract_type}_{contract.status}_{contract.version}.pdf"
         return Response(
@@ -621,23 +655,16 @@ class VerifyWetInkRequest(BaseModel):
 @router.post("/{contract_type}/verify-wet-ink")
 def verify_wet_ink_contract(
     contract_type: str,
+    company_id: UUID,
     payload: VerifyWetInkRequest,
-    tenant: TenantContext = Depends(get_tenant_context),
-    identity: CurrentIdentity = Depends(get_current_identity),
+    identity: CurrentIdentity = Depends(require_platform_role("PLATFORM_SUPER_ADMIN")),
     service: ContractSignatureService = Depends(_get_service),
 ) -> dict:
-    """Permet au dirigeant / admin de valider ou rejeter un document manuscrit soumis."""
+    """Validation indépendante par un opérateur plateforme explicitement autorisé."""
     user = identity.user
-    role_str = str(getattr(user, "role", "") or "").lower()
-    if role_str not in ("owner", "admin"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Seul un propriétaire ou un administrateur peut valider une signature manuscrite.",
-        )
-
     try:
         updated = service.verify_wet_ink_signature(
-            company_id=tenant.company_id,
+            company_id=company_id,
             contract_type=contract_type,
             approved=payload.approved,
             verifier_user=user,
@@ -649,5 +676,5 @@ def verify_wet_ink_contract(
             "status": updated.status,
             "signature_mode": updated.signature_mode,
         }
-    except ValueError as e:
+    except (ValueError, ContractAuthorityError) as e:
         raise HTTPException(status_code=400, detail=str(e))

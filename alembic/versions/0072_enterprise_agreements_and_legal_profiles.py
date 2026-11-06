@@ -16,8 +16,10 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
     # 1. Table company_legal_profiles
-    op.create_table(
+    if not sa.inspect(bind).has_table("company_legal_profiles"):
+        op.create_table(
         "company_legal_profiles",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column(
@@ -62,44 +64,33 @@ def upgrade() -> None:
         sa.Column("authorized_representative_authority_confirmed", sa.Boolean(), nullable=False, server_default=sa.text("false")),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), onupdate=sa.func.now(), nullable=False),
-    )
-    op.create_index("ix_company_legal_profiles_company_id", "company_legal_profiles", ["company_id"])
+        )
+    if "ix_company_legal_profiles_company_id" not in {
+        index["name"] for index in sa.inspect(bind).get_indexes("company_legal_profiles")
+    }:
+        op.create_index("ix_company_legal_profiles_company_id", "company_legal_profiles", ["company_id"])
 
     # 2. Add columns to company_contracts
-    op.add_column(
-        "company_contracts",
-        sa.Column("execution_state", sa.String(32), nullable=False, server_default="PENDING_CUSTOMER"),
-    )
-    op.add_column(
-        "company_contracts",
+    contract_columns = {column["name"] for column in sa.inspect(bind).get_columns("company_contracts")}
+    if "execution_state" not in contract_columns:
+        op.add_column(
+            "company_contracts",
+            sa.Column("execution_state", sa.String(32), nullable=False, server_default="PENDING_CUSTOMER"),
+        )
+    for column in (
         sa.Column("provider_signatory_name", sa.String(255), nullable=True),
-    )
-    op.add_column(
-        "company_contracts",
         sa.Column("provider_signatory_title", sa.String(255), nullable=True),
-    )
-    op.add_column(
-        "company_contracts",
         sa.Column("provider_signed_at", sa.DateTime(timezone=True), nullable=True),
-    )
-    op.add_column(
-        "company_contracts",
         sa.Column("provider_signature_hash", sa.String(64), nullable=True),
-    )
-    op.add_column(
-        "company_contracts",
-        sa.Column("commercial_schedule_json", sa.JSON(), nullable=False, server_default=sa.text("'{}'::json")),
-    )
-    op.add_column(
-        "company_contracts",
-        sa.Column("completion_record_json", sa.JSON(), nullable=False, server_default=sa.text("'{}'::json")),
-    )
+        sa.Column("commercial_schedule_json", sa.JSON(), nullable=False, server_default=sa.text("'{}'")),
+        sa.Column("completion_record_json", sa.JSON(), nullable=False, server_default=sa.text("'{}'")),
+    ):
+        if column.name not in contract_columns:
+            op.add_column("company_contracts", column)
 
     # 3. Add platform_role column to users
-    op.add_column(
-        "users",
-        sa.Column("platform_role", sa.String(64), nullable=True),
-    )
+    if "platform_role" not in {column["name"] for column in sa.inspect(bind).get_columns("users")}:
+        op.add_column("users", sa.Column("platform_role", sa.String(64), nullable=True))
 
 
 def downgrade() -> None:
