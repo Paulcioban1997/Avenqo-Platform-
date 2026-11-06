@@ -270,7 +270,8 @@ def save_company_legal_profile(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Enregistre ou met à jour le profil juridique vérifié de l'entreprise cliente."""
-    role_str = str(getattr(identity.user, "role", "") or "").lower()
+    user_role = getattr(identity.user.role, "value", identity.user.role) if identity.user.role is not None else ""
+    role_str = str(user_role or "").lower()
     if role_str not in ("owner", "admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
