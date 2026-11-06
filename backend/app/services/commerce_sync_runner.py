@@ -57,6 +57,15 @@ class CommerceSyncRunner:
         connection_id: UUID,
         max_pages_per_entity: int | None = None,
     ) -> None:
+        from backend.app.config.settings import get_settings
+
+        if not get_settings().is_commerce_sync_allowed:
+            logger.warning(
+                "Commerce sync job rejected: synchronization disabled by Sandbox isolation guard company=%s connection=%s",
+                tenant.company_id,
+                connection_id,
+            )
+            return
         with self._session_factory() as session:
             apply_tenant_rls(session, tenant.company_id)
             service = self._service_factory(session)
@@ -134,6 +143,11 @@ class CommerceSyncRunner:
                 session.close()
 
     async def reconcile_active(self) -> int:
+        from backend.app.config.settings import get_settings
+
+        if not get_settings().is_commerce_sync_allowed:
+            logger.info("Commerce reconciliation skipped: synchronization disabled by Sandbox isolation guard.")
+            return 0
         with self._session_factory() as session:
             apply_tenant_rls(session, UUID(int=0), bypass=True)
             candidates = list(

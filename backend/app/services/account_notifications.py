@@ -1,4 +1,8 @@
-﻿"""Frontière d'envoi des emails liés au compte."""
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+import re
+import threading
+"""Frontière d'envoi des emails liés au compte."""
 
 from email.message import EmailMessage
 from email.utils import formataddr
@@ -212,6 +216,11 @@ class SMTPEmailTransport:
         text_body: str,
         html_body: str,
     ) -> None:
+        if not getattr(self._settings, "is_external_email_allowed", True):
+            raise RuntimeError(
+                "External email dispatch blocked: live SMTP transmission is prohibited in Sandbox environment. "
+                "Use EMAIL_PROVIDER=sandbox_capture for safe testing."
+            )
         message = EmailMessage()
         message["From"] = self._settings.smtp_from_email
         message["To"] = recipient
@@ -245,6 +254,7 @@ class ResendHTTPSEmailTransport:
     """Transport HTTPS compatible avec l'API transactionnelle Resend."""
 
     def __init__(self, settings: Settings) -> None:
+        self._settings = settings
         self._api_key = settings.email_api_key
         self._from_email = settings.email_from_email
         self._from_name = settings.email_from_name
@@ -256,6 +266,11 @@ class ResendHTTPSEmailTransport:
         text_body: str,
         html_body: str,
     ) -> None:
+        if not getattr(self._settings, "is_external_email_allowed", True):
+            raise RuntimeError(
+                "External email dispatch blocked: live Resend transmission is prohibited in Sandbox environment. "
+                "Use EMAIL_PROVIDER=sandbox_capture for safe testing."
+            )
         payload = json.dumps(
             {
                 "from": formataddr((self._from_name, self._from_email)),
@@ -348,3 +363,89 @@ class HTTPSAccountNotifier(AccountNotificationService):
                 "API email HTTPS non configurée : définir la clé et l'expéditeur"
             )
         super().__init__(settings, ResendHTTPSEmailTransport(settings))
+
+
+@dataclass
+class CapturedEmail:
+    recipient: str
+    subject: str
+    text_body: str
+    html_body: str
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    verification_code: str | None = None
+
+
+class SandboxCaptureAccountNotifier:
+    """Safe Sandbox/Test email notifier that captures all outbound emails locally.
+
+    Guarantees:
+    - Zero external network dispatch (100% prevented).
+    - Captures emails deterministically for testing and test harness verification.
+    - Extracts 8-digit signature confirmation codes for synthetic E2E testing.
+    - Never logs or exposes raw OTP codes to external APIs or unauthenticated consumers.
+    """
+
+    email_delivery_configured = True
+
+    def __init__(self, settings: Settings | None = None) -> None:
+        self._settings = settings
+        self._captured: list[CapturedEmail] = []
+        self._lock = threading.Lock()
+
+    def send_email_verification(self, email: str, token: str) -> None:
+        self._record(email, "Vérifiez votre adresse email Avenqo", f"Token: {token}", f"<p>Token: {token}</p>")
+
+    def send_password_reset(self, email: str, token: str) -> None:
+        self._record(email, "Réinitialisez votre mot de passe Avenqo", f"Token: {token}", f"<p>Token: {token}</p>")
+
+    def send_new_company(self, company: object, user: object, request: object) -> None:
+        self._record(getattr(user, "email", "owner@avenqo.ca"), "New Avenqo Company", f"Company: {getattr(company, 'name', '')}", "")
+
+    def send_invoice_paid(self, recipient: str, company: object, invoice: object) -> None:
+        self._record(recipient, "Facture payée", f"Invoice: {getattr(invoice, 'id', '')}", "")
+
+    def send_transactional(self, recipient: str, subject: str, body: str) -> None:
+        self._record(recipient, subject, body, body)
+
+    def _record(self, recipient: str, subject: str, text_body: str, html_body: str) -> None:
+        code = None
+        match = re.search(r"\b(\d{8})\b", text_body)
+        if match:
+            code = match.group(1)
+        item = CapturedEmail(
+            recipient=recipient,
+            subject=subject,
+            text_body=text_body,
+            html_body=html_body,
+            verification_code=code,
+        )
+        with self._lock:
+            self._captured.append(item)
+        logger.info("Sandbox captured email recipient=%s subject=%s code_present=%s", recipient, subject, bool(code))
+
+    def get_captured_emails(self, recipient: str | None = None) -> list[CapturedEmail]:
+        with self._lock:
+            if recipient is None:
+                return list(self._captured)
+            return [e for e in self._captured if e.recipient == recipient]
+
+    def get_latest_code_for(self, recipient: str) -> str | None:
+        with self._lock:
+            for e in reversed(self._captured):
+                if e.recipient == recipient and e.verification_code:
+                    return e.verification_code
+        return None
+
+    def clear(self) -> None:
+        with self._lock:
+            self._captured.clear()
+
+
+_sandbox_capture_notifier: SandboxCaptureAccountNotifier | None = None
+
+
+def get_sandbox_capture_notifier(settings: Settings | None = None) -> SandboxCaptureAccountNotifier:
+    global _sandbox_capture_notifier
+    if _sandbox_capture_notifier is None:
+        _sandbox_capture_notifier = SandboxCaptureAccountNotifier(settings)
+    return _sandbox_capture_notifier
