@@ -63,7 +63,7 @@ def get_account_notifier() -> AccountNotifier:
 
     if settings.email_provider == "sandbox_capture":
         return get_sandbox_capture_notifier(settings)
-    if env in {"sandbox", "staging", "test"}:
+    if env in {"sandbox", "staging"}:
         if settings.sandbox_email_capture_enabled or not settings.is_external_email_allowed:
             if settings.sandbox_email_capture_enabled or settings.email_provider == "https_api" or settings.email_delivery_configured:
                 return get_sandbox_capture_notifier(settings)

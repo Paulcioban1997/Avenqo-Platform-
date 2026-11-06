@@ -644,9 +644,12 @@ class Settings(BaseSettings):
 
     @property
     def is_external_email_allowed(self) -> bool:
-        if self.environment.lower() in {"production", "prod"}:
+        env = self.environment.lower()
+        if env in {"production", "prod"}:
             return True
-        return self.sandbox_allow_external_email
+        if env in {"sandbox", "staging"}:
+            return self.sandbox_allow_external_email
+        return True
 
     @property
     def email_delivery_configured(self) -> bool:
