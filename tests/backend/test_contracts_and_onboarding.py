@@ -197,7 +197,7 @@ def test_electronic_signature_flow(db_session, tmp_path):
     company = _create_test_company(db_session)
     owner = _create_user(db_session, company, role=UserRole.OWNER)
 
-    settings = get_settings().model_copy(update={"provider_incorporation_verified": True, "provider_contracts_published": True,
+    settings = get_settings().model_copy(update={"legal_signing_enabled": True, "provider_incorporation_verified": True, "provider_contracts_published": True,
                                                 "provider_incorporation_status": "VERIFIED",
                                                 "artifact_root": str(tmp_path)})
     service = ContractSignatureService(db_session, settings=settings)
@@ -238,7 +238,7 @@ def test_wet_ink_manuscript_flow(db_session):
     company = _create_test_company(db_session)
     owner = _create_user(db_session, company, role=UserRole.OWNER)
 
-    settings = get_settings().model_copy(update={"provider_incorporation_verified": True, "provider_contracts_published": True,
+    settings = get_settings().model_copy(update={"legal_signing_enabled": True, "provider_incorporation_verified": True, "provider_contracts_published": True,
                                                 "provider_incorporation_status": "VERIFIED"})
     service = ContractSignatureService(db_session, settings=settings)
     service.ensure_contracts_for_company(company)

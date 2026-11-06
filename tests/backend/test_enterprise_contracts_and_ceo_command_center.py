@@ -334,7 +334,7 @@ def test_full_contract_lifecycle_customer_to_provider_countersign(db_session: Se
     company = _create_company(db_session, name="FinTech Corp")
     owner = _create_user(db_session, company, role=UserRole.OWNER)
 
-    settings = get_settings().model_copy(update={"provider_incorporation_verified": True, "provider_contracts_published": True,
+    settings = get_settings().model_copy(update={"legal_signing_enabled": True, "provider_incorporation_verified": True, "provider_contracts_published": True,
                                                 "provider_incorporation_status": "VERIFIED"})
     service = ContractSignatureService(db_session, settings=settings)
     service.ensure_contracts_for_company(company)
@@ -449,8 +449,20 @@ def test_unpublished_provider_and_absent_challenge_fail_closed(db_session: Sessi
             signatory_title="Président", declared_authority=True, consent_checkbox=True,
         )
 
+    verified_but_disabled = get_settings().model_copy(update={
+        "provider_incorporation_verified": True,
+        "provider_contracts_published": True,
+        "provider_incorporation_status": "VERIFIED",
+        "legal_signing_enabled": False,
+    })
+    with pytest.raises(ContractAuthorityError, match="validation juridique"):
+        ContractSignatureService(db_session, settings=verified_but_disabled).sign_contract_electronic(
+            company=company, user=owner, contract_type="MUTUAL_NDA",
+            signatory_title="Président", declared_authority=True, consent_checkbox=True,
+        )
+
     approved_in_synthetic_test = get_settings().model_copy(update={
-        "provider_incorporation_verified": True, "provider_contracts_published": True,
+        "legal_signing_enabled": True, "provider_incorporation_verified": True, "provider_contracts_published": True,
         "provider_incorporation_status": "VERIFIED",
     })
     service = ContractSignatureService(db_session, settings=approved_in_synthetic_test)
@@ -465,7 +477,7 @@ def test_challenge_is_sent_out_of_band_and_not_returned_to_browser(db_session: S
     company = _create_company(db_session)
     owner = _create_user(db_session, company)
     settings = get_settings().model_copy(update={
-        "provider_incorporation_verified": True, "provider_contracts_published": True,
+        "legal_signing_enabled": True, "provider_incorporation_verified": True, "provider_contracts_published": True,
         "provider_incorporation_status": "VERIFIED",
     })
     service = ContractSignatureService(db_session, settings=settings)

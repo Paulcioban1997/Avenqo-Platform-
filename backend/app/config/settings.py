@@ -467,6 +467,8 @@ class Settings(BaseSettings):
     provider_legal_jurisdiction: str = Field(default="Québec, Canada", alias="PROVIDER_LEGAL_JURISDICTION")
     provider_authorized_signatory_name: str | None = Field(default=None, alias="PROVIDER_AUTHORIZED_SIGNATORY_NAME")
     provider_contracts_published: bool = Field(default=False, alias="PROVIDER_CONTRACTS_PUBLISHED")
+    # Independent release switch: provider verification alone never activates signatures.
+    legal_signing_enabled: bool = Field(default=False, alias="LEGAL_SIGNING_ENABLED")
 
     @field_validator("cors_origins", "allowed_hosts", mode="before")
     @classmethod

@@ -329,7 +329,8 @@ class ContractSignatureService:
 
     def require_legal_release(self) -> None:
         if not (
-            self._settings.provider_incorporation_verified
+            self._settings.legal_signing_enabled
+            and self._settings.provider_incorporation_verified
             and self._settings.provider_contracts_published
             and self._settings.provider_incorporation_status != "UNVERIFIED_PENDING_INCORPORATION"
         ):
