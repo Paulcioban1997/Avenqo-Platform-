@@ -210,7 +210,7 @@ def test_production_strictly_prohibits_sandbox_email_capture():
         Settings(
             ENVIRONMENT="production",
             AUTH_JWT_SECRET=SAFE_JWT,
-            DATABASE_URL="postgresql://user:test-only-password@prod.db:5432/db",
+            database_url="postgresql://user:test-only-password@prod.db:5432/db",
             STRIPE_SECRET_KEY="sk_live_dummy",
             STRIPE_WEBHOOK_SECRET="whsec_dummy",
             STRIPE_PRICE_DEMO="price_1",
