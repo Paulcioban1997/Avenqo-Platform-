@@ -146,7 +146,7 @@ def test_shopify_connector_isolation_blocks_network_in_sandbox():
     
     # 1. OAuth authenticate must be rejected
     with pytest.raises(ShopifyAuthenticationError, match="Shopify OAuth authorization is blocked by Sandbox isolation guard"):
-        connector.authenticate(tenant_id="123", configuration={})
+        connector.authenticate(tenant_id=uuid4(), configuration={})
         
     # 2. Internal request must be rejected
     loop = asyncio.new_event_loop()
