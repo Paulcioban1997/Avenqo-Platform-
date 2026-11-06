@@ -635,9 +635,12 @@ class Settings(BaseSettings):
 
     @property
     def is_commerce_sync_allowed(self) -> bool:
-        if self.environment.lower() in {"production", "prod"}:
+        env = self.environment.lower()
+        if env in {"production", "prod"}:
             return True
-        return self.sandbox_commerce_sync_enabled
+        if env in {"sandbox", "staging"}:
+            return self.sandbox_commerce_sync_enabled
+        return True
 
     @property
     def is_external_email_allowed(self) -> bool:
