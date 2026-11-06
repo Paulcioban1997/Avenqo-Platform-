@@ -11,7 +11,7 @@ export default defineRailway(() => {
   const avenqoBackups = bucket("avenqo-backups", { region: "iad" });
   const AvenqoPlatform2 = service("Avenqo-Platform-", {
     source: AvenqoPlatform,
-    startCommand: "sh -c 'python -m alembic upgrade head && exec uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1'",
+    startCommand: "uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1",
     healthcheck: null,
     healthcheckTimeout: null,
     replicas: { "sfo": 1 },
