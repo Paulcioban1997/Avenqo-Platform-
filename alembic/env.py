@@ -15,7 +15,7 @@ from logging.config import fileConfig
 from pathlib import Path
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, pool, inspect, text
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -85,6 +85,24 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        # Several existing revision IDs exceed Alembic's default VARCHAR(32).
+        # PostgreSQL enforces that limit; SQLite does not. Preserve all IDs.
+        if connection.dialect.name == "postgresql":
+            with connection.begin():
+                inspector = inspect(connection)
+                if not inspector.has_table("alembic_version"):
+                    connection.execute(text(
+                        "CREATE TABLE alembic_version "
+                        "(version_num VARCHAR(128) NOT NULL PRIMARY KEY)"
+                    ))
+                else:
+                    column = next(item for item in inspector.get_columns("alembic_version")
+                                  if item["name"] == "version_num")
+                    length = getattr(column["type"], "length", None)
+                    if length is not None and length < 128:
+                        connection.execute(text(
+                            "ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(128)"
+                        ))
         context.configure(connection=connection, target_metadata=target_metadata, compare_type=False)
         with context.begin_transaction():
             context.run_migrations()
