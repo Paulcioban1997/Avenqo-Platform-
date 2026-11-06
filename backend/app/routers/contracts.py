@@ -217,7 +217,7 @@ def get_company_legal_profile(
             "legal_name": company.name if company else "",
             "country": company.country if company else "Canada",
             "province_state": "Québec" if (company and company.country == "Canada") else "",
-            "phone": company.phone or "",
+            "phone": (company.phone or "") if company else "",
             "general_email": company.email if company else "",
             "billing_email": company.billing_email if company else "",
             "preferred_language": company.preferred_language if company else "fr",
