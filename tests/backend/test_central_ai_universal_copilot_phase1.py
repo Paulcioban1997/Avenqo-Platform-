@@ -79,6 +79,7 @@ from backend.app.models.secure_download_nonce import SecureDownloadNonce
 from backend.app.models.user import User
 from backend.app.models.workspace import TenantDocument
 from backend.app.routers.secure_downloads import _generate_invoice_pdf, _resolve_canonical_artifact_path
+from backend.app.services.contract_authorization_service import ContractAuthorizationService
 from backend.app.services.secure_document_token_service import (
     ExpiredSecureTokenError,
     InvalidSecureTokenError,
@@ -1525,5 +1526,109 @@ def test_security_third_party_contracts_rigorous_lifecycle_and_tenant_isolation(
 
     session.close()
     engine.dispose()
+
+
+def test_security_fail_closed_empty_permissions_contracts_and_documents(tmp_path: Path):
+    """Vérification stricte du comportement fail-closed en cas de permissions vides.
+
+    Garantit que si 'data:read' est absent ou si permissions=frozenset(),
+    AUCUN contrat ni document n'est accessible, ni via le service, ni via les outils Central AI.
+    """
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'fail_closed_test.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)()
+
+    company = _create_company(session, "Fail Closed Co", "fail-closed-co")
+    user = _create_user(session, company, "noperms@failclosed.test", role=UserRole.USER)
+
+    contract = CompanyContract(
+        id=uuid4(),
+        company_id=company.id,
+        contract_type="pilot",
+        title="Contrat Socle Test",
+        status=ContractLifecycleStatus.READY_FOR_REVIEW.value,
+        execution_state=ContractExecutionPartyState.PENDING_CUSTOMER.value,
+        version="2026-V1",
+        content_text="Contenu secret socle",
+        metadata_json={},
+    )
+    doc = TenantDocument(
+        id=uuid4(),
+        company_id=company.id,
+        uploaded_by_user_id=user.id,
+        kind="ocr",
+        filename="facture_test.pdf",
+        sha256="fakehashfc",
+        extracted_text="Texte confidentiel facture",
+    )
+    session.add_all([contract, doc])
+    session.commit()
+
+    tenant_ctx = TenantContext(company_id=company.id, user_id=user.id)
+    auth_service = ContractAuthorizationService(session)
+
+    # 1. Vérification directe du service : permissions vides = refus immédiat (fail-closed)
+    can_acc_c, err_c = auth_service.can_access_contract(tenant_ctx, contract, permissions=frozenset())
+    assert can_acc_c is False
+    assert "insuffisantes" in (err_c or "").lower()
+
+    filtered_c = auth_service.filter_accessible_contracts(tenant_ctx, [contract], permissions=frozenset())
+    assert filtered_c == []
+
+    can_acc_d, err_d = auth_service.can_access_document(tenant_ctx, doc, permissions=frozenset())
+    assert can_acc_d is False
+    assert "insuffisantes" in (err_d or "").lower()
+
+    filtered_d = auth_service.filter_accessible_documents(tenant_ctx, [doc], permissions=frozenset())
+    assert filtered_d == []
+
+    # 2. Vérification au niveau des outils Central AI avec ToolExecutionContext sans data:read
+    tool_ctx_empty = ToolExecutionContext(
+        tenant=tenant_ctx,
+        user_id=user.id,
+        permissions=frozenset(),  # Liste vide explicite
+        request_id="req-empty-perms",
+    )
+
+    # Contrats
+    search_c_tool = SearchContractsTool(session)
+    res_search_c = asyncio.run(search_c_tool.run(tool_ctx_empty, SearchContractsArgs(query="Contrat")))
+    assert res_search_c.success is True
+    assert res_search_c.data["count"] == 0
+    assert len(res_search_c.data["contracts"]) == 0
+
+    detail_c_tool = GetContractDetailTool(session)
+    res_detail_c = asyncio.run(detail_c_tool.run(tool_ctx_empty, GetContractDetailArgs(contract_id=str(contract.id))))
+    assert res_detail_c.success is False
+    assert "insuffisantes" in (res_detail_c.error or "").lower()
+
+    dl_c_tool = GetContractDownloadUrlTool(session)
+    res_dl_c = asyncio.run(dl_c_tool.run(tool_ctx_empty, GetContractDownloadUrlArgs(contract_id=str(contract.id))))
+    assert res_dl_c.success is False
+    assert "insuffisantes" in (res_dl_c.error or "").lower()
+
+    # Documents
+    search_d_tool = SearchDocumentsTool(session)
+    res_search_d = asyncio.run(search_d_tool.run(tool_ctx_empty, SearchDocumentsArgs(query="facture")))
+    assert res_search_d.success is True
+    assert res_search_d.data["count"] == 0
+    assert len(res_search_d.data["documents"]) == 0
+
+    detail_d_tool = GetDocumentDetailTool(session)
+    res_detail_d = asyncio.run(detail_d_tool.run(tool_ctx_empty, GetDocumentDetailArgs(document_id=str(doc.id))))
+    assert res_detail_d.success is False
+    assert "insuffisantes" in (res_detail_d.error or "").lower()
+
+    dl_d_tool = GetDocumentDownloadUrlTool(session)
+    res_dl_d = asyncio.run(dl_d_tool.run(tool_ctx_empty, GetDocumentDownloadUrlArgs(document_id=str(doc.id))))
+    assert res_dl_d.success is False
+    assert "insuffisantes" in (res_dl_d.error or "").lower()
+
+    session.close()
+    engine.dispose()
+
 
 

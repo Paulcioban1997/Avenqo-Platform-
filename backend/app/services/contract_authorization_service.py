@@ -107,11 +107,12 @@ class ContractAuthorizationService:
         contract: CompanyContract | None,
         permissions: frozenset[str] = frozenset(),
     ) -> tuple[bool, str | None]:
-        """Vérifie l'accès à un contrat CompanyContract."""
+        """Vérifie l'accès à un contrat CompanyContract (fail-closed)."""
         if contract is None or contract.company_id != tenant.company_id:
             return False, "Contrat introuvable ou vous n'avez pas l'autorisation d'y accéder."
 
-        if permissions and "data:read" not in permissions:
+        # Fail-closed : les permissions doivent impérativement contenir 'data:read'
+        if "data:read" not in permissions:
             return False, "Permissions insuffisantes pour consulter les contrats de l'entreprise."
 
         if is_third_party_contract(contract):
@@ -126,8 +127,9 @@ class ContractAuthorizationService:
         contracts: list[CompanyContract],
         permissions: frozenset[str] = frozenset(),
     ) -> list[CompanyContract]:
-        """Filtre la liste des contrats accessibles pour la recherche."""
-        if permissions and "data:read" not in permissions:
+        """Filtre la liste des contrats accessibles pour la recherche (fail-closed)."""
+        # Fail-closed : refus immédiat si les permissions ne contiennent pas 'data:read'
+        if "data:read" not in permissions:
             return []
 
         has_legal = self.has_legal_module(tenant)
@@ -146,11 +148,12 @@ class ContractAuthorizationService:
         doc: TenantDocument | None,
         permissions: frozenset[str] = frozenset(),
     ) -> tuple[bool, str | None]:
-        """Vérifie l'accès à un document TenantDocument."""
+        """Vérifie l'accès à un document TenantDocument (fail-closed)."""
         if doc is None or doc.company_id != tenant.company_id:
             return False, "Document introuvable ou vous n'avez pas l'autorisation d'y accéder."
 
-        if permissions and "data:read" not in permissions:
+        # Fail-closed : les permissions doivent impérativement contenir 'data:read'
+        if "data:read" not in permissions:
             return False, "Permissions insuffisantes pour consulter ce document."
 
         if doc.kind == "legal" and not self.has_legal_module(tenant):
@@ -164,8 +167,9 @@ class ContractAuthorizationService:
         docs: list[TenantDocument],
         permissions: frozenset[str] = frozenset(),
     ) -> list[TenantDocument]:
-        """Filtre les documents retournés en recherche."""
-        if permissions and "data:read" not in permissions:
+        """Filtre les documents retournés en recherche (fail-closed)."""
+        # Fail-closed : refus immédiat si les permissions ne contiennent pas 'data:read'
+        if "data:read" not in permissions:
             return []
 
         has_legal = self.has_legal_module(tenant)
@@ -177,3 +181,4 @@ class ContractAuthorizationService:
                 continue
             result.append(doc)
         return result
+
