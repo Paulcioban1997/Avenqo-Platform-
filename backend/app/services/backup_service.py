@@ -1,13 +1,6 @@
-"""Sauvegarde/restauration (remédiation post-Phase 34).
+"""Sauvegarde/restauration interne SQLite et PostgreSQL.
 
-Outil INTERNE opérations/admin uniquement — jamais exposé via une route HTTP
-(voir tests/security/test_backup_restore_security.py). Utilisation prévue via
-`scripts/backup_db.py` / `scripts/restore_db.py`.
-
-Limitation connue : ne prend en charge que SQLite pour l'instant (seule base
-utilisée par ce dépôt à ce stade — voir docs/production-deployment.md § Base
-de données). Une migration vers PostgreSQL nécessiterait `pg_dump`/`pg_restore`
-au lieu de l'API de sauvegarde SQLite utilisée ici.
+Outil administratif uniquement, jamais exposé via une route HTTP.
 """
 
 from __future__ import annotations
@@ -26,6 +19,29 @@ from backend.app.config.settings import Settings
 
 class BackupError(Exception):
     """Erreur générique de sauvegarde/restauration."""
+
+
+def _pg_dump_failure_category(stderr: str) -> str:
+    """Classify a dump failure without returning provider output or credentials."""
+
+    message = stderr.lower()
+    if "row-level security" in message:
+        return "row_level_security"
+    if "permission denied" in message or "must be owner" in message:
+        return "insufficient_privileges"
+    if "server version mismatch" in message:
+        return "client_server_version_mismatch"
+    if "password authentication failed" in message or "no password supplied" in message:
+        return "authentication_failed"
+    if "could not translate host" in message or "name or service not known" in message:
+        return "dns_resolution_failed"
+    if "certificate verify failed" in message or "ssl error" in message:
+        return "tls_failed"
+    if "connection refused" in message or "connection timed out" in message:
+        return "connection_failed"
+    if "no space left on device" in message or "could not open output file" in message:
+        return "staging_unavailable"
+    return "unclassified"
 
 
 def _postgres_subprocess_connection(database_url: str) -> tuple[str, dict[str, str]]:
@@ -365,15 +381,25 @@ class BackupService:
                 source_conn.close()
         else:  # postgresql — pg_dump cohérent, jamais de secret dans les logs
             connection, child_env = _postgres_subprocess_connection(self._settings.database_url)
-            result = subprocess.run(
-                ["pg_dump", "--format=plain", "--no-owner", "--no-privileges",
-                 "--file", str(destination_path), connection],
-                env=child_env,
-                capture_output=True, text=True, timeout=600, check=False,
-            )
+            try:
+                result = subprocess.run(
+                    ["pg_dump", "--format=plain", "--no-owner", "--no-privileges",
+                     "--file", str(destination_path), connection],
+                    env=child_env,
+                    capture_output=True, text=True, timeout=600, check=False,
+                )
+            except subprocess.TimeoutExpired:
+                destination_path.unlink(missing_ok=True)
+                raise BackupError("pg_dump a échoué (catégorie : timeout)") from None
+            except FileNotFoundError:
+                destination_path.unlink(missing_ok=True)
+                raise BackupError("pg_dump a échoué (catégorie : client_missing)") from None
             if result.returncode != 0:
                 destination_path.unlink(missing_ok=True)
-                raise BackupError(f"pg_dump a échoué (code {result.returncode})")
+                category = _pg_dump_failure_category(result.stderr or "")
+                raise BackupError(
+                    f"pg_dump a échoué (code {result.returncode}, catégorie : {category})"
+                )
 
         checksum = _sha256_of_file(destination_path)
 
