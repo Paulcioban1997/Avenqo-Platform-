@@ -69,9 +69,33 @@ def _optional_env(name: str) -> str | None:
 
 
 def _load_backup_settings() -> BackupRuntimeSettings:
-    database_url = os.getenv("DATABASE_URL", "").strip()
-    if not database_url:
+    app_database_url = os.getenv("DATABASE_URL", "").strip()
+    if not app_database_url:
         raise RuntimeError("DATABASE_URL est requis pour exécuter une sauvegarde.")
+
+    # A dedicated backup login may bypass tenant RLS without granting that
+    # privilege to the live application login. Never allow a backup credential
+    # to silently target a different database or host.
+    database_url = os.getenv("BACKUP_DATABASE_URL", "").strip() or app_database_url
+    if database_url != app_database_url:
+        from sqlalchemy.engine import make_url
+
+        try:
+            app_target = make_url(app_database_url)
+            backup_target = make_url(database_url)
+            same_target = (
+                app_target.host == backup_target.host
+                and (app_target.port or 5432) == (backup_target.port or 5432)
+                and app_target.database == backup_target.database
+                and app_target.drivername.split("+", 1)[0]
+                == backup_target.drivername.split("+", 1)[0]
+            )
+        except Exception:
+            same_target = False
+        if not same_target:
+            raise RuntimeError(
+                "BACKUP_DATABASE_URL doit cibler le même serveur et la même base que DATABASE_URL."
+            )
 
     retention_raw = os.getenv("BACKUP_RETENTION_DAYS", "30").strip() or "30"
     try:
@@ -137,6 +161,13 @@ def main() -> None:
         "artifacts_archived="
         f"{bool(metadata.artifacts_checksum_sha256)}"
     )
+    require_artifacts = os.getenv("BACKUP_REQUIRE_ARTIFACTS", "").strip().lower() in {"1", "true", "yes"}
+    if require_artifacts and not metadata.artifacts_checksum_sha256:
+        print(
+            "Échec de la sauvegarde : aucun artefact archivé alors que BACKUP_REQUIRE_ARTIFACTS est activé.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
 
 if __name__ == "__main__":
