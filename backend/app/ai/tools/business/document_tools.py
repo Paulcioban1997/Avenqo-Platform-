@@ -244,13 +244,20 @@ class GetDocumentDownloadUrlTool(OCRAITool):
                 error="Document introuvable ou vous n'avez pas l'autorisation d'y accéder.",
             )
 
+        user_id = context.user_id or context.tenant.user_id
+        if user_id is None:
+            return ToolResult(
+                success=False,
+                error="Utilisateur non authentifié pour générer un lien de téléchargement sécurisé.",
+            )
+
         download_filename = doc.filename
         if not download_filename.lower().endswith(".pdf"):
             download_filename = f"{download_filename}.pdf"
 
         token = self._token_service.generate_download_token(
             company_id=context.tenant.company_id,
-            user_id=context.tenant.user_id,
+            user_id=user_id,
             doc_id=doc.id,
             doc_type="document",
             filename=download_filename,
@@ -437,10 +444,17 @@ class GetContractDownloadUrlTool(LegalAITool):
                 error="Contrat introuvable ou vous n'avez pas l'autorisation d'y accéder.",
             )
 
+        user_id = context.user_id or context.tenant.user_id
+        if user_id is None:
+            return ToolResult(
+                success=False,
+                error="Utilisateur non authentifié pour générer un lien de téléchargement sécurisé.",
+            )
+
         filename = f"contrat_{contract.contract_type}_{contract.version}.pdf"
         token = self._token_service.generate_download_token(
             company_id=context.tenant.company_id,
-            user_id=context.tenant.user_id,
+            user_id=user_id,
             doc_id=contract.id,
             doc_type="contract",
             filename=filename,

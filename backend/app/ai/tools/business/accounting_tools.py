@@ -390,10 +390,17 @@ class GetInvoiceDownloadUrlTool(AccountingAITool):
                 error="Facture introuvable ou vous n'avez pas l'autorisation d'y accéder.",
             )
 
+        user_id = context.user_id or context.tenant.user_id
+        if user_id is None:
+            return ToolResult(
+                success=False,
+                error="Utilisateur non authentifié pour générer un lien de téléchargement sécurisé.",
+            )
+
         filename = f"facture_{invoice.invoice_number}.pdf"
         token = self._token_service.generate_download_token(
             company_id=context.tenant.company_id,
-            user_id=context.tenant.user_id,
+            user_id=user_id,
             doc_id=invoice.id,
             doc_type="invoice",
             filename=filename,
