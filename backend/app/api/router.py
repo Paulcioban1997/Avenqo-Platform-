@@ -41,6 +41,7 @@ from backend.app.routers.voice import router as voice_router
 from backend.app.routers.ai_voice import router as ai_voice_router
 from backend.app.routers.workspace import router as workspace_router
 from backend.app.routers.documents import legal_router, ocr_router
+from backend.app.routers.secure_downloads import router as secure_downloads_router
 from backend.app.routers.media import router as media_router
 from backend.app.routers.ads import router as ads_router
 from backend.app.routers.automations import router as automations_router
@@ -58,6 +59,7 @@ api_router.include_router(workspace_router, prefix="/api/v1")
 api_router.include_router(marketplace_router, prefix="/api/v1")
 api_router.include_router(ocr_router, prefix="/api/v1")
 api_router.include_router(legal_router, prefix="/api/v1")
+api_router.include_router(secure_downloads_router, prefix="/api/v1")
 api_router.include_router(media_router, prefix="/api/v1")
 api_router.include_router(ads_router, prefix="/api/v1")
 api_router.include_router(automations_router, prefix="/api/v1")
