@@ -98,6 +98,14 @@ class PlatformSupportAITool(AITool):
     mutates = False
 
 
+class PlatformContractAITool(AITool):
+    """Outils d'accès aux contrats et accords du socle Avenqo (inclus dans la plateforme)."""
+    agent_ids = frozenset({"contracts", "platform_support", "cross_agent"})
+    required_entitlements = frozenset()  # Inclus dans le socle, aucun achat forcé du module Legal
+    read_only = True
+    mutates = False
+
+
 class MarketingAITool(AITool):
     agent_ids = frozenset({"marketing", "cross_agent"})
     required_entitlements = frozenset({"marketing"})

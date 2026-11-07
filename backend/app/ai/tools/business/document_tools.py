@@ -15,7 +15,7 @@ from pydantic import Field
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from backend.app.ai.tools.base import LegalAITool, OCRAITool, ToolArguments
+from backend.app.ai.tools.base import LegalAITool, OCRAITool, PlatformContractAITool, ToolArguments
 from backend.app.ai.tools.contracts import ToolExecutionContext, ToolResult
 from backend.app.models.company_contract import CompanyContract
 from backend.app.models.user import User
@@ -283,11 +283,11 @@ class GetDocumentDownloadUrlTool(OCRAITool):
 
 
 # ============================================================================
-# Outils Contrats (Company Contracts)
+# Outils Contrats (Company Contracts - Socle Plateforme Avenqo)
 # ============================================================================
 
 
-class SearchContractsTool(LegalAITool):
+class SearchContractsTool(PlatformContractAITool):
     name = "search_contracts"
     description = (
         "Recherche parmi les contrats et accords légaux de l'entreprise (contrats de pilote, enterprise, NDA, etc.). "
@@ -352,7 +352,7 @@ class SearchContractsTool(LegalAITool):
         )
 
 
-class GetContractDetailTool(LegalAITool):
+class GetContractDetailTool(PlatformContractAITool):
     name = "get_contract_detail"
     description = (
         "Consulte le contenu textuel, les clauses, signataires et détails d'un contrat spécifique de l'entreprise. "
@@ -413,7 +413,7 @@ class GetContractDetailTool(LegalAITool):
         )
 
 
-class GetContractDownloadUrlTool(LegalAITool):
+class GetContractDownloadUrlTool(PlatformContractAITool):
     name = "get_contract_download_url"
     description = (
         "Génère une URL de téléchargement PDF sécurisée et temporaire (15 minutes) pour un contrat spécifique de l'entreprise. "

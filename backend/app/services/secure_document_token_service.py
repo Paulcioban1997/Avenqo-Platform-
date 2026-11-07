@@ -5,7 +5,7 @@ Garantit :
 2. Liaison stricte à l'entreprise (company_id) et à l'utilisateur (user_id).
 3. Expiration courte (par défaut 15 minutes / 900 secondes).
 4. Protection contre la réutilisation arbitraire ou les accès croisés multi-tenant.
-5. Protection contre les attaques par rejeu (consommation unique / nonce tracking).
+5. Protection distribuée contre les attaques par rejeu (consommation unique / nonce tracking en PostgreSQL).
 6. Limites de taille de jeton (protection anti-DDoS / mémoire).
 7. Confidentialité des logs (masquage systématique des jetons).
 8. Zéro accès S3 public.
@@ -19,10 +19,16 @@ import hmac
 import json
 import logging
 import time
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
+from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
 from backend.app.config.settings import get_settings
+from backend.app.models.secure_download_nonce import SecureDownloadNonce
 
 logger = logging.getLogger("avenqo.secure_downloads.token")
 
@@ -81,23 +87,15 @@ def _derive_download_secret(master_secret: str) -> bytes:
 
 
 class SecureDocumentTokenService:
-    """Génère et valide des jetons éphémères de téléchargement documentaire."""
+    """Génère et valide des jetons éphémères de téléchargement documentaire avec anti-rejeu distribué."""
 
-    # Registre partagé en mémoire des nonces consommés pour empêcher le rejeu
-    _redeemed_nonces: dict[str, float] = {}
+    # Registre mémoire de secours (uniquement si aucune session de base de données n'est passée)
+    _in_memory_nonces: dict[str, float] = {}
 
     def __init__(self, secret_key: str | None = None) -> None:
         settings = get_settings()
         master = secret_key or settings.auth_jwt_secret
         self._secret = _derive_download_secret(master)
-
-    @classmethod
-    def _prune_expired_nonces(cls, now: float) -> None:
-        """Nettoie les nonces dont la date d'expiration est révolue."""
-        if len(cls._redeemed_nonces) > 500:
-            cls._redeemed_nonces = {
-                nonce: exp for nonce, exp in cls._redeemed_nonces.items() if exp > now
-            }
 
     def generate_download_token(
         self,
@@ -143,16 +141,12 @@ class SecureDocumentTokenService:
         *,
         current_company_id: UUID,
         current_user_id: UUID,
-        mark_as_used: bool = True,
+        db: Session | None = None,
     ) -> dict[str, Any]:
         """Vérifie la validité, l'intégrité et les correspondances de sécurité du jeton.
         
-        Garanties :
-        - Taille maximale bornée (MAX_TOKEN_LENGTH).
-        - Signature cryptographique dédiée vérifiée en temps constant.
-        - Vérification d'expiration.
-        - Isolation multi-tenant stricte (company_id et user_id).
-        - Protection optionnelle anti-rejeu (nonce unique).
+        Ne consomme pas le jeton : la rédemption atomique s'effectue après validation
+        complète des droits et préparation du fichier via `redeem_download_nonce_atomic`.
         """
         if not token or len(token) > MAX_TOKEN_LENGTH:
             raise InvalidSecureTokenError(f"Taille de jeton invalide (limite {MAX_TOKEN_LENGTH} octets)")
@@ -187,9 +181,14 @@ class SecureDocumentTokenService:
         if not nonce:
             raise InvalidSecureTokenError("Jeton sans identifiant unique (nonce manquant)")
 
-        # Vérification anti-rejeu
-        if nonce in self._redeemed_nonces:
-            raise InvalidSecureTokenError("Ce jeton de téléchargement a déjà été utilisé (anti-rejeu).")
+        # Pré-vérification anti-rejeu (rapide)
+        if db is not None:
+            existing = db.scalar(select(SecureDownloadNonce.id).where(SecureDownloadNonce.nonce == nonce))
+            if existing is not None:
+                raise InvalidSecureTokenError("Ce jeton de téléchargement a déjà été utilisé (anti-rejeu).")
+        else:
+            if nonce in self._in_memory_nonces:
+                raise InvalidSecureTokenError("Ce jeton de téléchargement a déjà été utilisé (anti-rejeu).")
 
         token_company_id = payload.get("company_id")
         token_user_id = payload.get("user_id")
@@ -200,10 +199,6 @@ class SecureDocumentTokenService:
         if token_user_id != str(current_user_id):
             raise UnauthorizedSecureTokenError("Jeton non autorisé pour cet utilisateur")
 
-        if mark_as_used:
-            self._prune_expired_nonces(float(now))
-            self._redeemed_nonces[nonce] = float(exp)
-
         try:
             return {
                 "company_id": UUID(token_company_id),
@@ -212,6 +207,57 @@ class SecureDocumentTokenService:
                 "doc_type": payload["doc_type"],
                 "filename": payload.get("filename", "document.pdf"),
                 "nonce": nonce,
+                "exp": exp,
             }
         except (ValueError, KeyError) as exc:
             raise InvalidSecureTokenError("Identifiants de document invalides dans le jeton") from exc
+
+    def redeem_download_nonce_atomic(
+        self,
+        db: Session | None,
+        *,
+        nonce: str,
+        company_id: UUID,
+        user_id: UUID,
+        doc_id: UUID,
+        doc_type: str,
+        expires_at: datetime,
+    ) -> None:
+        """Consomme le jeton de façon atomique et distribuée dans PostgreSQL.
+
+        Garantit :
+        - Consommation unique même en cas d'appels simultanés/concurrents.
+        - Persistance après redémarrage des instances Railway.
+        - Nettoyage automatique des nonces expirés.
+        """
+        now = datetime.now(timezone.utc)
+
+        if db is not None:
+            # 1. Nettoyage opportuniste des nonces expirés
+            try:
+                db.execute(delete(SecureDownloadNonce).where(SecureDownloadNonce.expires_at < now))
+            except Exception:
+                pass  # Ne bloque jamais le flux principal
+
+            # 2. Insertion atomique sous contrainte UNIQUE sur nonce
+            record = SecureDownloadNonce(
+                nonce=nonce,
+                company_id=company_id,
+                user_id=user_id,
+                doc_id=doc_id,
+                doc_type=doc_type,
+                expires_at=expires_at,
+                redeemed_at=now,
+            )
+            db.add(record)
+            try:
+                db.commit()
+            except IntegrityError as exc:
+                db.rollback()
+                logger.warning("download_token_replay_blocked nonce=%s", nonce)
+                raise InvalidSecureTokenError("Ce jeton de téléchargement a déjà été utilisé (anti-rejeu).") from exc
+        else:
+            # Mode de secours en mémoire (tests isolés sans DB)
+            if nonce in self._in_memory_nonces:
+                raise InvalidSecureTokenError("Ce jeton de téléchargement a déjà été utilisé (anti-rejeu).")
+            self._in_memory_nonces[nonce] = expires_at.timestamp()

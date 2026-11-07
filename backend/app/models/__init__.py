@@ -88,8 +88,10 @@ from backend.app.models.workspace import (
     AutomationRun, AutomationWorkflow, EmployeeInvitation, EmployeeResponsibility,
     EmployeeTask, LoginEvent, MediaGeneration, TenantDocument,
 )
+from backend.app.models.secure_download_nonce import SecureDownloadNonce
 
 __all__ = [
+    "SecureDownloadNonce",
     "VoiceCallerCredential",
     "VoiceAuthSession",
     "AccountingInvoice",

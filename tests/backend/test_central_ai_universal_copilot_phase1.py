@@ -39,7 +39,7 @@ from uuid import UUID, uuid4
 import pypdf
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, func as sa_func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.ai.tools.business.accounting_tools import (
@@ -75,6 +75,7 @@ from backend.app.models.company import Company
 from backend.app.models.company_contract import CompanyContract, ContractExecutionPartyState, ContractLifecycleStatus
 from backend.app.models.company_module import CompanyModule
 from backend.app.models.module import Module
+from backend.app.models.secure_download_nonce import SecureDownloadNonce
 from backend.app.models.user import User
 from backend.app.models.workspace import TenantDocument
 from backend.app.routers.secure_downloads import _generate_invoice_pdf, _resolve_canonical_artifact_path
@@ -85,6 +86,7 @@ from backend.app.services.secure_document_token_service import (
     UnauthorizedSecureTokenError,
     _b64url_encode,
 )
+from shared.ai_engine.contracts import TenantContext
 from backend.main import create_application
 from shared.ai_engine.contracts import TenantContext
 
@@ -1056,3 +1058,242 @@ def test_security_derived_secret_isolation():
             current_user_id=UUID(payload["user_id"]),
         )
     assert "Signature de jeton invalide" in str(exc.value)
+
+
+def test_security_concurrent_download_token_race_single_winner(tmp_path: Path):
+    """Anti-rejeu distribué : Course concurrente sur le même jeton.
+
+    Garantit qu'avec 10 requêtes strictement simultanées :
+    - Exactement 1 requête obtient HTTP 200 avec le contenu du fichier.
+    - Exactement 9 requêtes obtiennent HTTP 400 Bad Request.
+    - La table `secure_download_nonces` contient exactement 1 enregistrement persistant.
+    """
+    import concurrent.futures
+
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'concurrent_replay_test.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)()
+
+    company = _create_company(session, "Race Co", "race-co")
+    _enable_module(session, company.id, "accounting")
+    user = _create_user(session, company, "user@race.test")
+
+    invoice = AccountingInvoice(
+        id=uuid4(),
+        company_id=company.id,
+        invoice_number="FAC-RACE-01",
+        invoice_type="receivable",
+        party_name="Client Concurrence",
+        issue_date=datetime.now(timezone.utc),
+        due_date=datetime.now(timezone.utc),
+        total_amount=150.0,
+        currency="CAD",
+    )
+    session.add(invoice)
+    session.commit()
+
+    token_svc = SecureDocumentTokenService()
+    token = token_svc.generate_download_token(
+        company_id=company.id,
+        user_id=user.id,
+        doc_id=invoice.id,
+        doc_type="invoice",
+        filename="facture_race.pdf",
+    )
+
+    app = create_application()
+    # Chaque requête concurrente utilise une session isolée issue du même moteur
+    SessionMaker = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    app.dependency_overrides[get_db] = lambda: SessionMaker()
+    app.dependency_overrides[get_current_identity] = lambda: CurrentIdentity(
+        auth_session=cast(Any, None),
+        user=user,
+        raw_token="fake-jwt",
+    )
+
+    with TestClient(app) as client:
+        def _call_download():
+            return client.get(f"/api/v1/secure-downloads/{token}")
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            futures = [executor.submit(_call_download) for _ in range(10)]
+            responses = [f.result() for f in concurrent.futures.as_completed(futures)]
+
+    status_codes = [r.status_code for r in responses]
+    success_count = status_codes.count(200)
+    blocked_count = status_codes.count(400)
+
+    assert success_count == 1, f"Exactement 1 téléchargement doit réussir, obtenu: {success_count}"
+    assert blocked_count == 9, f"Exactement 9 requêtes doivent être bloquées en anti-rejeu, obtenu: {blocked_count}"
+
+    # Vérification de persistance en base
+    check_session = SessionMaker()
+    nonces_count = check_session.scalar(select(sa_func.count(SecureDownloadNonce.id)))
+    assert nonces_count == 1
+    check_session.close()
+
+    session.close()
+    engine.dispose()
+
+
+def test_security_token_not_consumed_on_permission_denial(tmp_path: Path):
+    """Garantie de non-consommation prématurée : Le jeton n'est pas consommé si les droits sont refusés."""
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'no_burn_on_deny.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)()
+
+    company = _create_company(session, "No Burn Co", "no-burn-co")
+    _enable_module(session, company.id, "accounting")
+    user = _create_user(session, company, "user@noburn.test", role=UserRole.VIEWER)
+
+    invoice = AccountingInvoice(
+        id=uuid4(),
+        company_id=company.id,
+        invoice_number="FAC-NOBURN-01",
+        invoice_type="receivable",
+        party_name="Client No Burn",
+        issue_date=datetime.now(timezone.utc),
+        due_date=datetime.now(timezone.utc),
+        total_amount=75.0,
+        currency="CAD",
+    )
+    session.add(invoice)
+    session.commit()
+
+    token_svc = SecureDocumentTokenService()
+    token = token_svc.generate_download_token(
+        company_id=company.id,
+        user_id=user.id,
+        doc_id=invoice.id,
+        doc_type="invoice",
+        filename="facture_noburn.pdf",
+    )
+
+    app = create_application()
+    app.dependency_overrides[get_db] = lambda: session
+    app.dependency_overrides[get_current_identity] = lambda: CurrentIdentity(
+        auth_session=cast(Any, None),
+        user=user,
+        raw_token="fake-jwt",
+    )
+
+    with TestClient(app) as client:
+        # Appel 1 : L'utilisateur est inactif (droits refusés -> HTTP 403)
+        user.is_active = False
+        session.commit()
+
+        res1 = client.get(f"/api/v1/secure-downloads/{token}")
+        assert res1.status_code == 403
+
+        # Le jeton NE DOIT PAS avoir été consommé !
+        # Appel 2 : L'administrateur réactive le compte -> le même jeton doit fonctionner
+        user.is_active = True
+        session.commit()
+
+        res2 = client.get(f"/api/v1/secure-downloads/{token}")
+        assert res2.status_code == 200
+
+    session.close()
+    engine.dispose()
+
+
+def test_security_platform_contracts_included_without_legal_module(tmp_path: Path):
+    """Cohérence des droits : Les contrats Avenqo (socle) sont accessibles sans module Legal payant."""
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'platform_contracts_test.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)()
+
+    company = _create_company(session, "Base Plan Co", "base-co")
+    # NE PAS activer le module "legal" (client standard sur socle)
+    user = _create_user(session, company, "owner@base-co.test", role=UserRole.OWNER)
+
+    # Contrat socle Avenqo (ex: Pilot / Subscription)
+    platform_contract = CompanyContract(
+        id=uuid4(),
+        company_id=company.id,
+        contract_type="pilot",
+        title="Contrat Pilote Avenqo",
+        status=ContractLifecycleStatus.READY_FOR_REVIEW.value,
+        execution_state=ContractExecutionPartyState.PENDING_CUSTOMER.value,
+        version="2026-V1",
+        content_text="Termes du pilote Avenqo...",
+        metadata_json={},
+    )
+    # Contrat métier tiers (nécessitant expressément le module legal)
+    third_party_contract = CompanyContract(
+        id=uuid4(),
+        company_id=company.id,
+        contract_type="vendor_agreement",
+        title="Accord Fournisseur Tiers",
+        status=ContractLifecycleStatus.READY_FOR_REVIEW.value,
+        execution_state=ContractExecutionPartyState.PENDING_CUSTOMER.value,
+        version="2026-V1",
+        content_text="Termes fournisseur externe...",
+        metadata_json={"is_third_party": True},
+    )
+    session.add_all([platform_contract, third_party_contract])
+    session.commit()
+
+    token_svc = SecureDocumentTokenService()
+    platform_token = token_svc.generate_download_token(
+        company_id=company.id,
+        user_id=user.id,
+        doc_id=platform_contract.id,
+        doc_type="contract",
+        filename="contrat_pilot.pdf",
+    )
+    third_party_token = token_svc.generate_download_token(
+        company_id=company.id,
+        user_id=user.id,
+        doc_id=third_party_contract.id,
+        doc_type="contract",
+        filename="contrat_tiers.pdf",
+    )
+
+    app = create_application()
+    app.dependency_overrides[get_db] = lambda: session
+    app.dependency_overrides[get_current_identity] = lambda: CurrentIdentity(
+        auth_session=cast(Any, None),
+        user=user,
+        raw_token="fake-jwt",
+    )
+
+    with TestClient(app) as client:
+        # 1. Le contrat socle Avenqo doit être accessible SANS module Legal -> 200 OK
+        res_platform = client.get(f"/api/v1/secure-downloads/{platform_token}")
+        assert res_platform.status_code == 200
+        # Vérification des en-têtes de confidentialité et non-cache
+        assert "no-store" in res_platform.headers.get("Cache-Control", "")
+        assert res_platform.headers.get("Referrer-Policy") == "no-referrer"
+        assert res_platform.headers.get("X-Content-Type-Options") == "nosniff"
+
+        # 2. Le contrat tiers doit être refusé SANS module Legal -> 403 Forbidden
+        res_third_party = client.get(f"/api/v1/secure-downloads/{third_party_token}")
+        assert res_third_party.status_code == 403
+
+    # 3. Vérification des outils Central AI pour les contrats du socle
+    tenant_ctx = TenantContext(company_id=company.id)
+    tool_ctx = ToolExecutionContext(
+        tenant=tenant_ctx,
+        user_id=user.id,
+        permissions=frozenset({"ai:use", "data:read"}),
+        request_id="req-test-contracts",
+    )
+    search_tool = SearchContractsTool(session)
+    res_search = asyncio.run(search_tool.run(tool_ctx, SearchContractsArgs(query="Pilote")))
+    assert res_search.success is True
+    assert res_search.data["count"] == 1
+    assert res_search.data["contracts"][0]["contract_id"] == str(platform_contract.id)
+
+    session.close()
+    engine.dispose()
+

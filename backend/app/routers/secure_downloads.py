@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import html
 import logging
+from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from uuid import UUID
@@ -246,14 +247,23 @@ def secure_download(
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
 ) -> Response:
-    """Téléchargement sécurisé réévaluant dynamiquement l'identité, les droits RBAC et les entitlements."""
+    """Téléchargement sécurisé réévaluant dynamiquement l'identité, les droits RBAC et les entitlements.
+
+    Garanties :
+    - Vérification cryptographique et pré-contrôle anti-rejeu.
+    - Revalidation RBAC et isolation tenant stricte en temps réel.
+    - Accès garanti aux contrats Avenqo inclus dans le socle (sans achat forcé de module Legal).
+    - Exigence de module pour les contrats/documents tiers ou la comptabilité.
+    - Consommation atomique distribuée du jeton uniquement après préparation complète du fichier.
+    - En-têtes stricts de confidentialité et non-mise en cache HTTP.
+    """
     token_service = SecureDocumentTokenService()
     try:
         verified = token_service.verify_download_token(
             token,
             current_company_id=identity.user.company_id,
             current_user_id=identity.user.id,
-            mark_as_used=True,
+            db=db,
         )
     except ExpiredSecureTokenError as exc:
         logger.info("download_rejected_expired token=%s", mask_token(token))
@@ -317,17 +327,14 @@ def secure_download(
     filename: str = verified["filename"]
     settings = get_settings()
 
+    payload_bytes: bytes = b""
+    media_type: str = "application/pdf"
+    safe_filename: str = filename
+
     # =========================================================================
     # 1. CONTRATS
     # =========================================================================
     if doc_type == "contract":
-        # Vérification d'entitlement : module legal requis (ou plan Enterprise/Professional)
-        if "legal" not in active_modules and (company.subscription_plan or "").lower() not in {"enterprise", "professional"}:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Le module Juridique / Contrats n'est pas activé pour votre compte.",
-            )
-
         contract = db.scalar(
             select(CompanyContract).where(
                 CompanyContract.id == doc_id,
@@ -339,6 +346,15 @@ def secure_download(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Contrat introuvable pour cette entreprise.",
             )
+
+        # Les contrats du socle Avenqo (pilot, saas, nda, dpa) sont inclus dans la plateforme.
+        # Les contrats tiers personnalisés requièrent expressément le module 'legal'.
+        if contract.metadata_json and contract.metadata_json.get("is_third_party"):
+            if "legal" not in active_modules:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Le module Juridique / Contrats est requis pour consulter ce contrat tiers.",
+                )
 
         is_signed = contract.status in SIGNED_CONTRACT_STATUSES
 
@@ -374,37 +390,30 @@ def secure_download(
                         detail="Échec de vérification d'intégrité de l'artefact contractuel original.",
                     )
 
-            return Response(
-                content=content_bytes,
-                media_type="application/pdf",
-                headers={"Content-Disposition": f'inline; filename="{filename}"'},
-            )
+            payload_bytes = content_bytes
+            safe_filename = filename
 
-        # Contrat non signé (brouillon / en attente)
-        if contract.storage_path:
-            try:
-                safe_path = _resolve_canonical_artifact_path(settings.artifact_root, contract.storage_path)
-                return Response(
-                    content=safe_path.read_bytes(),
-                    media_type="application/pdf",
-                    headers={"Content-Disposition": f'inline; filename="{filename}"'},
-                )
-            except HTTPException:
-                pass  # Fallback autorisé uniquement pour un brouillon non signé
+        else:
+            # Contrat non signé (brouillon / en attente)
+            draft_loaded = False
+            if contract.storage_path:
+                try:
+                    safe_path = _resolve_canonical_artifact_path(settings.artifact_root, contract.storage_path)
+                    payload_bytes = safe_path.read_bytes()
+                    safe_filename = filename
+                    draft_loaded = True
+                except HTTPException:
+                    pass  # Fallback autorisé uniquement pour un brouillon non signé
 
-        contract_service = ContractSignatureService(db)
-        draft_pdf_bytes = contract_service.generate_draft_pdf(company, contract.contract_type)
-        draft_filename = filename if filename.startswith("brouillon_") else f"brouillon_{filename}"
-        return Response(
-            content=draft_pdf_bytes,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'inline; filename="{draft_filename}"'},
-        )
+            if not draft_loaded:
+                contract_service = ContractSignatureService(db)
+                payload_bytes = contract_service.generate_draft_pdf(company, contract.contract_type)
+                safe_filename = filename if filename.startswith("brouillon_") else f"brouillon_{filename}"
 
     # =========================================================================
     # 2. FACTURES COMPTABLES
     # =========================================================================
-    if doc_type == "invoice":
+    elif doc_type == "invoice":
         if "accounting" not in active_modules:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -423,24 +432,13 @@ def secure_download(
                 detail="Facture introuvable pour cette entreprise.",
             )
 
-        pdf_bytes = _generate_invoice_pdf(invoice, company)
-        return Response(
-            content=pdf_bytes,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'inline; filename="{filename}"'},
-        )
+        payload_bytes = _generate_invoice_pdf(invoice, company)
+        safe_filename = filename
 
     # =========================================================================
     # 3. DOCUMENTS OCR & FICHIERS INTERNES
     # =========================================================================
-    if doc_type in {"document", "ocr", "legal"}:
-        required_mod = "legal" if doc_type == "legal" else "ocr"
-        if required_mod not in active_modules:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Le module '{required_mod.upper()}' n'est pas activé pour votre entreprise.",
-            )
-
+    elif doc_type in {"document", "ocr", "legal"}:
         doc_record = db.scalar(
             select(TenantDocument).where(
                 TenantDocument.id == doc_id,
@@ -453,19 +451,73 @@ def secure_download(
                 detail="Document introuvable pour cette entreprise.",
             )
 
+        # Distinction stricte : documents juridiques tiers vs documents OCR / comptables
+        if doc_type == "legal" or doc_record.kind == "legal":
+            if "legal" not in active_modules:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Le module 'LEGAL' n'est pas activé pour votre entreprise.",
+                )
+        else:
+            if not ("ocr" in active_modules or "accounting" in active_modules):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Le module 'OCR' ou 'COMPTABILITÉ' n'est pas activé pour votre entreprise.",
+                )
+
         if doc_record.storage_path:
             safe_path = _resolve_canonical_artifact_path(settings.artifact_root, doc_record.storage_path)
-            return Response(
-                content=safe_path.read_bytes(),
-                media_type=doc_record.content_type or "application/pdf",
-                headers={"Content-Disposition": f'inline; filename="{filename}"'},
-            )
+            payload_bytes = safe_path.read_bytes()
+            media_type = doc_record.content_type or "application/pdf"
+        else:
+            payload_bytes = _generate_document_pdf(doc_record)
+            media_type = "application/pdf"
 
-        pdf_bytes = _generate_document_pdf(doc_record)
-        return Response(
-            content=pdf_bytes,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        safe_filename = filename
+
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Type de document non pris en charge.")
+
+    # =========================================================================
+    # 4. CONSOMMATION ATOMIQUE DISTRIBUÉE DU JETON (ANTI-REJEU)
+    # Exécutée UNIQUEMENT après validation complète des droits et préparation du fichier.
+    # =========================================================================
+    try:
+        token_service.redeem_download_nonce_atomic(
+            db,
+            nonce=verified["nonce"],
+            company_id=identity.user.company_id,
+            user_id=identity.user.id,
+            doc_id=verified["doc_id"],
+            doc_type=verified["doc_type"],
+            expires_at=datetime.fromtimestamp(verified["exp"], tz=timezone.utc),
         )
+    except InvalidSecureTokenError as exc:
+        logger.warning(
+            "download_token_replay_rejected nonce=%s user_id=%s doc_id=%s",
+            verified["nonce"],
+            identity.user.id,
+            verified["doc_id"],
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ce jeton de téléchargement a déjà été utilisé (anti-rejeu).",
+        ) from exc
 
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Type de document non pris en charge.")
+    # =========================================================================
+    # 5. EN-TÊTES DE SÉCURITÉ ET CONFIDENTIALITÉ
+    # =========================================================================
+    response_headers = {
+        "Content-Disposition": f'inline; filename="{safe_filename}"',
+        "Cache-Control": "private, no-store, no-cache, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Expires": "0",
+        "Referrer-Policy": "no-referrer",
+        "X-Content-Type-Options": "nosniff",
+    }
+
+    return Response(
+        content=payload_bytes,
+        media_type=media_type,
+        headers=response_headers,
+    )
