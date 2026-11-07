@@ -13,10 +13,13 @@ from backend.app.ai.tools.business.accounting_tools import (
     GetCashFlowForecastTool,
     GetExpenseAnomaliesTool,
     GetFinancialOverviewTool,
+    GetInvoiceDetailTool,
+    GetInvoiceDownloadUrlTool,
     GetMonthlyExpensesTool,
     GetProfitMarginTool,
     GetUnpaidInvoicesTool,
     ReconcileSalesAndAccountingTool,
+    SearchInvoicesTool,
 )
 from backend.app.ai.tools.business.automation_tools import (
     DraftAutomationWorkflowTool,
@@ -26,8 +29,14 @@ from backend.app.ai.tools.business.cross_agent_tools import GetCrossAgentBusines
 from backend.app.ai.tools.business.capability_tools import GetSubscriptionOptionsTool
 from backend.app.ai.tools.business.document_tools import (
     AnalyzeLegalDocumentTool,
+    GetContractDetailTool,
+    GetContractDownloadUrlTool,
+    GetDocumentDetailTool,
+    GetDocumentDownloadUrlTool,
     GetOCRDocumentTool,
     ProposeAccountingFromOCRTool,
+    SearchContractsTool,
+    SearchDocumentsTool,
 )
 from backend.app.ai.tools.business.marketing_tools import DraftMarketingCampaignTool
 from backend.app.ai.tools.business.memory_tools import (
@@ -131,14 +140,23 @@ def build_business_tool_registry(
     registry.register(GetMonthlyExpensesTool(session))
     registry.register(GetProfitMarginTool(session))
     registry.register(GetUnpaidInvoicesTool(session))
+    registry.register(SearchInvoicesTool(session))
+    registry.register(GetInvoiceDetailTool(session))
+    registry.register(GetInvoiceDownloadUrlTool(session))
     registry.register(GetExpenseAnomaliesTool(session))
     registry.register(GetCashFlowForecastTool(session))
     registry.register(ReconcileSalesAndAccountingTool(session))
-    # Phase 8.1 — Marketing, Documents (OCR & Legal), Automations, Memory & Platform Tools
+    # Phase 8.1 & Universal Copilot Phase 1 — Marketing, Documents, Contracts, Memory & Platform Tools
     registry.register(DraftMarketingCampaignTool(session))
     registry.register(GetOCRDocumentTool(session))
     registry.register(ProposeAccountingFromOCRTool(session))
     registry.register(AnalyzeLegalDocumentTool(session))
+    registry.register(SearchDocumentsTool(session))
+    registry.register(GetDocumentDetailTool(session))
+    registry.register(GetDocumentDownloadUrlTool(session))
+    registry.register(SearchContractsTool(session))
+    registry.register(GetContractDetailTool(session))
+    registry.register(GetContractDownloadUrlTool(session))
     registry.register(SaveEnterpriseMemoryTool(session))
     registry.register(SearchEnterpriseMemoryTool(session))
     registry.register(DraftAutomationWorkflowTool(session))

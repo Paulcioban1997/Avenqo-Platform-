@@ -80,7 +80,7 @@ class CRMAITool(AITool):
 
 
 class AccountingAITool(AITool):
-    agent_ids = frozenset({"accounting"})
+    agent_ids = frozenset({"accounting", "cross_agent"})
     required_entitlements = frozenset({"accounting"})
     read_only = True
     mutates = False
