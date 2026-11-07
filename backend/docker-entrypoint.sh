@@ -1,18 +1,48 @@
 #!/bin/sh
-# Fix ownership of the persistent volume (Railway mounts it root:root) before
-# dropping privileges to the unprivileged application user via gosu.
+# Fix ownership of persistent storage & directories before dropping privileges
+# to the unprivileged application user (avenqo) via gosu.
 set -e
+
+# If invoked with the entrypoint itself as the first argument (e.g. from Railway startCommand),
+# shift to avoid redundant re-invocation.
+if [ "$1" = "/usr/local/bin/docker-entrypoint.sh" ] || [ "$1" = "docker-entrypoint.sh" ]; then
+    shift
+fi
 
 if [ -n "$ARTIFACT_ROOT" ]; then
     echo "Validating artifact volume ownership at $ARTIFACT_ROOT"
     volume_owner=$(stat -c '%U:%G' "$ARTIFACT_ROOT" 2>/dev/null || true)
     if [ "$volume_owner" != "avenqo:avenqo" ]; then
         install -d -o avenqo -g avenqo -m 2770 "$ARTIFACT_ROOT"
-        find "$ARTIFACT_ROOT" -type d -exec chown avenqo:avenqo {} + -exec chmod u+rwx,g+rx,g+s {} +
+        find "$ARTIFACT_ROOT" -type d -exec chown avenqo:avenqo {} + -exec chmod u+rwx,g+rx,g+s {} + 2>/dev/null || true
     else
         echo "Artifact root already owned by avenqo; skipping ownership walk"
     fi
 fi
 
+MODEL_DIR="${MODEL_REGISTRY_ROOT:-/srv/var/models}"
+if [ -n "$MODEL_DIR" ]; then
+    echo "Validating model directory ownership at $MODEL_DIR"
+    install -d -o avenqo -g avenqo -m 2775 "$MODEL_DIR" 2>/dev/null || mkdir -p "$MODEL_DIR" 2>/dev/null || true
+    model_owner=$(stat -c '%U:%G' "$MODEL_DIR" 2>/dev/null || true)
+    if [ "$model_owner" != "avenqo:avenqo" ]; then
+        chown -R avenqo:avenqo "$MODEL_DIR" 2>/dev/null || true
+        chmod -R 2775 "$MODEL_DIR" 2>/dev/null || true
+    fi
+fi
+
+if [ -d "/srv/var" ]; then
+    var_owner=$(stat -c '%U:%G' "/srv/var" 2>/dev/null || true)
+    if [ "$var_owner" != "avenqo:avenqo" ]; then
+        chown -R avenqo:avenqo /srv/var 2>/dev/null || true
+    fi
+fi
+
 umask 0002
-exec gosu avenqo "$@"
+
+# Only drop privileges via gosu if currently running as root (UID 0)
+if [ "$(id -u)" = "0" ]; then
+    exec gosu avenqo "$@"
+else
+    exec "$@"
+fi

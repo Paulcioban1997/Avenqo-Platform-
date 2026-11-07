@@ -41,7 +41,8 @@ COPY scripts scripts
 COPY legal legal
 COPY frontend/assets/i18n frontend/assets/i18n
 
-RUN useradd --create-home --shell /usr/sbin/nologin avenqo \
+RUN mkdir -p /srv/var/models /srv/var/artifacts \
+    && useradd --create-home --shell /usr/sbin/nologin avenqo \
     && chown -R avenqo:avenqo /srv
 COPY backend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh

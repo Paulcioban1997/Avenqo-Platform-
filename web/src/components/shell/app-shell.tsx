@@ -73,18 +73,23 @@ export function AppShell({ children }: AppShellProps) {
   const aiCreditsLimit = session.credits.limit;
 
   const [activeModuleKeys, setActiveModuleKeys] = useState<string[] | null>(null);
+  const [entitlementsStatus, setEntitlementsStatus] = useState<"loading" | "success" | "error">("loading");
 
   const loadModuleEntitlements = useCallback(async () => {
+    setEntitlementsStatus("loading");
     try {
       const response = await apiFetch("/api/v1/modules/entitlements");
       if (response.ok) {
         const data = await response.json();
         if (Array.isArray(data?.active_modules)) {
           setActiveModuleKeys(data.active_modules);
+          setEntitlementsStatus("success");
+          return;
         }
       }
+      setEntitlementsStatus("error");
     } catch {
-      // Non-blocking fallback
+      setEntitlementsStatus("error");
     }
   }, []);
 
@@ -145,11 +150,18 @@ export function AppShell({ children }: AppShellProps) {
     { href: "/accounting", label: t.navigation.accountingAi, icon: ReceiptText, moduleKey: "accounting" },
   ];
 
-  const mainModules = allMainModules.filter((item) => {
+  const filterByEntitlements = (item: NavItem) => {
+    // 1. Items without moduleKey (e.g. Dashboard, Agents) are always authorized and visible
     if (!item.moduleKey) return true;
-    if (!activeModuleKeys) return true;
-    return activeModuleKeys.includes(item.moduleKey);
-  });
+    // 2. Strict backend authorization: only show if backend explicitly returned this module key
+    if (entitlementsStatus === "success" && activeModuleKeys) {
+      return activeModuleKeys.includes(item.moduleKey);
+    }
+    // 3. During loading or upon network/server error: do NOT arbitrarily expose unentitled modules
+    return false;
+  };
+
+  const mainModules = allMainModules.filter(filterByEntitlements);
 
   const allAiModules: NavItem[] = [
     { href: "/marketing", label: t.navigation.marketingAi, icon: Megaphone, moduleKey: "marketing" },
@@ -161,11 +173,7 @@ export function AppShell({ children }: AppShellProps) {
     { href: "/agents", label: t.navigation.agentsAi, icon: Bot },
   ];
 
-  const aiModules = allAiModules.filter((item) => {
-    if (!item.moduleKey) return true;
-    if (!activeModuleKeys) return true;
-    return activeModuleKeys.includes(item.moduleKey);
-  });
+  const aiModules = allAiModules.filter(filterByEntitlements);
 
   const platformModules = [
     { href: "/workspace/modules", label: locale.startsWith("fr") ? "Explorer les modules" : "Explore Modules", icon: Sparkles, badge: locale.startsWith("fr") ? "Catalogue" : "Catalog" },
@@ -419,6 +427,17 @@ export function AppShell({ children }: AppShellProps) {
               <div className="px-3 mb-2 text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500">
                 {t.shell.mainOperations}
               </div>
+              {entitlementsStatus === "error" && (
+                <div className="px-3 py-1.5 mb-2 mx-1 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-700 dark:text-amber-400 flex items-center justify-between">
+                  <span>Modules non synchronisés</span>
+                  <button
+                    onClick={() => void loadModuleEntitlements()}
+                    className="text-[10px] underline font-bold hover:text-amber-800 dark:hover:text-amber-300"
+                  >
+                    Réessayer
+                  </button>
+                </div>
+              )}
               <nav className="space-y-1">
                 {mainModules.map((item) => {
                   const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
