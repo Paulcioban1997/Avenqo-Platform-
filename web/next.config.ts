@@ -1,4 +1,9 @@
 import type { NextConfig } from "next";
+import { resolveAvenqoApiOrigin } from "./src/lib/avenqo-api-base";
+
+// Evaluated at build time. Vercel preview inherits Production BACKEND_API_URL
+// (api.avenqo.ca); resolveAvenqoApiOrigin() keeps preview/sandbox on Railway.
+const backendOrigin = resolveAvenqoApiOrigin();
 
 const nextConfig: NextConfig = {
   async rewrites() {
@@ -7,7 +12,7 @@ const nextConfig: NextConfig = {
       // Toutes les routes SaaS sont servies nativement par Next.js App Router
       {
         source: "/api/v1/:path*",
-        destination: `${process.env.BACKEND_API_URL || "http://127.0.0.1:8000"}/api/v1/:path*`,
+        destination: `${backendOrigin}/api/v1/:path*`,
       },
     ];
   },
@@ -35,6 +40,7 @@ const nextConfig: NextConfig = {
       script-src 'self' 'unsafe-inline' 'unsafe-eval' https:;
       style-src 'self' 'unsafe-inline' https:;
       img-src 'self' blob: data: https:;
+      media-src 'self' blob:;
       font-src 'self' data: https:;
       connect-src 'self' https: wss:;
       frame-ancestors 'self';
@@ -59,14 +65,14 @@ const nextConfig: NextConfig = {
       },
       {
         // Strictly prevent indexing of private SaaS and app routes via HTTP headers
-        source: "/:path(dashboard|retail|central-ai|data|integrations|billing|team|settings|admin|crm|api|accounting|marketing|chatbots|automations|voice|ocr|agents|connections)/:subpath*",
+        source: "/:path(security|workspace|dashboard|retail|central-ai|data|integrations|billing|team|settings|admin|crm|api|accounting|marketing|chatbots|automations|voice|ocr|agents|connections)/:subpath*",
         headers: [
           { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
         ],
       },
       {
         // Strictly prevent indexing of root private endpoints
-        source: "/:path(dashboard|retail|central-ai|data|integrations|billing|team|settings|admin|onboarding|assistant|connections|support|crm|accounting|marketing|chatbots|automations|voice|ocr|agents)",
+        source: "/:path(security|workspace|dashboard|retail|central-ai|data|integrations|billing|team|settings|admin|onboarding|assistant|connections|support|crm|accounting|marketing|chatbots|automations|voice|ocr|agents)",
         headers: [
           { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
         ],

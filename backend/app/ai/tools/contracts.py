@@ -30,10 +30,23 @@ class ToolExecutionContext:
     locale: str = "fr"
     company_timezone: str = "UTC"
     authorized_tool_agents: Mapping[str, str] = field(default_factory=dict)
+    voice_path: bool = False
 
     @property
     def tenant_id(self) -> UUID:
         return self.tenant.company_id
+
+    @classmethod
+    def from_execution(cls, execution, **kwargs: Any) -> "ToolExecutionContext":
+        """Build a tool context from the bound server tenant. Never from LLM args."""
+
+        return cls(
+            tenant=execution.tenant,
+            user_id=execution.user_id,
+            permissions=execution.permissions,
+            request_id=execution.request_id,
+            **kwargs,
+        )
 
 
 @dataclass(frozen=True, slots=True)

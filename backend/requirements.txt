@@ -40,3 +40,5 @@ tensorflow==2.21.0
 protobuf==6.31.1
 boto3>=1.35.0
 moto>=5.0.0
+mem0ai>=2.2.0
+qdrant-client>=1.12.0

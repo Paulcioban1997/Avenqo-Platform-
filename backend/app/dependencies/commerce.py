@@ -42,6 +42,7 @@ def get_commerce_connector_registry() -> CommerceConnectorRegistry:
             api_version=settings.shopify_api_version,
             scopes=settings.shopify_scopes,
             webhook_uri=settings.shopify_webhook_uri,
+            blocked_by_sandbox_guard=not settings.is_commerce_sync_allowed,
         )
     )
     if settings.woocommerce_connector_configured:

@@ -34,7 +34,9 @@ def _speak_language(locale: str) -> str:
         return "fr-FR"
     if normalized.startswith("fr"):
         return "fr-CA"
-    return "en-US"
+    if normalized.startswith("en"):
+        return "en-US"
+    raise ValueError("No unavailable-message audio configured for this language")
 
 
 def unavailable_speak_payload(locale: str, *, command_id: str) -> dict[str, str]:
@@ -53,12 +55,8 @@ def unavailable_speak_payload(locale: str, *, command_id: str) -> dict[str, str]
 
 
 def unavailable_speak_attempts(locale: str, *, command_id: str) -> list[dict[str, str]]:
-    """Primary locale payload, then English basic. Never mix basic with a non-en-US language."""
-    primary = unavailable_speak_payload(locale, command_id=command_id)
-    attempts = [primary]
-    if primary["language"] != "en-US":
-        attempts.append(unavailable_speak_payload("en", command_id=f"{command_id}-en"))
-    return attempts
+    """Keep the configured language; never silently retry in English."""
+    return [unavailable_speak_payload(locale, command_id=command_id)]
 
 
 def telnyx_error_summary(response: httpx.Response) -> dict[str, Any]:
@@ -218,6 +216,62 @@ class TelnyxClient:
             json=self.media_stream_payload(stream_url=stream_url, client_state=client_state, command_id=command_id),
         )
 
+    async def gather_using_speak(
+        self,
+        call_control_id: str,
+        *,
+        text_prompt: str,
+        language: str = "fr-CA",
+        minimum_digits: int = 1,
+        maximum_digits: int = 12,
+        valid_digits: str = "0123456789",
+        terminating_digit: str | None = None,
+        timeout_millis: int = 15000,
+        inter_digit_timeout_millis: int = 3000,
+        command_id: str | None = None,
+        client_state: str | None = None,
+    ) -> None:
+        lang = "en-US" if language.startswith("en") else "fr-CA"
+        payload: dict[str, object] = {
+            "payload": text_prompt,
+            "payload_type": "text",
+            "service_level": "basic" if lang == "en-US" else "premium",
+            "voice": "female" if lang == "en-US" else _PREMIUM_VOICES.get(lang, "Polly.Chantal"),
+            "language": lang,
+            "minimum_digits": minimum_digits,
+            "maximum_digits": maximum_digits,
+            "valid_digits": valid_digits,
+            "timeout_millis": timeout_millis,
+            "inter_digit_timeout_millis": inter_digit_timeout_millis,
+        }
+        if terminating_digit:
+            payload["terminating_digit"] = terminating_digit
+        if command_id:
+            payload["command_id"] = command_id
+        if client_state:
+            payload["client_state"] = client_state
+        await self._request("POST", f"/calls/{call_control_id}/actions/gather_using_speak", json=payload)
+
+    async def speak(
+        self,
+        call_control_id: str,
+        *,
+        text_prompt: str,
+        language: str = "fr-CA",
+        command_id: str | None = None,
+    ) -> None:
+        lang = "en-US" if language.startswith("en") else "fr-CA"
+        payload: dict[str, object] = {
+            "payload": text_prompt,
+            "payload_type": "text",
+            "service_level": "basic" if lang == "en-US" else "premium",
+            "voice": "female" if lang == "en-US" else _PREMIUM_VOICES.get(lang, "Polly.Chantal"),
+            "language": lang,
+        }
+        if command_id:
+            payload["command_id"] = command_id
+        await self._request("POST", f"/calls/{call_control_id}/actions/speak", json=payload)
+
     async def gather_pin(self, call_control_id: str, *, command_id: str, client_state: str) -> None:
         await self._request("POST", f"/calls/{call_control_id}/actions/gather", json={
             "command_id": command_id, "client_state": client_state,
@@ -300,6 +354,7 @@ class TelnyxClient:
         connection_id: str,
         messaging_profile_id: str | None = None,
         idempotency_key: str | None = None,
+        customer_reference: str | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         payload: dict[str, object] = {
@@ -308,7 +363,23 @@ class TelnyxClient:
         }
         if messaging_profile_id:
             payload["messaging_profile_id"] = messaging_profile_id
+        if customer_reference:
+            payload["customer_reference"] = customer_reference
         return await self._request("POST", "/number_orders", json=payload, idempotency_key=idempotency_key)
+
+    async def get_number_order(self, order_id: str) -> dict[str, Any]:
+        return (await self._request("GET", f"/number_orders/{order_id}"))["data"]
+
+    async def find_number_order(self, customer_reference: str) -> dict[str, Any] | None:
+        data = (await self._request("GET", "/number_orders", params={
+            "filter[customer_reference]": customer_reference, "page[size]": 2})).get("data", [])
+        matches = [x for x in data if x.get("customer_reference") == customer_reference]
+        if len(matches) > 1:
+            raise ValueError("Ambiguous number order")
+        return matches[0] if matches else None
+
+    async def voice_application(self, connection_id: str) -> dict[str, Any]:
+        return (await self._request("GET", f"/call_control_applications/{connection_id}"))["data"]
 
     async def release_phone_number(self, provider_number_id: str) -> dict[str, Any]:
         return await self._request("DELETE", f"/phone_numbers/{provider_number_id}")

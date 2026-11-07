@@ -49,8 +49,7 @@ interface TransactionItem {
 export function AccountingView() {
   const { locale } = useLocale();
   const t = getAppTranslations(locale);
-  const retail = t.retail;
-  const integrations = t.integrations;
+  const isFr = locale === "fr";
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -94,9 +93,9 @@ export function AccountingView() {
     setRefreshing(false);
   };
 
-  const filteredTransactions = transactions.filter((t) => {
+  const filteredTransactions = transactions.filter((item) => {
     if (activeFilter === "all") return true;
-    return t.transaction_type === activeFilter;
+    return item.transaction_type === activeFilter;
   });
 
   const currency = overview?.currency || "CAD";
@@ -116,10 +115,12 @@ export function AccountingView() {
             </div>
             <div>
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-[#F4F7FB]">
-                {t.navigation.accountingAi}
+                {t.navigation.accountingAi || (isFr ? "Comptabilité IA" : "Accounting AI")}
               </h1>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-[#94A3B8]">
-                {t.retail.forecastDisclaimer}
+                {isFr
+                  ? "Grand livre, suivi des flux de trésorerie, factures et performance financière en temps réel."
+                  : "General ledger, cash flow tracking, invoices, and real-time financial performance."}
               </p>
             </div>
           </div>
@@ -132,7 +133,7 @@ export function AccountingView() {
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-white/[0.08] hover:bg-slate-100 dark:hover:bg-white/[0.04] text-xs font-semibold text-slate-700 dark:text-[#F4F7FB] transition-colors cursor-pointer"
           >
             <RefreshCw size={14} className={refreshing ? "animate-spin text-[#0076FF]" : ""} />
-            <span>{integrations.syncNow}</span>
+            <span>{isFr ? "Actualiser" : "Refresh"}</span>
           </button>
 
           <Link
@@ -140,7 +141,7 @@ export function AccountingView() {
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs transition-colors"
           >
             <Plus size={14} />
-            <span>{integrations.activeSources}</span>
+            <span>{isFr ? "Sources de données" : "Data Sources"}</span>
           </Link>
         </div>
       </div>
@@ -150,64 +151,64 @@ export function AccountingView() {
         {/* Revenue */}
         <div className="p-5 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-[#94A3B8]">
-            <span>{t.dashboard.revenue}</span>
+            <span>{isFr ? "Revenus totaux" : "Total Revenue"}</span>
             <span className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400">
               <ArrowUpRight size={14} />
             </span>
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-2">
-            ${revenue.toLocaleString("fr-CA", { minimumFractionDigits: 2 })} {currency}
+            ${revenue.toLocaleString(isFr ? "fr-CA" : "en-US", { minimumFractionDigits: 2 })} {currency}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            {t.dashboard.revenue}
+            {isFr ? "Flux entrants confirmés" : "Confirmed incoming revenue"}
           </div>
         </div>
 
         {/* Expenses */}
         <div className="p-5 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-[#94A3B8]">
-            <span>{retail.rawTitle}</span>
+            <span>{isFr ? "Dépenses totales" : "Total Expenses"}</span>
             <span className="p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400">
               <ArrowDownRight size={14} />
             </span>
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-2">
-            ${expenses.toLocaleString("fr-CA", { minimumFractionDigits: 2 })} {currency}
+            ${expenses.toLocaleString(isFr ? "fr-CA" : "en-US", { minimumFractionDigits: 2 })} {currency}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            {retail.cleanedTitle}
+            {isFr ? "Flux sortants opérationnels" : "Operational expenses"}
           </div>
         </div>
 
         {/* Net Profit */}
         <div className="p-5 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-[#94A3B8]">
-            <span>{t.dashboard.aiInsightTitle}</span>
+            <span>{isFr ? "Bénéfice net" : "Net Profit"}</span>
             <span className={`p-1.5 rounded-lg text-xs font-bold ${netProfit >= 0 ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400" : "bg-rose-50 text-rose-600"}`}>
               {margin}%
             </span>
           </div>
           <div className={`text-2xl font-extrabold mt-2 ${netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600"}`}>
-            ${netProfit.toLocaleString("fr-CA", { minimumFractionDigits: 2 })} {currency}
+            ${netProfit.toLocaleString(isFr ? "fr-CA" : "en-US", { minimumFractionDigits: 2 })} {currency}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            {retail.qualityScore}
+            {isFr ? "Marge nette opérationnelle" : "Net operational margin"}
           </div>
         </div>
 
         {/* Pending Invoices */}
         <div className="p-5 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-[#94A3B8]">
-            <span>{t.crm.status.pending}</span>
+            <span>{isFr ? "Factures en attente" : "Pending Invoices"}</span>
             <span className="p-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400">
               <Clock size={14} />
             </span>
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-2">
-            {overview?.unpaid_invoices_count || 0} {t.navigation.billing}
+            {overview?.unpaid_invoices_count || 0} {isFr ? "en attente" : "pending"}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            ${(overview?.unpaid_invoices_amount || 0).toLocaleString("fr-CA", { minimumFractionDigits: 2 })} {currency}
+            ${(overview?.unpaid_invoices_amount || 0).toLocaleString(isFr ? "fr-CA" : "en-US", { minimumFractionDigits: 2 })} {currency}
           </div>
         </div>
       </div>
@@ -217,10 +218,12 @@ export function AccountingView() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-100 dark:border-white/[0.06]">
           <div>
             <h2 className="text-base font-extrabold text-slate-900 dark:text-[#F4F7FB]">
-              {t.integrations.drawerLogsTitle}
+              {isFr ? "Journal des transactions & Grand livre" : "Transaction Ledger & Journal"}
             </h2>
             <p className="text-xs text-slate-500 dark:text-[#94A3B8]">
-              {integrations.activeSourcesDescription}
+              {isFr
+                ? "Historique détaillé des transactions financières synchronisées et saisies."
+                : "Detailed history of synchronized and registered financial transactions."}
             </p>
           </div>
 
@@ -233,7 +236,7 @@ export function AccountingView() {
                   : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
               }`}
             >
-              {integrations.categoryAll} ({transactions.length})
+              {isFr ? `Toutes (${transactions.length})` : `All (${transactions.length})`}
             </button>
             <button
               onClick={() => setActiveFilter("revenue")}
@@ -243,7 +246,7 @@ export function AccountingView() {
                   : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
               }`}
             >
-              {t.dashboard.revenue}
+              {isFr ? "Revenus" : "Revenue"}
             </button>
             <button
               onClick={() => setActiveFilter("expense")}
@@ -253,7 +256,7 @@ export function AccountingView() {
                   : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
               }`}
             >
-              {retail.rawTitle}
+              {isFr ? "Dépenses" : "Expenses"}
             </button>
           </div>
         </div>
@@ -265,10 +268,12 @@ export function AccountingView() {
             </div>
             <div>
               <div className="text-sm font-bold text-slate-800 dark:text-[#F4F7FB]">
-                {t.dashboard.aiInsightEmpty}
+                {isFr ? "Aucune transaction comptable trouvée" : "No accounting transactions found"}
               </div>
               <p className="text-xs text-slate-400 dark:text-slate-500 max-w-md mx-auto mt-1">
-                {integrations.activeSourcesDescription}
+                {isFr
+                  ? "Connectez vos sources de données comptables ou effectuez des saisies pour activer l'analyse financière IA."
+                  : "Connect your accounting data sources or enter transactions to activate AI financial analytics."}
               </p>
             </div>
             <Link
@@ -276,7 +281,7 @@ export function AccountingView() {
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs transition-colors"
             >
               <Plug size={14} />
-              <span>{t.navigation.connections}</span>
+              <span>{t.navigation.connections || (isFr ? "Connexions" : "Connections")}</span>
             </Link>
           </div>
         ) : (
@@ -284,19 +289,25 @@ export function AccountingView() {
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="border-b border-slate-200/80 dark:border-white/[0.08] bg-slate-50/70 dark:bg-[#060B13]/40 text-slate-500 dark:text-slate-400 font-semibold">
-                  <th className="py-3 px-4">{t.crm.calendar.today}</th>
-                  <th className="py-3 px-4">{t.crm.filters.status}</th>
-                  <th className="py-3 px-4">{retail.overview}</th>
-                  <th className="py-3 px-4">{t.commandPalette.pagesGroup}</th>
-                  <th className="py-3 px-4">{t.integrations.drawerLogsTitle}</th>
-                  <th className="py-3 px-4 text-right">{t.dashboard.revenue}</th>
-                  <th className="py-3 px-4 text-right">{t.crm.filters.status}</th>
+                  <th className="py-3 px-4">{isFr ? "Date" : "Date"}</th>
+                  <th className="py-3 px-4">{isFr ? "Type" : "Type"}</th>
+                  <th className="py-3 px-4">{isFr ? "Catégorie" : "Category"}</th>
+                  <th className="py-3 px-4">{isFr ? "Description" : "Description"}</th>
+                  <th className="py-3 px-4">{isFr ? "Référence" : "Reference"}</th>
+                  <th className="py-3 px-4 text-right">{isFr ? "Montant" : "Amount"}</th>
+                  <th className="py-3 px-4 text-right">{isFr ? "Statut" : "Status"}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
                 {filteredTransactions.map((tx) => {
                   const isRevenue = tx.transaction_type === "revenue";
                   const dateStr = tx.transaction_date ? tx.transaction_date.slice(0, 10) : "—";
+                  const statusLabel =
+                    tx.status === "confirmed"
+                      ? (isFr ? "Confirmé" : "Confirmed")
+                      : tx.status === "pending"
+                      ? (isFr ? "En attente" : "Pending")
+                      : tx.status;
 
                   return (
                     <tr key={tx.id} className="hover:bg-slate-50/80 dark:hover:bg-white/[0.02] transition-colors">
@@ -309,7 +320,7 @@ export function AccountingView() {
                               : "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400"
                           }`}
                         >
-                          {isRevenue ? t.dashboard.revenue : retail.rawTitle}
+                          {isRevenue ? (isFr ? "Revenu" : "Revenue") : (isFr ? "Dépense" : "Expense")}
                         </span>
                       </td>
                       <td className="py-3 px-4 font-semibold text-slate-800 dark:text-[#F4F7FB] capitalize">
@@ -327,7 +338,7 @@ export function AccountingView() {
                       <td className="py-3 px-4 text-right">
                         <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
                           <CheckCircle2 size={12} />
-                          <span>{integrations.statusConnected}</span>
+                          <span>{statusLabel}</span>
                         </span>
                       </td>
                     </tr>

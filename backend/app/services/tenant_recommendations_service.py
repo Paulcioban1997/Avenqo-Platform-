@@ -75,6 +75,8 @@ class TenantRecommendationsService:
                 "currency": snapshot.currency,
                 "generated_at": generated_at,
                 "recommendation_state": "INSUFFICIENT_DATA" if order_count < _MIN_RECOMMENDATION_ORDERS else "NO_RECOMMENDATIONS",
+                "order_count": order_count,
+                "min_orders_required": _MIN_RECOMMENDATION_ORDERS,
                 "data_freshness": freshness.as_dict(),
                 "recommendations": [],
             }
@@ -117,7 +119,7 @@ class TenantRecommendationsService:
                     } if assessment is not None else {},
                     "source_capability": signal.capability,
                     "metric": signal.metric,
-                    "period": metadata["evidence"].get("period"),
+                    "period": metadata.get("period", metadata["evidence"].get("period")),
                     "source": source_context,
                     "freshness_status": freshness.freshness_status,
                     "freshness_timestamp": freshness.last_updated_at,
@@ -159,9 +161,13 @@ class TenantRecommendationsService:
         if source is None:
             return
         metrics_service = BusinessMetricsService()
+        tz_name = getattr(snapshot.company, "timezone", None) or "UTC"
+        timestamps = BusinessMetricsService._timestamps(source, tz_name)
+        is_historical = bool(timestamps and max(timestamps) < generated_at - timedelta(days=30))
+        period_key = None if is_historical else "last_30_days"
         bounds = metrics_service.resolve_period(
-            "last_30_days",
-            timezone_name=getattr(snapshot.company, "timezone", None) or "UTC",
+            period_key,
+            timezone_name=tz_name,
             now=generated_at,
             source=source,
         )
@@ -265,6 +271,7 @@ class TenantRecommendationsService:
             metadata_by_key[(task_code, signal.entity)] = {
                 "title": task_code,
                 "explanation": "product_revenue_changed",
+                "period": "dataset_last_30_days_vs_previous",
                 "evidence": {
                     "product_id": product_id,
                     "product_name": product.get("name"),

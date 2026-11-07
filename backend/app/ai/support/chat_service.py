@@ -69,8 +69,17 @@ class SupportChatService:
         self._retrieval = retrieval
         self._provider = provider
         self._tool_registry = tool_registry
-        self._orchestrator = ToolOrchestrator(provider, tool_executor)
+        self._orchestrator = ToolOrchestrator(provider, tool_executor, on_before_llm=self._release_db_before_llm)
         self._usage_service = usage_service
+
+    def _release_db_before_llm(self) -> None:
+        from backend.app.services.tenant_rls import release_tenant_connection
+
+        for holder in (self._conversations, self._retrieval, self._usage_service):
+            session = getattr(holder, "_db", None)
+            if session is not None:
+                release_tenant_connection(session)
+                return
 
     def _available_tools(self, *, permissions: frozenset[str], plan_code: str | None, capabilities: frozenset[str]):
         return self._tool_registry.available_for(permissions=permissions, plan_code=plan_code, capabilities=capabilities)

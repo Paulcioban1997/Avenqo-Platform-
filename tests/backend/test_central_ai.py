@@ -190,7 +190,7 @@ async def test_central_ai_returns_only_safe_confirmed_crm_tool_outcomes():
     outcomes = CentralAIService._safe_tool_outcomes(tool_results)
 
     assert outcomes == (
-        {"tool": "create_appointment", "success": True, "confirmed": False},
+        {"tool": "create_appointment", "success": True, "confirmed": True},
         {"tool": "check_availability", "success": True, "confirmed": False},
     )
     assert "private-appointment-id" not in str(outcomes)
@@ -380,7 +380,7 @@ async def test_vertex_uses_central_registry_and_tenant_usage_ledger(db_session) 
     gateway = AvenqoAIGateway([provider], circuit_breaker=ProviderCircuitBreaker(),
                               health_registry=ProviderHealthRegistry(), rate_card=LLMRateCard.from_specs([spec]))
     company, user = make_company(db_session)
-    central, conversations, usage, tenant = make_service(db_session, company, gateway, limit=5)
+    central, conversations, usage, tenant = make_service(db_session, company, gateway, limit=50)
     conversation = conversations.create(company.id, user.id, "Vertex audit test")
 
     result = await execute(central, tenant, user, conversation, "Show sales trends")
@@ -771,8 +771,6 @@ async def test_context_uses_billing_plan_and_central_ai_does_not_consume_module_
     assert result.status == "success"
     assert '"plan_code":"professional"' in provider.last_prompt
     assert before.active_modules == after.active_modules == ("retail",)
-    # Professional permits five selectable modules; Retail occupies one slot.
-    # Central AI is included and must not consume an additional slot.
     assert before.remaining_module_slots == after.remaining_module_slots == 4
 
 

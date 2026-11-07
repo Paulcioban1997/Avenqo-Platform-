@@ -1,4 +1,4 @@
-﻿"""Endpoint interne â€” Model Versioning Enterprise (Phase 9).
+"""Endpoint interne â€” Model Versioning Enterprise (Phase 9).
 
 Comme `internal_retraining.py` (Phase 8), ce routeur n'est jamais consommÃ©
 par le frontend Avenqo : aucun terme technique (version, rollback, UUID,
@@ -19,7 +19,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from backend.app.dependencies.ai_engine import get_ai_model_registry
-from backend.app.dependencies.auth import get_tenant_context
+from backend.app.dependencies.internal import get_internal_service_tenant
 from backend.app.dependencies.training import get_training_dispatcher
 from backend.app.schemas.training import (
     ModelVersionCompareRequest,
@@ -43,7 +43,7 @@ router = APIRouter(tags=["internal-versioning"])
 def list_versions(
     module_code: str,
     task_code: str,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(get_internal_service_tenant),
     ai_model_registry: AIModelRegistry = Depends(get_ai_model_registry),
 ) -> ModelVersionListResponse:
     summaries = list_model_versions(ai_model_registry, tenant, module_code, task_code)
@@ -67,7 +67,7 @@ def list_versions(
 @router.post("/versioning/compare", response_model=ModelVersionCompareResponse)
 def compare_two_versions(
     request: ModelVersionCompareRequest,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(get_internal_service_tenant),
     ai_model_registry: AIModelRegistry = Depends(get_ai_model_registry),
 ) -> ModelVersionCompareResponse:
     try:
@@ -98,7 +98,7 @@ def compare_two_versions(
 @router.post("/versioning/rollback", response_model=ModelVersionRollbackResponse)
 def rollback_version(
     request: ModelVersionRollbackRequest,
-    tenant: TenantContext = Depends(get_tenant_context),
+    tenant: TenantContext = Depends(get_internal_service_tenant),
     dispatcher: TrainingDispatcher = Depends(get_training_dispatcher),
 ) -> ModelVersionRollbackResponse:
     try:

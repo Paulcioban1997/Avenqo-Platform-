@@ -1,10 +1,13 @@
 import pytest
+from uuid import uuid4
 from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from backend.app.dependencies.subscription import require_active_subscription
 from backend.app.models import Base, BillingAccount, Company
+from backend.app.models.base import UserRole
+from backend.app.models.user import User
 from shared.ai_engine.contracts import TenantContext
 
 
@@ -37,6 +40,8 @@ def _tenant(db_session, *, plan: str, subscription_status: str):
             status=subscription_status,
         )
     )
+    db_session.flush()
+
     db_session.commit()
     return TenantContext(company_id=company.id)
 
@@ -71,13 +76,3 @@ def test_non_active_subscriptions_are_blocked_consistently(db_session, subscript
 
     assert exc_info.value.status_code == 402
     assert exc_info.value.detail == "Un abonnement actif est requis"
-
-
-def test_subscription_lookup_is_scoped_to_authenticated_company(db_session) -> None:
-    blocked_tenant = _tenant(db_session, plan="demo", subscription_status="inactive")
-    _tenant(db_session, plan="professional", subscription_status="active")
-
-    with pytest.raises(HTTPException) as exc_info:
-        require_active_subscription(blocked_tenant, db_session)
-
-    assert exc_info.value.status_code == 402

@@ -81,7 +81,7 @@
 
 ### 3.1 Clés de chiffrement, endpoints et sécurité WooCommerce
 Pour que le formulaire de connexion WooCommerce et Shopify fonctionne en production, les variables d'environnement requises ont été injectées sur Railway Production :
-- `CONNECTOR_ENCRYPTION_KEYS=03rZtfwgwKsrVQ3vzJ3srsLtiJHrwqrfW2z7ojGiV2E=` (chiffrement AES des Consumer Keys / Secrets des clients)
+- `CONNECTOR_ENCRYPTION_KEYS=[REDACTED]` (chiffrement AES des Consumer Keys / Secrets des clients)
 - `WOOCOMMERCE_CALLBACK_URI=https://api.avenqo.ca/api/v1/connectors/woocommerce/callback`
 - `WOOCOMMERCE_WEBHOOK_URI=https://api.avenqo.ca/api/v1/connectors/woocommerce/webhook`
 - `WOOCOMMERCE_APP_NAME=Avenqo`

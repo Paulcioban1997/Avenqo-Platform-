@@ -1,4 +1,8 @@
-﻿"""Frontière d'envoi des emails liés au compte."""
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+import re
+import threading
+"""Frontière d'envoi des emails liés au compte."""
 
 from email.message import EmailMessage
 from email.utils import formataddr
@@ -13,8 +17,34 @@ from urllib.request import Request, urlopen
 from pathlib import Path
 
 from backend.app.config.settings import Settings
+from backend.app.services.tenant_locale_service import catalog_code_or_none, get_company_locale
 
 logger = logging.getLogger(__name__)
+
+
+def _company_locale(company: object) -> str:
+    """Use the explicit tenant profile, then the legacy setting if absent.
+
+    Profile updates synchronize Company.preferred_language. A stale legacy
+    value must not make invoices disagree with Voice, CRM and Central AI.
+    """
+    company_id = getattr(company, "id", None)
+    try:
+        from sqlalchemy.orm import object_session
+
+        db = object_session(company)
+    except Exception:
+        db = None
+    if db is not None and company_id is not None:
+        resolved = get_company_locale(db, company_id)
+        if resolved:
+            return resolved
+    profile = getattr(company, "locale_profile", None)
+    if profile is not None and getattr(profile, "primary_locale", None):
+        return str(profile.primary_locale)
+    return catalog_code_or_none(getattr(company, "preferred_language", None)) or "fr"
+
+
 _SMTP_CONNECTION_TIMEOUT_SECONDS = 10
 _HTTPS_CONNECTION_TIMEOUT_SECONDS = 10
 _RESEND_EMAIL_API_URL = "https://api.resend.com/emails"
@@ -121,7 +151,7 @@ class AccountNotificationService:
         self._send(recipient, f"New Avenqo Company — {company.name} — {company.subscription_plan}", body)
 
     def send_invoice_paid(self, recipient: str, company: object, invoice: object) -> None:
-        labels = self._invoice_labels(company.preferred_language)
+        labels = self._invoice_labels(_company_locale(company))
         amount = lambda value: f"{int(value) / 100:.2f} {invoice.currency.upper()}"
         period = "—"
         if invoice.period_start and invoice.period_end:
@@ -161,8 +191,12 @@ class AccountNotificationService:
         return {**fallback, **json.loads(catalog_path.read_text(encoding="utf-8")).get("invoiceEmail", {})}
 
     def _account_link(self, path: str, token: str) -> str:
-        base_url = self._settings.frontend_url.rstrip("/")
-        return f"{base_url}{path}?{urlencode({'token': token})}"
+        params = {"token": token}
+        environment = self._settings.environment.strip().lower()
+        if environment == "sandbox":
+            params["env"] = "sandbox"
+        base_url = self._settings.public_frontend_origin()
+        return f"{base_url}{path}?{urlencode(params)}"
 
     def _send(self, recipient: str, subject: str, body: str) -> None:
         html_body = "<p>" + escape(body).replace("\n\n", "</p><p>").replace("\n", "<br>") + "</p>"
@@ -182,6 +216,11 @@ class SMTPEmailTransport:
         text_body: str,
         html_body: str,
     ) -> None:
+        if not getattr(self._settings, "is_external_email_allowed", True):
+            raise RuntimeError(
+                "External email dispatch blocked: live SMTP transmission is prohibited in Sandbox environment. "
+                "Use EMAIL_PROVIDER=sandbox_capture for safe testing."
+            )
         message = EmailMessage()
         message["From"] = self._settings.smtp_from_email
         message["To"] = recipient
@@ -215,6 +254,7 @@ class ResendHTTPSEmailTransport:
     """Transport HTTPS compatible avec l'API transactionnelle Resend."""
 
     def __init__(self, settings: Settings) -> None:
+        self._settings = settings
         self._api_key = settings.email_api_key
         self._from_email = settings.email_from_email
         self._from_name = settings.email_from_name
@@ -226,6 +266,11 @@ class ResendHTTPSEmailTransport:
         text_body: str,
         html_body: str,
     ) -> None:
+        if not getattr(self._settings, "is_external_email_allowed", True):
+            raise RuntimeError(
+                "External email dispatch blocked: live Resend transmission is prohibited in Sandbox environment. "
+                "Use EMAIL_PROVIDER=sandbox_capture for safe testing."
+            )
         payload = json.dumps(
             {
                 "from": formataddr((self._from_name, self._from_email)),
@@ -248,13 +293,21 @@ class ResendHTTPSEmailTransport:
         try:
             with urlopen(request, timeout=_HTTPS_CONNECTION_TIMEOUT_SECONDS) as response:
                 status_code = response.status
-                if not 200 <= status_code < 300:
+                raw = response.read()
+                payload_response = _parse_email_api_payload(raw)
+                if not 200 <= status_code < 300 or not payload_response.get("id"):
                     raise RuntimeError("Transactional email API rejected the request")
+                logger.info(
+                    "HTTPS email accepted status=%s provider_id_present=true",
+                    status_code,
+                )
         except (HTTPError, URLError, OSError, RuntimeError) as exc:
+            error_name = _email_api_error_name(exc)
             logger.warning(
-                "HTTPS email delivery failed status=%s error_type=%s",
+                "HTTPS email delivery failed status=%s error_type=%s error_name=%s",
                 getattr(exc, "code", None),
                 type(exc).__name__,
+                error_name,
             )
             raise
 
@@ -270,6 +323,37 @@ class SMTPAccountNotifier(AccountNotificationService):
         super().__init__(settings, SMTPEmailTransport(settings))
 
 
+def _parse_email_api_payload(raw: bytes | str | None) -> dict[str, object]:
+    if not raw:
+        return {}
+    if isinstance(raw, bytes):
+        text_body = raw.decode("utf-8", errors="replace")
+    else:
+        text_body = raw
+    try:
+        parsed = json.loads(text_body)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _email_api_error_name(exc: BaseException) -> str:
+    raw = b""
+    if isinstance(exc, HTTPError):
+        try:
+            raw = exc.read()
+        except Exception:
+            raw = b""
+    payload = _parse_email_api_payload(raw)
+    name = payload.get("name") or payload.get("message") or ""
+    if name:
+        return str(name)[:80]
+    text_body = raw.decode("utf-8", errors="replace") if raw else ""
+    if "1010" in text_body:
+        return "cloudflare_1010"
+    return text_body.strip()[:80]
+
+
 class HTTPSAccountNotifier(AccountNotificationService):
     """Notifications de compte livrées par API HTTPS transactionnelle."""
 
@@ -279,3 +363,94 @@ class HTTPSAccountNotifier(AccountNotificationService):
                 "API email HTTPS non configurée : définir la clé et l'expéditeur"
             )
         super().__init__(settings, ResendHTTPSEmailTransport(settings))
+
+
+@dataclass
+class CapturedEmail:
+    recipient: str
+    subject: str
+    text_body: str
+    html_body: str
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    verification_code: str | None = None
+    company_id: str | None = None
+
+
+class SandboxCaptureAccountNotifier:
+    """Safe Sandbox/Test email notifier that captures all outbound emails locally.
+
+    Guarantees:
+    - Zero external network dispatch (100% prevented).
+    - Captures emails deterministically for testing and test harness verification.
+    - Extracts 8-digit signature confirmation codes for synthetic E2E testing.
+    - Never logs or exposes raw OTP codes to external APIs or unauthenticated consumers.
+    """
+
+    email_delivery_configured = True
+
+    def __init__(self, settings: Settings | None = None) -> None:
+        self._settings = settings
+        self._captured: list[CapturedEmail] = []
+        self._lock = threading.Lock()
+
+    def send_email_verification(self, email: str, token: str) -> None:
+        self._record(email, "Vérifiez votre adresse email Avenqo", f"Token: {token}", f"<p>Token: {token}</p>")
+
+    def send_password_reset(self, email: str, token: str) -> None:
+        self._record(email, "Réinitialisez votre mot de passe Avenqo", f"Token: {token}", f"<p>Token: {token}</p>")
+
+    def send_new_company(self, company: object, user: object, request: object) -> None:
+        self._record(getattr(user, "email", "owner@avenqo.ca"), "New Avenqo Company", f"Company: {getattr(company, 'name', '')}", "")
+
+    def send_invoice_paid(self, recipient: str, company: object, invoice: object) -> None:
+        self._record(recipient, "Facture payée", f"Invoice: {getattr(invoice, 'id', '')}", "")
+
+    def send_transactional(self, recipient: str, subject: str, body: str) -> None:
+        self._record(recipient, subject, body, body)
+
+    def _record(self, recipient: str, subject: str, text_body: str, html_body: str, company_id: str | None = None) -> None:
+        code = None
+        match = re.search(r"\b(\d{8})\b", text_body)
+        if match:
+            code = match.group(1)
+        item = CapturedEmail(
+            recipient=recipient,
+            subject=subject,
+            text_body=text_body,
+            html_body=html_body,
+            verification_code=code,
+            company_id=company_id,
+        )
+        with self._lock:
+            self._captured.append(item)
+        logger.info("Sandbox captured email recipient=%s subject=%s code_present=%s", recipient, subject, bool(code))
+
+    def get_captured_emails(self, recipient: str | None = None, company_id: str | None = None) -> list[CapturedEmail]:
+        with self._lock:
+            emails = list(self._captured)
+            if recipient is not None:
+                emails = [e for e in emails if e.recipient == recipient]
+            if company_id is not None:
+                emails = [e for e in emails if e.company_id == company_id]
+            return emails
+
+    def get_latest_code_for(self, recipient: str, company_id: str | None = None) -> str | None:
+        with self._lock:
+            for e in reversed(self._captured):
+                if e.recipient == recipient and (company_id is None or e.company_id == company_id) and e.verification_code:
+                    return e.verification_code
+        return None
+
+    def clear(self) -> None:
+        with self._lock:
+            self._captured.clear()
+
+
+_sandbox_capture_notifier: SandboxCaptureAccountNotifier | None = None
+
+
+def get_sandbox_capture_notifier(settings: Settings | None = None) -> SandboxCaptureAccountNotifier:
+    global _sandbox_capture_notifier
+    if _sandbox_capture_notifier is None:
+        _sandbox_capture_notifier = SandboxCaptureAccountNotifier(settings)
+    return _sandbox_capture_notifier

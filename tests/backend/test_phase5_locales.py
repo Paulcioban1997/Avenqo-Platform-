@@ -14,6 +14,7 @@ from backend.app.core.locale_catalog import (
 )
 from backend.app.ai.tools.natural_confirmation import (
     SUPPORTED_CONFIRMATION_LOCALES,
+    is_explicit_booking_request,
     is_natural_confirmation,
 )
 
@@ -73,6 +74,16 @@ def test_natural_confirmation_is_exact_and_does_not_accept_ambiguous_text() -> N
     assert is_natural_confirmation("en", "yesterday confirm it") is False
     assert is_natural_confirmation("es", "No, cancela") is False
     assert is_natural_confirmation("fr", "123") is False
+
+
+def test_explicit_booking_request_requires_intent_and_time() -> None:
+    assert is_explicit_booking_request(
+        "tu peu me prendre un rdv vous pour aujourd'hui au gym a 10h30 ? c'est le 14 octobre 2026"
+    )
+    assert is_explicit_booking_request("Book me an appointment tomorrow at 14:30")
+    assert is_explicit_booking_request("Please do this") is False
+    assert is_explicit_booking_request("oui") is False
+    assert is_explicit_booking_request("quels creneaux sont libres aujourd'hui") is False
 
 
 def test_free_text_detection_is_conservative_and_canonical() -> None:

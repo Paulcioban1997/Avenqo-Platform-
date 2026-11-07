@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, require_permission
+from backend.app.dependencies.subscription import require_active_subscription
 from backend.app.schemas.modules import CompanyEntitlementsResponse
 from backend.app.services.module_entitlement_service import (
     ModuleEntitlementError,
@@ -35,7 +36,8 @@ def entitlements(
 
 
 
-@router.post("/{module_key}/activate", response_model=CompanyEntitlementsResponse)
+@router.post("/{module_key}/activate", response_model=CompanyEntitlementsResponse,
+             dependencies=[Depends(require_active_subscription)])
 def activate_module(
     module_key: str,
     identity: CurrentIdentity = Depends(manage_modules),
@@ -55,7 +57,8 @@ def activate_module(
     return CompanyEntitlementsResponse(**asdict(result))
 
 
-@router.post("/{module_key}/deactivate", response_model=CompanyEntitlementsResponse)
+@router.post("/{module_key}/deactivate", response_model=CompanyEntitlementsResponse,
+             dependencies=[Depends(require_active_subscription)])
 def deactivate_module(
     module_key: str,
     identity: CurrentIdentity = Depends(manage_modules),

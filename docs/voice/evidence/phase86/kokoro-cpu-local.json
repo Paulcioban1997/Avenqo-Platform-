@@ -1,0 +1,64 @@
+{
+  "role": "tts",
+  "model": "hexgrad/Kokoro-82M",
+  "revision": "f3ff3571791e39611d31c381e3a41a3af07b4987",
+  "license": "Apache-2.0",
+  "device": "cpu",
+  "gpu": null,
+  "torch": "2.11.0+cu128",
+  "platform": "Windows-10-10.0.26300-SP0",
+  "model_load_seconds": 40.794568999961484,
+  "network": "ASGI local HTTP worker; not Telnyx",
+  "samples": [
+    {
+      "locale": "fr-CA",
+      "text": "Bonjour, bienvenue chez Avenqo. Le stock de ce produit est inconnu.",
+      "audio_file": "0-fr-CA.wav",
+      "sha256": "d9a28135045996beaff2e1ce3446659972d266536fa97f957a65f96ddb0cd800",
+      "audio_seconds": 4.45,
+      "first_audio_seconds": 2.086283899960108,
+      "rtf": 0.4688278426876647,
+      "native_streaming": false,
+      "status": "PASS_INFERENCE_ONLY"
+    },
+    {
+      "locale": "fr-CA",
+      "text": "Les ventes disponibles sont historiques. Elles ne permettent pas de confirmer les ventes actuelles.",
+      "audio_file": "1-fr-CA.wav",
+      "sha256": "c98593855a461002fae2c25200fac6c8fdb557b99b1ccae8d515bff3f486f0ad",
+      "audio_seconds": 5.725,
+      "first_audio_seconds": 2.164643399999477,
+      "rtf": 0.3781036506549305,
+      "native_streaming": false,
+      "status": "PASS_INFERENCE_ONLY"
+    },
+    {
+      "locale": "en",
+      "text": "Hello. I cannot confirm current inventory from historical sales.",
+      "audio_file": "2-en.wav",
+      "sha256": "4a1b93c9f13fb3198d4e4501ce6d4cf963fc3ec94bb2fe247107b69949e80a96",
+      "audio_seconds": 4.425,
+      "first_audio_seconds": 13.628856399969663,
+      "rtf": 3.0799675480157434,
+      "native_streaming": false,
+      "status": "PASS_INFERENCE_ONLY"
+    },
+    {
+      "locale": "es",
+      "text": "Hola. No puedo confirmar las existencias actuales.",
+      "audio_file": "3-es.wav",
+      "sha256": "6bdf4d5b3732ca461df4538015534b80acde9b8f9996371346d3092f3bf4a18c",
+      "audio_seconds": 3.35,
+      "first_audio_seconds": 1.5666392000275664,
+      "rtf": 0.46765349254554217,
+      "native_streaming": false,
+      "status": "PASS_INFERENCE_ONLY"
+    }
+  ],
+  "french_canadian_certified": false,
+  "telephone_tested": false,
+  "central_llm_tested": false,
+  "human_mos": null,
+  "romanian": "BLOCKED_UNSUPPORTED_TTS_LANGUAGE",
+  "status": "PASS_LOCAL_NEURAL_INFERENCE"
+}

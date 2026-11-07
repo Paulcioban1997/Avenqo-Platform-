@@ -1,0 +1,50 @@
+{
+  "role": "asr",
+  "model": "nvidia/parakeet-tdt-0.6b-v3",
+  "revision": "541d1f99c6b0c3cd0b11a95167540bb8edefd82b",
+  "license": "CC-BY-4.0",
+  "device": "cuda",
+  "gpu": "NVIDIA GeForce RTX 5070 Laptop GPU",
+  "torch": "2.11.0+cu128",
+  "platform": "Windows-10-10.0.26300-SP0",
+  "model_load_seconds": 20.295009900000878,
+  "network": "ASGI local HTTP worker; not Telnyx",
+  "samples": [
+    {
+      "locale": "fr",
+      "source": "google/fleurs@70bb2e84b976b7e960aa89f1c648e09c59f894dd:fr_fr:test:10043298898524273336.wav",
+      "reference": "L\u2019accident a eu lieu en terrain montagneux, et il semblerait que cela ait \u00e9t\u00e9 caus\u00e9 par un incendie malveillant.",
+      "transcript": "L'accident a eu lieu en terrain montagneux, et il semblerait que cela ait \u00e9t\u00e9 caus\u00e9 par un incendie malveillant.",
+      "seconds": 0.7766483000013977,
+      "audio_seconds": 10.2,
+      "wer": 0.0,
+      "human_reference": true
+    },
+    {
+      "locale": "en",
+      "source": "google/fleurs@70bb2e84b976b7e960aa89f1c648e09c59f894dd:en_us:test:1003119935936341070.wav",
+      "reference": "However, due to the slow communication channels, styles in the west could lag behind by 25 to 30 year.",
+      "transcript": "However, due to the slow communication channels, styles in the west could lag behind by 25-30 years.",
+      "seconds": 0.2047823999891989,
+      "audio_seconds": 10.56,
+      "wer": 0.10526315789473684,
+      "human_reference": true
+    },
+    {
+      "locale": "ro",
+      "source": "google/fleurs@70bb2e84b976b7e960aa89f1c648e09c59f894dd:ro_ro:test:10014289053103326436.wav",
+      "reference": "\u00cenainte de sosirea trupelor, Haiti nu mai avusese din anii 1800 probleme legate de boal\u0103.",
+      "transcript": "\u00cenainte de sosirea trupelor, Hitler mai avusese din ani 800 probleme legate de boal\u0103.",
+      "seconds": 0.2115372999687679,
+      "audio_seconds": 6.3,
+      "wer": 0.26666666666666666,
+      "human_reference": true
+    }
+  ],
+  "french_canadian_certified": false,
+  "telephone_tested": false,
+  "central_llm_tested": false,
+  "human_mos": null,
+  "status": "PASS_LOCAL_NEURAL_INFERENCE",
+  "peak_cuda_allocated_mib": 2470.150390625
+}

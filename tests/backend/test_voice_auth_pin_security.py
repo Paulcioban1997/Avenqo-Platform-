@@ -458,7 +458,8 @@ def test_10_disabled_module_blocks_tool_discovery_and_execution(tmp_path):
             query="",
             page_context="/voice",
             active_modules=frozenset(["crm", "retail", "voice"]),
-            permissions=frozenset(["retail:read"]),
+            permissions=frozenset(["retail:read", "ai:use", "data:read"]),
+            granted_voice_tools=frozenset({"get_sales_summary"}),
         )
         assert scope_active is not None
         allowed_active, _ = scope_active
@@ -470,7 +471,8 @@ def test_10_disabled_module_blocks_tool_discovery_and_execution(tmp_path):
             query="",
             page_context="/voice",
             active_modules=frozenset(["crm", "voice"]),
-            permissions=frozenset(["retail:read"]),
+            permissions=frozenset(["retail:read", "ai:use", "data:read"]),
+            granted_voice_tools=frozenset({"get_sales_summary"}),
         )
         assert scope_inactive is not None
         allowed_inactive, _ = scope_inactive
@@ -496,20 +498,34 @@ def test_11_public_caller_cannot_access_financial_or_private_tools(tmp_path):
         assistant_registry = build_default_assistant_registry(tool_registry)
         central = CentralAIService(assistant_registry, MagicMock(), MagicMock(), MagicMock())
 
-        scope_public = central._tool_scope_for_request(
+        empty_public = central._tool_scope_for_request(
             agent=None,
             query="",
             page_context="/voice",
             active_modules=frozenset(["crm", "retail", "accounting", "voice"]),
             permissions=PUBLIC_VOICE_CALLER_PERMISSIONS,
         )
+        assert empty_public is not None
+        assert empty_public[0] == frozenset()
+
+        scope_public = central._tool_scope_for_request(
+            agent=None,
+            query="",
+            page_context="/voice",
+            active_modules=frozenset(["crm", "retail", "accounting", "voice"]),
+            permissions=PUBLIC_VOICE_CALLER_PERMISSIONS,
+            granted_voice_tools=frozenset({
+                "check_availability", "list_available_slots", "create_appointment",
+                "get_sales_summary", "get_unpaid_invoices", "get_crm_metrics",
+            }),
+        )
         assert scope_public is not None
         allowed_public, _ = scope_public
         assert "get_sales_summary" not in allowed_public
         assert "get_unpaid_invoices" not in allowed_public
         assert "get_crm_metrics" not in allowed_public
-        # Seuls les outils publics de réservation doivent être exposés
-        assert allowed_public.issubset({"check_availability", "list_available_slots", "create_appointment"})
+        # PUBLIC_VOICE tools still require an explicit CRM grant.
+        assert allowed_public == frozenset({"check_availability", "list_available_slots", "create_appointment"})
 
         # Vérification 3 : Barrière d'autorisation serveur (Fail-Closed)
         policy = ToolAuthorizationPolicy(session, assistant_registry)
@@ -806,7 +822,7 @@ def _setup_media_call_for_test(session, company, config, orchestrator, caller_ph
         status="ACTIVE",
         capabilities=["voice"],
     )
-    account = BillingAccount(company_id=company.id, plan_code="professional", status="active")
+    account = session.scalar(select(BillingAccount).where(BillingAccount.company_id == company.id))
     session.add_all([number, account])
     session.commit()
     ModuleEntitlementService(session).activate_module(TenantContext(company.id), "voice")
@@ -1033,7 +1049,7 @@ def test_23_role_permissions_rbac_for_retail_data(tmp_path):
     from backend.app.services.module_entitlement_service import ModuleEntitlementService
     engine, session, company, _config, _api_key, _orchestrator = _voice_database(tmp_path)
     try:
-        account = BillingAccount(company_id=company.id, plan_code="professional", status="active")
+        account = session.scalar(select(BillingAccount).where(BillingAccount.company_id == company.id))
         session.add(account)
         session.commit()
         ModuleEntitlementService(session).activate_module(TenantContext(company.id), "retail")

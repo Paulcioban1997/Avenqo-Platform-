@@ -85,7 +85,7 @@ class ModuleEntitlementService:
     def get_company_plan(self, tenant: TenantContext) -> SubscriptionPlan:
         company = self._company(tenant)
         account = self._session.scalar(
-            select(BillingAccount).where(BillingAccount.company_id == tenant.company_id)
+            select(BillingAccount).execution_options(populate_existing=True).where(BillingAccount.company_id == tenant.company_id)
         )
         return get_plan(account.plan_code if account is not None else company.subscription_plan)
 
@@ -95,9 +95,7 @@ class ModuleEntitlementService:
         return tuple(
             definition.key
             for definition in self._registry
-            if definition.key in stored
-            and definition.is_available
-            and plan.allows_module(definition.key)
+            if definition.key in stored and plan.allows_module(definition.key)
         )
 
     def get_module_limit(self, tenant: TenantContext) -> int | None:
@@ -186,6 +184,11 @@ class ModuleEntitlementService:
         if entitlement is not None:
             entitlement.status = CompanyModuleStatus.INACTIVE
             entitlement.expires_at = None
+            from backend.app.services.voice_module_permission_service import VoiceModulePermissionService
+            if module_key == "voice":
+                VoiceModulePermissionService(self._session).revoke_all(tenant.company_id)
+            else:
+                VoiceModulePermissionService(self._session).revoke_module(tenant.company_id, module_key)
             self._session.flush()
         return self.summary(tenant)
 
@@ -234,12 +237,12 @@ class ModuleEntitlementService:
     ) -> ModuleEntitlementState:
         if definition is None or definition.availability == ModuleAvailability.UNAVAILABLE:
             return ModuleEntitlementState.UNAVAILABLE
+        if definition.key in active_set:
+            return ModuleEntitlementState.ACTIVE
         if definition.availability == ModuleAvailability.COMING_SOON:
             return ModuleEntitlementState.COMING_SOON
         if not plan.allows_module(definition.key):
             return ModuleEntitlementState.UPGRADE_REQUIRED
-        if definition.key in active_set:
-            return ModuleEntitlementState.ACTIVE
         if remaining == 0:
             return ModuleEntitlementState.LIMIT_REACHED
         return ModuleEntitlementState.AVAILABLE
@@ -266,7 +269,7 @@ class ModuleEntitlementService:
         ))
 
     def _company(self, tenant: TenantContext) -> Company:
-        company = self._session.get(Company, tenant.company_id)
+        company = self._session.get(Company, tenant.company_id, populate_existing=True)
         if company is None:
             raise ModuleEntitlementError("Company not found")
         return company

@@ -238,6 +238,7 @@ class ShopifyConnector(CommerceConnector):
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         max_retries: int = 3,
         base_delay_seconds: float = 1.0,
+        blocked_by_sandbox_guard: bool = False,
     ) -> None:
         self._client_id = client_id
         self._client_secret = client_secret
@@ -249,6 +250,7 @@ class ShopifyConnector(CommerceConnector):
         self._sleep = sleep
         self._max_retries = max_retries
         self._base_delay_seconds = base_delay_seconds
+        self._blocked_by_sandbox_guard = blocked_by_sandbox_guard
         self._WEBHOOK_TOPICS: tuple[str, ...] = self._WEBHOOK_TOPICS
 
     @staticmethod
@@ -261,6 +263,8 @@ class ShopifyConnector(CommerceConnector):
         return normalized
 
     def authenticate(self, *, tenant_id, configuration: Mapping[str, str]) -> str:
+        if self._blocked_by_sandbox_guard:
+            raise ShopifyAuthenticationError("Shopify OAuth authorization is blocked by Sandbox isolation guard.")
         callback = urlsplit(self._redirect_uri)
         if not self._client_id or not self._client_secret or not self._scopes or callback.scheme != "https" or not callback.hostname:
             raise ShopifyAuthenticationError("Shopify OAuth is not configured")
@@ -818,6 +822,8 @@ class ShopifyConnector(CommerceConnector):
         raise ShopifyTemporaryError("Shopify Admin API is temporarily unavailable")
 
     async def _request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+        if self._blocked_by_sandbox_guard:
+            raise ShopifyAuthenticationError("Shopify API network execution is blocked by Sandbox isolation guard.")
         for attempt in range(self._max_retries + 1):
             try:
                 if self._http_client is not None:

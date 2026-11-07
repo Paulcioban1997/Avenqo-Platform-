@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 import logging
+import os
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -29,17 +30,38 @@ async def lifespan(app: FastAPI):
     """Prépare les ressources persistantes de l'application."""
 
     settings = get_settings()
+    from backend.app.core.runtime_limits import apply_http_sync_thread_limit, effective_http_sync_thread_limit
+
+    thread_limit = effective_http_sync_thread_limit(
+        settings.http_sync_thread_limit,
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        database_url=settings.database_url,
+    )
+    apply_http_sync_thread_limit(thread_limit)
     storage_status = artifact_storage_health.check(Path(settings.artifact_root))
     if storage_status.status != "ok":
         logger.error("Application starting with degraded artifact storage")
     is_production = settings.environment.lower() in {"production", "prod"}
-    if not is_production:
+    skip_create_all = os.getenv("AVENQO_SKIP_CREATE_ALL", "").strip().lower() in {"1", "true", "yes"}
+    if not is_production and not skip_create_all:
         # Dev/test uniquement : filet de sécurité pratique. En production, le
         # schéma doit être géré exclusivement par `alembic upgrade head`
         # exécuté comme étape de déploiement explicite — voir
         # docs/production-deployment.md § Migrations.
         create_database_tables()
-    yield  # yield = "pause" the context manager, allowing the app to run
+    import asyncio
+    task=None;stop=asyncio.Event()
+    if settings.voice_commercial_enabled and settings.voice_provisioning_worker_enabled:
+        from backend.app.services.voice_provisioning_worker import loop
+        task=asyncio.create_task(loop(settings,stop))
+    try:
+        yield
+    finally:
+        stop.set()
+        if task:
+            try:await asyncio.wait_for(task,timeout=20)
+            except asyncio.TimeoutError:task.cancel()
 
 
 def create_application() -> FastAPI:

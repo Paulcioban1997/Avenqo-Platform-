@@ -1801,6 +1801,10 @@ class _DatasetMappingDialogState extends State<_DatasetMappingDialog> {
               return _selected[col] != null || accepted[col] != null;
             }).length;
             final unmappedCount = math.max(0, totalCount - mappedCount);
+            final failedCount = suggestions.where((s) {
+              final status = (s['status'] ?? s['state'] ?? '').toString().toLowerCase();
+              return status == 'failed' || status == 'invalid' || status == 'rejected';
+            }).length;
 
             return SingleChildScrollView(
               child: Column(
@@ -1836,7 +1840,13 @@ class _DatasetMappingDialogState extends State<_DatasetMappingDialog> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          '$totalCount ${AvenqoLocaleScope.translationsOf(context).company.connectionsStatColumnsLabel} · $mappedCount ${AvenqoLocaleScope.translationsOf(context).company.connectionsMappingTitle} · $unmappedCount ${AvenqoLocaleScope.translationsOf(context).company.connectionsMappingIgnore} · 0 ${AvenqoLocaleScope.translationsOf(context).company.connectionsProcessingError}',
+                          [
+                            '$totalCount ${AvenqoLocaleScope.translationsOf(context).company.connectionsStatColumnsLabel}',
+                            '$mappedCount ${AvenqoLocaleScope.translationsOf(context).company.connectionsMappingTitle}',
+                            '$unmappedCount ${AvenqoLocaleScope.translationsOf(context).company.connectionsMappingIgnore}',
+                            if (failedCount > 0)
+                              '$failedCount ${AvenqoLocaleScope.translationsOf(context).company.connectionsProcessingError}',
+                          ].join(' · '),
                           style: TextStyle(color: colors.ink, fontSize: 13),
                         ),
                       ],

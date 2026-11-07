@@ -479,6 +479,8 @@ async def test_get_customer_summary_counts_returning_customers(tenant_with_ready
 
     assert result.data["total_customers"] == 3
     assert result.data["returning_customers"] == 3  # 6 orders / 3 customers => each has 2
+    assert result.data["population_scope"] == "selected_source_history"
+    assert result.data["data_coverage"]["end"] is not None
 
 
 async def test_tool_raises_unavailable_when_no_ready_dataset_exists(db_session) -> None:
@@ -1003,3 +1005,55 @@ async def test_chat_service_tool_calling_enforces_company_isolation_across_two_t
     assert tool_results_b[0].result.success is True
     assert tool_results_b[0].result.data["total_customers"] == 3
     assert str(dataset_b.id) in tool_results_b[0].result.source_refs
+
+
+async def test_dataset_product_detail_reports_unknown_stock_without_inventing_names(tenant_with_ready_dataset):
+    from backend.app.ai.tools.business.commerce_tools import GetProductDetailTool, ProductDetailArgs
+    from backend.app.services.retail_source_service import RetailSourceService
+    session, company, user, dataset, tenant, ingestion, context = tenant_with_ready_dataset
+    RetailSourceService(session).select_source(tenant, source_type="dataset", source_id=dataset.id)
+    tool = GetProductDetailTool(session, ingestion)
+    result = await tool.run(context, ProductDetailArgs(product_id="prod-0"))
+    assert result.success and result.data["found"]
+    product = result.data["products"][0]
+    assert product["product_id"] == "prod-0" and product["product_name"] is None
+    assert product["inventory_level"] is None
+    assert result.data["stock_is_current"] is False
+    absent = await tool.run(context, ProductDetailArgs(product_id="does-not-exist"))
+    assert absent.success and not absent.data["found"]
+
+
+async def test_tool_fallback_preserves_real_results_and_conversation_continuity(tenant_with_ready_dataset):
+    session, _, _, _, tenant, ingestion, context = tenant_with_ready_dataset
+    class FollowUpProvider(FakeLLMProvider):
+        def __init__(self):
+            super().__init__(); self.prompts = []
+        async def generate_with_tools(self, **kwargs):
+            self.generate_with_tools_calls += 1
+            if self.generate_with_tools_calls == 1:
+                return LLMToolResponse(content=None, tool_calls=(ToolCall(id="read-sales", name="get_business_overview", arguments={}),), provider="fake", model="fake-model")
+            assert kwargs["messages"][-1].role == "tool"
+            raise LLMProviderError("simulated tool transport interruption")
+        async def generate(self, *, system_instruction, prompt):
+            self.prompts.append(prompt)
+            assert "210" in prompt and "Verified tool history" in prompt
+            return LLMGeneration(content="Le revenu observé est de 210. Voulez-vous les produits concernés ?", provider="fake", model="fake-model")
+    registry = ToolRegistry(); registry.register(GetBusinessOverviewTool(session, ingestion))
+    provider = FollowUpProvider()
+    result = await ToolOrchestrator(provider, ToolExecutor(registry)).run(system_instruction="Use verified results, continue naturally in French.",
+        user_query="Et les ventes ?", context=context, available_tools=tuple(registry.list_tools()))
+    assert result.content.endswith("produits concernés ?")
+    assert len(result.tool_call_results) == 1 and result.tool_call_results[0].result.success
+    assert len(provider.prompts) == 1
+
+
+async def test_uncovered_sales_tool_has_no_zero_activity_placeholders(tenant_with_ready_dataset):
+    from datetime import date
+    from backend.app.ai.tools.business.sales_tools import GetSalesSummaryTool, SalesSummaryArgs
+    session, _, _, _, _, ingestion, context = tenant_with_ready_dataset
+    result = await GetSalesSummaryTool(session, ingestion).run(context,
+        SalesSummaryArgs(date_from=date(2099, 10, 1), date_to=date(2099, 10, 19)))
+    assert result.success and result.data["data_covered"] is False
+    assert all(result.data[key] is None for key in ("revenue", "orders", "average_order_value"))
+    assert result.data["data_coverage"]["end"] is not None
+    assert result.metadata["warning"] == result.data["coverage_message"]

@@ -10,6 +10,9 @@ d'extension `DatasetStorage` sont prévus pour une Phase future.
 from __future__ import annotations
 
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 import os
 import re
 import shutil
@@ -157,3 +160,236 @@ class LocalDatasetStorage(DatasetStorage):
             if temporary_path is not None:
                 temporary_path.unlink(missing_ok=True)
         return destination
+
+class StorageDurabilityError(RuntimeError):
+    """Levée lorsque la durabilité des données ne peut être garantie (échec S3 et aucun stockage local persistant)."""
+
+
+class S3DatasetStorage(DatasetStorage):
+    """Stockage S3-compatible (AWS S3, MinIO, Cloudflare R2, Railway Bucket)."""
+
+    def __init__(
+        self,
+        bucket: str,
+        access_key: str,
+        secret_key: str,
+        endpoint_url: str | None = None,
+        region: str = "auto",
+        local_fallback: DatasetStorage | None = None,
+    ) -> None:
+        self.bucket = bucket
+        self.endpoint_url = endpoint_url
+        self.region = region
+        self.local_fallback = local_fallback
+        self.is_degraded: bool = False
+        self.last_error: str | None = None
+        try:
+            import boto3
+            from botocore.config import Config
+            s3_config = Config(connect_timeout=1, read_timeout=1, retries={"max_attempts": 0})
+            self._s3 = boto3.client(
+                "s3",
+                aws_access_key_id=access_key,
+                aws_secret_access_key=secret_key,
+                endpoint_url=endpoint_url,
+                region_name=region if region != "auto" else None,
+                config=s3_config,
+            )
+        except Exception as exc:
+            self._s3 = None
+            self.is_degraded = True
+            self.last_error = f"{type(exc).__name__}: {exc}"
+
+    @property
+    def status(self) -> str:
+        """Expose le statut d'intégrité opérationnelle : STORAGE_HEALTHY ou STORAGE_DEGRADED."""
+        if self._s3 is None or self.is_degraded:
+            return "STORAGE_DEGRADED"
+        return "STORAGE_HEALTHY" 
+
+    def _s3_key(self, company_id: UUID, dataset_id: UUID, version: int, folder: str, filename: str) -> str:
+        safe_name = _SAFE_FILENAME.sub("_", Path(filename).name) or "dataset"
+        return f"{company_id}/datasets/{dataset_id}/v{version}/{folder}/{safe_name}"
+
+    def save_raw(
+        self,
+        company_id: UUID,
+        dataset_id: UUID,
+        version: int,
+        filename: str,
+        content: bytes,
+    ) -> str:
+        key = self._s3_key(company_id, dataset_id, version, "raw", filename)
+        if self._s3 is not None:
+            try:
+                self._s3.put_object(
+                    Bucket=self.bucket,
+                    Key=key,
+                    Body=content,
+                    ContentType="application/octet-stream",
+                )
+                if self.local_fallback:
+                    self.local_fallback.save_raw(company_id, dataset_id, version, filename, content)
+                return f"s3://{self.bucket}/{key}"
+            except Exception as exc:
+                self.is_degraded = True
+                self.last_error = f"{type(exc).__name__}: {exc}"
+                logger.error(
+                    "storage_degraded: Échec d'écriture S3 save_raw sur bucket=%s key=%s (%s). "
+                    "Bascule en mode dégradé sur LocalDatasetStorage persistant.",
+                    self.bucket, key, self.last_error
+                )
+                if self.local_fallback:
+                    return self.local_fallback.save_raw(company_id, dataset_id, version, filename, content)
+                raise StorageDurabilityError(f"Durabilité non garantie : échec S3 ({self.last_error}) et aucun fallback local disponible") from exc
+        self.is_degraded = True
+        self.last_error = "Client S3 non disponible"
+        if self.local_fallback:
+            return self.local_fallback.save_raw(company_id, dataset_id, version, filename, content)
+        raise StorageDurabilityError("Durabilité non garantie : aucun client S3 ni fallback local disponible")
+
+    def save_prepared(
+        self,
+        company_id: UUID,
+        dataset_id: UUID,
+        version: int,
+        rows: list[dict[str, Any]],
+    ) -> str:
+        key = self._s3_key(company_id, dataset_id, version, "prepared", "prepared.json")
+        payload = json.dumps(rows, default=str).encode("utf-8")
+        if self._s3 is not None:
+            try:
+                self._s3.put_object(
+                    Bucket=self.bucket,
+                    Key=key,
+                    Body=payload,
+                    ContentType="application/json",
+                )
+                if self.local_fallback:
+                    self.local_fallback.save_prepared(company_id, dataset_id, version, rows)
+                return f"s3://{self.bucket}/{key}"
+            except Exception as exc:
+                self.is_degraded = True
+                self.last_error = f"{type(exc).__name__}: {exc}"
+                logger.error(
+                    "storage_degraded: Échec d'écriture S3 save_prepared sur bucket=%s key=%s (%s). "
+                    "Bascule en mode dégradé sur LocalDatasetStorage persistant.",
+                    self.bucket, key, self.last_error
+                )
+                if self.local_fallback:
+                    return self.local_fallback.save_prepared(company_id, dataset_id, version, rows)
+                raise StorageDurabilityError(f"Durabilité non garantie : échec S3 ({self.last_error}) et aucun fallback local disponible") from exc
+        self.is_degraded = True
+        self.last_error = "Client S3 non disponible"
+        if self.local_fallback:
+            return self.local_fallback.save_prepared(company_id, dataset_id, version, rows)
+        raise StorageDurabilityError("Durabilité non garantie : aucun client S3 ni fallback local disponible")
+
+    def save_metadata(
+        self,
+        company_id: UUID,
+        dataset_id: UUID,
+        version: int,
+        metadata: dict[str, Any],
+    ) -> str:
+        key = self._s3_key(company_id, dataset_id, version, "metadata", "metadata.json")
+        payload = json.dumps(metadata, default=str).encode("utf-8")
+        if self._s3 is not None:
+            try:
+                self._s3.put_object(
+                    Bucket=self.bucket,
+                    Key=key,
+                    Body=payload,
+                    ContentType="application/json",
+                )
+                if self.local_fallback:
+                    self.local_fallback.save_metadata(company_id, dataset_id, version, metadata)
+                return f"s3://{self.bucket}/{key}"
+            except Exception as exc:
+                self.is_degraded = True
+                self.last_error = f"{type(exc).__name__}: {exc}"
+                logger.error(
+                    "storage_degraded: Échec d'écriture S3 save_metadata sur bucket=%s key=%s (%s). "
+                    "Bascule en mode dégradé sur LocalDatasetStorage persistant.",
+                    self.bucket, key, self.last_error
+                )
+                if self.local_fallback:
+                    return self.local_fallback.save_metadata(company_id, dataset_id, version, metadata)
+                raise StorageDurabilityError(f"Durabilité non garantie : échec S3 ({self.last_error}) et aucun fallback local disponible") from exc
+        self.is_degraded = True
+        self.last_error = "Client S3 non disponible"
+        if self.local_fallback:
+            return self.local_fallback.save_metadata(company_id, dataset_id, version, metadata)
+        raise StorageDurabilityError("Durabilité non garantie : aucun client S3 ni fallback local disponible")
+
+    def save_canonical(
+        self,
+        company_id: UUID,
+        dataset_id: UUID,
+        version: int,
+        entities: dict[str, list[dict[str, Any]]],
+    ) -> str:
+        key = self._s3_key(company_id, dataset_id, version, "canonical", "entities.json")
+        payload = json.dumps(entities, default=str).encode("utf-8")
+        if self._s3 is not None:
+            try:
+                self._s3.put_object(
+                    Bucket=self.bucket,
+                    Key=key,
+                    Body=payload,
+                    ContentType="application/json",
+                )
+                if self.local_fallback:
+                    self.local_fallback.save_canonical(company_id, dataset_id, version, entities)
+                return f"s3://{self.bucket}/{key}"
+            except Exception as exc:
+                self.is_degraded = True
+                self.last_error = f"{type(exc).__name__}: {exc}"
+                logger.error(
+                    "storage_degraded: Échec d'écriture S3 save_canonical sur bucket=%s key=%s (%s). "
+                    "Bascule en mode dégradé sur LocalDatasetStorage persistant.",
+                    self.bucket, key, self.last_error
+                )
+                if self.local_fallback:
+                    return self.local_fallback.save_canonical(company_id, dataset_id, version, entities)
+                raise StorageDurabilityError(f"Durabilité non garantie : échec S3 ({self.last_error}) et aucun fallback local disponible") from exc
+        self.is_degraded = True
+        self.last_error = "Client S3 non disponible"
+        if self.local_fallback:
+            return self.local_fallback.save_canonical(company_id, dataset_id, version, entities)
+        raise StorageDurabilityError("Durabilité non garantie : aucun client S3 ni fallback local disponible")
+
+    @property
+    def _root(self) -> Path:
+        if self.local_fallback and hasattr(self.local_fallback, "_root"):
+            return self.local_fallback._root
+        return Path("data/artifacts/company_datasets").resolve()
+
+    def prepared_path(self, company_id: UUID, dataset_id: UUID, version: int) -> Path:
+        if self.local_fallback and hasattr(self.local_fallback, "prepared_path"):
+            return self.local_fallback.prepared_path(company_id, dataset_id, version)
+        return (self._root / str(company_id) / "datasets" / str(dataset_id) / f"v{version}" / "prepared" / "prepared.json").resolve()
+
+    def metadata_path(self, company_id: UUID, dataset_id: UUID, version: int) -> Path:
+        if self.local_fallback and hasattr(self.local_fallback, "metadata_path"):
+            return self.local_fallback.metadata_path(company_id, dataset_id, version)
+        return (self._root / str(company_id) / "datasets" / str(dataset_id) / f"v{version}" / "metadata" / "metadata.json").resolve()
+
+    def canonical_path(self, company_id: UUID, dataset_id: UUID, version: int) -> Path:
+        if self.local_fallback and hasattr(self.local_fallback, "canonical_path"):
+            return self.local_fallback.canonical_path(company_id, dataset_id, version)
+        return (self._root / str(company_id) / "datasets" / str(dataset_id) / f"v{version}" / "canonical" / "entities.json").resolve()
+
+    def delete_dataset(self, company_id: UUID, dataset_id: UUID) -> None:
+        if self.local_fallback and hasattr(self.local_fallback, "delete_dataset"):
+            self.local_fallback.delete_dataset(company_id, dataset_id)
+        if self._s3 is not None:
+            try:
+                prefix = f"{company_id}/datasets/{dataset_id}/"
+                response = self._s3.list_objects_v2(Bucket=self.bucket, Prefix=prefix)
+                objects = [{"Key": obj["Key"]} for obj in response.get("Contents", [])]
+                if objects:
+                    self._s3.delete_objects(Bucket=self.bucket, Delete={"Objects": objects})
+            except Exception:
+                pass
+

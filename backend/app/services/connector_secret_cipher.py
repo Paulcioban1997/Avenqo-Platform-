@@ -20,7 +20,9 @@ class ConnectorSecretCipher:
         if not keys:
             raise ConnectorSecretError("Connector encryption is not configured")
         try:
-            self._cipher = MultiFernet([Fernet(key.encode("ascii")) for key in keys])
+            ciphers = [Fernet(key.encode("ascii")) for key in keys]
+            self._primary = ciphers[0]
+            self._cipher = MultiFernet(ciphers)
         except (ValueError, UnicodeEncodeError) as exc:
             raise ConnectorSecretError("Connector encryption key is invalid") from exc
 
@@ -41,3 +43,21 @@ class ConnectorSecretCipher:
         if not isinstance(payload, dict):
             raise ConnectorSecretError("Connector credentials have an invalid format")
         return payload
+
+    def rotate(self, encrypted_payload: str) -> str:
+        """Re-encrypt with the primary key, preserving Fernet's original timestamp."""
+        original = self.decrypt(encrypted_payload)
+        try:
+            rotated = self._cipher.rotate(encrypted_payload.encode("ascii")).decode("ascii")
+        except (InvalidToken, UnicodeError, ValueError, TypeError):
+            raise ConnectorSecretError("Connector credentials cannot be rotated") from None
+        if self.decrypt(rotated) != original:
+            raise ConnectorSecretError("Connector credential rotation verification failed")
+        return rotated
+
+    def uses_primary_key(self, encrypted_payload: str) -> bool:
+        try:
+            self._primary.decrypt(encrypted_payload.encode("ascii"))
+            return True
+        except (InvalidToken, UnicodeError, ValueError, TypeError):
+            return False

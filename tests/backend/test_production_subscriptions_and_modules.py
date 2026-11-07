@@ -1,8 +1,8 @@
 """Tests obligatoires de production pour les règles d'abonnements et modules Avenqo.
 
-Conforme aux spécifications :
-- Demo : max 3 modules actifs
-- Professional : max 6 modules actifs
+Conforme aux spécifications officielles :
+- Base (alias Demo) : max 2 modules actifs
+- Professional : max 5 modules actifs
 - Sérialisation des activations concurrentes
 - Droits de facturation stricts (MEMBER refusé)
 - Idempotence webhook Stripe et échec de paiement
@@ -98,50 +98,58 @@ def _service(db: Session) -> ModuleEntitlementService:
     return ModuleEntitlementService(db, registry=TEST_REGISTRY)
 
 
-def test_demo_limit_three_accepted_fourth_refused(db: Session) -> None:
-    """1. Demo : trois activations acceptées, quatrième refusée."""
-    company = _create_company(db, "demo", "Demo Co")
+def test_base_limit_two_accepted_third_refused(db: Session) -> None:
+    """1. Base : deux activations acceptées, troisième refusée."""
+    company = _create_company(db, "base", "Base Co")
     tenant = TenantContext(company.id)
     service = _service(db)
 
     summary = service.summary(tenant)
-    assert summary.module_limit == 3
-    assert summary.remaining_module_slots == 3
+    assert summary.module_limit == 2
+    assert summary.remaining_module_slots == 2
 
-    # Activer 3 modules -> succès
     service.activate_module(tenant, "retail")
     service.activate_module(tenant, "crm")
-    service.activate_module(tenant, "accounting")
 
     summary = service.summary(tenant)
-    assert len(summary.active_modules) == 3
+    assert len(summary.active_modules) == 2
     assert summary.remaining_module_slots == 0
 
-    # 4ème tentative -> refus avec explication claire
-    with pytest.raises(ModuleLimitReached, match="supports 3 active modules"):
+    with pytest.raises(ModuleLimitReached, match="supports 2 active modules"):
         service.activate_module(tenant, "marketing")
 
 
-def test_professional_limit_six_accepted_seventh_refused(db: Session) -> None:
-    """2. Professional : six acceptées, septième refusée."""
+def test_demo_alias_uses_official_base_module_limit(db: Session) -> None:
+    """L'alias Demo conserve la limite officielle Base de 2 modules."""
+    company = _create_company(db, "demo", "Demo Alias Co")
+    tenant = TenantContext(company.id)
+    service = _service(db)
+
+    assert service.summary(tenant).module_limit == 2
+    service.activate_module(tenant, "retail")
+    service.activate_module(tenant, "crm")
+    with pytest.raises(ModuleLimitReached, match="supports 2 active modules"):
+        service.activate_module(tenant, "accounting")
+
+
+def test_professional_limit_five_accepted_sixth_refused(db: Session) -> None:
+    """2. Professional : cinq acceptées, sixième refusée."""
     company = _create_company(db, "professional", "Pro Co")
     tenant = TenantContext(company.id)
     service = _service(db)
 
     summary = service.summary(tenant)
-    assert summary.module_limit == 6
+    assert summary.module_limit == 5
 
-    # Activer 6 modules
-    for key in AVAILABLE_KEYS[:6]:
+    for key in AVAILABLE_KEYS[:5]:
         service.activate_module(tenant, key)
 
     summary = service.summary(tenant)
-    assert len(summary.active_modules) == 6
+    assert len(summary.active_modules) == 5
     assert summary.remaining_module_slots == 0
 
-    # 7ème tentative -> refus
-    with pytest.raises(ModuleLimitReached, match="supports 6 active modules"):
-        service.activate_module(tenant, AVAILABLE_KEYS[6])
+    with pytest.raises(ModuleLimitReached, match="supports 5 active modules"):
+        service.activate_module(tenant, AVAILABLE_KEYS[5])
 
 
 def test_deactivation_and_swap_no_data_loss(db: Session) -> None:
@@ -152,7 +160,6 @@ def test_deactivation_and_swap_no_data_loss(db: Session) -> None:
 
     service.activate_module(tenant, "retail")
     service.activate_module(tenant, "crm")
-    service.activate_module(tenant, "accounting")
 
     # Désactiver CRM libère 1 slot
     service.deactivate_module(tenant, "crm")
@@ -161,7 +168,7 @@ def test_deactivation_and_swap_no_data_loss(db: Session) -> None:
 
     # Activer Marketing à la place
     swapped = service.activate_module(tenant, "marketing")
-    assert set(swapped.active_modules) == {"retail", "accounting", "marketing"}
+    assert set(swapped.active_modules) == {"retail", "marketing"}
     assert swapped.remaining_module_slots == 0
 
     # Vérifier que l'entitlement CRM existe toujours en base avec statut INACTIVE (données préservées)
@@ -258,3 +265,48 @@ def test_multi_tenant_isolation_subscription_and_invoices(db: Session) -> None:
 
     assert service.get_active_modules(TenantContext(company_a.id)) == ("retail",)
     assert service.get_active_modules(TenantContext(company_b.id)) == ("crm",)
+
+
+def test_provider_status_portal_available_requires_configured_stripe(db: Session):
+    from backend.app.config.settings import Settings
+    from backend.app.routers.billing import provider_status
+    from unittest.mock import MagicMock
+
+    company = _create_company(db, "professional", "Portal Test Co")
+    user = User(
+        id=uuid4(),
+        email="portal@test.ca",
+        password_hash="hash",
+        first_name="Portal",
+        last_name="User",
+        company_id=company.id,
+        role="OWNER",
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+
+    identity = MagicMock()
+    identity.user = user
+
+    # 1. Stripe NOT configured in settings -> portal_available must be False even if customer_id exists
+    settings_unconfigured = Settings(
+        AUTH_JWT_SECRET="secret" * 8,
+        STRIPE_SECRET_KEY="",
+        STRIPE_WEBHOOK_SECRET="",
+    )
+    status_unconfigured = provider_status(identity, db, settings_unconfigured)
+    assert status_unconfigured["configured"] is False
+    assert status_unconfigured["customer_linked"] is True
+    assert status_unconfigured["portal_available"] is False
+
+    # 2. Stripe configured -> portal_available is True
+    settings_configured = Settings(
+        AUTH_JWT_SECRET="secret" * 8,
+        STRIPE_SECRET_KEY="sk_test_dummy",
+        STRIPE_WEBHOOK_SECRET="whsec_dummy",
+    )
+    status_configured = provider_status(identity, db, settings_configured)
+    assert status_configured["configured"] is True
+    assert status_configured["customer_linked"] is True
+    assert status_configured["portal_available"] is True

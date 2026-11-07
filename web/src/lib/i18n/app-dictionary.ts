@@ -9,6 +9,7 @@ import {
   type AppMarketingExtraWords,
   type AppMarketingWords,
 } from "./app-locale-overrides";
+import { COPILOT_CHIPS_COPY } from "./copilot-chips-copy";
 import { getTranslations } from "./dictionary";
 import { getApplicationCatalog } from "./generated-app-catalogs";
 
@@ -136,6 +137,9 @@ export type AppTranslations = {
     trendSubtitle: string;
     categorySplitTitle: string;
     regionalSalesTitle: string;
+    conversionUnavailable: string;
+    categorySplitUnavailable: string;
+    regionalSalesUnavailable: string;
     aiInsightTitle: string;
     aiInsightEmpty: string;
     aiInsightInsufficient: string;
@@ -170,6 +174,7 @@ export type AppTranslations = {
     freshness: string;
     demandForecastTitle: string;
     forecastUnavailable: string;
+    forecastNeedHistory: string;
     forecastMethodModel: string;
     forecastMethodHistorical: string;
     forecastDisclaimer: string;
@@ -178,6 +183,7 @@ export type AppTranslations = {
     noAnomaliesMessage: string;
     recommendationsDescription: string;
     recommendationsUnavailable: string;
+    recommendationsNeedOrders: string;
     overstockAlert: string;
     stockoutRiskAlert: string;
   };
@@ -458,6 +464,9 @@ const frApp: AppTranslations = {
     trendSubtitle: "Évolution temporelle consolidée multi-sources",
     categorySplitTitle: "Répartition des ventes par catégorie",
     regionalSalesTitle: "Performance des ventes régionales",
+    conversionUnavailable: "Indisponible : cette source n’inclut pas les visites ou sessions.",
+    categorySplitUnavailable: "Aucune colonne de catégorie n’est présente dans cette source.",
+    regionalSalesUnavailable: "Aucune colonne de région ou de pays n’est présente dans cette source.",
     aiInsightTitle: "Insight IA Avenqo",
     aiInsightEmpty: "Aucun flux de données disponible pour générer une analyse.",
     aiInsightInsufficient: "Données insuffisantes. Activez un jeu de données ou une source connectée.",
@@ -492,6 +501,7 @@ const frApp: AppTranslations = {
     freshness: "Fraîcheur",
     demandForecastTitle: "Prévisions de Demande & Réapprovisionnement",
     forecastUnavailable: "Aucune prévision n’est disponible pour ces données.",
+    forecastNeedHistory: "Les prévisions nécessitent au moins deux semaines de ventes datées sur la source sélectionnée.",
     forecastMethodModel: "Modèle de prévision actif",
     forecastMethodHistorical: "Moyenne historique hebdomadaire",
     forecastDisclaimer: "Modèle prédictif basé sur l'historique de ventes. Ne constitue pas une garantie contractuelle de vente.",
@@ -500,6 +510,7 @@ const frApp: AppTranslations = {
     noAnomaliesMessage: "Surveillez les changements qui demandent votre attention.",
     recommendationsDescription: "Avenqo classera les opportunités selon leur impact potentiel sur votre activité.",
     recommendationsUnavailable: "Aucune recommandation n’a été générée pour ces données.",
+    recommendationsNeedOrders: "Les recommandations commerciales nécessitent au moins 10 commandes distinctes sur la source sélectionnée.",
     overstockAlert: "Alerte Surstock Détecté",
     stockoutRiskAlert: "Risque de Rupture Imminente",
   },
@@ -780,6 +791,9 @@ const enApp: AppTranslations = {
     trendSubtitle: "Multi-source consolidated timeline",
     categorySplitTitle: "Sales breakdown by category",
     regionalSalesTitle: "Regional sales distribution",
+    conversionUnavailable: "Unavailable: this source has no visit or session data.",
+    categorySplitUnavailable: "No category column is present in this source.",
+    regionalSalesUnavailable: "No region or country column is present in this source.",
     aiInsightTitle: "Avenqo AI Insight",
     aiInsightEmpty: "No data stream available to produce insights.",
     aiInsightInsufficient: "Insufficient data. Enable a dataset or connected source to continue.",
@@ -814,6 +828,7 @@ const enApp: AppTranslations = {
     freshness: "Freshness",
     demandForecastTitle: "Demand Forecast & Replenishment Planning",
     forecastUnavailable: "No forecast is available for this data.",
+    forecastNeedHistory: "Forecasts require at least two weeks of dated sales on the selected source.",
     forecastMethodModel: "Active forecast model",
     forecastMethodHistorical: "Historical weekly average",
     forecastDisclaimer: "Predictive model based on historical sales velocity. Does not constitute a contractual sales guarantee.",
@@ -822,6 +837,7 @@ const enApp: AppTranslations = {
     noAnomaliesMessage: "Watch for changes that need your attention.",
     recommendationsDescription: "Avenqo will rank opportunities by their potential impact on your business.",
     recommendationsUnavailable: "No recommendations have been generated for this data.",
+    recommendationsNeedOrders: "Sales recommendations require at least 10 distinct orders on the selected source.",
     overstockAlert: "Excess Inventory Detected",
     stockoutRiskAlert: "Imminent Stockout Risk",
   },
@@ -1146,6 +1162,7 @@ export function getAppTranslations(locale: LocaleCode | string): AppTranslations
     },
     copilot: {
       ...base.copilot,
+      quickPills: COPILOT_CHIPS_COPY[locale as LocaleCode] ?? base.copilot.quickPills,
       title: assistant.avenqoAi,
       subtitle: assistant.subtitle,
       statusThinking: assistant.thinking,

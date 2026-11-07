@@ -36,6 +36,13 @@ def test_allocations_mensuelles_de_credits_sont_centralisees_par_offre() -> None
     assert get_plan("enterprise").monthly_ai_credits is None
 
 
+def test_official_module_quotas_are_two_and_five() -> None:
+    assert get_plan("base").max_selectable_modules == 2
+    assert get_plan("demo").max_selectable_modules == 2
+    assert get_plan("professional").max_selectable_modules == 5
+    assert get_plan("enterprise").max_selectable_modules is None
+
+
 def test_tarification_canonique_cad_et_usd_est_definie() -> None:
     base = get_plan("base")
     assert base.monthly_price_cad == 29.99

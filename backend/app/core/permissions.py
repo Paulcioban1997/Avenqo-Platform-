@@ -3,16 +3,51 @@
 from backend.app.models.base import UserRole
 
 ROLE_PERMISSIONS: dict[UserRole, tuple[str, ...]] = {
-    UserRole.OWNER: ("company:manage", "users:manage", "modules:manage", "billing:manage", "data:manage", "data:read", "crm:appointments:write", "crm:appointments:read", "ai:use"),
-    UserRole.ADMIN: ("users:manage", "modules:manage", "data:manage", "data:read", "crm:appointments:write", "crm:appointments:read", "ai:use"),
-    UserRole.MANAGER: ("data:manage", "data:read", "crm:appointments:write", "crm:appointments:read", "ai:use"),
-    UserRole.ANALYST: ("data:read", "ai:use"),
+    UserRole.OWNER: (
+        "company:manage",
+        "users:manage",
+        "modules:manage",
+        "billing:manage",
+        "data:manage",
+        "data:read",
+        "crm:appointments:write",
+        "crm:appointments:read",
+        "marketing:read",
+        "marketing:connect",
+        "marketing:disconnect",
+        "marketing:admin",
+        "ai:use",
+    ),
+    UserRole.ADMIN: (
+        "users:manage",
+        "modules:manage",
+        "data:manage",
+        "data:read",
+        "crm:appointments:write",
+        "crm:appointments:read",
+        "marketing:read",
+        "marketing:connect",
+        "marketing:disconnect",
+        "marketing:admin",
+        "ai:use",
+    ),
+    UserRole.MANAGER: (
+        "data:manage",
+        "data:read",
+        "crm:appointments:write",
+        "crm:appointments:read",
+        "marketing:read",
+        "marketing:connect",
+        "ai:use",
+    ),
+    UserRole.ANALYST: ("data:read", "marketing:read", "ai:use"),
     UserRole.USER: ("ai:use",),
-    UserRole.VIEWER: ("data:read",),
+    UserRole.VIEWER: ("data:read", "marketing:read"),
 }
 
 
-def permissions_for(role: UserRole) -> tuple[str, ...]:
+def permissions_for(role: UserRole | str) -> tuple[str, ...]:
     """Retourne les permissions stables d'un rôle."""
 
-    return ROLE_PERMISSIONS[role]
+    resolved = role if isinstance(role, UserRole) else UserRole(str(role))
+    return ROLE_PERMISSIONS[resolved]

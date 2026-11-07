@@ -4,6 +4,11 @@ import { proxy } from "@/proxy";
 
 afterEach(() => { vi.unstubAllGlobals(); });
 
+it.each(["/security", "/workspace/modules"])("protects %s before serving the page", async (path) => {
+  const response = await proxy(new NextRequest(`https://avenqo.ca${path}`));
+  expect(response.headers.get("location")).toContain("/login?next=");
+});
+
 function token(exp: number) {
   return `header.${Buffer.from(JSON.stringify({ exp })).toString("base64url")}.signature`;
 }

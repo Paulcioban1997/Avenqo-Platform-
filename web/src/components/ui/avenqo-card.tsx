@@ -194,6 +194,7 @@ export type StatusBadgeType =
   | "needs_attention"
   | "disconnected"
   | "coming_soon"
+  | "blocked"
   | "active"
   | "pending";
 
@@ -239,6 +240,12 @@ export function StatusBadge({
       defaultLabel: "Bientôt disponible",
       dot: "bg-violet-400",
       pill: "bg-violet-50 text-violet-700 border-violet-200/80 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-900/60",
+      ping: false,
+    },
+    blocked: {
+      defaultLabel: "Bloqué (Prérequis manquant)",
+      dot: "bg-rose-500",
+      pill: "bg-rose-50 text-rose-700 border-rose-200/80 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900/60",
       ping: false,
     },
     active: {

@@ -41,6 +41,9 @@ def get_ai_usage_service(
             max_input_tokens_per_request=settings.ai_max_input_tokens_per_request,
             max_output_tokens_per_request=settings.ai_max_output_tokens_per_request,
             max_request_credits=settings.ai_max_request_credits,
+            max_session_credits=settings.ai_max_session_credits,
+            max_session_cost_usd=settings.ai_max_session_cost_usd,
+            max_company_monthly_cost_usd=settings.ai_max_company_monthly_cost_usd,
         ),
     )
 
@@ -55,6 +58,9 @@ def get_tool_executor(
         ToolAuthorizationPolicy(db, agents),
         AIToolExecutionIdempotencyStore(db),
     )
+
+
+from backend.app.ai.memory.service import AvenqoMemoryService
 
 
 def get_chat_service(
@@ -72,4 +78,5 @@ def get_chat_service(
         tool_executor=executor,
         usage_service=usage_service,
         debug_mode=settings.debug,
+        memory_service=AvenqoMemoryService(db, settings),
     )

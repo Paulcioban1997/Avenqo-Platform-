@@ -21,6 +21,9 @@ import {
   UserX,
   Check,
   X,
+  ChevronDown,
+  Sliders,
+  FileText,
 } from "lucide-react";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
@@ -294,8 +297,8 @@ export function SettingsView() {
       setPinFormError("Les deux saisies de NIP ne correspondent pas.");
       return;
     }
-    if (pinStatus?.has_pin && !pinForm.currentPassword) {
-      setPinFormError("Votre mot de passe de compte actuel est requis pour modifier votre NIP.");
+    if (!pinForm.currentPassword) {
+      setPinFormError("Votre mot de passe de compte actuel est requis pour configurer votre NIP.");
       return;
     }
 
@@ -320,7 +323,7 @@ export function SettingsView() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || "Échec de configuration du NIP");
+        throw new Error(err.error?.message || (typeof err.detail === "string" ? err.detail : null) || "Échec de configuration du NIP");
       }
 
       setPinFormSuccess("NIP vocal configuré et sécurisé avec succès.");
@@ -496,7 +499,7 @@ export function SettingsView() {
         <div className="bg-white dark:bg-[#0B132B] rounded-2xl p-6 border border-slate-200/80 dark:border-white/[0.08] shadow-xs space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              {companyTranslations.settingsPlanLabel}
+              {locale.startsWith("fr") ? "Modules Actifs" : "Active Modules"}
             </span>
             <Layers className="w-4 h-4 text-purple-500" />
           </div>
@@ -517,6 +520,38 @@ export function SettingsView() {
         </div>
       </div>
 
+      {/* Contracts & Legal Section Quick Access */}
+      <div className="bg-gradient-to-r from-blue-50/80 via-white to-indigo-50/80 dark:from-[#0B132B] dark:via-[#111D3D]/50 dark:to-[#0B132B] rounded-2xl p-6 border border-blue-200/60 dark:border-blue-900/40 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="flex items-start gap-4">
+          <div className="p-3 rounded-xl bg-blue-600 text-white shrink-0 shadow-sm">
+            <FileText className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                {locale.startsWith("fr") ? "Documents Juridiques & Contrats d'Entreprise" : "Enterprise Legal Documents & Contracts"}
+              </h3>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 font-semibold uppercase">
+                {locale.startsWith("fr") ? "Espace Officiel" : "Official Space"}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-2xl">
+              {locale.startsWith("fr")
+                ? "Consultez, téléchargez et signez électroniquement ou par manuscrit vos accords d'entreprise (NDA mutuel, contrat d'abonnement SaaS, licence privée et addenda Loi 25 / PIPEDA)."
+                : "View, download and sign electronically or wet-ink your enterprise agreements (Mutual NDA, SaaS Subscription, Private License, and Law 25 / PIPEDA DPA)."}
+            </p>
+          </div>
+        </div>
+
+        <Link
+          href="/settings/contracts"
+          className="px-4 py-2.5 text-xs font-semibold rounded-xl bg-[#0076FF] text-white hover:bg-blue-600 transition-colors shadow-xs flex items-center gap-2 shrink-0"
+        >
+          <span>{locale.startsWith("fr") ? "Accéder à Mes Contrats" : "Access My Contracts"}</span>
+          <ChevronRight className="w-4 h-4" />
+        </Link>
+      </div>
+
       {(user?.role?.toLowerCase() === "owner" || user?.role?.toLowerCase() === "admin") && (
         <section className="space-y-5 border-y border-slate-200/80 py-6 dark:border-white/[0.08]" aria-label={t.navigation.voiceAi}>
           <div className="flex flex-wrap items-end justify-between gap-3">
@@ -525,13 +560,45 @@ export function SettingsView() {
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{voiceHealthCopy.freshness}</p>
             </div>
             {voiceStatus && (
-              <div className="flex flex-wrap gap-2 text-[10px] font-mono text-slate-500">
-                <span>{t.integrations.title}: {voiceStatus.telnyx_status}</span>
-                <span>Retell: {voiceStatus.retell_status}</span>
-                <span>STT: {voiceStatus.stt_status}</span>
-                <span>TTS: {voiceStatus.tts_status}</span>
-                <span>Realtime: {voiceStatus.realtime_status}</span>
-              </div>
+              <details className="group cursor-pointer">
+                <summary className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 font-semibold select-none list-none">
+                  <Sliders className="w-3.5 h-3.5 text-slate-400 group-open:text-[#0076FF]" />
+                  <span>Diagnostics & Infrastructure</span>
+                  <ChevronDown className="w-3 h-3 text-slate-400 transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="mt-2.5 p-3 rounded-xl bg-slate-50 dark:bg-[#060B13]/40 border border-slate-200/80 dark:border-white/[0.08] flex flex-wrap gap-3 text-[11px] font-mono">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-400">Téléphonie:</span>
+                    <span className={`px-1.5 py-0.5 rounded font-semibold text-[10px] ${voiceStatus.telnyx_status === "CONFIGURED" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400" : "bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-400"}`}>
+                      {voiceStatus.telnyx_status}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-400">Moteur Vocal:</span>
+                    <span className={`px-1.5 py-0.5 rounded font-semibold text-[10px] ${voiceStatus.retell_status === "CONFIGURED" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400" : "bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-400"}`}>
+                      {voiceStatus.retell_status}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-400">STT:</span>
+                    <span className="px-1.5 py-0.5 rounded font-semibold text-[10px] bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-400">
+                      {voiceStatus.stt_status}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-400">TTS:</span>
+                    <span className="px-1.5 py-0.5 rounded font-semibold text-[10px] bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-400">
+                      {voiceStatus.tts_status}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-400">Temps Réel:</span>
+                    <span className="px-1.5 py-0.5 rounded font-semibold text-[10px] bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-400">
+                      {voiceStatus.realtime_status}
+                    </span>
+                  </div>
+                </div>
+              </details>
             )}
           </div>
 
@@ -1000,7 +1067,7 @@ export function SettingsView() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {entitlements.modules.map((mod) => {
+            {entitlements.modules.filter(mod => ["crm", "voice", "retail", "accounting", "marketing", "ocr"].includes(mod.key)).map((mod) => {
               const isUpdating = updatingKey === mod.key;
               const isLocked = mod.state === "upgrade_required";
 

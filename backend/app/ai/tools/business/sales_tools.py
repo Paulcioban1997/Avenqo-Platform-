@@ -7,6 +7,7 @@ accès SQL brut, jamais une donnée fictive.
 from __future__ import annotations
 
 from datetime import date, datetime, time
+from typing import Literal
 
 from sqlalchemy.orm import Session
 
@@ -84,6 +85,7 @@ class SalesSummaryArgs(ToolArguments):
     location: str | None = None
     category: str | None = None
     product: str | None = None
+    source_scope: list[str] | str | None = None
 
 
 class GetSalesSummaryTool(RetailAITool):
@@ -130,11 +132,25 @@ class GetSalesSummaryTool(RetailAITool):
             period_end=bounds["end"],
             product=arguments.product,
         )
+        # Multi-source provenance and breakdown
+        sources = set()
+        for r in prepared.rows:
+            store = r.get("source_store") or r.get("source_provider")
+            if store:
+                sources.add(str(store))
+        if sources:
+            data["provenance"] = f"Données de ventes issues de : {', '.join(sorted(sources))}"
+            data["sources_breakdown"] = sorted(sources)
+
         unsupported = [name for name, value in (("location", arguments.location), ("category", arguments.category)) if value is not None]
         metadata: dict[str, Any] = {"unsupported_filters": unsupported} if unsupported else {}
         if not data.get("data_covered", True):
             metadata["data_covered"] = False
             metadata["warning"] = data.get("coverage_message")
+            # An empty filtered result is not evidence of zero business activity.
+            # Keep numerical placeholders out of the AI's authoritative result.
+            for metric in ("revenue", "orders", "average_order_value"):
+                data[metric] = None
         return ToolResult(success=True, data=_with_currency(self._session, context, data), source_refs=(str(prepared.dataset_id),), metadata=metadata)
 
 
@@ -233,6 +249,7 @@ class GetSalesComparisonTool(RetailAITool):
 
 
 class TopProductsArgs(ToolArguments):
+    sort_order: Literal["asc", "desc"] = "desc"
     top_n: int = 5
     metric: str = "revenue"
     date_from: date | None = None
@@ -245,7 +262,8 @@ class GetTopProductsTool(RetailAITool):
     name = "get_top_products"
     description = (
         "Return the top-performing products for the tenant, ranked by revenue, "
-        "quantity sold, or number of orders."
+        "quantity sold, or distinct orders. Use sort_order=asc for lowest-performing products; "
+        "desc for best sellers. Only observed products with available sales are ranked."
     )
     input_schema = TopProductsArgs
     required_permissions = ("ai:use", "data:read")
@@ -291,6 +309,7 @@ class GetTopProductsTool(RetailAITool):
             prepared,
             top_n=top_n,
             metric=arguments.metric,
+            sort_order=arguments.sort_order,
             period_start=bounds["start"],
             period_end=bounds["end"],
         )

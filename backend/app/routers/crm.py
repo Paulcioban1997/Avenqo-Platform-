@@ -7,26 +7,31 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import re
 import secrets
+from urllib.parse import urlencode, urlsplit
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.config.settings import get_settings
 from backend.app.core.security import hash_token
 from backend.app.core.permissions import permissions_for
+from backend.app.models.base import UserRole
 from backend.app.database import get_db
+from backend.app.services.tenant_rls import apply_tenant_rls
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
 from backend.app.dependencies.ai_authorization import get_active_ai_membership
 from backend.app.dependencies.commerce import get_connector_secret_cipher
 from backend.app.models.crm import (
     CRMActivity,
+    CRMAppointment,
     CRMCalendarConnection,
     CRMCustomFieldDefinition,
     CRMContact,
@@ -35,15 +40,20 @@ from backend.app.models.crm import (
 )
 from backend.app.models.commerce_connection import CommerceOAuthState
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
+from backend.app.services.calendar.base import CalendarProviderError, CalendarTokenRevokedError, requires_calendar_reconnect
+from backend.app.services.calendar.outlook_provider import OutlookCalendarProvider
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
 from backend.app.services.crm_availability_service import AvailabilityUnavailable, CRMAvailabilityService
 from backend.app.models.company import Company
 from backend.app.services.crm_intelligence_service import CRMIntelligenceService
 from backend.app.services.crm_search_service import CRMSearchService
 from backend.app.services.crm_service import CRMService
+from backend.app.services.audit_log_service import AuditLogService
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.ai.request_identity import resolve_ai_request_id
 from shared.ai_engine.contracts import TenantContext
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/crm", tags=["crm"])
 google_oauth_callback_router = APIRouter(prefix="/crm", tags=["crm-oauth"])
@@ -52,6 +62,7 @@ google_oauth_callback_router = APIRouter(prefix="/crm", tags=["crm-oauth"])
 class BusinessHoursRequest(BaseModel):
     timezone: str
     hours: dict[str, list[dict[str, str]]] = Field(default_factory=dict)
+    date_overrides: dict[str, list[dict[str, str]]] | None = None
     verification_date: date | None = None
     employee_id: UUID | None = None
 
@@ -75,6 +86,18 @@ class BusinessHoursRequest(BaseModel):
                 if opened >= closed or (previous is not None and opened < previous):
                     raise ValueError("Invalid or overlapping working hours")
                 previous = closed
+        if self.date_overrides:
+            for day_str, periods in self.date_overrides.items():
+                try:
+                    date.fromisoformat(day_str)
+                except ValueError as exc:
+                    raise ValueError("Invalid date in date_overrides") from exc
+                for period in periods:
+                    if set(period) != {"open", "close"}:
+                        raise ValueError("Invalid working periods in date_overrides")
+                    opened, closed = time.fromisoformat(period["open"]), time.fromisoformat(period["close"])
+                    if opened >= closed:
+                        raise ValueError("Invalid open/close interval in date_overrides")
         if self.verification_date and not datetime.now(ZoneInfo(self.timezone)).date() < self.verification_date <= datetime.now(ZoneInfo(self.timezone)).date() + timedelta(days=14):
             raise ValueError("Verification date must be bounded and future")
         return self
@@ -83,6 +106,8 @@ class BusinessHoursRequest(BaseModel):
 @router.get("/settings/business-hours")
 def get_business_hours(tenant: TenantContext = Depends(get_tenant_context), db: Session = Depends(get_db), employee_id: UUID | None = None):
     company = db.get(Company, tenant.company_id)
+    if company is None:
+        raise HTTPException(status_code=404, detail="Company not found")
     if employee_id:
         from backend.app.models.crm import CRMEmployee
         employee = db.get(CRMEmployee, employee_id)
@@ -92,6 +117,7 @@ def get_business_hours(tenant: TenantContext = Depends(get_tenant_context), db: 
                  for day, periods in employee.working_hours.items()}
         return {"timezone": company.timezone, "hours": hours}
     return {"timezone": company.timezone, "hours": (company.business_hours or {}).get("weekly", {}),
+            "date_overrides": (company.business_hours or {}).get("date_overrides", {}),
             "schedule": company.business_hours or {}}
 
 
@@ -102,6 +128,8 @@ def save_business_hours(payload: BusinessHoursRequest, tenant: TenantContext = D
     if "crm:appointments:write" not in permissions_for(membership.role) or membership.company_id != tenant.company_id or membership.user_id != identity.user.id:
         raise HTTPException(status_code=403)
     company = db.get(Company, tenant.company_id)
+    if company is None:
+        raise HTTPException(status_code=404, detail="Company not found")
     if payload.employee_id:
         from backend.app.models.crm import CRMEmployee
         employee = db.get(CRMEmployee, payload.employee_id)
@@ -117,12 +145,17 @@ def save_business_hours(payload: BusinessHoursRequest, tenant: TenantContext = D
         weekday = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")[payload.verification_date.weekday()]
         company.business_hours = {"weekly": {}, "date_overrides": {payload.verification_date.isoformat(): payload.hours.get(weekday, [])}, "verification_only": True}
     else:
-        company.business_hours = {"weekly": payload.hours} if payload.hours else {}
+        new_bh: dict[str, Any] = {"weekly": payload.hours} if payload.hours else {}
+        if payload.date_overrides is not None:
+            new_bh["date_overrides"] = payload.date_overrides
+        elif company.business_hours and "date_overrides" in company.business_hours:
+            new_bh["date_overrides"] = company.business_hours["date_overrides"]
+        company.business_hours = new_bh
     db.commit()
     return get_business_hours(tenant, db)
 
 
-def _google_oauth_state(tenant_id: UUID, user_id: UUID, secret: str) -> str:
+def _google_oauth_state(tenant_id: UUID, user_id: UUID, secret: str, return_origin: str | None = None) -> str:
     payload = {
         "tenant_id": str(tenant_id),
         "user_id": str(user_id),
@@ -130,6 +163,8 @@ def _google_oauth_state(tenant_id: UUID, user_id: UUID, secret: str) -> str:
         "nonce": secrets.token_urlsafe(24),
         "expires_at": int(datetime.now(timezone.utc).timestamp()) + 600,
     }
+    if return_origin:
+        payload["return_origin"] = return_origin
     encoded = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).decode().rstrip("=")
     signature = hmac.new(secret.encode(), encoded.encode(), hashlib.sha256).hexdigest()
     return f"{encoded}.{signature}"
@@ -153,9 +188,89 @@ def _verify_google_oauth_state(state: str, secret: str) -> dict[str, str]:
         raise HTTPException(status_code=400, detail="État OAuth Google invalide ou expiré.") from exc
 
 
-def _google_redirect_uri(settings) -> str:
-    return settings.google_calendar_redirect_uri or (
-        "https://api.avenqo.ca/api/v1/crm/calendar/google/callback"
+def _calendar_return_origin(settings, origin: str) -> str:
+    """Exact operator-managed allowlist; never trust arbitrary forwarded hosts."""
+    origin = origin.rstrip("/")
+    parsed = urlsplit(origin)
+    allowed = {settings.frontend_url.rstrip("/"), *getattr(settings, "cors_origins", [])}
+    allowed.update(item.strip().rstrip("/") for item in getattr(settings, "google_calendar_return_origins", "").split(",") if item.strip())
+    if origin not in allowed or parsed.scheme != "https" or parsed.netloc != parsed.hostname or parsed.path or parsed.query or parsed.fragment:
+        raise HTTPException(status_code=400, detail="Origine de retour Calendar non autorisée.")
+    return origin
+
+
+def _google_redirect_uri(settings, request: Request | None = None) -> str:
+    if settings.google_calendar_redirect_uri:
+        return settings.google_calendar_redirect_uri
+    if request:
+        base = str(request.base_url).rstrip("/")
+        return f"{base}/api/v1/crm/calendar/google/callback"
+    return "https://api.avenqo.ca/api/v1/crm/calendar/google/callback"
+
+
+def _outlook_oauth_state(tenant_id: UUID, user_id: UUID, secret: str) -> str:
+    payload = {
+        "tenant_id": str(tenant_id),
+        "user_id": str(user_id),
+        "provider": "outlook_calendar",
+        "nonce": secrets.token_urlsafe(24),
+        "expires_at": int(datetime.now(timezone.utc).timestamp()) + 600,
+    }
+    encoded = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).decode().rstrip("=")
+    signature = hmac.new(secret.encode(), encoded.encode(), hashlib.sha256).hexdigest()
+    return f"{encoded}.{signature}"
+
+
+def _verify_outlook_oauth_state(state: str, secret: str) -> dict[str, str]:
+    try:
+        encoded, signature = state.split(".", 1)
+        expected = hmac.new(secret.encode(), encoded.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(signature, expected):
+            raise ValueError("invalid signature")
+        payload = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+        if payload.get("provider") != "outlook_calendar":
+            raise ValueError("unexpected provider")
+        if int(payload["expires_at"]) < int(datetime.now(timezone.utc).timestamp()):
+            raise ValueError("expired state")
+        return payload
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=400, detail="État OAuth Outlook invalide ou expiré.") from exc
+
+
+_OAUTH_BIND_COOKIE = "avenqo_oauth_bind"
+_OAUTH_BIND_PATH = "/api/v1/crm/calendar"
+
+
+def _oauth_bind_value(state: str) -> str:
+    return hash_token(state)
+
+
+def _set_oauth_bind_cookie(response: Response, state: str) -> None:
+    settings = get_settings()
+    response.set_cookie(
+        key=_OAUTH_BIND_COOKIE,
+        value=_oauth_bind_value(state),
+        max_age=600,
+        httponly=True,
+        secure=settings.is_secure_cookie,
+        samesite="lax",
+        path=_OAUTH_BIND_PATH,
+    )
+
+
+def _require_oauth_bind(request: Request, state: str) -> None:
+    cookie = request.cookies.get(_OAUTH_BIND_COOKIE)
+    expected = _oauth_bind_value(state)
+    if not cookie or not hmac.compare_digest(cookie, expected):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Liaison OAuth navigateur manquante ou invalide.",
+        )
+
+
+def _outlook_redirect_uri(settings) -> str:
+    return settings.microsoft_calendar_redirect_uri or (
+        "https://api.avenqo.ca/api/v1/crm/calendar/outlook/callback"
     )
 
 
@@ -195,7 +310,7 @@ class CreateClientRequest(BaseModel):
     last_name: str
     email: str | None = None
     phone: str | None = None
-    preferred_language: str = "fr"
+    preferred_language: str | None = None
     company_name: str | None = None
     industry_type: str = "general"
     industry_metadata: dict[str, Any] = Field(default_factory=dict)
@@ -239,6 +354,13 @@ class CreateAppointmentRequest(BaseModel):
     industry_data: dict[str, Any] = Field(default_factory=dict)
     idempotency_key: str | None = Field(default=None, max_length=255)
 
+    @field_validator("service_id", "employee_id", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v: Any) -> Any:
+        if v == "" or (isinstance(v, str) and not v.strip()):
+            return None
+        return v
+
 
 class UpdateAppointmentRequest(BaseModel):
     title: str | None = None
@@ -250,6 +372,13 @@ class UpdateAppointmentRequest(BaseModel):
     price: float | None = None
     notes: str | None = None
     industry_data: dict[str, Any] | None = None
+
+    @field_validator("employee_id", mode="before")
+    @classmethod
+    def empty_str_to_none_update(cls, v: Any) -> Any:
+        if v == "" or (isinstance(v, str) and not v.strip()):
+            return None
+        return v
 
 
 class CreateServiceRequest(BaseModel):
@@ -295,13 +424,29 @@ class CreateOpportunityRequest(BaseModel):
 # --- KPI & Summary Endpoints ---
 
 @router.get("/kpis")
-@router.get("/summary")
 def get_crm_kpis(
     tenant: TenantContext = Depends(get_tenant_context),
     service: CRMService = Depends(_get_crm_service),
 ) -> dict[str, Any]:
     """Retourne les KPIs réels calculés directement depuis la base du tenant."""
     return service.get_kpis(tenant.company_id)
+
+
+@router.get("/summary")
+def get_crm_summary(
+    tenant: TenantContext = Depends(get_tenant_context),
+    service: CRMService = Depends(_get_crm_service),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Combine les KPI opérationnels et l'intelligence pipeline du tenant."""
+    kpis = service.get_kpis(tenant.company_id)
+    intelligence = CRMIntelligenceService(db).get_crm_summary(tenant.company_id)
+    return {
+        **kpis,
+        **intelligence,
+        "pending_tasks_count": intelligence.get("pending_follow_ups", 0),
+        "available": True,
+    }
 
 
 # --- Global CRM Search ---
@@ -515,8 +660,13 @@ async def create_appointment(
         data["idempotency_key"] = idempotency_key
     apt, error = await service.create_appointment(tenant.company_id, data)
     if error:
+        if "GOOGLE_BUSY" in error or "CRM_BUSY" in error:
+            raise HTTPException(status_code=409, detail={"code": "APPOINTMENT_CONFLICT"})
         raise HTTPException(status_code=400, detail=error)
-    return {
+    if apt is None:
+        raise HTTPException(status_code=400, detail="Failed to create appointment")
+    calendar_sync, sync_error = CRMService.calendar_sync_state(apt)
+    response = {
         "id": str(apt.id),
         "title": apt.title,
         "start_time": apt.start_time.isoformat(),
@@ -524,7 +674,12 @@ async def create_appointment(
         "status": apt.status,
         "calendar_provider": apt.calendar_provider,
         "external_event_id": apt.external_event_id,
+        "calendar_synced": calendar_sync == "synced" or bool(apt.external_event_id),
+        "calendar_sync": calendar_sync,
     }
+    if calendar_sync == "failed" and sync_error:
+        response["calendar_sync_error"] = sync_error
+    return response
 
 
 @router.put("/appointments/{appointment_id}")
@@ -538,7 +693,11 @@ async def update_appointment(
         tenant.company_id, appointment_id, payload.model_dump(exclude_unset=True)
     )
     if error:
+        if "GOOGLE_BUSY" in error or "CRM_BUSY" in error:
+            raise HTTPException(status_code=409, detail={"code": "APPOINTMENT_CONFLICT"})
         raise HTTPException(status_code=400, detail=error)
+    if apt is None:
+        raise HTTPException(status_code=404, detail="Appointment not found")
     return {
         "id": str(apt.id),
         "title": apt.title,
@@ -606,7 +765,15 @@ async def get_available_slots(
             tenant.company_id, target_date, service_id=service_id, employee_id=employee_id
         )
     except AvailabilityUnavailable as exc:
-        return {"target_date": target_date.isoformat(), "count": 0, "slots": [], "state": str(exc), "available": False}
+        state_code = "UNCONFIGURED" if str(exc) == "BUSINESS_HOURS_NOT_CONFIGURED" else str(exc)
+        return {
+            "target_date": target_date.isoformat(),
+            "count": 0,
+            "slots": [],
+            "state": state_code,
+            "reason": str(exc),
+            "available": False,
+        }
     return {
         "target_date": target_date.isoformat(),
         "count": len(slots),
@@ -632,6 +799,8 @@ def list_services(
             "currency": s.currency,
             "category": s.category,
             "color_hex": s.color_hex,
+            "is_approved_by_owner": bool(getattr(s, "is_approved_by_owner", False)),
+            "is_published": bool(getattr(s, "is_published", False)),
         }
         for s in services
     ]
@@ -641,10 +810,64 @@ def list_services(
 def create_service(
     payload: CreateServiceRequest,
     tenant: TenantContext = Depends(get_tenant_context),
+    identity: CurrentIdentity = Depends(get_current_identity),
     service: CRMService = Depends(_get_crm_service),
 ) -> dict[str, Any]:
+    perms = permissions_for(identity.user.role)
+    if "company:manage" not in perms and "data:manage" not in perms:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission insuffisante pour créer une prestation.",
+        )
     svc = service.create_service(tenant.company_id, payload.model_dump())
-    return {"id": str(svc.id), "name": svc.name, "price": svc.price}
+    return {
+        "id": str(svc.id),
+        "name": svc.name,
+        "price": svc.price,
+        "is_approved_by_owner": bool(getattr(svc, "is_approved_by_owner", False)),
+        "is_published": bool(getattr(svc, "is_published", False)),
+    }
+
+
+@router.post("/services/{service_id}/toggle-approval")
+def toggle_service_approval(
+    service_id: UUID,
+    tenant: TenantContext = Depends(get_tenant_context),
+    identity: CurrentIdentity = Depends(get_current_identity),
+    service: CRMService = Depends(_get_crm_service),
+) -> dict[str, Any]:
+    perms = permissions_for(identity.user.role)
+    if "company:manage" not in perms and identity.user.role != UserRole.OWNER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Seul le propriétaire peut approuver ou publier un service.",
+        )
+    svc = service.toggle_service_approval(tenant.company_id, service_id)
+    if not svc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Prestation introuvable.")
+
+    is_approved = bool(getattr(svc, "is_approved_by_owner", False))
+    is_published = bool(getattr(svc, "is_published", False))
+
+    AuditLogService(service._session).record(
+        actor_user_id=identity.user.id,
+        action="crm_service_approval_toggled",
+        target_type="crm_service",
+        target_id=str(svc.id),
+        company_id=tenant.company_id,
+        metadata={
+            "service_name": svc.name,
+            "is_approved_by_owner": is_approved,
+            "is_published": is_published,
+        },
+    )
+
+    return {
+        "id": str(svc.id),
+        "name": svc.name,
+        "is_approved_by_owner": is_approved,
+        "is_published": is_published,
+    }
 
 
 @router.get("/employees")
@@ -685,7 +908,10 @@ def create_note(
     tenant: TenantContext = Depends(get_tenant_context),
     service: CRMService = Depends(_get_crm_service),
 ) -> dict[str, Any]:
-    note = service.create_note(tenant.company_id, payload.model_dump(), author_name="Utilisateur")
+    try:
+        note = service.create_note(tenant.company_id, payload.model_dump(), author_name="Utilisateur")
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
     return {"id": str(note.id), "content": note.content}
 
 
@@ -762,44 +988,59 @@ def get_calendar_connection(
 ) -> dict[str, Any]:
     conn = service.get_calendar_connection(tenant.company_id)
     if not conn:
-        return {"connected": False, "provider": None, "account_email": None}
+        return {
+            "connected": False,
+            "provider": None,
+            "account_email": None,
+            "requires_reconnect": False,
+            "reconnect_message": None,
+        }
+    requires_reconnect = requires_calendar_reconnect(conn.sync_status, conn.sync_error)
+    connection_status = "CONNECTED" if conn.sync_status == "connected" else "RECONNECT_REQUIRED" if requires_reconnect else "DISCONNECTED" if conn.sync_status == "disconnected" else "ERROR"
     return {
         "connected": conn.sync_status == "connected",
+        "connection_status": connection_status,
         "provider": conn.provider,
         "account_email": conn.account_email,
         "calendar_id": conn.calendar_id,
         "sync_status": conn.sync_status,
+        "sync_error": conn.sync_error,
+        "requires_reconnect": requires_reconnect,
+        "reconnect_message": (
+            "Reconnectez Google Calendar pour reprendre les réservations"
+            if requires_reconnect
+            else None
+        ),
         "last_synced_at": conn.last_synced_at.isoformat() if conn.last_synced_at else None,
     }
 
 
 @router.get("/calendar/google/auth-url")
 def get_google_calendar_auth_url(
+    request: Request,
+    response: Response,
     tenant: TenantContext = Depends(get_tenant_context),
     identity=Depends(get_current_identity),
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
     settings = get_settings()
-    if not all(
-        (
-            settings.google_calendar_client_id,
-            settings.google_calendar_client_secret,
-            settings.google_calendar_redirect_uri,
-        )
-    ):
+    redirect_uri = _google_redirect_uri(settings, request)
+    if not (settings.google_calendar_client_id and settings.google_calendar_client_secret):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Google OAuth non configuré sur ce serveur.",
+            detail="Google OAuth non configuré sur cet environnement Sandbox (identifiants client manquants).",
         )
     provider = GoogleCalendarProvider(
         client_id=settings.google_calendar_client_id,
         client_secret=settings.google_calendar_client_secret,
-        redirect_uri=_google_redirect_uri(settings),
+        redirect_uri=redirect_uri,
     )
+    return_origin = _calendar_return_origin(settings, request.headers.get("x-avenqo-calendar-return-origin") or settings.frontend_url)
     state = _google_oauth_state(
         tenant.company_id,
         identity.user.id,
         settings.auth_jwt_secret,
+        return_origin=return_origin,
     )
     now = datetime.now(timezone.utc)
     previous_states = db.scalars(
@@ -824,11 +1065,13 @@ def get_google_calendar_auth_url(
     )
     db.commit()
     auth_url = provider.get_auth_url(state)
+    _set_oauth_bind_cookie(response, state)
     return {"auth_url": auth_url}
 
 
 @google_oauth_callback_router.get("/calendar/google/callback")
 async def google_calendar_callback(
+    request: Request,
     code: str = Query(...),
     state: str = Query(...),
     db: Session = Depends(get_db),
@@ -838,6 +1081,7 @@ async def google_calendar_callback(
     tenant_id = UUID(state_data["tenant_id"])
     user_id = UUID(state_data["user_id"])
     now = datetime.now(timezone.utc)
+    apply_tenant_rls(db, tenant_id)
     oauth_state = db.scalar(
         select(CommerceOAuthState)
         .where(
@@ -854,6 +1098,22 @@ async def google_calendar_callback(
         or oauth_state.actor_user_id != user_id
     ):
         raise HTTPException(status_code=400, detail="État OAuth Google invalide ou déjà utilisé.")
+    # Google returns to the stable API domain. The HttpOnly binding cookie
+    # belongs to the initiating web origin. Relay the short-lived code there;
+    # only its server route can forward the browser cookie for finalization.
+    # Never exchange/persist credentials before the browser binding is checked.
+    return_origin = state_data.get("return_origin")
+    if return_origin:
+        return_origin = _calendar_return_origin(settings, return_origin)
+    if not request.cookies.get(_OAUTH_BIND_COOKIE) and return_origin and request.headers.get("x-avenqo-calendar-relay") != "1":
+        redirect = RedirectResponse(
+            url=f"{return_origin}/api/v1/crm/calendar/google/relay?{urlencode({'code': code, 'state': state})}",
+            status_code=303,
+            headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+        )
+        return redirect
+    _require_oauth_bind(request, state)
+    apply_tenant_rls(db, tenant_id)
     oauth_state.consumed_at = now
     db.add(oauth_state)
     db.commit()
@@ -862,9 +1122,13 @@ async def google_calendar_callback(
     provider = GoogleCalendarProvider(
         client_id=settings.google_calendar_client_id,
         client_secret=settings.google_calendar_client_secret,
-        redirect_uri=_google_redirect_uri(settings),
+        redirect_uri=_google_redirect_uri(settings, request),
     )
     tokens = await provider.exchange_code(code)
+    # Verify real Calendar access before recording CONNECTED; no event writes.
+    if not tokens.get("access_token") or not tokens.get("account_email"):
+        raise HTTPException(status_code=502, detail="Identité du compte Google non confirmée.")
+    await provider.list_calendars(tokens)
     encrypted_creds = cipher.encrypt(tokens)
     email = tokens.get("account_email") or "compte-google@avenqo.ca"
 
@@ -875,6 +1139,15 @@ async def google_calendar_callback(
         )
     ).first()
     if conn:
+        if conn.account_email.strip().lower() != email.strip().lower() and db.scalar(
+            select(CRMAppointment.id).where(
+                CRMAppointment.company_id == tenant_id,
+                CRMAppointment.calendar_provider == "google",
+                CRMAppointment.external_event_id.is_not(None),
+                CRMAppointment.is_deleted.is_(False),
+            ).limit(1)
+        ) is not None:
+            raise HTTPException(status_code=409, detail={"code": "CALENDAR_HAS_LINKED_APPOINTMENTS"})
         conn.provider = "google"
         conn.user_id = user_id
         conn.account_email = email
@@ -896,14 +1169,143 @@ async def google_calendar_callback(
         db.add(conn)
 
     db.commit()
-    try:
-        await CRMService(db, cipher).sync_from_google(tenant_id)
-    except Exception:
-        pass
-    return RedirectResponse(
-        url=f"{settings.frontend_url.rstrip('/')}/integrations?integration=google_calendar&status=connected",
+    redirect = RedirectResponse(
+        url=f"{return_origin or settings.frontend_url.rstrip('/')}/crm?tab=connections&integration=google_calendar",
         status_code=303,
     )
+    redirect.headers["Cache-Control"] = "no-store"
+    redirect.headers["Referrer-Policy"] = "no-referrer"
+    redirect.delete_cookie(_OAUTH_BIND_COOKIE, path=_OAUTH_BIND_PATH)
+    return redirect
+
+
+@router.get("/calendar/outlook/auth-url")
+def get_outlook_calendar_auth_url(
+    response: Response,
+    tenant: TenantContext = Depends(get_tenant_context),
+    identity=Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    settings = get_settings()
+    if not all(
+        (
+            settings.microsoft_calendar_client_id,
+            settings.microsoft_calendar_client_secret,
+            settings.microsoft_calendar_redirect_uri,
+        )
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Microsoft Outlook OAuth non configuré sur ce serveur.",
+        )
+    provider = OutlookCalendarProvider(
+        client_id=settings.microsoft_calendar_client_id,
+        client_secret=settings.microsoft_calendar_client_secret,
+        redirect_uri=_outlook_redirect_uri(settings),
+    )
+    state = _outlook_oauth_state(tenant.company_id, identity.user.id, settings.auth_jwt_secret)
+    now = datetime.now(timezone.utc)
+    previous_states = db.scalars(
+        select(CommerceOAuthState).where(
+            CommerceOAuthState.company_id == tenant.company_id,
+            CommerceOAuthState.actor_user_id == identity.user.id,
+            CommerceOAuthState.provider == "outlook_calendar",
+            CommerceOAuthState.consumed_at.is_(None),
+        )
+    ).all()
+    for previous_state in previous_states:
+        previous_state.consumed_at = now
+    db.add(
+        CommerceOAuthState(
+            company_id=tenant.company_id,
+            actor_user_id=identity.user.id,
+            provider="outlook_calendar",
+            external_account_id="outlook_calendar",
+            state_hash=hash_token(state),
+            expires_at=now + timedelta(minutes=10),
+        )
+    )
+    db.commit()
+    auth_url = provider.get_auth_url(state)
+    _set_oauth_bind_cookie(response, state)
+    return {"auth_url": auth_url}
+
+
+@google_oauth_callback_router.get("/calendar/outlook/callback")
+async def outlook_calendar_callback(
+    request: Request,
+    code: str = Query(...),
+    state: str = Query(...),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    _require_oauth_bind(request, state)
+    settings = get_settings()
+    state_data = _verify_outlook_oauth_state(state, settings.auth_jwt_secret)
+    tenant_id = UUID(state_data["tenant_id"])
+    user_id = UUID(state_data["user_id"])
+    now = datetime.now(timezone.utc)
+    oauth_state = db.scalar(
+        select(CommerceOAuthState)
+        .where(
+            CommerceOAuthState.provider == "outlook_calendar",
+            CommerceOAuthState.state_hash == hash_token(state),
+            CommerceOAuthState.consumed_at.is_(None),
+        )
+        .with_for_update()
+    )
+    if (
+        oauth_state is None
+        or _as_utc(oauth_state.expires_at) <= now
+        or oauth_state.company_id != tenant_id
+        or oauth_state.actor_user_id != user_id
+    ):
+        raise HTTPException(status_code=400, detail="État OAuth Outlook invalide ou déjà utilisé.")
+    apply_tenant_rls(db, tenant_id)
+    oauth_state.consumed_at = now
+    db.commit()
+    provider = OutlookCalendarProvider(
+        client_id=settings.microsoft_calendar_client_id,
+        client_secret=settings.microsoft_calendar_client_secret,
+        redirect_uri=_outlook_redirect_uri(settings),
+    )
+    tokens = await provider.exchange_code(code)
+    encrypted_creds = get_connector_secret_cipher().encrypt(tokens)
+    email = tokens.get("account_email") or ""
+    if not email:
+        raise HTTPException(400, "Microsoft n'a pas renvoyé l'adresse du compte.")
+    conn = db.scalars(
+        select(CRMCalendarConnection).where(
+            CRMCalendarConnection.company_id == tenant_id,
+            CRMCalendarConnection.provider == "outlook",
+        )
+    ).first()
+    if conn:
+        conn.user_id = user_id
+        conn.account_email = email
+        conn.encrypted_credentials = encrypted_creds
+        conn.sync_status = "connected"
+        conn.last_synced_at = now
+        conn.sync_error = None
+    else:
+        db.add(
+            CRMCalendarConnection(
+                company_id=tenant_id,
+                user_id=user_id,
+                provider="outlook",
+                account_email=email,
+                calendar_id="primary",
+                encrypted_credentials=encrypted_creds,
+                sync_status="connected",
+                last_synced_at=now,
+            )
+        )
+    db.commit()
+    redirect = RedirectResponse(
+        url=f"{settings.frontend_url.rstrip('/')}/integrations?integration=outlook_calendar&status=connected",
+        status_code=303,
+    )
+    redirect.delete_cookie(_OAUTH_BIND_COOKIE, path=_OAUTH_BIND_PATH)
+    return redirect
 
 
 @router.get("/calendar/google/calendars")
@@ -922,12 +1324,27 @@ async def list_google_calendars(
         raise HTTPException(status_code=404, detail="Google Calendar non connecté.")
     try:
         credentials = get_connector_secret_cipher().decrypt(conn.encrypted_credentials)
-        calendars = await GoogleCalendarProvider(
+        provider = GoogleCalendarProvider(
             client_id=get_settings().google_calendar_client_id,
             client_secret=get_settings().google_calendar_client_secret,
             redirect_uri=get_settings().google_calendar_redirect_uri,
-        ).list_calendars(credentials)
+        )
+        try:
+            calendars = await provider.list_calendars(credentials)
+        except CalendarProviderError as exc:
+            if "401" not in str(exc) or not credentials.get("refresh_token"):
+                raise
+            refreshed = await provider.refresh_access_token(credentials["refresh_token"])
+            credentials = {**credentials, **refreshed}
+            calendars = await provider.list_calendars(credentials)
+            conn.encrypted_credentials = get_connector_secret_cipher().encrypt(credentials)
+            db.commit()
         return {"selected_calendar_id": conn.calendar_id, "calendars": calendars}
+    except CalendarTokenRevokedError as exc:
+        conn.sync_status = "error"
+        conn.sync_error = "Google token expired or revoked. Please reconnect."
+        db.commit()
+        raise HTTPException(status_code=409, detail="Reconnectez Google Calendar pour reprendre les réservations.") from exc
     except Exception as exc:
         conn.sync_status = "error"
         conn.sync_error = "Impossible de lire les calendriers Google."
@@ -961,8 +1378,11 @@ async def get_google_calendar_events(
             end_time=end or now + timedelta(days=365),
         )
         return {"events": events}
+    except CalendarTokenRevokedError as exc:
+        raise HTTPException(status_code=409, detail="Reconnectez Google Calendar pour reprendre les réservations.") from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail="Événements Google Calendar indisponibles.") from exc
+        logger.warning("Événements Google Calendar indisponibles pour company=%s: %s", tenant.company_id, exc)
+        return {"events": []}
 
 
 class GoogleCalendarSelectionRequest(BaseModel):
@@ -984,6 +1404,17 @@ def select_google_calendar(
     ).first()
     if not conn:
         raise HTTPException(status_code=404, detail="Google Calendar non connecté.")
+    old_calendar = conn.account_email if conn.calendar_id == "primary" else conn.calendar_id
+    new_calendar = conn.account_email if payload.calendar_id == "primary" else payload.calendar_id
+    if old_calendar != new_calendar and db.scalar(
+        select(CRMAppointment.id).where(
+            CRMAppointment.company_id == tenant.company_id,
+            CRMAppointment.calendar_provider == "google",
+            CRMAppointment.external_event_id.is_not(None),
+            CRMAppointment.is_deleted.is_(False),
+        ).limit(1)
+    ) is not None:
+        raise HTTPException(status_code=409, detail={"code": "CALENDAR_HAS_LINKED_APPOINTMENTS"})
     conn.calendar_id = payload.calendar_id
     conn.last_synced_at = datetime.now(timezone.utc)
     db.commit()
@@ -1028,7 +1459,8 @@ async def crm_copilot_chat(
     if any(word in msg for word in availability_words):
         from zoneinfo import ZoneInfo
         company = db.get(Company, tenant.company_id)
-        zone = ZoneInfo(company.timezone)
+        tz_name = (company.timezone if company else None) or "America/Toronto"
+        zone = ZoneInfo(tz_name)
         today = datetime.now(zone).date()
         target_day = today
         if any(word in msg for word in ("demain", "tomorrow", "mâine", "mañana")):
@@ -1067,12 +1499,20 @@ async def crm_copilot_chat(
 
     # 1. Natural Language Appointment Creation (Target workflow §12)
     # Example: "Crée un rendez-vous aujourd'hui à 14h30 de physiothérapie d'une durée de 30 minutes."
-    is_create_intent = any(k in msg for k in [
+    # Do not treat the letter "h" in "aujourd'hui" as a time hint — that made
+    # "mes rendez-vous aujourd'hui" look like a create command (HTTP 200, wrong action).
+    has_create_verb = any(k in msg for k in [
         "crée un rendez-vous", "créer un rendez-vous", "planifie", "planifier",
-        "prendre rendez-vous", "nouveau rendez-vous", "rendez-vous",
+        "prendre rendez-vous", "nouveau rendez-vous",
         "create an appointment", "create appointment", "schedule appointment",
-        "book appointment", "new appointment", "appointment"
-    ]) and any(h in msg for h in ["h", ":", "heure", "am", "pm", "at "])
+        "book appointment", "new appointment",
+    ])
+    has_time_hint = bool(
+        re.search(r"\d{1,2}\s*[h:]\s*\d{0,2}", msg)
+        or re.search(r"\b(heure|am|pm)\b", msg)
+        or " at " in msg
+    )
+    is_create_intent = has_create_verb and has_time_hint
 
     if is_create_intent:
         if "crm:appointments:write" not in permissions:
@@ -1218,9 +1658,9 @@ async def crm_copilot_chat(
             },
             actor_name="Avenqo Copilot",
         )
-        if err:
+        if err or apt is None:
             return {
-                "reply": f"Booking error: {err}" if req.locale == "en" else f"Erreur lors de la réservation : {err}",
+                "reply": f"Booking error: {err or 'Failed to create appointment'}" if req.locale == "en" else f"Erreur lors de la réservation : {err or 'Échec de la création du rendez-vous'}",
                 "status": "error"
             }
 
@@ -1253,7 +1693,23 @@ async def crm_copilot_chat(
         target_date = datetime.now(timezone.utc).date()
         if "demain" in msg or "tomorrow" in msg:
             target_date = target_date + timedelta(days=1)
-        slots = await avail_svc.list_available_slots(tenant.company_id, target_date)
+        try:
+            slots = await avail_svc.list_available_slots(tenant.company_id, target_date)
+        except AvailabilityUnavailable as exc:
+            if str(exc) == "BUSINESS_HOURS_NOT_CONFIGURED":
+                msg_reply = (
+                    "Your company's business hours have not been configured yet. Please configure them in the CRM via Hours & Services."
+                    if is_en
+                    else "Les horaires d'ouverture de votre entreprise ne sont pas encore configurés. Veuillez d'abord les configurer dans le CRM via le bouton Horaires & Services."
+                )
+                return {
+                    "reply": msg_reply,
+                    "status": "unavailable",
+                    "state": "UNCONFIGURED",
+                    "reason": "BUSINESS_HOURS_NOT_CONFIGURED",
+                    "slots": [],
+                }
+            slots = []
         count = len(slots)
         if count == 0:
             date_str = target_date.strftime("%Y-%m-%d") if is_en else target_date.strftime("%d/%m/%Y")
@@ -1280,7 +1736,14 @@ async def crm_copilot_chat(
     # 3. View Today's Appointments
     if any(k in msg for k in ["mes rendez-vous", "rendez-vous aujourd'hui", "agenda", "today's appointments", "my appointments"]):
         today_date = datetime.now(timezone.utc).date()
-        appts = service.list_appointments(tenant.company_id, target_date=today_date, limit=10)
+        day_start = datetime.combine(today_date, datetime.min.time(), tzinfo=timezone.utc)
+        day_end = day_start + timedelta(days=1)
+        appts = service.list_appointments(
+            tenant.company_id,
+            start_date=day_start,
+            end_date=day_end,
+            limit=10,
+        )
         if not appts:
             msg_reply = (
                 "Your calendar is completely open for today. No appointments scheduled."
@@ -1293,15 +1756,15 @@ async def crm_copilot_chat(
                 "appointments": [],
             }
         lines = [
-            f"• {a.title} ({a.client.full_name if a.client else ('Client' if not is_en else 'Customer')}) "
-            f"{'at' if is_en else 'à'} {a.start_time.strftime('%H:%M')}"
+            f"• {a['title']} ({a.get('client_name') or ('Client' if not is_en else 'Customer')}) "
+            f"{'at' if is_en else 'à'} {str(a.get('start_time') or '')[11:16]}"
             for a in appts
         ]
         header = f"You have {len(appts)} appointment(s) scheduled today:\n" if is_en else f"Vous avez {len(appts)} rendez-vous prévu(s) aujourd'hui :\n"
         return {
             "reply": header + "\n".join(lines),
             "status": "success",
-            "appointments": [{"id": str(a.id), "title": a.title} for a in appts],
+            "appointments": [{"id": a["id"], "title": a["title"]} for a in appts],
         }
 
     # 4. Search Client
@@ -1326,13 +1789,18 @@ async def crm_copilot_chat(
         rev = kpis.get("total_revenue_generated", 0.0)
         clients_count = kpis.get("active_clients", 0)
         appts_count = kpis.get("appointments_this_month", 0)
-        att_rate = kpis.get("attendance_rate_percent", 0.0)
+        att_rate = kpis.get("attendance_rate_percent")
+        att_display = (
+            f"{att_rate:.1f} %"
+            if isinstance(att_rate, (int, float))
+            else ("insufficient data" if is_en else "données insuffisantes")
+        )
         if is_en:
             msg_reply = (
                 f"Live CRM performance overview:\n"
                 f"• Active clients: {clients_count}\n"
                 f"• Appointments this month: {appts_count}\n"
-                f"• Attendance rate: {att_rate:.1f} %\n"
+                f"• Attendance rate: {att_display}\n"
                 f"• Revenue generated: {rev:,.2f} {cur}\n"
                 f"All metrics are computed live from your tenant registry."
             )
@@ -1341,7 +1809,7 @@ async def crm_copilot_chat(
                 f"Synthèse de vos indicateurs CRM en direct :\n"
                 f"• Clients actifs : {clients_count}\n"
                 f"• Rendez-vous ce mois : {appts_count}\n"
-                f"• Taux de présence : {att_rate:.1f} %\n"
+                f"• Taux de présence : {att_display}\n"
                 f"• Revenus générés : {rev:,.2f} {cur}\n"
                 f"Toutes ces données sont issues du registre normalisé de votre entreprise."
             )

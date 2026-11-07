@@ -30,6 +30,25 @@ class CalendarProviderError(Exception):
     pass
 
 
+class CalendarTokenRevokedError(CalendarProviderError):
+    """Raised when external OAuth refresh token is permanently revoked or expired."""
+    pass
+
+
+class CalendarTokenTransientError(CalendarProviderError):
+    """Raised on transient network or 5xx provider failures during token refresh."""
+    pass
+
+
+def requires_calendar_reconnect(sync_status: str, sync_error: str | None) -> bool:
+    """Do not confuse a recoverable local decryption failure with invalid_grant."""
+    if sync_status in {"reconnect_required", "revoked"}:
+        return True
+    return sync_status == "error" and any(marker in (sync_error or "").lower() for marker in (
+        "invalid_grant", "expired or revoked", "expiré ou révoqué", "token revoked", "token révoqué", "jeton révoqué",
+    ))
+
+
 class CalendarProvider(ABC):
     """Abstract interface supporting multi-provider calendar integration."""
 

@@ -34,6 +34,8 @@ class CompanyOnboarding(TimestampMixin, Base):
     current_tools: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     team_size: Mapped[str | None] = mapped_column(String(50), nullable=True)
     refined_industry: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    current_step: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    draft_payload: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     company: Mapped["Company"] = relationship(back_populates="onboarding")

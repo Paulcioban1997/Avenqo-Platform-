@@ -63,8 +63,13 @@ class LLMModelSpec:
     def cost_for(self, usage: LLMUsage) -> Decimal:
         cached_tokens = min(usage.cached_input_tokens, usage.input_tokens)
         uncached_tokens = max(usage.input_tokens - cached_tokens, 0)
+        writes = min(max(usage.cache_creation_input_tokens, 0), uncached_tokens)
+        writes_1h = min(max(usage.cache_creation_1h_input_tokens, 0), writes)
+        uncached_tokens -= writes
         token_cost = (
             Decimal(uncached_tokens) * self.input_cost_per_million_usd
+            + Decimal(writes - writes_1h) * self.input_cost_per_million_usd * Decimal("1.25")
+            + Decimal(writes_1h) * self.input_cost_per_million_usd * Decimal("2")
             + Decimal(cached_tokens) * self.cached_input_cost_per_million_usd
             + Decimal(usage.output_tokens) * self.output_cost_per_million_usd
         ) / Decimal(1_000_000)
@@ -96,6 +101,24 @@ _DEFAULT_RATES: dict[tuple[str, str], dict[str, str]] = {
         "output_cost_per_million_usd": "0.60",
         "tool_call_cost_usd": "0",
     },
+    ("openai", "gpt-4o"): {
+        "input_cost_per_million_usd": "2.50",
+        "cached_input_cost_per_million_usd": "1.25",
+        "output_cost_per_million_usd": "10.00",
+        "tool_call_cost_usd": "0",
+    },
+    ("gemini", "gemini-2.0-flash"): {
+        "input_cost_per_million_usd": "0.10",
+        "cached_input_cost_per_million_usd": "0.025",
+        "output_cost_per_million_usd": "0.40",
+        "tool_call_cost_usd": "0",
+    },
+    ("anthropic", "claude-3-5-haiku-20241022"): {
+        "input_cost_per_million_usd": "0.80",
+        "cached_input_cost_per_million_usd": "0.08",
+        "output_cost_per_million_usd": "4.00",
+        "tool_call_cost_usd": "0",
+    },
     ("anthropic", "claude-3-5-sonnet-20241022"): {
         "input_cost_per_million_usd": "3.00",
         "cached_input_cost_per_million_usd": "0.30",
@@ -106,6 +129,54 @@ _DEFAULT_RATES: dict[tuple[str, str], dict[str, str]] = {
         "input_cost_per_million_usd": "0.10",
         "cached_input_cost_per_million_usd": "0.025",
         "output_cost_per_million_usd": "0.40",
+        "tool_call_cost_usd": "0",
+    },
+    ("gemini", "gemini-1.5-flash"): {
+        "input_cost_per_million_usd": "0.075",
+        "cached_input_cost_per_million_usd": "0.01875",
+        "output_cost_per_million_usd": "0.30",
+        "tool_call_cost_usd": "0",
+    },
+    ("openai", "gpt-6-luna"): {
+        "input_cost_per_million_usd": "0.10",
+        "cached_input_cost_per_million_usd": "0.025",
+        "output_cost_per_million_usd": "0.50",
+        "tool_call_cost_usd": "0",
+    },
+    ("openai", "gpt-6-1-sol"): {
+        "input_cost_per_million_usd": "2.00",
+        "cached_input_cost_per_million_usd": "0.50",
+        "output_cost_per_million_usd": "10.00",
+        "tool_call_cost_usd": "0",
+    },
+    ("openai", "gpt-6-sol"): {
+        "input_cost_per_million_usd": "2.00",
+        "cached_input_cost_per_million_usd": "0.50",
+        "output_cost_per_million_usd": "10.00",
+        "tool_call_cost_usd": "0",
+    },
+    ("anthropic", "claude-haiku-5-5"): {
+        "input_cost_per_million_usd": "0.10",
+        "cached_input_cost_per_million_usd": "0.025",
+        "output_cost_per_million_usd": "0.50",
+        "tool_call_cost_usd": "0",
+    },
+    ("anthropic", "claude-5-5-haiku"): {
+        "input_cost_per_million_usd": "0.10",
+        "cached_input_cost_per_million_usd": "0.025",
+        "output_cost_per_million_usd": "0.50",
+        "tool_call_cost_usd": "0",
+    },
+    ("gemini", "gemini-3.1-flash-lite"): {
+        "input_cost_per_million_usd": "0.25",
+        "cached_input_cost_per_million_usd": "0.05",
+        "output_cost_per_million_usd": "1.50",
+        "tool_call_cost_usd": "0",
+    },
+    ("gemini", "gemini-3.8-flash"): {
+        "input_cost_per_million_usd": "0.75",
+        "cached_input_cost_per_million_usd": "0.075",
+        "output_cost_per_million_usd": "3.75",
         "tool_call_cost_usd": "0",
     },
 }
@@ -151,6 +222,42 @@ _KNOWN_MODEL_PROFILES: dict[tuple[str, str], dict[str, object]] = {
         "quality_tier": 2,
         "speed_tier": 1,
         "task_suitability": ["classification", "extraction", "business_question", "tool_orchestration"],
+        "pricing_source": "https://developers.openai.com/api/docs/pricing",
+        "pricing_version": "gpt-4o-mini-standard-text-2026-10-01",
+        "pricing_effective_from": "2026-10-01",
+    },
+    ("openai", "gpt-4o"): {
+        "capabilities": ["text", "tool_calling", "structured_output", "reasoning", "long_context"],
+        "context_window": 128_000,
+        "max_output_tokens": 16_384,
+        "quality_tier": 3,
+        "speed_tier": 2,
+        "task_suitability": ["classification", "extraction", "business_question", "business_reasoning", "tool_orchestration"],
+        "pricing_source": "https://developers.openai.com/api/docs/pricing",
+        "pricing_version": "gpt-4o-standard-text-2026-10-01",
+        "pricing_effective_from": "2026-10-01",
+    },
+    ("gemini", "gemini-2.0-flash"): {
+        "capabilities": ["text", "tool_calling", "structured_output", "fast_response", "low_cost", "long_context", "reasoning", "vision"],
+        "context_window": 1_048_576,
+        "max_output_tokens": 8_192,
+        "quality_tier": 2,
+        "speed_tier": 1,
+        "task_suitability": ["classification", "extraction", "business_question", "tool_orchestration", "business_reasoning"],
+        "pricing_source": "https://ai.google.dev/gemini-api/docs/pricing",
+        "pricing_version": "gemini-2.0-flash-standard-text-2026-10-01",
+        "pricing_effective_from": "2026-10-01",
+    },
+    ("anthropic", "claude-3-5-haiku-20241022"): {
+        "capabilities": ["text", "tool_calling", "structured_output", "fast_response", "low_cost", "reasoning"],
+        "context_window": 200_000,
+        "max_output_tokens": 8_192,
+        "quality_tier": 2,
+        "speed_tier": 1,
+        "task_suitability": ["classification", "extraction", "business_question", "tool_orchestration"],
+        "pricing_source": "https://platform.claude.com/docs/en/about-claude/pricing",
+        "pricing_version": "claude-3-5-haiku-20241022-standard-2026-10-01",
+        "pricing_effective_from": "2026-10-01",
     },
     ("anthropic", "claude-3-5-sonnet-20241022"): {
         "capabilities": ["text", "tool_calling", "structured_output", "reasoning", "long_context"],
@@ -159,6 +266,9 @@ _KNOWN_MODEL_PROFILES: dict[tuple[str, str], dict[str, object]] = {
         "quality_tier": 3,
         "speed_tier": 2,
         "task_suitability": ["business_question", "business_reasoning", "tool_orchestration"],
+        "pricing_source": "https://platform.claude.com/docs/en/about-claude/pricing",
+        "pricing_version": "claude-3-5-sonnet-20241022-standard-2026-10-01",
+        "pricing_effective_from": "2026-10-01",
     },
     ("gemini", "gemini-flash-latest"): {
         "capabilities": ["text", "tool_calling", "structured_output", "fast_response", "low_cost", "long_context", "reasoning", "vision"],
@@ -167,6 +277,98 @@ _KNOWN_MODEL_PROFILES: dict[tuple[str, str], dict[str, object]] = {
         "quality_tier": 1,
         "speed_tier": 1,
         "task_suitability": ["classification", "extraction", "business_question", "tool_orchestration", "business_reasoning"],
+        "pricing_source": "https://ai.google.dev/gemini-api/docs/pricing",
+        "pricing_version": "gemini-flash-latest-standard-text-2026-10-01",
+        "pricing_effective_from": "2026-10-01",
+    },
+    ("gemini", "gemini-1.5-flash"): {
+        "capabilities": ["text", "tool_calling", "structured_output", "fast_response", "low_cost"],
+        "context_window": 1_000_000,
+        "max_output_tokens": 8_192,
+        "quality_tier": 1,
+        "speed_tier": 1,
+        "fallback_priority": 999,
+        "task_suitability": ["classification", "extraction"],
+        "pricing_source": "https://ai.google.dev/gemini-api/docs/pricing",
+        "pricing_version": "gemini-1.5-flash-legacy-2026-10-01",
+        "pricing_effective_from": "2026-10-01",
+    },
+    ("openai", "gpt-6-luna"): {
+        "capabilities": ["text", "tool_calling", "structured_output", "fast_response", "low_cost", "long_context", "vision"],
+        "context_window": 1_048_576,
+        "max_output_tokens": 16_384,
+        "quality_tier": 2,
+        "speed_tier": 1,
+        "task_suitability": ["classification", "extraction", "business_question", "tool_orchestration"],
+        "pricing_source": "https://openai.com/api/",
+        "pricing_version": "gpt-6-luna-standard-2026-10",
+        "pricing_effective_from": "2026-10-01",
+    },
+    ("openai", "gpt-6-1-sol"): {
+        "capabilities": ["text", "tool_calling", "structured_output", "reasoning", "long_context", "vision"],
+        "context_window": 1_048_576,
+        "max_output_tokens": 32_768,
+        "quality_tier": 3,
+        "speed_tier": 2,
+        "task_suitability": ["business_question", "business_reasoning", "tool_orchestration"],
+        "pricing_source": "https://openai.com/api/",
+        "pricing_version": "gpt-6-1-sol-standard-2026-10",
+        "pricing_effective_from": "2026-10-01",
+    },
+    ("openai", "gpt-6-sol"): {
+        "capabilities": ["text", "tool_calling", "structured_output", "reasoning", "long_context", "vision"],
+        "context_window": 1_048_576,
+        "max_output_tokens": 32_768,
+        "quality_tier": 3,
+        "speed_tier": 2,
+        "task_suitability": ["business_question", "business_reasoning", "tool_orchestration"],
+        "pricing_source": "https://openai.com/api/",
+        "pricing_version": "gpt-6-sol-standard-2026-10",
+        "pricing_effective_from": "2026-10-01",
+    },
+    ("anthropic", "claude-haiku-5-5"): {
+        "capabilities": ["text", "tool_calling", "structured_output", "fast_response", "low_cost", "long_context", "reasoning", "vision"],
+        "context_window": 1_000_000,
+        "max_output_tokens": 128_000,
+        "quality_tier": 2,
+        "speed_tier": 1,
+        "task_suitability": ["classification", "extraction", "business_question", "tool_orchestration"],
+        "pricing_source": "https://www.anthropic.com/claude/haiku",
+        "pricing_version": "claude-haiku-5-5-standard-2026-10-07",
+        "pricing_effective_from": "2026-10-07",
+    },
+    ("anthropic", "claude-5-5-haiku"): {
+        "capabilities": ["text", "tool_calling", "structured_output", "fast_response", "low_cost", "long_context", "reasoning", "vision"],
+        "context_window": 1_000_000,
+        "max_output_tokens": 128_000,
+        "quality_tier": 2,
+        "speed_tier": 1,
+        "task_suitability": ["classification", "extraction", "business_question", "tool_orchestration"],
+        "pricing_source": "https://www.anthropic.com/claude/haiku",
+        "pricing_version": "claude-5-5-haiku-standard-2026-10-07",
+        "pricing_effective_from": "2026-10-07",
+    },
+    ("gemini", "gemini-3.1-flash-lite"): {
+        "capabilities": ["text", "tool_calling", "structured_output", "fast_response", "low_cost", "long_context"],
+        "context_window": 1_048_576,
+        "max_output_tokens": 65_536,
+        "quality_tier": 2,
+        "speed_tier": 1,
+        "task_suitability": ["classification", "extraction", "business_question", "tool_orchestration"],
+        "pricing_source": "https://ai.google.dev/gemini-api/docs/pricing",
+        "pricing_version": "gemini-3.1-flash-lite-standard-2026-10",
+        "pricing_effective_from": "2026-10-01",
+    },
+    ("gemini", "gemini-3.8-flash"): {
+        "capabilities": ["text", "tool_calling", "structured_output", "reasoning", "long_context", "vision"],
+        "context_window": 1_048_576,
+        "max_output_tokens": 65_536,
+        "quality_tier": 3,
+        "speed_tier": 1,
+        "task_suitability": ["business_question", "business_reasoning", "tool_orchestration"],
+        "pricing_source": "https://ai.google.dev/gemini-api/docs/pricing",
+        "pricing_version": "gemini-3.8-flash-intro-2026-10",
+        "pricing_effective_from": "2026-10-01",
     },
 }
 
@@ -193,11 +395,21 @@ def _decimal_value(values: Mapping[str, object], key: str, default: str) -> Deci
     return value
 
 
-def _enabled_value(values: Mapping[str, object]) -> bool:
-    value = values.get("enabled", True)
+def _enabled_value(values: Mapping[str, object], key: str = "enabled") -> bool:
+    value = values.get(key, True)
     if isinstance(value, str):
         return value.strip().casefold() in {"1", "true", "yes", "on"}
     return bool(value)
+
+
+def _int_value(values: Mapping[str, object], key: str, default: int = 0) -> int:
+    val = values.get(key)
+    return int(str(val if val is not None else default))
+
+
+def _float_value(values: Mapping[str, object], key: str, default: float = 0.0) -> float:
+    val = values.get(key)
+    return float(str(val if val is not None else default))
 
 
 def model_spec(
@@ -269,29 +481,47 @@ def model_spec(
             str(profile.get("reasoning_cost_per_million_usd", "0")),
         ),
     }
-    capabilities = frozenset(LLMCapability(value) for value in profile["capabilities"])
+    raw_capabilities = profile.get("capabilities")
+    capabilities_list = (
+        raw_capabilities
+        if isinstance(raw_capabilities, (list, tuple, set, frozenset))
+        else ()
+    )
+    capabilities = frozenset(LLMCapability(str(value)) for value in capabilities_list)
+    raw_modalities = profile.get("modalities", ("text",))
+    modalities_list = (
+        raw_modalities
+        if isinstance(raw_modalities, (list, tuple, set, frozenset))
+        else ("text",)
+    )
+    raw_suitability = profile.get("task_suitability", ())
+    suitability_list = (
+        raw_suitability
+        if isinstance(raw_suitability, (list, tuple, set, frozenset))
+        else ()
+    )
     return LLMModelSpec(
         provider=provider,
         model_id=model_id,
         display_name=str(profile.get("display_name", provider)),
         capabilities=capabilities,
-        context_window=int(profile["context_window"]),
+        context_window=_int_value(profile, "context_window"),
         estimated_cost_class=str(profile.get("estimated_cost_class", "unknown")),
         latency_class=str(profile.get("latency_class", "medium")),
-        fallback_priority=int(profile.get("fallback_priority", 0)),
-        reasoning_strength=int(profile.get("reasoning_strength", 1)),
-        modalities=frozenset(str(value) for value in profile.get("modalities", ("text",))),
+        fallback_priority=_int_value(profile, "fallback_priority", 0),
+        reasoning_strength=_int_value(profile, "reasoning_strength", 1),
+        modalities=frozenset(str(value) for value in modalities_list),
         streaming=bool(profile.get("streaming", True)),
         tool_calling=bool(profile.get("tool_calling", LLMCapability.TOOL_CALLING in capabilities)),
         structured_output=bool(profile.get("structured_output", LLMCapability.STRUCTURED_OUTPUT in capabilities)),
-        max_output_tokens=int(profile["max_output_tokens"]),
-        quality_tier=int(profile.get("quality_tier", 1)),
-        speed_tier=int(profile.get("speed_tier", 2)),
-        task_suitability=frozenset(str(value) for value in profile.get("task_suitability", ())),
-        request_timeout_seconds=float(profile.get("request_timeout_seconds", 60.0)),
-        max_retries=int(profile.get("max_retries", 2)),
-        base_delay_seconds=float(profile.get("base_delay_seconds", 0.5)),
-        max_delay_seconds=float(profile.get("max_delay_seconds", 4.0)),
+        max_output_tokens=_int_value(profile, "max_output_tokens"),
+        quality_tier=_int_value(profile, "quality_tier", 1),
+        speed_tier=_int_value(profile, "speed_tier", 2),
+        task_suitability=frozenset(str(value) for value in suitability_list),
+        request_timeout_seconds=_float_value(profile, "request_timeout_seconds", 60.0),
+        max_retries=_int_value(profile, "max_retries", 2),
+        base_delay_seconds=_float_value(profile, "base_delay_seconds", 0.5),
+        max_delay_seconds=_float_value(profile, "max_delay_seconds", 4.0),
         pricing_version=str(profile.get("pricing_version", "default")),
         pricing_source=str(profile.get("pricing_source", "configuration")),
         pricing_effective_from=str(profile.get("pricing_effective_from", "")),

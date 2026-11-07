@@ -220,17 +220,32 @@ class BusinessMetricsService:
         )
         freshness = self._freshness.for_snapshot(snapshot, queried_at=calculated_at)
         tz_name = getattr(snapshot.company, "timezone", None) or "UTC"
+        try:
+            business_zone = ZoneInfo(tz_name)
+        except (ZoneInfoNotFoundError, ValueError):
+            business_zone = timezone.utc
         timestamps = self._timestamps(normalized, tz_name)
         max_trans_time = max(timestamps) if timestamps else None
         last_sync = freshness.last_updated_at
-        latest_coverage = max(filter(None, [max_trans_time, last_sync]), default=None)
+        # Uploading an old CSV today does not create transactions through today.
+        # Only a connector's synchronization may extend its observed watermark.
+        static_dataset = snapshot.active_source_type == "dataset" or not snapshot.active_source_provider
+        latest_coverage = max_trans_time if static_dataset else max(filter(None, [max_trans_time, last_sync]), default=None)
+        summary["data_coverage"] = {
+            "start": min(timestamps).isoformat() if timestamps else None,
+            "end": self._utc(latest_coverage).isoformat() if latest_coverage else None,
+            "basis": "transaction_timestamps" if static_dataset else "connector_sync",
+        }
 
         data_covered = True
         coverage_message = None
+        if period_start is not None and latest_coverage is None:
+            data_covered = False
+            coverage_message = "Les dates des transactions ne sont pas disponibles ; je ne peux pas confirmer les ventes de la période demandée."
         if period_start is not None and latest_coverage is not None:
             latest_coverage_utc = self._utc(latest_coverage)
             period_start_utc = self._utc(period_start)
-            if period_start_utc.date() > latest_coverage_utc.date() or (
+            if period_start_utc.astimezone(business_zone).date() > latest_coverage_utc.astimezone(business_zone).date() or (
                 period_start_utc > latest_coverage_utc
                 and summary.get("rows_considered", 0) == 0
                 and freshness.freshness_status in {"STALE", "UNAVAILABLE"}
@@ -241,11 +256,18 @@ class BusinessMetricsService:
                     5: "mai", 6: "juin", 7: "juillet", 8: "août",
                     9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre",
                 }
-                sync_d = latest_coverage_utc.date()
-                target_d = period_start_utc.date()
-                sync_str = f"{sync_d.day} {month_names_fr.get(sync_d.month, '')}"
-                target_str = f"{target_d.day} {month_names_fr.get(target_d.month, '')}"
+                sync_d = latest_coverage_utc.astimezone(business_zone).date()
+                target_d = period_start_utc.astimezone(business_zone).date()
+                sync_str = f"{sync_d.day} {month_names_fr.get(sync_d.month, '')} {sync_d.year}"
+                target_str = f"{target_d.day} {month_names_fr.get(target_d.month, '')} {target_d.year}"
                 coverage_message = f"Les données disponibles s'arrêtent au {sync_str} ; je ne peux pas confirmer les commandes du {target_str}."
+
+        if static_dataset and timestamps and period_end is not None:
+            # The other side of the historical window is also unknown, not zero.
+            earliest = self._utc(min(timestamps))
+            if self._utc(period_end) < earliest:
+                data_covered = False
+                coverage_message = f"Les données disponibles commencent au {earliest.astimezone(business_zone).date().isoformat()} ; je ne peux pas confirmer les ventes antérieures."
 
         if not data_covered:
             summary["data_covered"] = False
@@ -357,14 +379,20 @@ class BusinessMetricsService:
         previous = self.sales_summary(
             snapshot, source, period_start=previous_start, period_end=previous_end
         )
-        delta = round(float(current["revenue"]) - float(previous["revenue"]), 2)
-        prior_revenue = float(previous["revenue"])
+        covered = current["data_covered"] and previous["data_covered"]
+        delta = round(float(current["revenue"]) - float(previous["revenue"]), 2) if covered else None
+        prior_revenue = float(previous["revenue"]) if covered else None
         change = round(delta / prior_revenue * 100, 2) if prior_revenue else None
+        for period in (current, previous):
+            if not period["data_covered"]:
+                for metric in ("revenue", "orders", "average_order_value"):
+                    period[metric] = None
         return {
             "current": current,
             "previous": previous,
             "absolute_change": delta,
             "change_percent": change,
+            "data_covered": covered,
             "currency": snapshot.currency,
             "data_freshness": current["data_freshness"],
         }
@@ -379,6 +407,7 @@ class BusinessMetricsService:
         period_start: datetime | None,
         period_end: datetime | None,
         queried_at: datetime | None = None,
+        sort_order: str = "desc",
     ) -> dict[str, Any]:
         normalized = self.normalize_source_timezone(
             source, getattr(snapshot.company, "timezone", None) or "UTC"
@@ -389,6 +418,7 @@ class BusinessMetricsService:
             metric=metric,
             date_from=period_start,
             date_to=period_end,
+            sort_order=sort_order,
         )
         calculated_at = self._utc(queried_at or datetime.now(timezone.utc))
         freshness = self._freshness.for_snapshot(snapshot, queried_at=calculated_at)
@@ -415,6 +445,7 @@ class BusinessMetricsService:
         comparison_start: datetime | None = None,
         comparison_end: datetime | None = None,
         queried_at: datetime | None = None,
+        include_coverage: bool = False,
     ) -> dict[str, Any]:
         calculated_at = self._utc(queried_at or datetime.now(timezone.utc))
         normalized = self.normalize_source_timezone(
@@ -466,11 +497,27 @@ class BusinessMetricsService:
             "average_customer_value": round(sum(float(customer.get("total_value") or 0) for customer in customers) / total_customers, 2) if total_customers else None,
         }
         freshness = self._freshness.for_snapshot(snapshot, queried_at=calculated_at)
+        if include_coverage:
+            coverage = self.sales_summary(snapshot, source, period_start=period_start,
+                period_end=period_end, queried_at=calculated_at)
+            static_dataset = snapshot.active_source_type == "dataset" or not snapshot.active_source_provider
+            current_activity_unknown = static_dataset and (not dates or max(dates) < active_cutoff)
+            if current_activity_unknown:
+                summary["active_customers"] = None
+            if not coverage["data_covered"]:
+                summary["new_customers"] = None
         metrics = [
             self.metric_envelope(snapshot, source, metric_id, summary[metric_id], "count", period_start, period_end, orders, calculated_at=calculated_at, state="AVAILABLE" if summary[metric_id] is not None else "INSUFFICIENT_DATA")
             for metric_id in ("total_customers", "new_customers", "active_customers", "repeat_customers")
         ]
-        return {**summary, "metrics": metrics, "data_freshness": freshness.as_dict()}
+        result = {**summary, "metrics": metrics, "data_freshness": freshness.as_dict()}
+        if not include_coverage:
+            return result
+        return {**result,
+                "data_coverage": coverage["data_coverage"], "data_covered": coverage["data_covered"],
+                "coverage_message": coverage["coverage_message"],
+                "population_scope": "selected_source_history",
+                "current_activity_status": "DATA_UNCOVERED" if current_activity_unknown else "AVAILABLE"}
 
     def metric_envelope(
         self,

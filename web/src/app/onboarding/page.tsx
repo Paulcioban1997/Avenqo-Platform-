@@ -2,7 +2,21 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Shield, Lock, CheckCircle2, AlertTriangle, KeyRound, PhoneCall, ArrowRight } from "lucide-react";
+import {
+  Shield,
+  Lock,
+  CheckCircle2,
+  AlertTriangle,
+  KeyRound,
+  PhoneCall,
+  ArrowRight,
+  Palette,
+  Image as ImageIcon,
+  FileText,
+  Sparkles,
+  ChevronRight,
+  Save,
+} from "lucide-react";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { AppShell } from "@/components/shell/app-shell";
@@ -24,13 +38,38 @@ interface PinStatus {
   failed_attempts: number;
 }
 
+interface MandatoryContractsStatus {
+  has_signed_all_mandatory: boolean;
+  mandatory_count: number;
+  signed_count: number;
+  pending_count: number;
+  contracts: {
+    contract_type: string;
+    title: string;
+    status: string;
+    version: string;
+    is_signed: boolean;
+  }[];
+}
+
 export default function OnboardingPage() {
   const { locale } = useLocale();
   const t = getAppTranslations(locale);
   const isFrench = locale.startsWith("fr");
 
   const [data, setData] = useState<Entitlements | null>(null);
+  const [progress, setProgress] = useState<{ progress_percent: number; checklist: { key: string; done: boolean }[] } | null>(null);
   const [error, setError] = useState(false);
+
+  // White-Label Customization State
+  const [logoUrl, setLogoUrl] = useState("");
+  const [themeMode, setThemeMode] = useState<"light" | "dark" | "system">("system");
+  const [brandColor, setBrandColor] = useState("#0076FF");
+  const [customizationSaving, setCustomizationSaving] = useState(false);
+  const [customizationSaved, setCustomizationSaved] = useState(false);
+
+  // Contracts Status State
+  const [contractsStatus, setContractsStatus] = useState<MandatoryContractsStatus | null>(null);
 
   // PIN Setup State
   const [pinStatus, setPinStatus] = useState<PinStatus | null>(null);
@@ -47,9 +86,11 @@ export default function OnboardingPage() {
     const controller = new AbortController();
     queueMicrotask(async () => {
       try {
-        const [entRes, pinRes] = await Promise.all([
+        const [entRes, pinRes, onboardingRes, contractsRes] = await Promise.all([
           fetch("/api/v1/modules/entitlements", { signal: controller.signal, cache: "no-store" }),
           fetch("/api/v1/voice/auth/pin/status", { signal: controller.signal, cache: "no-store" }),
+          fetch("/api/v1/onboarding", { signal: controller.signal, cache: "no-store" }),
+          fetch("/api/v1/contracts/status/mandatory", { signal: controller.signal, cache: "no-store" }),
         ]);
 
         if (entRes.ok) {
@@ -57,6 +98,24 @@ export default function OnboardingPage() {
           if (!controller.signal.aborted) setData(result);
         } else {
           setError(true);
+        }
+
+        if (onboardingRes.ok) {
+          const onboarding = await onboardingRes.json();
+          if (!controller.signal.aborted) {
+            setProgress({
+              progress_percent: onboarding.progress_percent ?? 0,
+              checklist: onboarding.checklist ?? [],
+            });
+            if (onboarding.company_logo_url) setLogoUrl(onboarding.company_logo_url);
+            if (onboarding.theme_mode) setThemeMode(onboarding.theme_mode);
+            if (onboarding.brand_color) setBrandColor(onboarding.brand_color);
+          }
+        }
+
+        if (contractsRes.ok) {
+          const contractsData: MandatoryContractsStatus = await contractsRes.json();
+          if (!controller.signal.aborted) setContractsStatus(contractsData);
         }
 
         if (pinRes.ok) {
@@ -74,6 +133,31 @@ export default function OnboardingPage() {
     });
     return () => controller.abort();
   }, []);
+
+  const handleSaveCustomization = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCustomizationSaving(true);
+    setCustomizationSaved(false);
+    try {
+      const res = await fetch("/api/v1/onboarding", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_logo_url: logoUrl.trim() || null,
+          theme_mode: themeMode,
+          brand_color: brandColor,
+        }),
+      });
+      if (res.ok) {
+        setCustomizationSaved(true);
+        setTimeout(() => setCustomizationSaved(false), 3000);
+      }
+    } catch {
+      // Non-blocking
+    } finally {
+      setCustomizationSaving(false);
+    }
+  };
 
   const handleCreatePin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -149,11 +233,32 @@ export default function OnboardingPage() {
     <AppShell>
       <main className="mx-auto w-full max-w-4xl space-y-6 px-5 py-8 sm:px-8">
         <header className="border-b border-slate-200 pb-5 dark:border-white/10">
-          <h1 className="text-xl font-bold">{t.shell.workspace}</h1>
-          {data && (
-            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-              {data.plan_code} · {data.subscription_status} · {data.module_limit ?? "∞"}
-            </p>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-xl font-bold">{t.shell.workspace}</h1>
+              {data && (
+                <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                  {data.plan_code} · {data.subscription_status} · {data.module_limit ? `${data.module_limit} modules max` : "∞"}
+                </p>
+              )}
+            </div>
+            <Link
+              href="/settings/contracts"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-blue-50 text-[#0076FF] hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 transition-colors"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>{isFrench ? "Mes contrats légaux" : "My legal contracts"}</span>
+            </Link>
+          </div>
+          {progress && (
+            <div className="mt-4">
+              <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-white/10">
+                <div className="h-full bg-[#0076FF] transition-all duration-500" style={{ width: `${progress.progress_percent}%` }} />
+              </div>
+              <p className="mt-2 text-xs text-slate-500">
+                {progress.progress_percent}% · {progress.checklist.filter((item) => item.done).length}/{progress.checklist.length} {isFrench ? "étapes complétées" : "steps completed"}
+              </p>
+            </div>
           )}
         </header>
 
@@ -165,7 +270,185 @@ export default function OnboardingPage() {
 
         <FirstCustomerConcierge />
 
-        {/* STEP 2: Sécurisez votre assistant vocal Avenqo */}
+        {/* STEP 1: Personnalisation White-Label de votre Espace Entreprise */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xs dark:border-white/[0.08] dark:bg-[#0B132B]">
+          <div className="flex items-start gap-4">
+            <div className="rounded-xl bg-gradient-to-tr from-[#0076FF] to-indigo-600 p-3 text-white shadow-sm">
+              <Palette className="h-6 w-6" />
+            </div>
+            <div className="flex-1 space-y-4">
+              <div>
+                <div className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-2 py-0.5 text-xs font-semibold text-[#0076FF] dark:bg-blue-950/50 dark:text-blue-300">
+                  <Sparkles className="h-3 w-3" />
+                  {isFrench ? "Identité Visuelle White-Label" : "White-Label Brand Identity"}
+                </div>
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white mt-1">
+                  {isFrench ? "Personnalisez l'espace de votre entreprise" : "Customize your enterprise workspace"}
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  {isFrench
+                    ? "Importez votre logo d'entreprise et définissez vos couleurs. Votre interface adaptera automatiquement les menus et l'en-tête."
+                    : "Import your company logo and set brand colors. The interface will automatically adapt the topbar and menus."}
+                </p>
+              </div>
+
+              <form onSubmit={handleSaveCustomization} className="space-y-4 pt-2">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      {isFrench ? "URL du logo de l'entreprise (PNG, SVG, JPG)" : "Company Logo URL (PNG, SVG, JPG)"}
+                    </label>
+                    <div className="mt-1 flex items-center gap-3">
+                      <input
+                        type="url"
+                        placeholder="https://votre-domaine.com/logo.png"
+                        value={logoUrl}
+                        onChange={(e) => setLogoUrl(e.target.value)}
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs text-slate-900 shadow-xs focus:border-[#0076FF] focus:outline-hidden dark:border-white/20 dark:bg-slate-900 dark:text-white"
+                      />
+                      {logoUrl && (
+                        <div className="h-9 w-9 shrink-0 rounded-lg border border-slate-200 dark:border-white/10 p-1 flex items-center justify-center bg-white dark:bg-slate-800">
+                          <img src={logoUrl} alt="Preview" className="max-h-full max-w-full object-contain" onError={() => {}} />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      {isFrench ? "Couleur de marque principale" : "Primary Brand Color"}
+                    </label>
+                    <div className="mt-1 flex items-center gap-3">
+                      <input
+                        type="color"
+                        value={brandColor}
+                        onChange={(e) => setBrandColor(e.target.value)}
+                        className="h-9 w-14 cursor-pointer rounded-lg border border-slate-300 bg-white p-1 dark:border-white/20 dark:bg-slate-900"
+                      />
+                      <input
+                        type="text"
+                        value={brandColor}
+                        onChange={(e) => setBrandColor(e.target.value)}
+                        className="w-28 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-mono uppercase text-slate-900 shadow-xs focus:border-[#0076FF] focus:outline-hidden dark:border-white/20 dark:bg-slate-900 dark:text-white"
+                      />
+                      <div className="flex gap-1.5">
+                        {["#0076FF", "#7B2CBF", "#059669", "#D97706", "#DC2626"].map((color) => (
+                          <button
+                            key={color}
+                            type="button"
+                            onClick={() => setBrandColor(color)}
+                            className="h-6 w-6 rounded-full border border-black/10 dark:border-white/20 transition-transform hover:scale-110"
+                            style={{ backgroundColor: color }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-2">
+                  <button
+                    type="submit"
+                    disabled={customizationSaving}
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#0076FF] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-blue-600 disabled:opacity-50 transition-colors"
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                    {customizationSaving
+                      ? (isFrench ? "Enregistrement..." : "Saving...")
+                      : (isFrench ? "Enregistrer l'identité" : "Save Identity")}
+                  </button>
+                  {customizationSaved && (
+                    <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      {isFrench ? "Identité visuelle mise à jour" : "Visual identity updated"}
+                    </span>
+                  )}
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        {/* STEP 2: Contrats Juridiques Obligatoires (NDA, MSA, DPA) */}
+        <div className="rounded-2xl border border-blue-200/80 bg-blue-50/30 p-6 shadow-xs dark:border-blue-900/40 dark:bg-[#0B132B]">
+          <div className="flex items-start gap-4">
+            <div className="rounded-xl bg-blue-600 p-3 text-white shadow-sm">
+              <FileText className="h-6 w-6" />
+            </div>
+            <div className="flex-1 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <div className="inline-flex items-center gap-1.5 rounded-md bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-800 dark:bg-blue-950/60 dark:text-blue-300">
+                    <Shield className="h-3 w-3" />
+                    {isFrench ? "Gouvernance & Conformité Juridique" : "Governance & Legal Compliance"}
+                  </div>
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-white mt-1">
+                    {isFrench ? "Signature des Contrats d'Entreprise" : "Enterprise Contracts Signature"}
+                  </h2>
+                </div>
+                {contractsStatus?.has_signed_all_mandatory ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    {isFrench ? "Tous signés" : "All Signed"}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    {isFrench ? "Signature requise avant activation" : "Signature required"}
+                  </span>
+                )}
+              </div>
+
+              <p className="text-xs text-slate-600 dark:text-slate-300">
+                {isFrench
+                  ? "Conformément à la Loi 25 du Québec et à la LPRPDE canadienne, l'activation des flux payants et IA requiert la signature de l'accord de confidentialité réciproque (NDA mutuel) et du contrat d'abonnement SaaS. Signature électronique sécurisée ou manuscrite acceptée."
+                  : "Under Quebec Law 25 and PIPEDA, activation of paid AI workflows requires signing the Mutual NDA and SaaS Subscription Agreement. Secure e-sign or wet-ink upload accepted."}
+              </p>
+
+              {contractsStatus && contractsStatus.contracts.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  {contractsStatus.contracts.map((c) => (
+                    <div
+                      key={c.contract_type}
+                      className="p-3 rounded-xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-slate-900/60 flex items-center justify-between"
+                    >
+                      <div className="truncate mr-2">
+                        <div className="font-semibold text-xs text-slate-900 dark:text-white truncate">
+                          {c.title}
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-mono">
+                          {c.contract_type} · v{c.version}
+                        </div>
+                      </div>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-md uppercase shrink-0 ${
+                          c.is_signed
+                            ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
+                            : "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
+                        }`}
+                      >
+                        {c.is_signed ? (isFrench ? "Signé" : "Signed") : (isFrench ? "À signer" : "Pending")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="pt-2">
+                <Link
+                  href="/settings/contracts"
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#0076FF] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-blue-600 transition-colors"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  <span>{isFrench ? "Ouvrir l'espace « Mes contrats »" : "Open 'My Contracts' Space"}</span>
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* STEP 3: Sécurisez votre assistant vocal Avenqo */}
         {pinStepOpen && !pinSuccess && (
           <div className="rounded-2xl border-2 border-[#0076FF]/40 bg-blue-50/40 p-6 shadow-md dark:border-blue-500/30 dark:bg-[#0B132B]/80">
             <div className="flex items-start gap-4">

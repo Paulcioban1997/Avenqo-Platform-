@@ -10,11 +10,12 @@ def test_tenant_context_derive_company_from_authenticated_user() -> None:
     user_id = uuid4()
     identity = CurrentIdentity(
         auth_session=SimpleNamespace(),
-        user=SimpleNamespace(company_id=company_id, id=user_id),
+        user=SimpleNamespace(company_id=company_id, id=user_id, is_platform_admin=False),
         raw_token="access-token",
     )
+    db = SimpleNamespace(get_bind=lambda: SimpleNamespace(dialect=SimpleNamespace(name="sqlite")))
 
-    tenant = get_tenant_context(identity)
+    tenant = get_tenant_context(identity, db)
 
     assert isinstance(tenant, TenantContext)
     assert tenant.company_id == company_id

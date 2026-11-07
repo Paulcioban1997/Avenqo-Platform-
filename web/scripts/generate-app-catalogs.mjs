@@ -5,7 +5,7 @@ const root = resolve(import.meta.dirname, "..");
 const locales = JSON.parse(
   readFileSync(resolve(root, "../shared/locales/canonical_locales.json"), "utf8"),
 ).map((locale) => locale.code);
-const sections = ["auth", "company", "dashboardHome", "assistant", "admin", "phase4e"];
+const sections = ["auth", "company", "dashboardHome", "assistant", "admin", "phase4d", "phase4e"];
 const catalogs = {};
 const voiceAuthMessages = JSON.parse(
   readFileSync(resolve(root, "../shared/locales/voice_auth_messages.json"), "utf8"),

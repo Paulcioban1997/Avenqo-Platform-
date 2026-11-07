@@ -453,3 +453,57 @@ def test_central_chat_reuses_voice_reservation_and_voice_ledger_settles_all_prov
     finally:
         db.close()
         engine.dispose()
+
+
+def test_public_inbound_ledger_keeps_request_id_after_identity_attach(tmp_path) -> None:
+    engine, db = _session(tmp_path, "voice-inbound-stable-request.db")
+    try:
+        company = _company(db, "voice-inbound-stable", "professional")
+        namespace = uuid4()
+        attach_settings = Settings()
+        attach_settings.auth_jwt_secret = "e" * 32
+        usage_service = AIUsageService(db, AIQuotaPolicy(attach_settings))
+        ledger = VoiceUsageLedger(
+            usage_service,
+            voice_pricing_catalog(),
+            company_id=company.id,
+            user_id=None,
+            conversation_id=None,
+            plan_code="professional",
+            request_namespace=namespace,
+        )
+        item_id = "inbound-turn-1"
+        before = ledger.request_id_for(item_id)
+        assert ledger.reserve(item_id)
+        ledger.attach_identity(uuid4(), uuid4())
+        after = ledger.request_id_for(item_id)
+        assert before == after
+        replacement = VoiceUsageLedger(
+            usage_service,
+            voice_pricing_catalog(),
+            company_id=company.id,
+            user_id=uuid4(),
+            conversation_id=uuid4(),
+            plan_code="professional",
+            request_namespace=namespace,
+        )
+        assert replacement.request_id_for(item_id) == before
+        transcription = SimpleNamespace(
+            event_id="inbound-stable-stt",
+            usage=SimpleNamespace(type="duration", seconds=1),
+        )
+        assert ledger.record_transcription(item_id, transcription, model="gpt-4o-mini-transcribe")
+        assert ledger.settle(item_id)
+        settlements = db.scalars(select(TenantAICreditLedgerEntry).where(
+            TenantAICreditLedgerEntry.company_id == company.id,
+            TenantAICreditLedgerEntry.transaction_type == "ai_settlement",
+        )).all()
+        reservations = db.scalars(select(TenantAICreditReservation).where(
+            TenantAICreditReservation.company_id == company.id,
+        )).all()
+        assert len(reservations) == 1
+        assert reservations[0].status == "settled"
+        assert len(settlements) == 1
+    finally:
+        db.close()
+        engine.dispose()

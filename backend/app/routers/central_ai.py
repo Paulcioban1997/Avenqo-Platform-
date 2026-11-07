@@ -16,16 +16,22 @@ from backend.app.database import get_db
 from backend.app.dependencies.ai_engine import get_prediction_service
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
 from backend.app.dependencies.ai_authorization import get_active_ai_membership
-from backend.app.dependencies.subscription import require_active_subscription
+from backend.app.ai.usage.included_central import included_central
 from backend.app.dependencies.central_ai import get_central_ai_service
 from backend.app.schemas.central_ai import CentralAIRequest, CentralAIResponse
+from backend.app.services.tenant_locale_service import get_company_locale
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.prediction.service import PredictionService
+
+async def included_central_usage(tenant: TenantContext = Depends(get_tenant_context)):
+    with included_central(tenant.company_id):
+        yield
+
 
 router = APIRouter(
     prefix="/ai/central",
     tags=["central-ai"],
-    dependencies=[Depends(get_active_ai_membership), Depends(require_active_subscription)],
+    dependencies=[Depends(get_active_ai_membership), Depends(included_central_usage)],
 )
 
 
@@ -100,7 +106,11 @@ async def message(
             permissions=frozenset(permissions_for(membership.role)),
             capabilities=resolve_tenant_capabilities(db, tenant, prediction_service),
             request_id=request_id,
-            user_language=resolve_locale(request.locale or company.preferred_language or "fr"),
+            user_language=resolve_locale(
+                request.locale
+                or get_company_locale(db, company.id)
+                or company.preferred_language
+            ),
             company_country=company.country or "",
             company_currency=getattr(company, "currency_code", None) or "USD",
             company_timezone=company.timezone or "UTC",
@@ -116,6 +126,10 @@ async def message(
     return CentralAIResponse(
         **asdict(result),
         conversation_id=conversation_id,
-        grounded_source=f"Analyse basée sur : [{active_source_name}]" if active_source_name else None,
+        grounded_source=(
+            f"Analyse basée sur : [{active_source_name}]"
+            if active_source_name and result.selected_agent in {"retail", "sales", "analytics"} and result.status == "success"
+            else None
+        ),
         source_id=active_source_id_str,
     )

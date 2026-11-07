@@ -67,18 +67,21 @@ class AITool(ABC):
 
 class RetailAITool(AITool):
     agent_ids = frozenset({"retail"})
+    required_entitlements = frozenset({"retail"})
     read_only = True
     mutates = False
 
 
 class CRMAITool(AITool):
     agent_ids = frozenset({"crm"})
+    required_entitlements = frozenset({"crm"})
     read_only = True
     mutates = False
 
 
 class AccountingAITool(AITool):
     agent_ids = frozenset({"accounting"})
+    required_entitlements = frozenset({"accounting"})
     read_only = True
     mutates = False
 
@@ -91,5 +94,55 @@ class CrossAgentAITool(AITool):
 
 class PlatformSupportAITool(AITool):
     agent_ids = frozenset({"platform_support"})
+    read_only = True
+    mutates = False
+
+
+class MarketingAITool(AITool):
+    agent_ids = frozenset({"marketing", "cross_agent"})
+    required_entitlements = frozenset({"marketing"})
+    read_only = False
+    mutates = True
+    mutation_capabilities = frozenset({"campaign.create", "marketing.campaign.write"})
+    confirmation_policy = "explicit_user_confirmation"
+
+
+class OCRAITool(AITool):
+    agent_ids = frozenset({"ocr", "accounting", "cross_agent"})
+    required_entitlements = frozenset({"ocr"})
+    read_only = True
+    mutates = False
+
+
+class LegalAITool(AITool):
+    agent_ids = frozenset({"legal", "cross_agent"})
+    required_entitlements = frozenset({"legal"})
+    read_only = True
+    mutates = False
+
+
+class AutomationAITool(AITool):
+    agent_ids = frozenset({"workflow", "cross_agent"})
+    required_entitlements = frozenset({"workflow"})
+    read_only = False
+    mutates = True
+    mutation_capabilities = frozenset({"workflow.create", "workflow.execute", "automation.write"})
+    confirmation_policy = "explicit_user_confirmation"
+
+
+class MemoryAITool(AITool):
+    agent_ids = frozenset({"memory", "cross_agent"})
+    read_only = True
+    mutates = False
+
+
+class MarketplaceAITool(AITool):
+    agent_ids = frozenset({"marketplace", "retail", "cross_agent"})
+    read_only = True
+    mutates = False
+
+
+class BillingCreditsAITool(AITool):
+    agent_ids = frozenset({"billing", "cross_agent"})
     read_only = True
     mutates = False

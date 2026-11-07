@@ -23,6 +23,9 @@ import {
   AlertTriangle,
   X,
   Lock,
+  Search,
+  Info,
+  ArrowUpRight,
 } from "lucide-react";
 import { apiFetch, ApiRequestError } from "@/lib/api-request";
 import { RequestFailure } from "@/components/ui/request-failure";
@@ -30,6 +33,403 @@ import { getAuthHeaders } from "@/lib/api-headers";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
+import { useOptionalSession } from "@/lib/session-context";
+
+interface CanonicalConnector {
+  key: string;
+  name: string;
+  category: "commerce" | "marketplace" | "pos" | "crm" | "marketing" | "voice" | "billing" | "fulfillment";
+  categoryLabel: string;
+  availability: "available" | "configuration_required" | "partner_approval_pending" | "coming_soon";
+  route?: string;
+  capabilities: string[];
+  description: string;
+  authMethod: "oauth2" | "api_key" | "webhook" | "sip_webrtc" | "oauth2_pkce";
+  envVars?: string[];
+  docLink?: string;
+  setupInstructions?: string[];
+}
+
+const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
+  {
+    key: "shopify",
+    name: "Shopify",
+    category: "commerce",
+    categoryLabel: "E-Commerce",
+    availability: "available",
+    route: "/connections",
+    capabilities: ["Commandes", "Produits", "Clients", "Inventaire", "Webhooks"],
+    description: "Synchronisation bidirectionnelle native des commandes, stocks et clients via Shopify Admin REST & GraphQL API.",
+    authMethod: "oauth2",
+    docLink: "https://shopify.dev/docs/apps",
+    setupInstructions: [
+      "Créer une application dans l'espace Partenaire ou Paramètres > Applications personnalisées de Shopify",
+      "Configurer les URLs de redirection vers https://app.avenqo.ca/api/v1/connectors/shopify/callback",
+      "Accorder les permissions read_products, read_orders, read_customers, write_inventory",
+    ],
+  },
+  {
+    key: "woocommerce",
+    name: "WooCommerce",
+    category: "commerce",
+    categoryLabel: "E-Commerce",
+    availability: "available",
+    route: "/connections",
+    capabilities: ["Commandes", "Produits", "Clients", "Inventaire"],
+    description: "Connexion directe à votre boutique WordPress WooCommerce via l'API REST v3 avec chiffrement des clés d'accès.",
+    authMethod: "api_key",
+    docLink: "https://woocommerce.github.io/woocommerce-rest-api-docs/",
+    setupInstructions: [
+      "Dans WordPress, aller dans WooCommerce > Réglages > Avancé > API REST",
+      "Cliquer sur 'Ajouter une clé', choisir le niveau Lecture/Écriture",
+      "Copier la Consumer Key et Consumer Secret dans la fenêtre Avenqo",
+    ],
+  },
+  {
+    key: "bigcommerce",
+    name: "BigCommerce",
+    category: "commerce",
+    categoryLabel: "E-Commerce",
+    availability: "configuration_required",
+    route: "/connections",
+    capabilities: ["Commandes", "Produits", "Clients", "Inventaire"],
+    description: "Intégration cloud pour boutiques BigCommerce d'entreprise avec gestion multi-devises et catalogues complexes.",
+    authMethod: "oauth2",
+    envVars: ["BIGCOMMERCE_CLIENT_ID", "BIGCOMMERCE_CLIENT_SECRET"],
+    docLink: "https://developer.bigcommerce.com/",
+    setupInstructions: [
+      "Accéder au portail BigCommerce Developer Portal",
+      "Créer une Single-Click App avec les scopes V2/V3 Orders & Products",
+      "Configurer l'authentification OAuth 2.0 dans les variables d'environnement Avenqo",
+    ],
+  },
+  {
+    key: "adobe_commerce",
+    name: "Adobe Commerce (Magento)",
+    category: "commerce",
+    categoryLabel: "E-Commerce",
+    availability: "configuration_required",
+    route: "/connections",
+    capabilities: ["Commandes", "Produits", "Clients", "Inventaire", "GraphQL"],
+    description: "Connecteur haute performance pour instances Magento 2 / Adobe Commerce on-premise et Adobe Commerce Cloud.",
+    authMethod: "api_key",
+    envVars: ["MAGENTO_BASE_URL", "MAGENTO_INTEGRATION_TOKEN"],
+    docLink: "https://developer.adobe.com/commerce/",
+    setupInstructions: [
+      "Dans le panneau Admin Magento, aller dans Système > Intégrations > Ajouter une nouvelle intégration",
+      "Accorder les accès API aux modules Ventes, Catalogue et Clients",
+      "Activer l'intégration et renseigner le Access Token",
+    ],
+  },
+  {
+    key: "wix_ecommerce",
+    name: "Wix eCommerce",
+    category: "commerce",
+    categoryLabel: "E-Commerce",
+    availability: "configuration_required",
+    route: "/connections",
+    capabilities: ["Commandes", "Produits", "Inventaire"],
+    description: "Synchronisation en temps réel des catalogues et commandes pour les boutiques Wix Stores.",
+    authMethod: "oauth2",
+    envVars: ["WIX_APP_ID", "WIX_APP_SECRET"],
+    docLink: "https://dev.wix.com/",
+    setupInstructions: [
+      "Créer une application dans Wix Developers Center",
+      "Configurer les permissions Wix Stores API (Read Orders, Read Products)",
+      "Ajouter le webhook pour la notification d'achat immédiat",
+    ],
+  },
+  {
+    key: "squarespace_commerce",
+    name: "Squarespace Commerce",
+    category: "commerce",
+    categoryLabel: "E-Commerce",
+    availability: "configuration_required",
+    route: "/connections",
+    capabilities: ["Commandes", "Produits", "Inventaire"],
+    description: "Extraction des commandes et inventaires depuis Squarespace Commerce v1 API avec clés sécurisées.",
+    authMethod: "api_key",
+    envVars: ["SQUARESPACE_API_KEY"],
+    docLink: "https://developers.squarespace.com/commerce-apis",
+    setupInstructions: [
+      "Dans Squarespace, aller dans Paramètres > Avancé > Clés API pour développeur",
+      "Générer une clé avec les permissions Commandes et Produits",
+      "Saisir la clé dans les paramètres de connecteur sécurisés",
+    ],
+  },
+  {
+    key: "prestashop",
+    name: "PrestaShop",
+    category: "commerce",
+    categoryLabel: "E-Commerce",
+    availability: "configuration_required",
+    route: "/connections",
+    capabilities: ["Commandes", "Produits", "Clients"],
+    description: "Connexion Webservice XML/JSON pour PrestaShop 1.7 et 8.x avec token d'authentification dédié.",
+    authMethod: "api_key",
+    envVars: ["PRESTASHOP_WEBSERVICE_KEY", "PRESTASHOP_SHOP_URL"],
+    docLink: "https://devdocs.prestashop-project.org/",
+    setupInstructions: [
+      "Activer le Webservice dans Paramètres avancés > Service Web de PrestaShop",
+      "Créer une clé avec les droits GET sur orders, products, customers, stock_availables",
+    ],
+  },
+  {
+    key: "amazon_sp_api",
+    name: "Amazon Seller Central (SP-API)",
+    category: "marketplace",
+    categoryLabel: "Place de marché",
+    availability: "configuration_required",
+    route: "/connections",
+    capabilities: ["Commandes", "Inventaire", "Prix", "Rapports FBA"],
+    description: "Connexion officielle Selling Partner API (SP-API) d'Amazon avec authentification LWA et rôle IAM AWS STS.",
+    authMethod: "oauth2",
+    envVars: ["AMAZON_SP_API_CLIENT_ID", "AMAZON_SP_API_CLIENT_SECRET", "AMAZON_AWS_ROLE_ARN"],
+    docLink: "https://developer-docs.amazon.com/sp-api",
+    setupInstructions: [
+      "Enregistrer un compte développeur Amazon SP-API dans Seller Central",
+      "Créer une application LWA (Login with Amazon) et un rôle IAM AWS STS avec politique de moindre privilège",
+      "Renseigner les clés LWA et l'ARN dans les variables Railway Sandbox/Production",
+    ],
+  },
+  {
+    key: "ebay",
+    name: "eBay",
+    category: "marketplace",
+    categoryLabel: "Place de marché",
+    availability: "configuration_required",
+    route: "/connections",
+    capabilities: ["Commandes", "Annonces", "Inventaire", "Fulfillment"],
+    description: "Intégration eBay REST Sell APIs avec flux OAuth 2.0 pour la gestion automatisée des ventes marketplace.",
+    authMethod: "oauth2",
+    envVars: ["EBAY_CLIENT_ID", "EBAY_CLIENT_SECRET"],
+    docLink: "https://developer.ebay.com/develop/apis",
+    setupInstructions: [
+      "Créer un compte sur eBay Developers Program",
+      "Générer une paire de clés d'application de production (App ID / Cert ID)",
+      "Configurer l'URL de redirection OAuth RuName pour Avenqo",
+    ],
+  },
+  {
+    key: "etsy",
+    name: "Etsy",
+    category: "marketplace",
+    categoryLabel: "Place de marché",
+    availability: "partner_approval_pending",
+    route: "/connections",
+    capabilities: ["Commandes", "Fiches produits", "Reçus", "Boutique"],
+    description: "Accès à l'API Etsy v3 via OAuth 2.0 PKCE pour créateurs et commerçants indépendants.",
+    authMethod: "oauth2_pkce",
+    envVars: ["ETSY_API_KEY", "ETSY_SHARED_SECRET"],
+    docLink: "https://developers.etsy.com/documentation/",
+    setupInstructions: [
+      "Déposer une demande d'application sur le portail développeur Etsy Developers",
+      "Attendre la validation du statut commercial Etsy par l'équipe partenaires",
+      "Configurer la clé d'application et la redirection OAuth PKCE",
+    ],
+  },
+  {
+    key: "walmart_marketplace",
+    name: "Walmart Marketplace",
+    category: "marketplace",
+    categoryLabel: "Place de marché",
+    availability: "configuration_required",
+    route: "/connections",
+    capabilities: ["Commandes", "Articles", "Inventaire", "Rapports"],
+    description: "Synchronisation multi-canal avec Walmart US & Canada via l'API Marketplace Partner.",
+    authMethod: "api_key",
+    envVars: ["WALMART_CLIENT_ID", "WALMART_CLIENT_SECRET"],
+    docLink: "https://developer.walmart.com/",
+    setupInstructions: [
+      "Obtenir les identifiants d'API dans Walmart Developer Portal",
+      "Renseigner les clés Client ID et Client Secret de production",
+    ],
+  },
+  {
+    key: "tiktok_shop",
+    name: "TikTok Shop",
+    category: "marketplace",
+    categoryLabel: "Place de marché",
+    availability: "configuration_required",
+    route: "/connections",
+    capabilities: ["Commandes", "Catalogue", "Fulfillment", "Social Commerce"],
+    description: "Connecteur TikTok Shop Open API pour synchroniser les ventes de commerce social et créateurs.",
+    authMethod: "oauth2",
+    envVars: ["TIKTOK_SHOP_APP_KEY", "TIKTOK_SHOP_APP_SECRET"],
+    docLink: "https://partner.tiktokshop.com/",
+    setupInstructions: [
+      "Enregistrer une application partenaire sur TikTok Shop Partner Center",
+      "Sélectionner la région ciblée (Amérique du Nord / Europe) et demander les scopes Orders & Products",
+    ],
+  },
+  {
+    key: "square_pos",
+    name: "Square POS",
+    category: "pos",
+    categoryLabel: "Point de vente",
+    availability: "configuration_required",
+    route: "/connections",
+    capabilities: ["Points de vente", "Commandes", "Paiements", "Catalogue articles"],
+    description: "Intégration directe des caisses et terminaux Square pour unifier magasins physiques et boutique en ligne.",
+    authMethod: "oauth2",
+    envVars: ["SQUARE_APPLICATION_ID", "SQUARE_APPLICATION_SECRET"],
+    docLink: "https://developer.squareup.com/",
+    setupInstructions: [
+      "Créer une application dans Square Developer Dashboard",
+      "Activer les autorisations OAuth pour ORDERS_READ, ITEMS_READ, PAYMENTS_READ",
+      "Ajouter le webhook de synchronisation des tickets de caisse en temps réel",
+    ],
+  },
+  {
+    key: "clover_pos",
+    name: "Clover POS",
+    category: "pos",
+    categoryLabel: "Point de vente",
+    availability: "configuration_required",
+    route: "/connections",
+    capabilities: ["Commandes", "Inventaire", "Marchands", "Paiements"],
+    description: "Connecteur Clover REST API pour synchronisation des terminaux de vente de commerce de détail.",
+    authMethod: "oauth2",
+    envVars: ["CLOVER_APP_ID", "CLOVER_APP_SECRET"],
+    docLink: "https://docs.clover.com/",
+    setupInstructions: [
+      "Créer un compte sur Clover Developer Platform",
+      "Créer une application marchande avec permissions d'accès aux ventes",
+    ],
+  },
+  {
+    key: "lightspeed_retail",
+    name: "Lightspeed Retail",
+    category: "pos",
+    categoryLabel: "Point de vente",
+    availability: "configuration_required",
+    route: "/connections",
+    capabilities: ["Ventes", "Inventaire multi-boutiques", "Clients"],
+    description: "Intégration omnicanale pour détaillants utilisant Lightspeed Retail (X-Series / R-Series).",
+    authMethod: "oauth2",
+    envVars: ["LIGHTSPEED_CLIENT_ID", "LIGHTSPEED_CLIENT_SECRET"],
+    docLink: "https://developers.lightspeedhq.com/",
+    setupInstructions: [
+      "Générer une clé API ou application OAuth dans le portail Lightspeed Developers",
+    ],
+  },
+  {
+    key: "google_calendar",
+    name: "Google Calendar",
+    category: "crm",
+    categoryLabel: "CRM & Calendrier",
+    availability: "available",
+    route: "/crm",
+    capabilities: ["Événements", "Synchronisation bidirectionnelle", "Rappels", "Prise de RDV"],
+    description: "Synchronisation en temps réel des rendez-vous clients, plannings d'équipe et rappels automatisés Avenqo CRM.",
+    authMethod: "oauth2",
+    docLink: "https://developers.google.com/calendar",
+    setupInstructions: [
+      "Disponible immédiatement via le module CRM",
+      "Authentification Google OAuth 2.0 sécurisée par utilisateur / entreprise",
+    ],
+  },
+  {
+    key: "outlook_calendar",
+    name: "Outlook Calendar",
+    category: "crm",
+    categoryLabel: "CRM & Calendrier",
+    availability: "available",
+    route: "/crm",
+    capabilities: ["Événements", "Calendriers partagés", "Réunions Teams"],
+    description: "Intégration Microsoft 365 Graph API pour synchroniser les rendez-vous professionnels Outlook.",
+    authMethod: "oauth2",
+    docLink: "https://learn.microsoft.com/en-us/graph/api/resources/calendar",
+    setupInstructions: [
+      "Accessible depuis le module CRM",
+      "Connexion via compte professionnel Microsoft Azure AD / Entra ID",
+    ],
+  },
+  {
+    key: "google_ads",
+    name: "Google Ads",
+    category: "marketing",
+    categoryLabel: "Marketing & Publicité",
+    availability: "configuration_required",
+    route: "/marketing",
+    capabilities: ["Campagnes", "Conversions", "Performances", "Dépenses ROAS"],
+    description: "Analyse prédictive des campagnes publicitaires Google Ads avec calcul du ROAS et optimisation par l'IA Centrale.",
+    authMethod: "oauth2",
+    envVars: ["GOOGLE_ADS_DEVELOPER_TOKEN", "GOOGLE_ADS_CLIENT_ID", "GOOGLE_ADS_CLIENT_SECRET"],
+    docLink: "https://developers.google.com/google-ads/api/docs/first-call/overview",
+    setupInstructions: [
+      "Renseigner le Developer Token approuvé par Google dans les paramètres de production",
+      "Associer le compte administrateur (MCC) de votre agence ou entreprise",
+    ],
+  },
+  {
+    key: "meta_ads",
+    name: "Meta Ads (Facebook & Instagram)",
+    category: "marketing",
+    categoryLabel: "Marketing & Publicité",
+    availability: "configuration_required",
+    route: "/marketing",
+    capabilities: ["Campagnes", "Ensembles de pubs", "Insights", "Audiences personnalisées"],
+    description: "Suivi des performances des publicités Meta Ads (Facebook & Instagram) et corrélation directe avec les ventes réelles.",
+    authMethod: "oauth2",
+    envVars: ["META_APP_ID", "META_APP_SECRET", "META_ACCESS_TOKEN"],
+    docLink: "https://developers.facebook.com/docs/marketing-apis",
+    setupInstructions: [
+      "Créer une application d'entreprise sur Meta for Developers avec la permission ads_read",
+      "Générer un System User Token avec accès au compte publicitaire",
+    ],
+  },
+  {
+    key: "telnyx",
+    name: "Telnyx Voice AI",
+    category: "voice",
+    categoryLabel: "Voix & Téléphonie",
+    availability: "available",
+    route: "/voice",
+    capabilities: ["Appels entrants", "Contrôle d'appel", "WebRTC", "Trunk SIP", "Transcription temps réel"],
+    description: "Agent vocal IA d'entreprise pour accueil téléphonique 24/7, qualification de prospects et réservation de rendez-vous.",
+    authMethod: "sip_webrtc",
+    docLink: "https://developers.telnyx.com/docs/voice",
+    setupInstructions: [
+      "Gérer vos numéros de téléphone et paramètres vocaux directement dans le module Voix IA",
+      "Attribution automatique des numéros locaux ou sans frais",
+    ],
+  },
+  {
+    key: "stripe",
+    name: "Stripe Facturation & Paiements",
+    category: "billing",
+    categoryLabel: "Facturation & Paiements",
+    availability: "available",
+    route: "/billing",
+    capabilities: ["Abonnements", "Portail client sécurisé", "Factures PDF", "Crédits IA", "Webhooks"],
+    description: "Gestion complète des abonnements SaaS, portail client en libre-service, paiements sécurisés et factures conformes.",
+    authMethod: "api_key",
+    docLink: "https://stripe.com/docs/billing",
+    setupInstructions: [
+      "Module de facturation natif Avenqo disponible sous /billing",
+      "Gérez votre formule, téléchargez vos reçus et modifiez vos moyens de paiement sans friction",
+    ],
+  },
+  {
+    key: "shipstation",
+    name: "ShipStation",
+    category: "fulfillment",
+    categoryLabel: "Logistique & Expédition",
+    availability: "configuration_required",
+    route: "/connections",
+    capabilities: ["Commandes", "Expéditions", "Numéros de suivi", "Étiquettes d'envoi"],
+    description: "Automatisation logistique : envoi des commandes aux transporteurs (Postes Canada, FedEx, UPS) et mise à jour des suivis.",
+    authMethod: "api_key",
+    envVars: ["SHIPSTATION_API_KEY", "SHIPSTATION_API_SECRET"],
+    docLink: "https://www.shipstation.com/docs/api/",
+    setupInstructions: [
+      "Dans ShipStation, aller dans Paramètres > Compte > Clés API",
+      "Générer une clé API et une clé secrète",
+      "Enregistrer les clés pour la synchronisation automatique des expéditions",
+    ],
+  },
+];
 
 interface DatasetItem {
   id: string;
@@ -93,6 +493,10 @@ export function ConnectionsView() {
   const t = getAppTranslations(locale);
   const company = getApplicationCatalog(locale).company;
   const connector = company.connectorHub;
+  const session = useOptionalSession();
+  const currentPlan = session?.identity?.company.subscription_plan?.toLowerCase() || "base";
+  const planMaxMb = currentPlan.includes("enterprise") ? 250 : currentPlan.includes("pro") ? 100 : 50;
+  const maxFileBytes = planMaxMb * 1024 * 1024;
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<ApiRequestError | null>(null);
@@ -103,6 +507,8 @@ export function ConnectionsView() {
   // Datasets & Files
   const [datasets, setDatasets] = useState<DatasetItem[]>([]);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [uploadStage, setUploadStage] = useState<string | null>(null);
+  const [uploadBytes, setUploadBytes] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -117,6 +523,9 @@ export function ConnectionsView() {
   const [deleteModalDataset, setDeleteModalDataset] = useState<DatasetItem | null>(null);
 
   // WooCommerce manual connection form modal
+  const [selectedConnectorDetails, setSelectedConnectorDetails] = useState<CanonicalConnector | null>(null);
+  const [connectorSearchQuery, setConnectorSearchQuery] = useState("");
+  const [connectorCategoryFilter, setConnectorCategoryFilter] = useState<string>("all");
   const [isWooModalOpen, setIsWooModalOpen] = useState(false);
   const [wooStoreUrl, setWooStoreUrl] = useState("");
   const [wooKey, setWooKey] = useState("");
@@ -264,13 +673,15 @@ export function ConnectionsView() {
         setAlertError(`Format de fichier non pris en charge pour "${file.name}". Formats acceptés : CSV, XLS, XLSX, PDF, JSON, TXT et Parquet.`);
         return;
       }
-      if (file.size > 50 * 1024 * 1024) {
-        setAlertError(`Le fichier "${file.name}" dépasse la limite autorisée de 50 Mo.`);
+      if (file.size > maxFileBytes) {
+        setAlertError(`Le fichier "${file.name}" dépasse la limite autorisée de ${planMaxMb} Mo pour votre forfait (${currentPlan.toUpperCase()}).`);
         return;
       }
     }
 
-    setUploadProgress(15);
+    setUploadProgress(0);
+    setUploadStage(null);
+    setUploadBytes(null);
     setAlertError(null);
     setAlertSuccess(null);
 
@@ -281,38 +692,69 @@ export function ConnectionsView() {
         formData.append("file", file);
         formData.append("module_code", "retail");
 
-        setUploadProgress(Math.round(((i + 0.5) / fileList.length) * 100));
+        setUploadStage(`Téléversement de "${file.name}" en cours...`);
 
-        const res = await fetch("/api/v1/datasets/upload", {
-          method: "POST",
-          headers: getAuthHeaders(),
-          body: formData,
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("POST", "/api/v1/datasets/upload");
+          const headers = getAuthHeaders();
+          for (const [key, value] of Object.entries(headers)) {
+            xhr.setRequestHeader(key, value);
+          }
+
+          xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable && event.total > 0) {
+              const fileFraction = event.loaded / event.total;
+              const totalPercent = Math.min(99, Math.round(((i + fileFraction) / fileList.length) * 100));
+              const loadedMb = (event.loaded / (1024 * 1024)).toFixed(1);
+              const totalMb = (event.total / (1024 * 1024)).toFixed(1);
+              setUploadProgress(totalPercent);
+              setUploadBytes(`${loadedMb} Mo / ${totalMb} Mo`);
+              if (event.loaded >= event.total) {
+                setUploadStage(`Traitement et analyse du jeu de données "${file.name}"...`);
+              }
+            }
+          };
+
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve();
+            } else {
+              let detail = `Erreur lors de l'import de ${file.name}`;
+              try {
+                const data = JSON.parse(xhr.responseText);
+                detail = data.detail || data.error?.message || detail;
+              } catch {}
+              reject(new Error(`${detail} (HTTP ${xhr.status})`));
+            }
+          };
+
+          xhr.onerror = () => {
+            reject(new Error(`Échec réseau lors du téléversement de "${file.name}".`));
+          };
+
+          xhr.ontimeout = () => {
+            reject(new Error(`Délai d'attente dépassé lors du téléversement de "${file.name}".`));
+          };
+
+          xhr.send(formData);
         });
-
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          const detail = typeof errData?.detail === "string"
-            ? errData.detail
-            : typeof errData?.error?.message === "string"
-              ? errData.error.message
-              : `Erreur lors de l'import de ${file.name}`;
-          console.error("[Avenqo dataset upload] request failed", {
-            fileName: file.name,
-            status: res.status,
-            statusText: res.statusText,
-            detail,
-          });
-          throw new Error(`${detail} (HTTP ${res.status})`);
-        }
       }
 
       setUploadProgress(100);
+      setUploadStage("Import et analyse terminés avec succès !");
       setAlertSuccess(`${fileList.length} ${fileList.length === 1 ? company.connectionsUploadCountOne : company.connectionsUploadCountOther}`);
-      setTimeout(() => setUploadProgress(null), 1500);
+      setTimeout(() => {
+        setUploadProgress(null);
+        setUploadStage(null);
+        setUploadBytes(null);
+      }, 2000);
       setTimeout(() => setAlertSuccess(null), 5000);
       loadData();
     } catch (err: any) {
       setUploadProgress(null);
+      setUploadStage(null);
+      setUploadBytes(null);
       setAlertError(err.message || company.connectionsProcessingError);
     }
   };
@@ -537,26 +979,26 @@ export function ConnectionsView() {
                     <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
                       <Database size={15} className="shrink-0 text-[#0076FF]" />
                       <span className="truncate">{dataset?.name || source.display_name}</span>
-                      <span className={`shrink-0 text-[10px] font-bold ${source.enabled ? "text-emerald-600" : "text-slate-400"}`}>
-                        {source.enabled ? t.integrations.sourceOn : t.integrations.sourceOff}
+                      <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${source.status === "ready" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40" : source.status === "processing" ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40" : "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400 border border-red-200 dark:border-red-800/40"}`}>
+                        {source.status === "ready" ? "Prêt (Ingéré)" : source.status === "processing" ? "En cours d'ingestion" : source.status}
                       </span>
                     </div>
-                    <div className="ml-[23px] mt-1 text-[11px] text-slate-500">{t.integrations.uploadedRetailSource} · {source.status}</div>
+                    <div className="ml-[23px] mt-1 text-[11px] text-slate-500">{t.integrations.uploadedRetailSource} · {source.enabled ? "Accessible IA" : "Désactivé pour l'IA"}</div>
                   </div>
                   {source.enabled && (source.active ? (
-                    <span className="shrink-0 text-[10px] font-bold text-[#0076FF]">{t.integrations.currentRetailSource}</span>
+                    <span className="shrink-0 px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-[11px] font-bold text-[#0076FF] border border-blue-200 dark:border-blue-800/50">{t.integrations.currentRetailSource}</span>
                   ) : (
                     <button
                       type="button"
                       disabled={actionLoading}
                       onClick={() => void selectRetailSource(source)}
-                      className="shrink-0 text-xs font-semibold text-[#0076FF] hover:underline disabled:opacity-50"
+                      className="shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold text-[#0076FF] hover:bg-blue-50 dark:hover:bg-blue-950/40 border border-blue-200/60 dark:border-blue-800/30 transition-colors disabled:opacity-50"
                     >
                       {t.integrations.selectSource}
                     </button>
                   ))}
                   <label className="flex shrink-0 items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-                    <span>{source.enabled ? t.integrations.sourceEnabled : t.integrations.sourceDisabled}</span>
+                    <span className="text-[11px] font-medium">{source.enabled ? "Accessible IA" : "Non accessible"}</span>
                     <input
                       type="checkbox"
                       role="switch"
@@ -620,8 +1062,8 @@ export function ConnectionsView() {
         {uploadProgress !== null && (
           <div className="space-y-1.5 pt-2">
             <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 font-semibold">
-              <span>{company.connectionsPreparingData}</span>
-              <span>{uploadProgress}%</span>
+              <span>{uploadStage || company.connectionsPreparingData}</span>
+              <span>{uploadBytes ? `${uploadBytes} · ` : ""}{uploadProgress}%</span>
             </div>
             <div className="h-2 w-full rounded-full bg-slate-100 dark:bg-white/[0.08] overflow-hidden">
               <div
@@ -633,64 +1075,193 @@ export function ConnectionsView() {
         )}
       </div>
 
-      {/* Section B: Online stores */}
-      <div className="p-6 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs space-y-4">
-        <div>
-          <h2 className="text-base font-extrabold text-slate-900 dark:text-[#F4F7FB] flex items-center gap-2">
-            <Store size={18} className="text-[#0076FF]" />
-            <span>{connector.commerceSources}</span>
-          </h2>
-          <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-0.5">
-            {connector.providerDescription}
-          </p>
+      {/* Section B: Écosystème des 22 connecteurs Avenqo */}
+      <div className="p-6 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs space-y-5">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-slate-100 dark:border-white/[0.06]">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-extrabold text-slate-900 dark:text-[#F4F7FB] flex items-center gap-2">
+                <Store size={18} className="text-[#0076FF]" />
+                <span>{connector.commerceSources}</span>
+              </h2>
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-[#0076FF] dark:bg-blue-950/40 dark:text-[#00D4FF] border border-blue-200/50 dark:border-blue-800/40">
+                22 connecteurs au catalogue
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-1">
+              Plateformes e-commerce, places de marché, points de vente, CRM, marketing et voix IA intégrés à l'architecture Avenqo.
+            </p>
+          </div>
+
+          {/* Search bar */}
+          <div className="relative min-w-[240px] sm:w-72">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={connectorSearchQuery}
+              onChange={(e) => setConnectorSearchQuery(e.target.value)}
+              placeholder="Rechercher un connecteur..."
+              className="w-full pl-9 pr-3 py-1.5 rounded-xl text-xs bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08] text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-[#0076FF]"
+            />
+            {connectorSearchQuery && (
+              <button
+                onClick={() => setConnectorSearchQuery("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
         </div>
 
+        {/* Category Filter Pills */}
+        <div className="flex flex-wrap items-center gap-1.5 pb-1">
+          {[
+            { id: "all", label: "Tous (22)" },
+            { id: "commerce", label: "E-Commerce (7)" },
+            { id: "marketplace", label: "Places de marché (5)" },
+            { id: "pos", label: "Points de vente (3)" },
+            { id: "crm_marketing", label: "CRM & Marketing (4)" },
+            { id: "voice_billing", label: "Voix & Facturation (3)" },
+          ].map((cat) => {
+            const isActive = connectorCategoryFilter === cat.id;
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setConnectorCategoryFilter(cat.id)}
+                className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  isActive
+                    ? "bg-[#0076FF] text-white shadow-xs"
+                    : "bg-slate-100 hover:bg-slate-200/80 dark:bg-white/[0.05] dark:hover:bg-white/[0.08] text-slate-600 dark:text-slate-300"
+                }`}
+              >
+                {cat.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Connectors Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {/* Shopify */}
-          {(() => {
-            const conn = connections.find((c) => c.provider.toLowerCase() === "shopify");
-            const state = conn?.status.toUpperCase();
+          {CANONICAL_22_CONNECTORS.filter((item) => {
+            // Filter by category
+            if (connectorCategoryFilter === "commerce" && item.category !== "commerce") return false;
+            if (connectorCategoryFilter === "marketplace" && item.category !== "marketplace") return false;
+            if (connectorCategoryFilter === "pos" && item.category !== "pos") return false;
+            if (connectorCategoryFilter === "crm_marketing" && item.category !== "crm" && item.category !== "marketing") return false;
+            if (connectorCategoryFilter === "voice_billing" && item.category !== "voice" && item.category !== "billing" && item.category !== "fulfillment") return false;
+
+            // Filter by search query
+            if (connectorSearchQuery.trim()) {
+              const q = connectorSearchQuery.toLowerCase();
+              return (
+                item.name.toLowerCase().includes(q) ||
+                item.categoryLabel.toLowerCase().includes(q) ||
+                item.description.toLowerCase().includes(q) ||
+                item.capabilities.some((c) => c.toLowerCase().includes(q))
+              );
+            }
+            return true;
+          }).map((item) => {
+            const conn = connections.find((c) => c.provider.toLowerCase() === item.key.toLowerCase());
+            const state = conn?.status?.toUpperCase();
             const isSyncing = state === "SYNCING" || state === "PROCESSING";
             const isError = conn && (state === "ERROR" || state === "FAILED" || state === "REAUTH_REQUIRED");
-            const isConnected = conn?.connection_status === "CONNECTED";
+            const isConnected = conn?.connection_status === "CONNECTED" || conn?.is_active;
 
             return (
-              <div className="p-5 rounded-2xl bg-slate-50 dark:bg-[#111D3D] border border-slate-200/60 dark:border-white/[0.06] flex flex-col justify-between">
+              <div
+                key={item.key}
+                className="p-5 rounded-2xl bg-slate-50 dark:bg-[#111D3D] border border-slate-200/60 dark:border-white/[0.06] flex flex-col justify-between hover:border-slate-300 dark:hover:border-white/[0.12] transition-colors"
+              >
                 <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-extrabold text-sm text-slate-900 dark:text-[#F4F7FB]">Shopify</span>
-                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">{connector.available}</span>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-extrabold text-sm text-slate-900 dark:text-[#F4F7FB]">{item.name}</span>
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-slate-200/80 dark:bg-white/[0.08] text-slate-600 dark:text-slate-300">
+                          {item.categoryLabel}
+                        </span>
+                      </div>
                     </div>
+
+                    {/* Status Pill */}
                     {isSyncing ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-[#0076FF] dark:bg-blue-950/40 dark:text-blue-400 animate-pulse">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-[#0076FF] dark:bg-blue-950/40 dark:text-blue-400 animate-pulse shrink-0">
                         <RefreshCw size={10} className="animate-spin" />
                         <span>{connector.syncing}</span>
                       </span>
                     ) : isError ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 shrink-0">
                         <AlertTriangle size={10} />
                         <span>{connector.error}</span>
                       </span>
                     ) : isConnected ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 shrink-0">
                         <CheckCircle2 size={10} />
                         <span>{connector.connected}</span>
                       </span>
+                    ) : item.availability === "available" ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 shrink-0">
+                        <CheckCircle2 size={10} />
+                        <span>{connector.available}</span>
+                      </span>
+                    ) : item.availability === "partner_approval_pending" ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 border border-purple-200/60 dark:border-purple-800/40 shrink-0">
+                        <Clock size={10} />
+                        <span>Approbation requise</span>
+                      </span>
+                    ) : item.availability === "configuration_required" ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/40 shrink-0">
+                        <AlertCircle size={10} />
+                        <span>Config requise</span>
+                      </span>
                     ) : (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200/70 dark:bg-white/[0.08] text-slate-600 dark:text-slate-400">
-                        {connector.disconnected}
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200/70 dark:bg-white/[0.08] text-slate-500 dark:text-slate-400 shrink-0">
+                        <Lock size={10} />
+                        <span>{connector.comingSoon}</span>
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-1.5">
-                    {isConnected && conn?.store_name ? conn.store_name : connector.providerDescription}
+
+                  <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-2 line-clamp-2">
+                    {isConnected && conn?.store_name ? conn.store_name : item.description}
                   </p>
-                  {isConnected && conn?.store_url && <p className="mt-1 break-all text-xs text-slate-500">{conn.store_url}</p>}
+                  {isConnected && conn?.store_url && (
+                    <p className="mt-1 break-all text-[11px] text-[#0076FF] font-medium">{conn.store_url}</p>
+                  )}
+
+                  {/* Capabilities Tags */}
+                  <div className="flex flex-wrap gap-1 mt-3">
+                    {item.capabilities.slice(0, 3).map((cap) => (
+                      <span
+                        key={cap}
+                        className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-white dark:bg-white/[0.04] border border-slate-200/60 dark:border-white/[0.06] text-slate-600 dark:text-slate-300"
+                      >
+                        {cap}
+                      </span>
+                    ))}
+                    {item.capabilities.length > 3 && (
+                      <span className="px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-slate-100 dark:bg-white/[0.03] text-slate-400">
+                        +{item.capabilities.length - 3}
+                      </span>
+                    )}
+                  </div>
                 </div>
+
+                {/* Card Footer Actions */}
                 <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/[0.06] flex items-center justify-between">
-                  <span className="text-[11px] text-slate-400">{connector.connection}</span>
-                  {isConnected ? (
+                  <span className="text-[11px] text-slate-400">
+                    {item.authMethod === "oauth2"
+                      ? "OAuth 2.0"
+                      : item.authMethod === "oauth2_pkce"
+                      ? "OAuth PKCE"
+                      : item.authMethod === "sip_webrtc"
+                      ? "WebRTC / SIP"
+                      : "Clé d'API"}
+                  </span>
+
+                  {isConnected && conn ? (
                     <button
                       onClick={() => handleTriggerSync(conn.id)}
                       disabled={actionLoading}
@@ -698,10 +1269,11 @@ export function ConnectionsView() {
                     >
                       {connector.sync}
                     </button>
-                  ) : (
+                  ) : item.key === "shopify" ? (
                     <button
                       onClick={async () => {
-                        const shop = prompt(connector.shopDomainTitle);
+                        const knownShop = (isError && conn?.store_url) ? conn.store_url : "";
+                        const shop = knownShop || prompt(connector.shopDomainTitle);
                         if (!shop) return;
                         setActionLoading(true);
                         try {
@@ -729,133 +1301,36 @@ export function ConnectionsView() {
                     >
                       {connector.connect}
                     </button>
-                  )}
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* WooCommerce */}
-          {(() => {
-            const conn = connections.find((c) => c.provider.toLowerCase() === "woocommerce");
-            const isSyncing = conn?.status === "syncing" || actionLoading;
-            const isError = conn && (conn.status === "error" || conn.status === "failed");
-            const isConnected = conn && (conn.is_active || conn.status === "active" || conn.status === "completed");
-
-            return (
-              <div className="p-5 rounded-2xl bg-slate-50 dark:bg-[#111D3D] border border-slate-200/60 dark:border-white/[0.06] flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-extrabold text-sm text-slate-900 dark:text-[#F4F7FB]">WooCommerce</span>
-                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">{connector.available}</span>
-                    </div>
-                    {isSyncing ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-[#0076FF] dark:bg-blue-950/40 dark:text-blue-400 animate-pulse">
-                        <RefreshCw size={10} className="animate-spin" />
-                        <span>{connector.syncing}</span>
-                      </span>
-                    ) : isError ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400">
-                        <AlertTriangle size={10} />
-                        <span>{connector.error}</span>
-                      </span>
-                    ) : isConnected ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
-                        <CheckCircle2 size={10} />
-                        <span>{connector.connected}</span>
-                      </span>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200/70 dark:bg-white/[0.08] text-slate-600 dark:text-slate-400">
-                        {connector.disconnected}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-1.5">
-                    {connector.providerDescription}
-                  </p>
-                </div>
-                <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/[0.06] flex items-center justify-between">
-                  <span className="text-[11px] text-slate-400">{connector.connection}</span>
-                  {isConnected ? (
-                    <button
-                      onClick={() => handleTriggerSync(conn.id)}
-                      disabled={actionLoading}
-                      className="px-3 py-1.5 rounded-xl bg-blue-50 text-[#0076FF] hover:bg-blue-100 dark:bg-white/[0.08] dark:text-[#00D4FF] text-xs font-semibold transition-colors cursor-pointer"
-                    >
-                      {connector.sync}
-                    </button>
-                  ) : (
+                  ) : item.key === "woocommerce" ? (
                     <button
                       onClick={() => setIsWooModalOpen(true)}
                       className="px-3 py-1.5 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
                     >
                       {connector.connect}
                     </button>
+                  ) : item.route && item.route !== "/connections" ? (
+                    <Link
+                      href={item.route}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200/80 dark:bg-white/[0.08] dark:hover:bg-white/[0.12] text-[#0076FF] dark:text-[#00D4FF] text-xs font-semibold transition-colors cursor-pointer"
+                    >
+                      <span>Module</span>
+                      <ArrowUpRight size={12} />
+                    </Link>
+                  ) : (
+                    <button
+                      onClick={() => setSelectedConnectorDetails(item)}
+                      className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-white/[0.1] hover:bg-slate-100 dark:hover:bg-white/[0.04] text-slate-700 dark:text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
+                    >
+                      Détails & API
+                    </button>
                   )}
                 </div>
               </div>
             );
-          })()}
-
-          {/* Etsy */}
-          <div className="p-5 rounded-2xl bg-slate-50/70 dark:bg-[#111D3D]/60 border border-slate-200/50 dark:border-white/[0.05] flex flex-col justify-between opacity-90">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="font-extrabold text-sm text-slate-900 dark:text-[#F4F7FB]">{"Etsy"}</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200/70 dark:bg-white/[0.08] text-slate-500 dark:text-slate-400">
-                  {connector.comingSoon}
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-1.5">
-                {connector.providerDescription}
-              </p>
-            </div>
-            <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-white/[0.06] flex items-center justify-between">
-              <span className="text-[11px] text-slate-400">{connector.connection}</span>
-              <button
-                disabled
-                className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-white/[0.05] text-slate-400 text-xs font-medium cursor-not-allowed"
-              >
-                {connector.comingSoon}
-              </button>
-            </div>
-          </div>
-
-          {/* Honest "Coming soon" cards for other platforms */}
-          {["Amazon", "eBay", "PrestaShop", "BigCommerce", "Magento", "Square"].map((platform) => (
-            <div
-              key={platform}
-              className="p-5 rounded-2xl bg-slate-50/60 dark:bg-[#111D3D]/50 border border-slate-200/40 dark:border-white/[0.04] flex flex-col justify-between opacity-80"
-            >
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="font-extrabold text-sm text-slate-700 dark:text-slate-300">{platform}</span>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 dark:bg-white/[0.08] text-slate-500 dark:text-slate-400">
-                    {connector.comingSoon}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1.5">
-                  {connector.providerDescription}
-                </p>
-              </div>
-              <div className="mt-4 pt-3 border-t border-slate-200/40 dark:border-white/[0.04] flex items-center justify-between">
-                <span className="text-[11px] text-slate-400 flex items-center gap-1">
-                  <Lock size={12} /> {connector.comingSoon}
-                </span>
-                <button
-                  disabled
-                  className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-white/[0.05] text-slate-400 text-xs font-medium cursor-not-allowed"
-                >
-                  {connector.comingSoon}
-                </button>
-              </div>
-            </div>
-          ))}
+          })}
         </div>
       </div>
-
-      {/* Section C: Connected sources */}
+{/* Section C: Connected sources */}
       <div className="p-6 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-100 dark:border-white/[0.06]">
           <div>
@@ -1033,6 +1508,7 @@ export function ConnectionsView() {
                   <th className="py-3 px-4">{connector.fileImportTitle}</th>
                   <th className="py-3 px-4">{company.connectionsStatRowsLabel}</th>
                   <th className="py-3 px-4">{company.connectionsStatColumnsLabel}</th>
+                  <th className="py-3 px-4">{locale.startsWith("fr") ? "Qualité des données" : "Data Quality"}</th>
                   <th className="py-3 px-4">{company.connectionsStatUpdatedLabel}</th>
                   <th className="py-3 px-4">{t.integrations.statusConnected}</th>
                   <th className="py-3 px-4 text-right">{connector.connection}</th>
@@ -1054,9 +1530,20 @@ export function ConnectionsView() {
                       {ds.columns_count || ds.columns?.length || "—"}
                     </td>
                     <td className="py-3 px-4">
-                      <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 text-[10px] font-bold">
-                        {ds.quality_score ? `${ds.quality_score}%` : "100%"}
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 text-[10px] font-bold font-mono">
+                        {ds.quality_score != null
+                          ? `${Math.round(ds.quality_score > 1 ? ds.quality_score : ds.quality_score * 100)} %`
+                          : "100 %"}
                       </span>
+                    </td>
+                    <td className="py-3 px-4 text-slate-500 dark:text-slate-400 font-mono text-[11px]">
+                      {ds.uploaded_at
+                        ? new Date(ds.uploaded_at).toLocaleDateString(locale, {
+                            year: "numeric",
+                            month: "short",
+                            day: "numeric",
+                          })
+                        : "—"}
                     </td>
                     <td className="py-3 px-4">
                       {ds.source_missing || ds.pipeline_status === "source_missing" ? (
@@ -1359,6 +1846,103 @@ export function ConnectionsView() {
           </div>
         </div>
       )}
+    
+      {/* Modal: Connector Specifications & Developer Setup */}
+      {selectedConnectorDetails && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200 dark:border-white/[0.08] shadow-2xl p-6 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-extrabold text-slate-900 dark:text-[#F4F7FB]">
+                    {selectedConnectorDetails.name}
+                  </h3>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-[#0076FF] dark:bg-blue-950/40 dark:text-[#00D4FF]">
+                    {selectedConnectorDetails.categoryLabel}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-1">
+                  {selectedConnectorDetails.description}
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedConnectorDetails(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-3 pt-2 text-xs">
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-200/60 dark:border-white/[0.06] space-y-1.5">
+                <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <Info size={14} className="text-[#0076FF]" />
+                  <span>Protocole d'authentification & Capacités</span>
+                </div>
+                <div className="text-slate-600 dark:text-slate-400">
+                  Méthode : <strong className="text-slate-900 dark:text-white uppercase">{selectedConnectorDetails.authMethod}</strong>
+                </div>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {selectedConnectorDetails.capabilities.map((c) => (
+                    <span key={c} className="px-2 py-0.5 rounded bg-white dark:bg-white/[0.05] border border-slate-200 dark:border-white/[0.08] text-[10px]">
+                      {c}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {selectedConnectorDetails.envVars && selectedConnectorDetails.envVars.length > 0 && (
+                <div className="p-3 rounded-xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/40 space-y-1.5">
+                  <div className="font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                    <AlertCircle size={14} className="text-amber-600" />
+                    <span>Variables d'environnement requises (Railway / Prod)</span>
+                  </div>
+                  <ul className="list-disc list-inside text-amber-800 dark:text-amber-300 font-mono text-[11px] space-y-0.5">
+                    {selectedConnectorDetails.envVars.map((v) => (
+                      <li key={v}>{v}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {selectedConnectorDetails.setupInstructions && (
+                <div className="space-y-1.5">
+                  <div className="font-bold text-slate-800 dark:text-slate-200">
+                    Étapes de configuration du compte développeur :
+                  </div>
+                  <ol className="list-decimal list-inside space-y-1 text-slate-600 dark:text-slate-400 pl-1 leading-relaxed">
+                    {selectedConnectorDetails.setupInstructions.map((step, idx) => (
+                      <li key={idx}>{step}</li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-white/[0.06]">
+              {selectedConnectorDetails.docLink ? (
+                <a
+                  href={selectedConnectorDetails.docLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-[#0076FF] hover:underline"
+                >
+                  <span>Documentation développeur</span>
+                  <ExternalLink size={12} />
+                </a>
+              ) : <div />}
+
+              <button
+                onClick={() => setSelectedConnectorDetails(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/[0.08] dark:hover:bg-white/[0.12] text-xs font-semibold text-slate-700 dark:text-white cursor-pointer"
+              >
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

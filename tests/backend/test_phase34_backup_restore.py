@@ -147,7 +147,8 @@ def test_real_restore_exercise_preserves_tenant_data_integrity(
 
 
 def test_retention_policy_prunes_old_backups(backup_settings: Settings) -> None:
-    import time
+    import json
+    from datetime import datetime, timedelta, timezone
 
     service = BackupService(Settings(
         AUTH_JWT_SECRET=backup_settings.auth_jwt_secret,
@@ -158,12 +159,10 @@ def test_retention_policy_prunes_old_backups(backup_settings: Settings) -> None:
     old_metadata = service.create_backup()
     old_db = service.root / f"{old_metadata.backup_id}.db"
     old_json = service.root / f"{old_metadata.backup_id}.json"
-    # Simule une sauvegarde vieille de 2 jours.
-    old_time = time.time() - (2 * 86400)
-    import os
-
-    os.utime(old_db, (old_time, old_time))
-    os.utime(old_json, (old_time, old_time))
+    # Retention uses the archive's recorded creation date, not file mtime.
+    payload = json.loads(old_json.read_text(encoding="utf-8"))
+    payload["created_at"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+    old_json.write_text(json.dumps(payload), encoding="utf-8")
 
     service.create_backup()  # déclenche l'application de la politique de rétention
 

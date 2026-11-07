@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID, uuid4
 
-from sqlalchemy import ForeignKey, String, UniqueConstraint
+from sqlalchemy import JSON, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -33,3 +33,16 @@ class RetailActiveSource(Base, TimestampMixin):
         ForeignKey("commerce_connections.id", ondelete="CASCADE"),
         nullable=True,
     )
+    selected_source_ids: Mapped[list[str]] = mapped_column(
+        JSON, nullable=False, default=list, server_default="[]"
+    )
+
+    @property
+    def selection_mode(self) -> str:
+        """Returns the normalized selection mode: ALL, CUSTOM_SET, or SINGLE."""
+        normalized = (self.source_type or "").upper()
+        if normalized in ("ALL", "ALL_SOURCES"):
+            return "ALL"
+        if normalized in ("CUSTOM_SET", "CUSTOM"):
+            return "CUSTOM_SET"
+        return "SINGLE"

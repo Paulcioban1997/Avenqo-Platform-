@@ -61,6 +61,7 @@ class GetCustomerSummaryTool(RetailAITool):
             period_end=period["end"],
             comparison_start=period["comparison_start"],
             comparison_end=period["comparison_end"],
+            include_coverage=True,
         )
         return ToolResult(success=True, data=data, source_refs=(str(prepared.dataset_id),))
 

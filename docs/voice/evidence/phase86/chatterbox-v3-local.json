@@ -1,0 +1,65 @@
+{
+  "role": "tts",
+  "model": "ResembleAI/chatterbox",
+  "revision": "5bb1f6ee58e50c3b8d408bc82a6d3740c2db6e18",
+  "license": "MIT",
+  "device": "cuda",
+  "gpu": "NVIDIA GeForce RTX 5070 Laptop GPU",
+  "torch": "2.11.0+cu128",
+  "platform": "Windows-10-10.0.26300-SP0",
+  "model_load_seconds": 48.16101919999346,
+  "network": "ASGI local HTTP worker; not Telnyx",
+  "samples": [
+    {
+      "locale": "fr-CA",
+      "text": "Bonjour, bienvenue chez Avenqo. Le stock de ce produit est inconnu.",
+      "audio_file": "0-fr-CA.wav",
+      "sha256": "0263dde4dd3d2c76665e5cbbb2bafcffeb26d415bc47c8faf5f8ef36dc94ad4c",
+      "audio_seconds": 3.92,
+      "first_audio_seconds": 19.91197940002894,
+      "rtf": 5.079586581640036,
+      "native_streaming": false,
+      "status": "PASS_INFERENCE_ONLY"
+    },
+    {
+      "locale": "fr-CA",
+      "text": "Les ventes disponibles sont historiques. Elles ne permettent pas de confirmer les ventes actuelles.",
+      "audio_file": "1-fr-CA.wav",
+      "sha256": "7b1fee2e6a49ec4dae917b52492749474cdbfabb5199d1168a9783503b856348",
+      "audio_seconds": 4.32,
+      "first_audio_seconds": 4.4468247999902815,
+      "rtf": 1.0293575925903429,
+      "native_streaming": false,
+      "status": "PASS_INFERENCE_ONLY"
+    },
+    {
+      "locale": "en",
+      "text": "Hello. I cannot confirm current inventory from historical sales.",
+      "audio_file": "2-en.wav",
+      "sha256": "34361323d224921e3e76059b8b17347dfa9922c84d419be0d29f5f14c0d94ed3",
+      "audio_seconds": 4.24,
+      "first_audio_seconds": 4.194018299982417,
+      "rtf": 0.9891552594298154,
+      "native_streaming": false,
+      "status": "PASS_INFERENCE_ONLY"
+    },
+    {
+      "locale": "es",
+      "text": "Hola. No puedo confirmar las existencias actuales.",
+      "audio_file": "3-es.wav",
+      "sha256": "acaed6f5eef2bd7d2ded98d2b0f19b16ac229567497e8109d9642c3451185213",
+      "audio_seconds": 3.16,
+      "first_audio_seconds": 3.543778999999631,
+      "rtf": 1.1214490506327945,
+      "native_streaming": false,
+      "status": "PASS_INFERENCE_ONLY"
+    }
+  ],
+  "french_canadian_certified": false,
+  "telephone_tested": false,
+  "central_llm_tested": false,
+  "human_mos": null,
+  "romanian": "BLOCKED_UNSUPPORTED_TTS_LANGUAGE",
+  "status": "PASS_LOCAL_NEURAL_INFERENCE",
+  "peak_cuda_allocated_mib": 3228.62939453125
+}

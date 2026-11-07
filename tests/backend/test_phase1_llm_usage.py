@@ -53,7 +53,8 @@ def test_anthropic_usage_normalization() -> None:
 
     assert usage.provider == "anthropic"
     assert usage.input_tokens == 110
-    assert usage.cached_input_tokens == 30
+    assert usage.cached_input_tokens == 25
+    assert usage.cache_creation_input_tokens == 5
     assert usage.output_tokens == 40
     assert usage.tool_calls == 1
     assert usage.provider_request_id == "msg_123"

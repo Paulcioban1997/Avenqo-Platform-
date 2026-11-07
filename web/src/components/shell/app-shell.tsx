@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -31,6 +31,8 @@ import {
   Globe,
   Sliders,
   ShieldAlert,
+  Layers,
+  Users,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { RegionLanguageSelector } from "@/components/region-language-selector";
@@ -70,6 +72,31 @@ export function AppShell({ children }: AppShellProps) {
   const aiCreditsRemaining = session.credits.remaining;
   const aiCreditsLimit = session.credits.limit;
 
+  const [activeModuleKeys, setActiveModuleKeys] = useState<string[] | null>(null);
+
+  const loadModuleEntitlements = useCallback(async () => {
+    try {
+      const response = await apiFetch("/api/v1/modules/entitlements");
+      if (response.ok) {
+        const data = await response.json();
+        if (Array.isArray(data?.active_modules)) {
+          setActiveModuleKeys(data.active_modules);
+        }
+      }
+    } catch {
+      // Non-blocking fallback
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadModuleEntitlements();
+    const handleSourceChanged = () => {
+      void loadModuleEntitlements();
+    };
+    window.addEventListener("avenqo:sources-changed", handleSourceChanged);
+    return () => window.removeEventListener("avenqo:sources-changed", handleSourceChanged);
+  }, [loadModuleEntitlements]);
+
   const handleSwitchTenant = async (org: OrganizationItem) => {
     try {
       const res = await apiFetch("/api/v1/auth/switch-tenant", {
@@ -102,29 +129,53 @@ export function AppShell({ children }: AppShellProps) {
     window.location.href = "/login?session_expired=1";
   };
 
-  // Navigation modules
-  const mainModules = [
+  // Navigation modules with dynamic entitlement filtering
+  type NavItem = {
+    href: string;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    moduleKey?: string;
+    badge?: string;
+  };
+
+  const allMainModules: NavItem[] = [
     { href: "/dashboard", label: t.navigation.dashboard, icon: LayoutDashboard },
-    { href: "/retail", label: t.navigation.retailAi, icon: ShoppingBag },
-    { href: "/crm", label: t.navigation.crmAi, icon: Network },
-    { href: "/accounting", label: t.navigation.accountingAi, icon: ReceiptText },
+    { href: "/retail", label: t.navigation.retailAi, icon: ShoppingBag, moduleKey: "retail" },
+    { href: "/crm", label: t.navigation.crmAi, icon: Network, moduleKey: "crm" },
+    { href: "/accounting", label: t.navigation.accountingAi, icon: ReceiptText, moduleKey: "accounting" },
   ];
 
-  const aiModules = [
-    { href: "/marketing", label: t.navigation.marketingAi, icon: Megaphone },
-    { href: "/voice", label: t.navigation.voiceAi, icon: Mic2 },
-    { href: "/ocr", label: t.navigation.ocrAi, icon: FileScan },
-    { href: "/chatbots", label: t.navigation.chatbotsAi, icon: MessagesSquare },
-    { href: "/automations", label: t.navigation.automations, icon: Zap },
-    { href: "/agents", label: t.navigation.agentsAi, icon: Bot, badge: "Pro" },
+  const mainModules = allMainModules.filter((item) => {
+    if (!item.moduleKey) return true;
+    if (!activeModuleKeys) return true;
+    return activeModuleKeys.includes(item.moduleKey);
+  });
+
+  const allAiModules: NavItem[] = [
+    { href: "/marketing", label: t.navigation.marketingAi, icon: Megaphone, moduleKey: "marketing" },
+    { href: "/voice", label: t.navigation.voiceAi, icon: Mic2, moduleKey: "voice" },
+    { href: "/ocr", label: t.navigation.ocrAi, icon: FileScan, moduleKey: "ocr" },
+    { href: "/legal", label: locale.startsWith("fr") ? "Legal AI" : "Legal AI", icon: FileScan, moduleKey: "legal" },
+    { href: "/chatbots", label: t.navigation.chatbotsAi, icon: MessagesSquare, moduleKey: "chatbots" },
+    { href: "/automations", label: t.navigation.automations, icon: Zap, moduleKey: "workflow" },
+    { href: "/agents", label: t.navigation.agentsAi, icon: Bot },
   ];
+
+  const aiModules = allAiModules.filter((item) => {
+    if (!item.moduleKey) return true;
+    if (!activeModuleKeys) return true;
+    return activeModuleKeys.includes(item.moduleKey);
+  });
 
   const platformModules = [
+    { href: "/workspace/modules", label: locale.startsWith("fr") ? "Explorer les modules" : "Explore Modules", icon: Sparkles, badge: locale.startsWith("fr") ? "Catalogue" : "Catalog" },
     { href: "/connections", label: t.navigation.connections, icon: Plug },
-    { href: "/integrations", label: t.navigation.integrations, icon: Globe },
     { href: "/data", label: t.navigation.dataHub, icon: Database },
+    { href: "/employees", label: locale.startsWith("fr") ? "Équipe" : "Team", icon: Users },
     { href: "/billing", label: t.navigation.billing, icon: CreditCard },
+    { href: "/settings/contracts", label: locale.startsWith("fr") ? "Mes contrats" : "Contracts", icon: FileScan },
     { href: "/settings", label: t.navigation.settings, icon: Settings },
+    { href: "/security", label: locale.startsWith("fr") ? "Sécurité & Confiance" : "Security & Trust", icon: ShieldAlert },
   ];
 
   // Global Ctrl+K / Cmd+K listener
@@ -153,17 +204,25 @@ export function AppShell({ children }: AppShellProps) {
             {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
 
-          {/* Official Avenqo brand logo for mobile/topbar */}
+          {/* Official Avenqo brand logo or custom tenant logo for mobile/topbar */}
           <Link href="/dashboard" className="flex items-center gap-2.5 group">
-            <Image
-              src="/brand/avenqo-icon.png"
-              alt="Avenqo"
-              width={32}
-              height={32}
-              className="rounded-xl object-contain shadow-xs shadow-blue-500/20 group-hover:scale-105 transition-transform"
-            />
+            {session.identity?.company?.logo_url ? (
+              <img
+                src={session.identity.company.logo_url}
+                alt={activeTenant || t.brand.name}
+                className="w-8 h-8 rounded-xl object-contain border border-slate-200/80 dark:border-white/10 group-hover:scale-105 transition-transform"
+              />
+            ) : (
+              <Image
+                src="/brand/avenqo-icon.png"
+                alt="Avenqo"
+                width={32}
+                height={32}
+                className="rounded-xl object-contain shadow-xs shadow-blue-500/20 group-hover:scale-105 transition-transform"
+              />
+            )}
             <span className="font-extrabold tracking-tight text-slate-900 dark:text-[#F4F7FB] text-base hidden sm:inline-block">
-              {t.brand.name}
+              {session.identity?.company?.logo_url ? activeTenant : t.brand.name}
             </span>
           </Link>
 
@@ -175,7 +234,7 @@ export function AppShell({ children }: AppShellProps) {
                 className="flex items-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-[#111D3D] hover:bg-slate-200/80 dark:hover:bg-[#172652] text-xs font-semibold text-slate-700 dark:text-[#F4F7FB] border border-slate-200/60 dark:border-white/[0.08] transition-colors cursor-pointer"
               >
                 <Building2 className="w-3.5 h-3.5 text-[#0076FF]" />
-                <span className="max-w-[30px] sm:max-w-[120px] truncate" title={activeTenant}>{activeTenant}</span>
+                <span className="max-w-[120px] sm:max-w-[200px] lg:max-w-[280px] truncate" title={activeTenant}>{activeTenant}</span>
                 <ChevronDown className="w-3 h-3 text-slate-400" />
               </button>
 
@@ -217,7 +276,7 @@ export function AppShell({ children }: AppShellProps) {
           ) : (
             <div className="min-w-0 flex items-center gap-1 sm:gap-2 px-1.5 sm:px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-[#111D3D] text-xs font-semibold text-slate-700 dark:text-[#F4F7FB] border border-slate-200/60 dark:border-white/[0.08]">
               <Building2 className="w-3.5 h-3.5 text-[#0076FF]" />
-              <span className="max-w-[30px] sm:max-w-[140px] truncate" title={activeTenant}>{activeTenant || catalog.company.connectionsLoading}</span>
+              <span className="max-w-[120px] sm:max-w-[200px] lg:max-w-[280px] truncate" title={activeTenant}>{activeTenant || catalog.company.connectionsLoading}</span>
             </div>
           )}
 
@@ -299,7 +358,11 @@ export function AppShell({ children }: AppShellProps) {
 
           {/* Avenqo Copilot Trigger Button */}
           <button
-            onClick={() => setIsCopilotOpen((prev) => !prev)}
+            type="button"
+            aria-label={t.shell.copilotButton}
+            aria-expanded={isCopilotOpen}
+            aria-controls="avenqo-central-dialog"
+            onClick={() => setIsCopilotOpen(true)}
             className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#0076FF] to-[#005bd3] hover:from-[#158bff] hover:to-[#0076FF] text-white text-xs font-semibold shadow-xs shadow-blue-500/20 transition-all duration-150"
           >
             <Sparkles className="w-3.5 h-3.5 text-[#00D4FF]" />
@@ -323,19 +386,27 @@ export function AppShell({ children }: AppShellProps) {
               onClick={() => setIsSidebarOpen(false)}
               className="flex items-center gap-3 group"
             >
-              <Image
-                src="/brand/avenqo-icon.png"
-                alt="Avenqo"
-                width={38}
-                height={38}
-                className="rounded-xl object-contain shadow-sm shadow-blue-500/25 group-hover:scale-105 transition-transform"
-              />
+              {session.identity?.company?.logo_url ? (
+                <img
+                  src={session.identity.company.logo_url}
+                  alt={activeTenant || t.brand.name}
+                  className="w-9 h-9 rounded-xl object-contain border border-slate-200/80 dark:border-white/10 group-hover:scale-105 transition-transform"
+                />
+              ) : (
+                <Image
+                  src="/brand/avenqo-icon.png"
+                  alt="Avenqo"
+                  width={38}
+                  height={38}
+                  className="rounded-xl object-contain shadow-sm shadow-blue-500/25 group-hover:scale-105 transition-transform"
+                />
+              )}
               <div>
-                <div className="font-extrabold tracking-tight text-slate-900 dark:text-[#F4F7FB] text-base leading-none">
-                  {t.brand.name}
+                <div className="font-extrabold tracking-tight text-slate-900 dark:text-[#F4F7FB] text-base leading-none truncate max-w-[150px]">
+                  {session.identity?.company?.logo_url ? activeTenant : t.brand.name}
                 </div>
                 <div className="text-[9px] font-bold text-slate-400 dark:text-[#94A3B8] tracking-widest uppercase mt-1">
-                  {t.brand.tagline}
+                  {session.identity?.company?.logo_url ? "White-Label Workspace" : t.brand.tagline}
                 </div>
               </div>
             </Link>
@@ -447,6 +518,9 @@ export function AppShell({ children }: AppShellProps) {
             <CreditMeter
               remaining={aiCreditsRemaining}
               limit={aiCreditsLimit}
+              monthlyAllocation={session.credits.monthlyAllocation}
+              monthlyRemaining={session.credits.monthlyRemaining}
+              purchasedRemaining={session.credits.purchasedRemaining}
               label={t.shell.aiCredits}
               upgradeLabel={t.shell.upgradePlan}
               error={session.creditError ? session.creditError.publicMessage ?? catalog.auth.genericError : undefined}

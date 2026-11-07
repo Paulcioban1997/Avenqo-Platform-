@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import type { AppTranslations } from "@/lib/i18n/app-dictionary";
 import { getAuthHeaders } from "@/lib/api-headers";
+import { apiFetch } from "@/lib/api-request";
 
 export interface CommandPaletteProps {
   isOpen: boolean;
@@ -57,7 +58,7 @@ export function CommandPalette({
 
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/v1/crm/search?q=${encodeURIComponent(query)}&limit=6`, {
+        const res = await apiFetch(`/api/v1/crm/search?q=${encodeURIComponent(query)}&limit=6`, {
           headers: getAuthHeaders(),
         });
         if (res.ok) {

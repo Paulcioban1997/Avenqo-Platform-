@@ -195,19 +195,19 @@ def test_vertex_sealed_service_account_config_is_validated_and_never_logged(monk
     import json
 
     credentials = Mock()
-    load_credentials = Mock(return_value=(credentials, "avenqo-509823"))
+    load_credentials = Mock(return_value=(credentials, 'test-only-fictional-value'))
     client_builder = Mock()
     monkeypatch.setattr("google.auth.load_credentials_from_dict", load_credentials)
     monkeypatch.setattr("google.auth.default", Mock(side_effect=AssertionError("ADC fallback must not be used")))
     monkeypatch.setattr("google.genai.Client", client_builder)
     secret_payload = json.dumps({
         "type": "service_account",
-        "project_id": "avenqo-509823",
+        "project_id": 'test-only-fictional-value',
         "client_email": "avenqo-vertex-runtime@avenqo-509823.iam.gserviceaccount.com",
         "private_key": "never-print-this-test-marker",
     })
     provider = VertexProvider(
-        "avenqo-509823", "global", "gemini-3.5-flash-lite", 0.2, 80,
+        'test-only-fictional-value', "global", "gemini-3.5-flash-lite", 0.2, 80,
         enabled=True,
         service_account_email="avenqo-vertex-runtime@avenqo-509823.iam.gserviceaccount.com",
         service_account_json=secret_payload,
@@ -228,7 +228,7 @@ def test_vertex_rejects_wrong_sealed_service_account_identity(monkeypatch) -> No
     load_credentials = Mock(side_effect=AssertionError("mismatched identity must be rejected before auth"))
     monkeypatch.setattr("google.auth.load_credentials_from_dict", load_credentials)
     provider = VertexProvider(
-        "avenqo-509823", "global", "gemini-3.5-flash-lite", 0.2, 80,
+        'test-only-fictional-value', "global", "gemini-3.5-flash-lite", 0.2, 80,
         enabled=True,
         service_account_email="avenqo-vertex-runtime@avenqo-509823.iam.gserviceaccount.com",
         service_account_json=json.dumps({"type": "service_account", "project_id": "other-project", "client_email": "unexpected@example.com", "private_key": "secret-marker"}),

@@ -67,6 +67,7 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1, max_length=128)
+    otp: str | None = Field(default=None, max_length=32)
 
 
 class TokenRequest(BaseModel):
@@ -89,6 +90,10 @@ class ResetPasswordRequest(TokenRequest):
     )
 
 
+class PreferredLanguageRequest(BaseModel):
+    preferred_language: str = Field(min_length=2, max_length=16)
+
+
 class CompanyResponse(BaseModel):
     id: UUID
     name: str
@@ -100,6 +105,8 @@ class CompanyResponse(BaseModel):
     preferred_language: str | None = None
     currency_code: str | None = None
     timezone: str | None = None
+    logo_url: str | None = None
+    brand_color: str | None = None
 
     model_config = {"from_attributes": True}
 

@@ -7,9 +7,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.core.security import generate_token, hash_password, hash_token
-from backend.app.models import AccountToken, AccountTokenPurpose, User, UserRole
+from backend.app.models import AccountToken, AccountTokenPurpose, CompanyMembership, User, UserRole
 from backend.app.schemas.employees import EmployeeCreateRequest, EmployeeUpdateRequest
 from backend.app.services.account_notifications import AccountNotifier
+from backend.app.services.plan_limits_service import PlanLimitsService
 
 
 class EmployeeConflictError(ValueError):
@@ -43,6 +44,7 @@ class EmployeeService:
         email = str(request.email).strip().lower()
         if self._session.scalar(select(User.id).where(User.email == email)):
             raise EmployeeConflictError("Un compte utilise déjà cet email")
+        PlanLimitsService(self._session).ensure_user_capacity(actor.company_id)
 
         employee = User(
             company_id=actor.company_id,
@@ -51,6 +53,8 @@ class EmployeeService:
             email=email,
             password_hash=hash_password(request.password),
             role=request.role,
+            job_title=getattr(request, "job_title", None) or "Employee",
+            department=getattr(request, "department", None),
             is_active=True,
         )
         self._session.add(employee)
@@ -86,15 +90,32 @@ class EmployeeService:
             employee.first_name = request.first_name.strip()
         if request.last_name is not None:
             employee.last_name = request.last_name.strip()
+        if request.job_title is not None:
+            employee.job_title = request.job_title.strip()
+        if request.department is not None:
+            employee.department = request.department.strip() or None
         if request.is_active is not None:
             if employee.id == actor.id and not request.is_active:
                 raise EmployeePermissionError("Vous ne pouvez pas désactiver votre propre compte")
+            if request.is_active and not employee.is_active:
+                PlanLimitsService(self._session).ensure_user_capacity(actor.company_id)
             employee.is_active = request.is_active
             if not request.is_active:
                 now = datetime.now(timezone.utc)
                 for auth_session in employee.auth_sessions:
                     if auth_session.revoked_at is None:
                         auth_session.revoked_at = now
+        # Permissions for AI, Voice and CRM are read from CompanyMembership, so a
+        # demotion or deactivation must reach it in this tenant (never another).
+        membership = self._session.scalar(select(CompanyMembership).where(
+            CompanyMembership.user_id == employee.id,
+            CompanyMembership.company_id == actor.company_id,
+        ))
+        if membership is not None:
+            if request.role is not None:
+                membership.role = employee.role
+            if request.is_active is not None:
+                membership.is_active = employee.is_active
         self._session.commit()
         return employee
 

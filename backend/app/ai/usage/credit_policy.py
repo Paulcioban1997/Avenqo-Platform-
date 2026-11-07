@@ -16,6 +16,9 @@ class AvenqoCreditPolicy:
     max_input_tokens_per_request: int | None = None
     max_output_tokens_per_request: int | None = None
     max_request_credits: int | None = None
+    max_session_credits: int | None = None
+    max_session_cost_usd: Decimal | None = None
+    max_company_monthly_cost_usd: Decimal | None = None
     rounding: str = "ceiling"
 
     def __post_init__(self) -> None:
@@ -30,6 +33,9 @@ class AvenqoCreditPolicy:
             self.max_input_tokens_per_request,
             self.max_output_tokens_per_request,
             self.max_request_credits,
+            self.max_session_credits,
+            self.max_session_cost_usd,
+            self.max_company_monthly_cost_usd,
         ):
             if value is not None and value <= 0:
                 raise ValueError("Credit guardrails must be positive when configured")
@@ -65,3 +71,19 @@ class AvenqoCreditPolicy:
             and self.provider_cost_to_credits(provider_cost_usd) > self.max_request_credits
         ):
             raise ValueError("Estimated AI credits exceed the configured request budget")
+
+    def validate_session_credits(self, session_credits: int) -> None:
+        if self.max_session_credits is not None and session_credits > self.max_session_credits:
+            raise ValueError(f"Session AI credit limit exceeded ({self.max_session_credits} max)")
+
+    def validate_session_cost(self, session_cost_usd: Decimal) -> None:
+        if self.max_session_cost_usd is not None and session_cost_usd > self.max_session_cost_usd:
+            raise ValueError(f"Session AI cost limit exceeded (${self.max_session_cost_usd} max)")
+
+    def validate_company_cost(self, company_monthly_cost_usd: Decimal) -> None:
+        if (
+            self.max_company_monthly_cost_usd is not None
+            and company_monthly_cost_usd > self.max_company_monthly_cost_usd
+        ):
+            raise ValueError("Company monthly AI budget ceiling reached")
+

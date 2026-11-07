@@ -177,14 +177,15 @@ def business_environment(tmp_path):
         company_b = _company(session, "Beta", "EUR")
         dataset_a = _dataset(session, company_a)
         dataset_b = _dataset(session, company_b)
+        today = datetime.now(timezone.utc).date()
         rows_a = [
-            {"date": "2026-07-20", "sale": "O0", "client": "C0", "amount": 50, "churned": 0},
-            {"date": "2026-08-20", "sale": "O1", "client": "C1", "amount": 100, "churned": 0},
-            {"date": "2026-08-25", "sale": "O2", "client": "C1", "amount": 25, "churned": 0},
-            {"date": "2026-08-28", "sale": "O3", "client": "C2", "amount": 50, "churned": 1},
+            {"date": (today - timedelta(days=80)).isoformat(), "sale": "O0", "client": "C0", "amount": 50, "churned": 0},
+            {"date": (today - timedelta(days=55)).isoformat(), "sale": "O1", "client": "C1", "amount": 100, "churned": 0},
+            {"date": (today - timedelta(days=52)).isoformat(), "sale": "O2", "client": "C1", "amount": 25, "churned": 0},
+            {"date": (today - timedelta(days=50)).isoformat(), "sale": "O3", "client": "C2", "amount": 50, "churned": 1},
         ]
         rows_b = [
-            {"date": "2026-08-28", "sale": "B1", "client": "B-C1", "amount": 999, "churned": 0},
+            {"date": (today - timedelta(days=50)).isoformat(), "sale": "B1", "client": "B-C1", "amount": 999, "churned": 0},
         ]
         prepared = {
             dataset_a.id: _prepared(company_a, dataset_a, rows_a),
@@ -209,6 +210,29 @@ def _phase4d_services(session, prepared):
     products = TenantProductsService(analytics)
     recommendations = TenantRecommendationsService(analytics, products, predictions)
     return products, recommendations, predictions
+
+
+def test_product_recommendations_preserve_period_response_contract(business_environment):
+    from backend.app.schemas.tenant_products_recommendations import TenantRecommendationsResponse
+
+    session, company, _, dataset, prepared = business_environment
+    prepared[dataset.id] = _prepared(
+        company, dataset,
+        [
+            {"date": day, "sale": f"ORDER-{index}", "sku": "P1", "amount": amount}
+            for index, (day, amount) in enumerate(
+                [("2017-11-15", 10)] * 6 + [("2017-12-15", 20)] * 6
+            )
+        ],
+        {"date": "order_timestamp", "sale": "order_id", "sku": "product_id", "amount": "total_amount"},
+    )
+    _, service, _ = _phase4d_services(session, prepared)
+    result = TenantRecommendationsResponse.model_validate(service.build(TenantContext(company.id)))
+    product = next(item for item in result.recommendations if item.type == "product_growth")
+    assert product.period == "dataset_last_30_days_vs_previous"
+    assert product.evidence["period"]["start"].year == 2017
+    assert product.evidence["current"] == 120
+    assert product.evidence["comparison"] == 60
 
 
 def test_retail_sales_period_does_not_relabel_historical_dataset_as_recent(
@@ -606,13 +630,25 @@ def test_sales_period_and_trend_support_non_iso_csv_dates(business_environment):
 
 def test_sales_never_invents_change_and_only_uses_active_validated_forecast(business_environment):
     session, company, _company_b, dataset, prepared = business_environment
+    # This case asserts empty current/previous calendar months. Fifty days ago
+    # can fall in the previous month (e.g. Oct 21 -> Sep 1), so the shared
+    # rolling-window fixture cannot guarantee that precondition year-round.
+    historical = datetime.now(timezone.utc) - timedelta(days=400)
+    prepared[dataset.id] = _prepared(company, dataset, [
+        {**row, "date": (historical - timedelta(days=index)).isoformat()}
+        for index, row in enumerate(prepared[dataset.id].rows)
+    ])
     _model(session, company, dataset, "weekly_forecast", "forecasting", active=False)
     sales, _customers, predictions = _services(session, prepared)
-    assert sales.build(TenantContext(company.id))["forecast"] is None
+    inactive = sales.build(TenantContext(company.id))
     assert predictions.calls == []
+    if inactive["forecast"] is not None:
+        assert inactive["forecast"]["method"] == "historical_weekly_mean"
+        assert "confidence" not in inactive["forecast"]
 
     _model(session, company, dataset, "weekly_forecast", "forecasting", active=True)
     result = sales.build(TenantContext(company.id), period_key="current_month")
+    assert result["forecast"]["method"] == "trained_model"
     assert result["forecast"]["forecasted_total"] == 170
     assert len(result["forecast"]["points"]) == 2
     assert result["summary"]["revenue"] == 0

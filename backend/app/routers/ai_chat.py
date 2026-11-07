@@ -21,6 +21,7 @@ from backend.app.dependencies.ai_chat import get_chat_service, get_conversation_
 from backend.app.dependencies.ai_engine import get_prediction_service
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
 from backend.app.dependencies.ai_authorization import get_active_ai_membership
+from backend.app.dependencies.subscription import require_active_subscription
 from backend.app.dependencies.assistants import get_assistant_registry
 from backend.app.assistants.registry import AssistantRegistry, agent_entitlements
 from backend.app.dependencies.tenant_business import (
@@ -29,6 +30,7 @@ from backend.app.dependencies.tenant_business import (
 )
 from backend.app.services.retail_source_service import RetailSourceService
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
+from backend.app.services.tenant_locale_service import get_company_locale
 from backend.app.services.tenant_customers_service import TenantCustomersService
 from backend.app.services.tenant_sales_service import TenantSalesService
 from backend.app.schemas.ai_chat import ChatMessageResponse, ConversationDetailResponse, ConversationResponse, CreateConversationRequest, MessageResponse, SendMessageRequest, SourceResponse
@@ -52,24 +54,39 @@ def _retail_trusted_context(
     """Expose backend-computed Retail facts to Copilot without LLM inference."""
 
     try:
-        active_source = next(
-            (
-                source
-                for source in RetailSourceService(db).list_sources(tenant)
-                if source.active and source.enabled
-            ),
-            None,
-        )
-        if active_source is None:
+        source_service = RetailSourceService(db)
+        selection = source_service.active_selection(tenant)
+        all_sources = source_service.list_sources(tenant)
+        enabled_sources = [s for s in all_sources if s.enabled]
+        if not enabled_sources:
             return ""
+
+        if selection is not None and getattr(selection, "source_type", None) == "all":
+            source_display = "Toutes les sources consolidées"
+            source_type = "all"
+        else:
+            active_source = next(
+                (s for s in all_sources if s.active and s.enabled),
+                None,
+            )
+            if active_source is None:
+                if selection is None or getattr(selection, "source_type", None) == "all":
+                    source_display = "Toutes les sources consolidées"
+                    source_type = "all"
+                else:
+                    return ""
+            else:
+                source_display = active_source.display_name
+                source_type = active_source.source_type
+
         sales_data = sales.build(tenant, period_key="all")
         summary = sales_data.get("summary") or {}
         customer_data = customers.build(tenant, page=1, page_size=1)
         customer_total = customer_data.get("pagination", {}).get("total", 0)
         return (
             "Retail facts computed server-side from the active tenant source:\n"
-            f"source={active_source.display_name}\n"
-            f"source_type={active_source.source_type}\n"
+            f"source={source_display}\n"
+            f"source_type={source_type}\n"
             f"currency={sales_data.get('currency')}\n"
             f"revenue={summary.get('revenue')}\n"
             f"orders={summary.get('orders')}\n"
@@ -128,7 +145,7 @@ def detail(conversation_id: UUID, tenant: TenantContext = Depends(get_tenant_con
 @router.post(
     "/conversations/{conversation_id}/messages",
     response_model=ChatMessageResponse,
-    dependencies=[Depends(rate_limit("ai_chat_message", "rate_limit_ai_per_minute"))],
+    dependencies=[Depends(require_active_subscription), Depends(rate_limit("ai_chat_message", "rate_limit_ai_per_minute"))],
 )
 async def message(
     conversation_id: UUID,
@@ -188,7 +205,7 @@ async def message(
             capabilities=capabilities,
             request_id=request_id,
             trusted_context=trusted_context,
-            user_language=company.preferred_language or "fr",
+            user_language=get_company_locale(db, company.id) or company.preferred_language,
             company_country=company.country or "",
             company_currency=getattr(company, "currency_code", None) or "USD",
             company_timezone=company.timezone or "UTC",
@@ -209,7 +226,7 @@ async def message(
 
 @router.post(
     "/conversations/{conversation_id}/messages/stream",
-    dependencies=[Depends(rate_limit("ai_chat_message_stream", "rate_limit_ai_per_minute"))],
+    dependencies=[Depends(require_active_subscription), Depends(rate_limit("ai_chat_message_stream", "rate_limit_ai_per_minute"))],
 )
 async def stream(
     conversation_id: UUID,
@@ -274,9 +291,9 @@ async def stream(
                 plan_code=plan_code,
                 capabilities=capabilities,
                 request_id=request_id,
-                trusted_context=trusted_context,
+                trusted_context=trusted_context,  # Injected into prompt as <trusted_server_context>
                 is_cancelled=is_cancelled,
-                user_language=company.preferred_language or "fr",
+                user_language=get_company_locale(db, company.id) or company.preferred_language,
                 company_country=company.country or "",
                 company_currency=getattr(company, "currency_code", None) or "USD",
                 company_timezone=company.timezone or "UTC",

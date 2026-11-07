@@ -1,0 +1,241 @@
+from __future__ import annotations
+
+from types import SimpleNamespace
+from uuid import uuid4
+
+from starlette.requests import Request
+
+from backend.app.core.tenant_execution import peek_tenant_execution, reset_tenant_execution, tenant_execution_var
+from backend.app.database.session import get_db
+from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
+from backend.app.services.tenant_rls import apply_tenant_rls, set_rls_bypass
+from shared.ai_engine.contracts import TenantContext
+
+
+class _FakeSession:
+    def __init__(self) -> None:
+        self.statements: list[tuple[str, dict]] = []
+
+    def get_bind(self):
+        return SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+
+    def execute(self, statement, params=None):
+        self.statements.append((str(statement), dict(params or {})))
+
+
+def test_apply_tenant_rls_is_noop_when_session_has_no_bind() -> None:
+    apply_tenant_rls(SimpleNamespace(), uuid4())
+    apply_tenant_rls(SimpleNamespace(get_bind=lambda: None), uuid4())
+
+
+def test_apply_tenant_rls_binds_company_and_disables_bypass() -> None:
+    session = _FakeSession()
+    company_id = uuid4()
+    apply_tenant_rls(session, company_id)
+    assert session.statements
+    _sql, params = session.statements[-1]
+    assert params["flag"] == "off"
+    assert params["cid"] == str(company_id)
+
+
+def test_set_rls_bypass_is_transaction_local() -> None:
+    session = _FakeSession()
+    set_rls_bypass(session, enabled=True)
+    assert session.statements[-1][1]["flag"] == "on"
+    set_rls_bypass(session, enabled=False)
+    assert session.statements[-1][1]["flag"] == "off"
+
+
+def test_get_db_drops_prior_rls_info_when_the_session_closes(monkeypatch) -> None:
+    class _Session:
+        def __init__(self) -> None:
+            self.info = {"avenqo_rls": {"cid": "leftover", "flag": "on"}}
+            self.closed = False
+
+        def rollback(self) -> None:
+            return None
+
+        def close(self) -> None:
+            self.closed = True
+
+    leftover = _Session()
+    monkeypatch.setattr("backend.app.database.session.SessionLocal", lambda: leftover)
+    generator = get_db()
+    next(generator)
+    generator.close()
+    assert leftover.closed is True
+    assert "avenqo_rls" not in leftover.info
+
+
+def test_get_db_does_not_enable_rls_bypass_by_default(monkeypatch) -> None:
+    observed: list[bool] = []
+    monkeypatch.setattr(
+        "backend.app.services.tenant_rls.set_rls_bypass",
+        lambda session, *, enabled: observed.append(enabled),
+    )
+    generator = get_db()
+    next(generator)
+    try:
+        assert observed == []
+    finally:
+        generator.close()
+
+
+def test_get_current_identity_applies_tenant_rls(monkeypatch) -> None:
+    company_id = uuid4()
+    user = SimpleNamespace(id=uuid4(), company_id=company_id, is_platform_admin=False)
+    auth_session = SimpleNamespace()
+    db = object()
+    observed: list[tuple[object, object, bool]] = []
+
+    def authenticate(_token: str):
+        return auth_session, user
+
+    monkeypatch.setattr(
+        "backend.app.dependencies.auth.apply_tenant_rls",
+        lambda session, cid, *, bypass=False: observed.append((session, cid, bypass)),
+    )
+    request = Request({"type": "http", "method": "GET", "path": "/api/v1/crm/clients", "headers": []})
+    previous = tenant_execution_var.set(None)
+    try:
+        identity = get_current_identity(
+            request,
+            credentials=SimpleNamespace(scheme="Bearer", credentials="access-token"),
+            service=SimpleNamespace(authenticate=authenticate),
+            db=db,
+        )
+        assert identity.user is user
+        assert observed == [(db, company_id, False)]
+        bound = peek_tenant_execution()
+        assert bound is not None and bound.company_id == company_id
+    finally:
+        reset_tenant_execution(previous)
+
+
+def test_get_current_identity_platform_admin_does_not_bypass_rls(monkeypatch) -> None:
+    company_id = uuid4()
+    user = SimpleNamespace(id=uuid4(), company_id=company_id, is_platform_admin=True)
+    auth_session = SimpleNamespace()
+    db = object()
+    observed: list[tuple[object, object, bool]] = []
+
+    monkeypatch.setattr(
+        "backend.app.dependencies.auth.apply_tenant_rls",
+        lambda session, cid, *, bypass=False: observed.append((session, cid, bypass)),
+    )
+    request = Request({"type": "http", "method": "GET", "path": "/api/v1/crm/clients", "headers": []})
+    previous = tenant_execution_var.set(None)
+    try:
+        get_current_identity(
+            request,
+            credentials=SimpleNamespace(scheme="Bearer", credentials="access-token"),
+            service=SimpleNamespace(authenticate=lambda _token: (auth_session, user)),
+            db=db,
+        )
+        assert observed == [(db, company_id, False)]
+    finally:
+        reset_tenant_execution(previous)
+
+
+def test_get_tenant_context_applies_tenant_rls_on_auth_path() -> None:
+    company_id = uuid4()
+    user_id = uuid4()
+    identity = CurrentIdentity(
+        auth_session=SimpleNamespace(),
+        user=SimpleNamespace(company_id=company_id, id=user_id, is_platform_admin=False),
+        raw_token="access-token",
+    )
+    db = _FakeSession()
+    observed: list[tuple[object, object, bool]] = []
+
+    from backend.app.dependencies import auth as auth_dep
+
+    original = auth_dep.apply_tenant_rls
+
+    def _capture(session, cid, *, bypass=False):
+        observed.append((session, cid, bypass))
+        return original(session, cid, bypass=bypass)
+
+    auth_dep.apply_tenant_rls = _capture  # type: ignore[method-assign]
+    try:
+        tenant = get_tenant_context(identity, db)
+    finally:
+        auth_dep.apply_tenant_rls = original  # type: ignore[method-assign]
+
+    assert tenant == TenantContext(company_id=company_id, user_id=user_id)
+    assert observed == [(db, company_id, False)]
+    assert db.statements[-1][1] == {"flag": "off", "cid": str(company_id)}
+
+
+def test_retell_webhook_binds_tenant_after_company_id(monkeypatch) -> None:
+    from backend.app.routers import voice as voice_router
+
+    company_id = uuid4()
+    observed: list[tuple[object, object]] = []
+    monkeypatch.setattr(
+        voice_router,
+        "apply_tenant_rls",
+        lambda session, cid, *, bypass=False: observed.append((session, cid)),
+    )
+    monkeypatch.setattr(voice_router, "_ensure_voice_access", lambda db, cid: None)
+    db = SimpleNamespace()
+    config = SimpleNamespace(company_id=company_id)
+    service = SimpleNamespace(config_from_api_key=lambda _key: config)
+    monkeypatch.setattr(voice_router, "_orchestrator", lambda _db, _settings: service)
+
+    resolved, returned_service = voice_router._authenticated_voice_config(db, SimpleNamespace(), "avqv_key")
+    assert resolved is config
+    assert returned_service is service
+    assert observed == [(db, company_id)]
+
+
+def test_admin_support_enables_bypass_before_cross_tenant_audit() -> None:
+    from pathlib import Path
+
+    from backend.app.dependencies import admin as admin_mod
+
+    source = Path(admin_mod.__file__).read_text(encoding="utf-8")
+    apply_at = source.index("apply_tenant_rls(db, company_id, bypass=True)")
+    audit_at = source.index('action="support_retail_access"')
+    assert apply_at < audit_at
+
+
+def test_admin_router_enables_rls_bypass_after_platform_admin_gate() -> None:
+    from pathlib import Path
+
+    from backend.app.routers import admin as admin_router_mod
+
+    source = Path(admin_router_mod.__file__).read_text(encoding="utf-8")
+    gate_at = source.index("Depends(require_platform_admin)")
+    bypass_at = source.index("Depends(enable_admin_rls_bypass)")
+    assert gate_at < bypass_at
+
+
+def test_commerce_reconcile_bypasses_rls_before_cross_tenant_scan() -> None:
+    from pathlib import Path
+
+    from backend.app.services import commerce_sync_runner as runner_mod
+
+    source = Path(runner_mod.__file__).read_text(encoding="utf-8")
+    bypass_at = source.index("apply_tenant_rls(session, UUID(int=0), bypass=True)")
+    scan_at = source.index("select(CommerceConnection.id, CommerceConnection.company_id)")
+    assert bypass_at < scan_at
+
+
+def test_voice_sweeper_and_cost_receipt_bind_rls_before_voice_call_lookup() -> None:
+    from pathlib import Path
+
+    from backend.app.services import voice_commercial_controls as controls
+    from backend.app.voice import sandbox_deadline as deadline
+
+    controls_src = Path(controls.__file__).read_text(encoding="utf-8")
+    assert controls_src.index("apply_tenant_rls(db, UUID(int=0), bypass=True)") < controls_src.index(
+        "select(VoiceCall).where(VoiceCall.ended_at.is_(None))"
+    )
+    assert controls_src.index("apply_tenant_rls(db, UUID(int=0), bypass=True)") < controls_src.index(
+        "VoiceCall.telnyx_call_control_id==payload.get(\"call_control_id\")"
+    )
+    deadline_src = Path(deadline.__file__).read_text(encoding="utf-8")
+    assert deadline_src.index("apply_tenant_rls(db, UUID(int=0), bypass=True)") < deadline_src.index(
+        "select(VoiceCall).where(VoiceCall.id == call_id)"
+    )

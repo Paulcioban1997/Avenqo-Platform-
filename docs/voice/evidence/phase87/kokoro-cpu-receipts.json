@@ -1,0 +1,40 @@
+{
+  "model": "hexgrad/Kokoro-82M",
+  "revision": "f3ff3571791e39611d31c381e3a41a3af07b4987",
+  "device": "cpu",
+  "voice": "ff_siwis",
+  "french_canadian_certified": false,
+  "telephone_tested": false,
+  "samples": [
+    {
+      "text": "Bonjour ! Le rendez-vous serait jeudi quinze octobre \u00e0 quatorze heures, heure de Montr\u00e9al.",
+      "seconds": 2.305614700075239,
+      "audio_seconds": 5.175,
+      "audio_sha256": "742f201f44f08832317454a3db80bdb4d882368b2df6afbc895e9d0f0d01a3ea",
+      "compute_receipt": {
+        "id": "ca4facec-ba72-42bf-bf93-01d8d3318f0a",
+        "role": "tts",
+        "model": "hexgrad/Kokoro-82M",
+        "revision": "f3ff3571791e39611d31c381e3a41a3af07b4987",
+        "status": "completed",
+        "started": 1792508412.1731822,
+        "inference_seconds": 1.9183679000707343
+      }
+    },
+    {
+      "text": "Le prix est de quarante-neuf dollars et quatre-vingt-dix-neuf cents canadiens, hors taxes. Le stock du produit Canon est inconnu.",
+      "seconds": 2.5258600999368355,
+      "audio_seconds": 7.65,
+      "audio_sha256": "ff4c07844736f96e517eff33bfc2bdc3292a8508e9869d572daa88e9001ded54",
+      "compute_receipt": {
+        "id": "83cb1545-735f-430a-95ac-082fc1b62cc9",
+        "role": "tts",
+        "model": "hexgrad/Kokoro-82M",
+        "revision": "f3ff3571791e39611d31c381e3a41a3af07b4987",
+        "status": "completed",
+        "started": 1792508414.4779513,
+        "inference_seconds": 2.495060699991882
+      }
+    }
+  ]
+}

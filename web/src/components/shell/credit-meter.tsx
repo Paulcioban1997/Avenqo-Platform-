@@ -12,46 +12,110 @@ interface CreditMeterProps {
   loadingLabel?: string;
   retryLabel?: string;
   onRetry?: () => void;
+  monthlyAllocation?: number | null;
+  monthlyRemaining?: number | null;
+  purchasedRemaining?: number;
 }
 
 export function CreditMeter({
   remaining,
   limit,
   label,
-  upgradeLabel, error, loadingLabel = "…", retryLabel, onRetry,
+  upgradeLabel,
+  error,
+  loadingLabel = "…",
+  retryLabel,
+  onRetry,
+  monthlyAllocation,
+  monthlyRemaining,
+  purchasedRemaining = 0,
 }: CreditMeterProps) {
-  const percentage = remaining !== null && limit
-    ? Math.min(100, Math.round((remaining / limit) * 100))
-    : null;
+  let percentageDisplay: string | null = null;
+  let barWidth = 0;
+
+  if (remaining !== null && limit && limit > 0) {
+    const rawPct = (remaining / limit) * 100;
+    barWidth = Math.min(100, Math.max(0, rawPct));
+
+    if (remaining === limit) {
+      percentageDisplay = "100 %";
+    } else if (remaining === 0) {
+      percentageDisplay = "0 %";
+    } else if (rawPct > 99 && rawPct < 100) {
+      percentageDisplay = `${rawPct.toFixed(2)} %`;
+    } else if (rawPct > 0 && rawPct < 1) {
+      percentageDisplay = `${rawPct.toFixed(2)} %`;
+    } else {
+      percentageDisplay = `${rawPct.toFixed(1)} %`;
+    }
+  }
+
+  const used = remaining !== null && limit !== null ? Math.max(0, limit - remaining) : null;
+
+  // Construct helpful tooltip breaking down monthly included vs purchased pack credits
+  const breakdownTooltip = [
+    remaining !== null ? `Solde total disponible : ${remaining.toLocaleString()} crédits` : null,
+    monthlyAllocation !== null && monthlyAllocation !== undefined
+      ? `• Forfait mensuel : ${(monthlyRemaining ?? Math.max(0, (monthlyAllocation || 0) - (used || 0))).toLocaleString()} / ${monthlyAllocation.toLocaleString()} restants`
+      : null,
+    purchasedRemaining > 0
+      ? `• Crédits achetés : ${purchasedRemaining.toLocaleString()} (recharges sans expiration)`
+      : null,
+    used !== null ? `• Consommé ce mois : ${used.toLocaleString()} crédits` : null,
+  ].filter(Boolean).join("\n");
 
   return (
-    <div className="p-3 rounded-2xl bg-white dark:bg-[#111D3D] border border-slate-200/80 dark:border-white/[0.08] shadow-2xs">
+    <div
+      className="p-3 rounded-2xl bg-white dark:bg-[#111D3D] border border-slate-200/80 dark:border-white/[0.08] shadow-2xs group transition-all"
+      title={breakdownTooltip || undefined}
+    >
       <div className="flex items-center justify-between text-xs mb-1.5">
         <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-[#F4F7FB]">
           <Sparkles className="w-3.5 h-3.5 text-[#0076FF]" />
           <span>{label}</span>
         </div>
-        <span className="text-[11px] font-semibold text-slate-500 dark:text-[#94A3B8]">
-          {percentage === null || error ? loadingLabel : `${percentage}%`}
+        <span
+          className="text-[11px] font-mono font-bold text-[#0076FF] dark:text-[#00D4FF]"
+        >
+          {percentageDisplay === null || error ? loadingLabel : `${percentageDisplay} restants`}
         </span>
       </div>
+
       <div className="h-1.5 w-full rounded-full bg-slate-100 dark:bg-white/[0.08] overflow-hidden mb-1.5">
         <div
           className="h-full rounded-full bg-gradient-to-r from-[#0076FF] to-[#00D4FF] transition-all duration-300"
-          style={{ width: `${percentage ?? 0}%` }}
+          style={{ width: `${barWidth}%` }}
         />
       </div>
-      {error && <div role="alert">{error} <button onClick={onRetry}>{retryLabel}</button></div>}
+
+      {error && (
+        <div role="alert" className="text-[10px] text-rose-500 my-1 flex items-center justify-between">
+          <span>{error}</span>
+          {onRetry && (
+            <button onClick={onRetry} className="underline text-blue-500">
+              {retryLabel || "Réessayer"}
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500">
-        <span>
+        <span className="font-mono">
           {remaining === null || limit === null
             ? "—"
             : `${remaining.toLocaleString()} / ${limit.toLocaleString()}`}
         </span>
-        <Link href="/pricing" className="text-[#0076FF] hover:underline font-medium">
+        <Link href="/billing" className="text-[#0076FF] hover:underline font-semibold">
           {upgradeLabel}
         </Link>
       </div>
+
+      {purchasedRemaining > 0 && (
+        <div className="mt-1.5 pt-1.5 border-t border-slate-100 dark:border-white/[0.04] flex items-center justify-between text-[9px] text-slate-400 dark:text-slate-400">
+          <span>Packs de recharge :</span>
+          <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">+{purchasedRemaining.toLocaleString()}</span>
+        </div>
+      )}
     </div>
   );
 }

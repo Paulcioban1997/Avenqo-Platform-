@@ -10,6 +10,7 @@ from payments.plans import PlanCode
 
 # Ordre croissant : un plan à droite inclut les capacités des plans à gauche.
 _PLAN_RANK: dict[str, int] = {
+    PlanCode.BASE.value: 0,
     PlanCode.DEMO.value: 0,
     PlanCode.PROFESSIONAL.value: 1,
     PlanCode.ENTERPRISE.value: 2,

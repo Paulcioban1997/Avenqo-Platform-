@@ -54,6 +54,8 @@ export interface ConnectorItem {
   canDisconnect?: boolean;
   storeUrl?: string;
   connectionId?: string;
+  implemented?: boolean;
+  blockedReason?: string;
 }
 
 interface RawConnection {
@@ -91,6 +93,7 @@ export function IntegrationsHubView() {
   const t = getAppTranslations(locale);
   const company = getApplicationCatalog(locale).company;
   const connector = company.connectorHub;
+  const comingSoonLabel = locale.startsWith("fr") ? "Bientôt disponible" : "Coming soon";
 
   const [selectedCategory, setSelectedCategory] = useState<ConnectorCategory>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -411,6 +414,14 @@ export function IntegrationsHubView() {
 
   // Manual Synchronize Action
   const handleTriggerSync = async (connector: ConnectorItem) => {
+    if (connector.implemented === false || connector.status === "coming_soon") {
+      setFormError(
+        locale.startsWith("fr")
+          ? "Cette intégration n’est pas encore disponible."
+          : "This integration is not available yet."
+      );
+      return;
+    }
     setIsSyncing(true);
     setFormError(null);
 
@@ -545,6 +556,8 @@ export function IntegrationsHubView() {
     logoLetter: string;
     supportsSync: boolean;
     canDisconnect: boolean;
+    implemented: boolean;
+    blockedReason?: string;
   }> = [
     {
       id: "woocommerce",
@@ -557,6 +570,7 @@ export function IntegrationsHubView() {
       logoLetter: "W",
       supportsSync: true,
       canDisconnect: true,
+      implemented: true,
     },
     {
       id: "shopify",
@@ -569,6 +583,7 @@ export function IntegrationsHubView() {
       logoLetter: "S",
       supportsSync: true,
       canDisconnect: true,
+      implemented: true,
     },
     {
       id: "stripe",
@@ -581,6 +596,7 @@ export function IntegrationsHubView() {
       logoLetter: "S",
       supportsSync: true,
       canDisconnect: false,
+      implemented: true,
     },
     {
       id: "amazon",
@@ -592,6 +608,8 @@ export function IntegrationsHubView() {
       logoLetter: "A",
       supportsSync: false,
       canDisconnect: false,
+      implemented: false,
+      blockedReason: "Enregistrement Développeur Amazon SP-API & Identifiants LWA (Login with Amazon) requis.",
     },
     {
       id: "etsy",
@@ -601,8 +619,10 @@ export function IntegrationsHubView() {
       description: "Synchronisation des fiches produits, variations d'articles et commandes de créateurs.",
       iconBg: "bg-orange-600",
       logoLetter: "E",
-      supportsSync: true,
-      canDisconnect: true,
+      supportsSync: false,
+      canDisconnect: false,
+      implemented: false,
+      blockedReason: "App Développeur Etsy approuvée & Clé API OAuth 2.0 requises.",
     },
     {
       id: "google_ads",
@@ -612,8 +632,10 @@ export function IntegrationsHubView() {
       description: "Remontée des conversions hors-ligne, ROAS prédictif et audiences similaires Avenqo AI.",
       iconBg: "bg-blue-500",
       logoLetter: "G",
-      supportsSync: true,
+      supportsSync: false,
       canDisconnect: false,
+      implemented: false,
+      blockedReason: "Developer Token Google Ads & validation OAuth MCC requis.",
     },
     {
       id: "meta_ads",
@@ -623,8 +645,10 @@ export function IntegrationsHubView() {
       description: "API Conversions (CAPI) temps réel, catalogues dynamiques et optimisation des CPA.",
       iconBg: "bg-indigo-600",
       logoLetter: "M",
-      supportsSync: true,
+      supportsSync: false,
       canDisconnect: false,
+      implemented: false,
+      blockedReason: "Validation Meta App Review & jeton d'accès Marketing API requis.",
     },
     {
       id: "google_calendar",
@@ -636,6 +660,7 @@ export function IntegrationsHubView() {
       logoLetter: "G",
       supportsSync: true,
       canDisconnect: true,
+      implemented: true,
     },
     {
       id: "klaviyo",
@@ -645,8 +670,10 @@ export function IntegrationsHubView() {
       description: "Automatisation des campagnes e-mail & SMS et segmentation RFM prédictive par IA.",
       iconBg: "bg-neutral-800",
       logoLetter: "K",
-      supportsSync: true,
+      supportsSync: false,
       canDisconnect: false,
+      implemented: false,
+      blockedReason: "Clé API privée Klaviyo (pk_...) requise.",
     },
     {
       id: "hubspot",
@@ -658,6 +685,8 @@ export function IntegrationsHubView() {
       logoLetter: "H",
       supportsSync: false,
       canDisconnect: false,
+      implemented: false,
+      blockedReason: "App Développeur HubSpot & Client ID/Secret OAuth 2.0 requis.",
     },
     {
       id: "quickbooks",
@@ -667,8 +696,10 @@ export function IntegrationsHubView() {
       description: "Comptabilité automatisée, grand livre général et réconciliation des encaissements.",
       iconBg: "bg-green-600",
       logoLetter: "Q",
-      supportsSync: true,
+      supportsSync: false,
       canDisconnect: false,
+      implemented: false,
+      blockedReason: "Clés d'application Intuit Developer & accès Accounting API requis.",
     },
     {
       id: "zapier",
@@ -678,12 +709,25 @@ export function IntegrationsHubView() {
       description: "Déclencheurs d'actions personnalisés et webhooks entrants/sortants vers 5000+ apps.",
       iconBg: "bg-amber-500",
       logoLetter: "Z",
-      supportsSync: true,
+      supportsSync: false,
       canDisconnect: false,
+      implemented: false,
+      blockedReason: "Appartenance au programme partenaire Zapier & webhook API requis.",
     },
   ];
 
   const connectors: ConnectorItem[] = baseCatalog.map((item) => {
+    if (!item.implemented) {
+      return {
+        ...item,
+        status: "blocked" as StatusBadgeType,
+        blockedReason: item.blockedReason,
+        lastSynced: undefined,
+        recordCount: undefined,
+        storeUrl: undefined,
+        connectionId: undefined,
+      };
+    }
     if (item.id === "stripe" && stripeStatus) {
       const subscriptionActive =
         stripeStatus.subscription_linked &&
@@ -716,6 +760,10 @@ export function IntegrationsHubView() {
         activeConn.status === "READY" ||
         activeConn.status === "CONNECTED" ||
         activeConn.status === "SYNCING";
+      const needsAuth =
+        activeConn.status === "REAUTH_REQUIRED" ||
+        activeConn.status === "ERROR" ||
+        activeConn.status === "TOKEN_EXPIRED";
 
       const lastDate = activeConn.last_successful_sync
         ? new Date(activeConn.last_successful_sync).toLocaleDateString(
@@ -726,7 +774,11 @@ export function IntegrationsHubView() {
 
       return {
         ...item,
-        status: isOk ? ("connected" as StatusBadgeType) : ("needs_attention" as StatusBadgeType),
+        status: isOk
+          ? ("connected" as StatusBadgeType)
+          : needsAuth || !isOk
+            ? ("needs_attention" as StatusBadgeType)
+            : ("disconnected" as StatusBadgeType),
         lastSynced: lastDate,
         recordCount: activeConn.records_processed,
         storeUrl: activeConn.external_account_id,
@@ -898,7 +950,13 @@ export function IntegrationsHubView() {
             </div>
 
             <div className="mt-4 pt-3 border-t border-slate-100 dark:border-white/[0.06] flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500">
-              {c.lastSynced ? (
+              {c.status === "blocked" ? (
+                <span className="text-rose-500 font-semibold truncate max-w-[200px]" title={c.blockedReason}>
+                  {locale.startsWith("fr") ? "Prérequis externe manquant" : "Prerequisite missing"}
+                </span>
+              ) : c.status === "coming_soon" ? (
+                <span className="italic">{comingSoonLabel}</span>
+              ) : c.lastSynced ? (
                 <span className="flex items-center gap-1">
                   <Clock className="w-3 h-3" />
                   <span>{c.lastSynced}</span>
@@ -907,7 +965,14 @@ export function IntegrationsHubView() {
                 <span className="italic">{connector.disconnected}</span>
               )}
 
-              {typeof c.recordCount === "number" && c.recordCount > 0 ? (
+              {c.status === "blocked" ? (
+                <span className="text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-1">
+                  <span>{locale.startsWith("fr") ? "Détails" : "Details"}</span>
+                  <ArrowRight size={11} />
+                </span>
+              ) : c.status === "coming_soon" ? (
+                <span className="text-slate-400 font-semibold">{comingSoonLabel}</span>
+              ) : typeof c.recordCount === "number" && c.recordCount > 0 ? (
                 <span className="font-semibold text-slate-700 dark:text-[#F4F7FB]">
                   {c.recordCount.toLocaleString()} {connector.records}
                 </span>
@@ -981,8 +1046,34 @@ export function IntegrationsHubView() {
                 </div>
               )}
 
-              {/* Mode A: Store is connected AND not in editing mode */}
-              {currentActiveConn && !showConfigForm ? (
+              {selectedConnector.status === "blocked" ? (
+                <div className="p-4 rounded-xl border border-rose-200/80 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-950/20 text-xs text-rose-900 dark:text-rose-200 space-y-3">
+                  <div className="flex items-center gap-2 font-bold text-rose-700 dark:text-rose-300">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>{locale.startsWith("fr") ? "Statut : Bloqué (Prérequis externe manquant)" : "Status: Blocked (Missing external prerequisite)"}</span>
+                  </div>
+                  <p className="leading-relaxed">
+                    {locale.startsWith("fr")
+                      ? "Cette intégration requiert des approbations officielles ou des identifiants API tiers non configurés sur cette instance. Conformément à la politique d'intégrité Avenqo, aucun état 'Connecté' fictif n'est affiché."
+                      : "This integration requires official provider approvals or third-party API credentials that are not yet configured on this instance. In accordance with Avenqo integrity policies, no fictional 'Connected' state is displayed."}
+                  </p>
+                  <div className="p-3 bg-white dark:bg-[#0B132B] rounded-lg border border-rose-200 dark:border-rose-800/50 text-[11px] font-mono">
+                    <span className="font-semibold block text-slate-700 dark:text-slate-300 mb-1">
+                      {locale.startsWith("fr") ? "Prérequis exact :" : "Exact prerequisite:"}
+                    </span>
+                    <span className="text-rose-700 dark:text-rose-400">{selectedConnector.blockedReason}</span>
+                  </div>
+                </div>
+              ) : selectedConnector.status === "coming_soon" ? (
+                <div className="p-4 rounded-xl border border-slate-200/80 dark:border-white/[0.08] bg-slate-50 dark:bg-white/[0.02] text-xs text-slate-600 dark:text-slate-400 space-y-2">
+                  <p>{comingSoonLabel}</p>
+                  <p>
+                    {locale.startsWith("fr")
+                      ? "Cette intégration n’a pas encore de flux OAuth ou API Avenqo. Aucune connexion fictive n’est proposée."
+                      : "This integration does not yet have an Avenqo OAuth or API flow. A fake Connect action is not offered."}
+                  </p>
+                </div>
+              ) : currentActiveConn && !showConfigForm ? (
                 <div className="space-y-4">
                   {/* Connected Store Card */}
                   <div className="p-4 rounded-xl border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/50 dark:bg-emerald-950/20 space-y-2">

@@ -66,6 +66,7 @@ def test_fresh_database_upgrade_head_creates_full_schema(temp_db_url: str) -> No
         "commerce_webhook_receipts",
         "voice_caller_credentials",
         "voice_auth_sessions",
+        "company_locale_profiles",
     ):
         assert expected in tables
 

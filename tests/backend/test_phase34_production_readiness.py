@@ -78,6 +78,13 @@ def test_production_reports_email_delivery_unconfigured_without_blocking_startup
         FRONTEND_URL="https://avenqo.ca",
         CORS_ORIGINS="https://avenqo.ca",
         ALLOWED_HOSTS="api.avenqo.ca",
+        shopify_client_id=None,
+        shopify_client_secret=None,
+        woocommerce_callback_uri=None,
+        woocommerce_webhook_uri=None,
+        google_calendar_client_id=None,
+        google_calendar_client_secret=None,
+        connector_encryption_keys=[],
     )
     assert settings.email_delivery_configured is False
 
@@ -99,6 +106,13 @@ def test_production_settings_accepted_when_fully_configured() -> None:
         FRONTEND_URL="https://avenqo.ca",
         CORS_ORIGINS="https://avenqo.ca",
         ALLOWED_HOSTS="api.avenqo.ca",
+        shopify_client_id=None,
+        shopify_client_secret=None,
+        woocommerce_callback_uri=None,
+        woocommerce_webhook_uri=None,
+        google_calendar_client_id=None,
+        google_calendar_client_secret=None,
+        connector_encryption_keys=[],
     )
     assert settings.environment == "production"
     assert settings.email_delivery_configured is True

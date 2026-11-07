@@ -25,6 +25,8 @@ from backend.app.ai.usage.exceptions import (
     AI_REQUEST_BUDGET_EXCEEDED,
 )
 from backend.app.ai.usage.credit_policy import AvenqoCreditPolicy
+from backend.app.ai.usage.included_central import central_is_included
+from backend.app.core.tenant_execution import TenantExecutionError, peek_tenant_execution
 from backend.app.ai.llm.schemas import LLMProviderAttempt
 from backend.app.ai.usage.policy import (
     MONTHLY_AI_REQUESTS,
@@ -127,6 +129,8 @@ class AIUsageService:
         `AIQuotaExceededError`, un message sûr et générique.
         """
 
+        if central_is_included(company_id):
+            return
         limit = self.limit_for(company_id, plan_code, MONTHLY_AI_REQUESTS)
         if limit is None:
             return
@@ -374,12 +378,14 @@ class AIUsageService:
         plan_code: str | None,
         avenqo_request_id: str,
         estimated_credits: int,
+        conversation_id: UUID | None = None,
     ) -> TenantAICreditReservation:
         return self.claim_credit_reservation(
             company_id,
             plan_code,
             avenqo_request_id,
             estimated_credits,
+            conversation_id=conversation_id,
         ).reservation
 
     def claim_credit_reservation(
@@ -388,13 +394,18 @@ class AIUsageService:
         plan_code: str | None,
         avenqo_request_id: str,
         estimated_credits: int,
+        conversation_id: UUID | None = None,
     ) -> CreditReservationClaim:
+        bound = peek_tenant_execution()
+        if bound is not None and bound.company_id != company_id:
+            raise TenantExecutionError("Credits cannot be reserved outside the bound tenant.")
         with _tenant_credit_lock(company_id):
             return self._claim_credit_reservation_locked(
                 company_id,
                 plan_code,
                 avenqo_request_id,
                 estimated_credits,
+                conversation_id=conversation_id,
             )
 
     def _claim_credit_reservation_locked(
@@ -403,6 +414,7 @@ class AIUsageService:
         plan_code: str | None,
         avenqo_request_id: str,
         estimated_credits: int,
+        conversation_id: UUID | None = None,
     ) -> CreditReservationClaim:
         if estimated_credits <= 0:
             raise ValueError("Estimated credits must be positive")
@@ -419,8 +431,46 @@ class AIUsageService:
             self._db.commit()
             return CreditReservationClaim(existing, acquired=False)
 
+        if conversation_id is not None and (
+            self._credit_policy.max_session_credits is not None
+            or self._credit_policy.max_session_cost_usd is not None
+        ):
+            session_stats = self._db.execute(
+                select(
+                    func.coalesce(func.sum(TenantAIProviderAttempt.avenqo_credits_charged), 0),
+                    func.coalesce(func.sum(TenantAIProviderAttempt.provider_cost_usd), Decimal("0")),
+                ).where(
+                    TenantAIProviderAttempt.company_id == company_id,
+                    TenantAIProviderAttempt.conversation_id == conversation_id,
+                )
+            ).one()
+            session_credits = int(session_stats[0])
+            session_cost = Decimal(str(session_stats[1]))
+            try:
+                self._credit_policy.validate_session_credits(session_credits + estimated_credits)
+                self._credit_policy.validate_session_cost(session_cost)
+            except ValueError as exc:
+                self._db.commit()
+                raise AIRequestBudgetExceededError(str(exc)) from exc
+
+        if self._credit_policy.max_company_monthly_cost_usd is not None:
+            month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            monthly_cost = self._db.scalar(
+                select(
+                    func.coalesce(func.sum(TenantAIProviderAttempt.provider_cost_usd), Decimal("0"))
+                ).where(
+                    TenantAIProviderAttempt.company_id == company_id,
+                    TenantAIProviderAttempt.created_at >= month_start,
+                )
+            )
+            try:
+                self._credit_policy.validate_company_cost(Decimal(str(monthly_cost or 0)))
+            except ValueError as exc:
+                self._db.commit()
+                raise AIQuotaExceededError(str(exc)) from exc
+
         limit = self.limit_for(company_id, plan_code, MONTHLY_AI_REQUESTS)
-        if limit is None:
+        if limit is None or central_is_included(company_id):
             included_reservation = 0
             purchased_reservation = 0
             allocations: list[dict[str, object]] = []
@@ -459,7 +509,7 @@ class AIUsageService:
             included_reserved_delta=included_reservation,
             purchased_reserved_delta=purchased_reservation,
             reference_id=avenqo_request_id,
-            details={"estimated_credits": estimated_credits},
+            details={"estimated_credits": estimated_credits, "included_central": central_is_included(company_id)},
         )
         self._db.commit()
         self._db.refresh(reservation)
@@ -543,6 +593,8 @@ class AIUsageService:
             if attempts
             else (1 if count_request else 0)
         )
+        if central_is_included(company_id):
+            actual_credits = 0
         balance = self._get_or_create_credits(company_id)
         self._release_stale_reservations_locked(
             company_id,
@@ -613,6 +665,7 @@ class AIUsageService:
                 "estimated_credits": reservation.estimated_credits,
                 "actual_credits": actual_credits,
                 "unfunded_credits": unfunded,
+                "included_central": central_is_included(company_id),
             },
         )
         if attempts:
@@ -1001,6 +1054,8 @@ class AIUsageService:
         else:
             credits_used = 1
 
+        if central_is_included(company_id):
+            credits_used = 0
         reference_id = request_id if attempts else None
         self._consume_credits(
             company_id,

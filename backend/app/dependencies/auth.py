@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.core.permissions import permissions_for
 from backend.app.core.request_context import request_id_var
+from backend.app.core.tenant_execution import TenantExecutionContext, bind_tenant_execution
 from backend.app.config.settings import get_settings
 from backend.app.database import get_db
 from backend.app.models import AuthSession, User
@@ -20,8 +21,11 @@ from backend.app.services.account_notifications import (
     HTTPSAccountNotifier,
     LoggingAccountNotifier,
     SMTPAccountNotifier,
+    SandboxCaptureAccountNotifier,
+    get_sandbox_capture_notifier,
 )
 from backend.app.services.auth_service import AuthenticationError, AuthService
+from backend.app.services.tenant_rls import apply_tenant_rls
 from shared.ai_engine.contracts import TenantContext
 
 _bearer = HTTPBearer(auto_error=False)
@@ -47,6 +51,23 @@ class CurrentIdentity:
 
 def get_account_notifier() -> AccountNotifier:
     settings = get_settings()
+    env = settings.environment.lower()
+    if env in {"production", "prod"}:
+        if settings.email_provider == "sandbox_capture" or settings.sandbox_email_capture_enabled:
+            raise RuntimeError("CRITICAL SECURITY ERROR: Sandbox email capture is strictly prohibited in Production.")
+        if settings.email_provider == "https_api" and settings.email_delivery_configured:
+            return HTTPSAccountNotifier(settings)
+        if settings.email_delivery_configured:
+            return SMTPAccountNotifier(settings)
+        return LoggingAccountNotifier()
+
+    if settings.email_provider == "sandbox_capture":
+        return get_sandbox_capture_notifier(settings)
+    if env in {"sandbox", "staging"}:
+        if settings.sandbox_email_capture_enabled or not settings.is_external_email_allowed:
+            if settings.sandbox_email_capture_enabled or settings.email_provider == "https_api" or settings.email_delivery_configured:
+                return get_sandbox_capture_notifier(settings)
+            return LoggingAccountNotifier()
     if settings.email_provider == "https_api" and settings.email_delivery_configured:
         return HTTPSAccountNotifier(settings)
     if settings.email_delivery_configured:
@@ -95,6 +116,7 @@ def get_current_identity(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
     service: AuthService = Depends(get_auth_service),
+    db: Session = Depends(get_db),
 ) -> CurrentIdentity:
     """Transforme le Bearer token ou le cookie HttpOnly en utilisateur et tenant vérifiés."""
 
@@ -134,14 +156,30 @@ def get_current_identity(
         ) from exc
     if request.url.path.endswith("/auth/me"):
         logger.info("auth_identity_resolved request_id=%s user_id=%s tenant_id=%s", request_id_var.get(), user.id, user.company_id)
+    # Platform admins keep their tenant GUC. Cross-tenant support must go
+    # through admin dependencies that re-check access, then set bypass.
+    apply_tenant_rls(db, user.company_id, bypass=False)
+    role = getattr(user, "role", None)
+    bind_tenant_execution(
+        TenantExecutionContext(
+            tenant=TenantContext(company_id=user.company_id, user_id=user.id),
+            user_id=user.id,
+            permissions=frozenset(permissions_for(role)) if role is not None else frozenset(),
+            request_id=request_id_var.get() or "",
+            rls_bound=True,
+            source="session",
+        )
+    )
     return CurrentIdentity(auth_session, user, token)
 
 
 def get_tenant_context(
     identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
 ) -> TenantContext:
     """Construit le contexte AI Engine depuis l'identité authentifiée."""
 
+    apply_tenant_rls(db, identity.user.company_id, bypass=False)
     return TenantContext(company_id=identity.user.company_id, user_id=identity.user.id)
 
 
@@ -177,3 +215,43 @@ def require_platform_admin(
             detail="Accès réservé aux administrateurs Avenqo",
         )
     return identity
+
+
+def require_platform_role(*allowed_roles: str):
+    """Contrôle d'accès à moindre privilège pour les rôles plateforme Avenqo (CEO Command Center).
+
+    Rôles supportés :
+    - PLATFORM_SUPER_ADMIN : accès complet à tous les modules et actions sensibles (contreseing, configuration)
+    - PLATFORM_FINANCE : vue d'ensemble, entreprises, revenus/Stripe, métriques IA, contrats (lecture)
+    - PLATFORM_SUPPORT_READONLY : vue d'ensemble, entreprises (lecture), connecteurs, santé, messages support
+    - PLATFORM_SECURITY_AUDITOR : sécurité, logs d'audit, connecteurs, santé, statut de configuration
+    """
+    def dependency(
+        identity: CurrentIdentity = Depends(get_current_identity),
+    ) -> CurrentIdentity:
+        if not identity.user.is_platform_admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Accès réservé aux administrateurs de la plateforme Avenqo",
+            )
+        # A legacy platform-admin flag does not imply executive privileges.
+        # The role must be assigned explicitly by a trusted operator.
+        current_role = identity.user.platform_role
+        if current_role not in {
+            "PLATFORM_SUPER_ADMIN",
+            "PLATFORM_FINANCE",
+            "PLATFORM_SUPPORT_READONLY",
+            "PLATFORM_SECURITY_AUDITOR",
+        }:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Rôle plateforme explicite requis",
+            )
+        if allowed_roles and current_role not in allowed_roles and current_role != "PLATFORM_SUPER_ADMIN":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Privilège plateforme insuffisant ({current_role}). Nécessite : {', '.join(allowed_roles)}",
+            )
+        return identity
+
+    return dependency

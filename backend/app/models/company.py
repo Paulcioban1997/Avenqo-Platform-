@@ -75,3 +75,18 @@ class Company(TimestampMixin, Base):
         cascade="all, delete-orphan",
         uselist=False,
     )
+    locale_profile: Mapped["CompanyLocaleProfile | None"] = relationship(
+        back_populates="company",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+    contracts: Mapped[list["CompanyContract"]] = relationship(
+        back_populates="company",
+        cascade="all, delete-orphan",
+    )
+    legal_profile: Mapped["CompanyLegalProfile | None"] = relationship(
+        "CompanyLegalProfile",
+        back_populates="company",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )

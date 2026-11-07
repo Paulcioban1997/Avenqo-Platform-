@@ -1,0 +1,29 @@
+{
+  "role": "asr",
+  "model": "nvidia/parakeet-tdt-0.6b-v3",
+  "revision": "541d1f99c6b0c3cd0b11a95167540bb8edefd82b",
+  "license": "CC-BY-4.0",
+  "device": "cpu",
+  "gpu": null,
+  "torch": "2.11.0+cu128",
+  "platform": "Windows-10-10.0.26300-SP0",
+  "model_load_seconds": 22.524650699924678,
+  "network": "ASGI local HTTP worker; not Telnyx",
+  "samples": [
+    {
+      "locale": "fr",
+      "source": "google/fleurs@70bb2e84b976b7e960aa89f1c648e09c59f894dd:fr_fr:test:10043298898524273336.wav",
+      "reference": "L\u2019accident a eu lieu en terrain montagneux, et il semblerait que cela ait \u00e9t\u00e9 caus\u00e9 par un incendie malveillant.",
+      "transcript": "L'accident a eu lieu en terrain montagneux, et il semblerait que cela ait \u00e9t\u00e9 caus\u00e9 par un incendie malveillant.",
+      "seconds": 1.506607500021346,
+      "audio_seconds": 10.2,
+      "wer": 0.0,
+      "human_reference": true
+    }
+  ],
+  "french_canadian_certified": false,
+  "telephone_tested": false,
+  "central_llm_tested": false,
+  "human_mos": null,
+  "status": "PASS_LOCAL_NEURAL_INFERENCE"
+}

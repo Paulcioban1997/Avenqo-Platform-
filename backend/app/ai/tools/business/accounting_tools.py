@@ -190,3 +190,25 @@ class GetCashFlowForecastTool(AccountingAITool):
             data=data,
             source_refs=("accounting_transactions", "accounting_invoices"),
         )
+
+
+class ReconcileSalesAndAccountingTool(AccountingAITool):
+    name = "reconcile_sales_and_accounting"
+    description = (
+        "Compare les ventes e-commerce enregistrées avec le chiffre d'affaires et les écritures comptables confirmées. "
+        "Identifie avec exactitude tout écart sans fabriquer ni forcer de réconciliation artificielle. "
+        "À utiliser pour l'audit croisé entre le module Retail AI et Accounting AI."
+    )
+    input_schema = AccountingGenericArgs
+    required_permissions = ("ai:use", "data:read")
+
+    def __init__(self, session: Session) -> None:
+        self._service = AccountingIntelligenceService(session)
+
+    async def run(self, context: ToolExecutionContext, arguments: AccountingGenericArgs) -> ToolResult:
+        data = self._service.reconcile_sales_with_accounting(context.tenant.company_id)
+        return ToolResult(
+            success=True,
+            data=data,
+            source_refs=("normalized_commerce_records", "accounting_transactions"),
+        )

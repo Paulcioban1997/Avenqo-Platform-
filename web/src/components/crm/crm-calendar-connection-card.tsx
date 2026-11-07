@@ -18,11 +18,16 @@ import { dateText } from "./crm-format";
 
 interface ConnectionStatus {
   connected: boolean;
+  connection_status?: "CONNECTED" | "RECONNECT_REQUIRED" | "DISCONNECTED" | "ERROR";
   provider?: string | null;
   account_email?: string | null;
   last_sync_at?: string | null;
   scopes?: string[];
   calendar_id?: string | null;
+  sync_status?: string | null;
+  sync_error?: string | null;
+  requires_reconnect?: boolean;
+  reconnect_message?: string | null;
 }
 
 interface GoogleCalendarOption {
@@ -46,6 +51,9 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
 
   useEffect(() => {
     fetchConnectionStatus();
+    if (new URLSearchParams(window.location.search).get("calendar_oauth") === "failed") {
+      setError("La reconnexion Google Calendar a échoué. Relancez-la depuis ce navigateur ; aucune réservation n’a été modifiée.");
+    }
   }, []);
 
   const fetchConnectionStatus = async () => {
@@ -54,22 +62,33 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
       const headers = getAuthHeaders();
 
       const res = await fetch("/api/v1/crm/calendar/connection", { headers });
+      if (!res.ok) {
+        setGoogleStatus({ connected: false, connection_status: "ERROR" });
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
-        if (data.connected) {
-          setGoogleStatus({
-            connected: true,
-            provider: data.provider,
-            account_email: data.account_email,
-            last_sync_at: data.last_synced_at,
-            calendar_id: data.calendar_id,
-          });
-        } else {
-          setGoogleStatus({ connected: false });
-        }
+        const needsReconnect = Boolean(
+          data.requires_reconnect ||
+          data.connection_status === "RECONNECT_REQUIRED" ||
+          data.sync_status === "reconnect_required" ||
+          data.sync_status === "revoked"
+        );
+        setGoogleStatus({
+          connected: Boolean(data.connected) && !needsReconnect,
+          connection_status: data.connection_status,
+          provider: data.provider,
+          account_email: data.account_email,
+          last_sync_at: data.last_synced_at,
+          calendar_id: data.calendar_id,
+          sync_status: data.sync_status,
+          sync_error: data.sync_error,
+          requires_reconnect: needsReconnect,
+          reconnect_message: data.reconnect_message || (needsReconnect ? "Reconnectez Google Calendar pour reprendre les réservations" : null),
+        });
       }
     } catch {
-      setGoogleStatus({ connected: false });
+      setGoogleStatus({ connected: false, connection_status: "ERROR" });
     } finally {
       setIsLoading(false);
     }
@@ -83,7 +102,7 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
   };
 
   useEffect(() => {
-    if (!googleStatus.connected) return;
+    if (!googleStatus.connected || googleStatus.requires_reconnect) return;
     void loadCalendars();
     void fetch("/api/v1/crm/calendar/google/sync", {
       method: "POST",
@@ -106,16 +125,18 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
     try {
       const headers = getAuthHeaders();
 
-      const res = await fetch("/api/v1/crm/calendar/google/auth-url", { headers });
+      const res = await fetch("/api/v1/crm/calendar/google/auth-url", { headers: { ...headers, "X-Avenqo-Calendar-Return-Origin": window.location.origin } });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || t.integrations.googleCalendarConnecting);
+        const detail = typeof err.detail === "string" ? err.detail : null;
+        throw new Error(detail || (res.status === 400
+          ? "Cette adresse Avenqo n'est pas autorisée pour la connexion Google Calendar. Contactez le support."
+          : "La connexion Google Calendar est momentanément indisponible. Réessayez."));
       }
       const data = await res.json();
       const targetUrl = data.auth_url || data.url;
-      if (targetUrl) {
-        window.location.href = targetUrl;
-      }
+      if (!targetUrl) throw new Error("Google Calendar n'a pas fourni de lien de connexion. Réessayez.");
+      window.location.href = targetUrl;
     } catch (err: any) {
       setError(err.message || "Erreur de connexion");
       setIsConnecting(false);
@@ -170,9 +191,14 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   {t.crm.calendar.connected || "Connecté"}
                 </span>
+              ) : googleStatus.requires_reconnect ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-800/60">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                  Reconnexion requise
+                </span>
               ) : (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-500">
-                  {t.crm.calendar.disconnected || "Non connecté"}
+                  {googleStatus.connection_status === "ERROR" ? "Erreur de connexion" : t.crm.calendar.disconnected || "Non connecté"}
                 </span>
               )}
             </div>
@@ -180,6 +206,22 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
             <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
               {t.integrations.googleCalendarDescription}
             </p>
+
+            {googleStatus.requires_reconnect && (
+              <div className="mt-3 p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/40 text-xs space-y-2">
+                <div className="flex items-start gap-2.5">
+                  <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-bold text-amber-900 dark:text-amber-200">
+                      Reconnectez Google Calendar pour reprendre les réservations
+                    </p>
+                    <p className="text-[11px] text-amber-800 dark:text-amber-300/90 leading-relaxed">
+                      Le jeton pour <strong className="font-semibold">{googleStatus.account_email || "votre compte Google"}</strong> est expiré ou révoqué. Les réservations sont suspendues pour éviter tout conflit ou double réservation tant que la reconnexion n'a pas été confirmée.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {googleStatus.connected && (
               <div className="mt-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-xs space-y-1">
@@ -218,7 +260,7 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
           <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-              <span>{t.integrations.googleCalendarConnected}</span>
+              <span>{googleStatus.connected ? "Connecté" : googleStatus.requires_reconnect ? "Reconnexion requise" : googleStatus.connection_status === "ERROR" ? "Erreur de connexion" : "Déconnecté"}</span>
             </div>
 
             {googleStatus.connected ? (
@@ -229,6 +271,17 @@ export function CRMCalendarConnectionCard({ t }: CRMCalendarConnectionCardProps)
               >
                 <Unlink className="w-3.5 h-3.5" />
                 <span>{t.crm.calendar.disconnect || "Déconnecter"}</span>
+              </button>
+            ) : googleStatus.requires_reconnect ? (
+              <button
+                onClick={handleConnectGoogle}
+                disabled={isConnecting}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-amber-600 hover:bg-amber-700 text-white transition flex items-center gap-2 shadow-sm"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isConnecting ? "animate-spin" : ""}`} />
+                <span>
+                  {isConnecting ? "Connexion..." : "Reconnecter Google Calendar"}
+                </span>
               </button>
             ) : (
               <button

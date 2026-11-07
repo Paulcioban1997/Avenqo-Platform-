@@ -354,6 +354,53 @@ async def test_woocommerce_webhook_signature_is_verified() -> None:
 
 
 @pytest.mark.asyncio
+async def test_webhook_rotation_accepts_both_keys_then_rejects_retired_key() -> None:
+    import secrets
+
+    connector, client = _connector(lambda request: httpx.Response(500))
+    old, new, unauthorized = (secrets.token_urlsafe(40) for _ in range(3))
+    body = json.dumps({"id": 42}).encode()
+    credentials = {"webhook_secret": new, "previous_webhook_secrets": [old]}
+
+    async def deliver(key, configured):
+        signature = base64.b64encode(hmac.new(key.encode(), body, hashlib.sha256).digest()).decode()
+        return await connector.handle_webhook(
+            tenant_id=uuid4(), headers={"x-wc-webhook-signature": signature},
+            body=body, credentials=configured,
+        )
+
+    try:
+        for key in (old, new):
+            assert await deliver(key, credentials) == {"id": 42}
+        with pytest.raises(WooCommerceAuthenticationError, match="signature"):
+            await deliver(unauthorized, credentials)
+        assert await deliver(new, {"webhook_secret": new}) == {"id": 42}
+        with pytest.raises(WooCommerceAuthenticationError, match="signature"):
+            await deliver(old, {"webhook_secret": new})
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_webhook_rotation_requires_primary_and_bounded_explicit_previous_key() -> None:
+    connector, client = _connector(lambda request: httpx.Response(500))
+    try:
+        for credentials in (
+            {"webhook_secret": "test-primary", "previous_webhook_secrets": "test-old"},
+            {"webhook_secret": "test-primary", "previous_webhook_secrets": ["test-old", "test-other"]},
+            {"webhook_secret": "test-primary", "previous_webhook_secrets": [None]},
+            {"previous_webhook_secrets": ["test-old"]},
+        ):
+            with pytest.raises(WooCommerceAuthenticationError, match="signature"):
+                await connector.handle_webhook(
+                    tenant_id=uuid4(), headers={"x-wc-webhook-signature": "invalid"},
+                    body=b"{}", credentials=credentials,
+                )
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_woocommerce_registers_only_missing_webhooks_without_logging_secret() -> None:
     posts: list[dict] = []
 

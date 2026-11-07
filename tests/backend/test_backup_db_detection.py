@@ -1,4 +1,4 @@
-"""Détection du type de base pour le backup — variantes PostgreSQL Railway.
+"""DÃ©tection du type de base pour le backup â€” variantes PostgreSQL Railway.
 
 Prouve que `postgresql://`, `postgres://` et `postgresql+psycopg://` sont
 reconnus, et qu'aucune URL (avec credentials) ne fuite dans les erreurs.
@@ -18,12 +18,12 @@ from backend.app.services.backup_service import (
 @pytest.mark.parametrize(
     "url",
     [
-        "postgresql://u:p@host:5432/db",
-        "postgres://u:p@host:5432/db",
-        "postgresql+psycopg://u:p@host:5432/db",
-        "postgresql+psycopg2://u:p@host:5432/db",
-        "POSTGRESQL://u:p@host:5432/db",
-        "  postgresql://u:p@host:5432/db  ",
+        "postgresql://u:test-only-password@host:5432/db",
+        "postgres://u:test-only-password@host:5432/db",
+        "postgresql+psycopg://u:test-only-password@host:5432/db",
+        "postgresql+psycopg2://u:test-only-password@host:5432/db",
+        "POSTGRESQL://u:test-only-password@host:5432/db",
+        "  postgresql://u:test-only-password@host:5432/db  ",
     ],
 )
 def test_postgresql_scheme_variants_detected(url: str) -> None:
@@ -42,7 +42,7 @@ def test_sqlite_scheme_detected(url: str) -> None:
 
 
 def test_unknown_scheme_rejected_without_leaking_url() -> None:
-    secret_url = "mysql://root:s3cr3t@db.internal:3306/prod"
+    secret_url = "mysql://root:test-only-password@db.internal:3306/prod"
     with pytest.raises(UnsupportedDatabaseError) as exc_info:
         _database_kind(secret_url)
 
@@ -52,20 +52,20 @@ def test_unknown_scheme_rejected_without_leaking_url() -> None:
     assert secret_url not in message
 
 
-# --- Log SAFE de démarrage : scheme uniquement, jamais credentials ----------
+# --- Log SAFE de dÃ©marrage : scheme uniquement, jamais credentials ----------
 
 
 def test_database_scheme_returns_postgresql_for_railway_url() -> None:
-    assert database_scheme("postgresql://postgres:secret@tramway.proxy.rlwy.net:25367/railway") == "postgresql"
+    assert database_scheme("postgresql://postgres:test-only-password@postgres.test.invalid:25367/railway") == "postgresql"
 
 
 def test_database_scheme_handles_postgres_alias_and_dialect() -> None:
-    assert database_scheme("postgres://u:p@h/db") == "postgres"
-    assert database_scheme("postgresql+psycopg://u:p@h/db") == "postgresql+psycopg"
+    assert database_scheme("postgres://u:test-only-password@h/db") == "postgres"
+    assert database_scheme("postgresql+psycopg://u:test-only-password@h/db") == "postgresql+psycopg"
 
 
 def test_database_scheme_never_returns_credentials() -> None:
-    scheme = database_scheme("postgresql://root:sup3rsecret@host:5432/db")
+    scheme = database_scheme("postgresql://root:test-only-password@host:5432/db")
     assert scheme is not None
     assert "sup3rsecret" not in scheme
     assert "root" not in scheme

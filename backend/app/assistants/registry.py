@@ -22,7 +22,7 @@ RETAIL_INTENT_KEYWORDS = frozenset({
 CRM_INTENT_KEYWORDS = frozenset({
     "crm", "lead", "leads", "opportunity", "opportunities", "prospect",
     "prospects", "deal", "deals", "relance", "relances", "contact", "contacts",
-    "appointment", "appointments", "rendez", "creneau", "creneaux", "disponibilite",
+    "appointment", "appointments", "rendez", "rdv", "creneau", "creneaux", "disponibilite",
     "disponibilites", "slot", "slots", "reservation", "reservations", "schedule",
     "scheduling", "booking", "calendrier", "agenda",
 })
@@ -35,8 +35,35 @@ ACCOUNTING_INTENT_KEYWORDS = frozenset({
 CROSS_AGENT_INTENT_KEYWORDS = frozenset({
     "360", "cross", "synergie", "synergies", "global", "globale", "globales",
     "synthese", "omnicanal", "strategie", "strategique", "complet", "complete",
-    "holistique", "transversal", "transversale",
+    "holistique", "transversal", "transversale", "analyse", "campagne", "marketing",
 })
+MARKETING_MODULE_CODE = "marketing"
+OCR_MODULE_CODE = "ocr"
+LEGAL_MODULE_CODE = "legal"
+WORKFLOW_MODULE_CODE = "workflow"
+MEMORY_MODULE_CODE = "memory"
+
+MARKETING_INTENT_KEYWORDS = frozenset({
+    "marketing", "campagne", "campaign", "email", "relance", "promotion", "promo",
+    "fidelisation", "newsletter", "ciblage", "segmentation", "offre",
+})
+OCR_INTENT_KEYWORDS = frozenset({
+    "ocr", "scan", "document", "documents", "recu", "ticket",
+    "extraction", "piece", "justificatif",
+})
+LEGAL_INTENT_KEYWORDS = frozenset({
+    "legal", "juridique", "contrat", "contrats", "clause", "clauses", "avocat",
+    "accord", "conformite", "nda", "partenariat", "responsabilite",
+})
+WORKFLOW_INTENT_KEYWORDS = frozenset({
+    "workflow", "automation", "automatisation", "automatique", "declencheur", "trigger",
+    "action", "scenarios", "scenario",
+})
+MEMORY_INTENT_KEYWORDS = frozenset({
+    "memoire", "memory", "souvenir", "preference", "preferences", "rappel", "retenir",
+    "enregistre", "memorise", "mémorise", "instruction",
+})
+
 class AssistantRegistry:
     """Résout les métadonnées/statut d'un assistant par slug."""
 
@@ -159,18 +186,102 @@ def build_default_assistant_registry(*tool_registries) -> AssistantRegistry:
             localization_metadata={"system_prompt": "ai.agent.accounting.system"},
         ),
         AssistantDefinition(
+            slug=MARKETING_MODULE_CODE,
+            name_key="assistant.marketing.name",
+            description_key="assistant.marketing.description",
+            status=AssistantStatus.AVAILABLE,
+            category="growth",
+            module_code=MARKETING_MODULE_CODE,
+            capabilities=frozenset(capabilities_by_agent.get(MARKETING_MODULE_CODE, set())),
+            allowed_tool_names=allowed_tools.get(MARKETING_MODULE_CODE, frozenset()),
+            intents=("marketing.campaigns", "marketing.copywriting"),
+            intent_keywords=MARKETING_INTENT_KEYWORDS,
+            supported_operations=frozenset({"read", "draft", "campaign.create", "marketing.campaign.write"}),
+            mutation_capabilities=frozenset({"campaign.create", "marketing.campaign.write"}),
+            confirmation_policy="explicit_user_confirmation",
+            localization_metadata={"system_prompt": "ai.agent.marketing.system"},
+        ),
+        AssistantDefinition(
+            slug=OCR_MODULE_CODE,
+            name_key="assistant.ocr.name",
+            description_key="assistant.ocr.description",
+            status=AssistantStatus.AVAILABLE,
+            category="documents",
+            module_code=OCR_MODULE_CODE,
+            capabilities=frozenset(capabilities_by_agent.get(OCR_MODULE_CODE, set())),
+            allowed_tool_names=allowed_tools.get(OCR_MODULE_CODE, frozenset()),
+            intents=("ocr.documents", "ocr.invoices"),
+            intent_keywords=OCR_INTENT_KEYWORDS,
+            supported_operations=frozenset({"read", "extract", "accounting.propose"}),
+            localization_metadata={"system_prompt": "ai.agent.ocr.system"},
+        ),
+        AssistantDefinition(
+            slug=LEGAL_MODULE_CODE,
+            name_key="assistant.legal.name",
+            description_key="assistant.legal.description",
+            status=AssistantStatus.AVAILABLE,
+            category="legal",
+            module_code=LEGAL_MODULE_CODE,
+            capabilities=frozenset(capabilities_by_agent.get(LEGAL_MODULE_CODE, set())),
+            allowed_tool_names=allowed_tools.get(LEGAL_MODULE_CODE, frozenset()),
+            intents=("legal.documents", "legal.clauses"),
+            intent_keywords=LEGAL_INTENT_KEYWORDS,
+            supported_operations=frozenset({"read", "analyze"}),
+            localization_metadata={"system_prompt": "ai.agent.legal.system"},
+        ),
+        AssistantDefinition(
+            slug=WORKFLOW_MODULE_CODE,
+            name_key="assistant.workflow.name",
+            description_key="assistant.workflow.description",
+            status=AssistantStatus.AVAILABLE,
+            category="operations",
+            module_code=WORKFLOW_MODULE_CODE,
+            capabilities=frozenset(capabilities_by_agent.get(WORKFLOW_MODULE_CODE, set())),
+            allowed_tool_names=allowed_tools.get(WORKFLOW_MODULE_CODE, frozenset()),
+            intents=("workflow.automations", "workflow.executions"),
+            intent_keywords=WORKFLOW_INTENT_KEYWORDS,
+            supported_operations=frozenset({"read", "draft", "workflow.create", "workflow.execute", "automation.write"}),
+            mutation_capabilities=frozenset({"workflow.create", "workflow.execute", "automation.write"}),
+            confirmation_policy="explicit_user_confirmation",
+            localization_metadata={"system_prompt": "ai.agent.workflow.system"},
+        ),
+        AssistantDefinition(
+            slug=MEMORY_MODULE_CODE,
+            name_key="assistant.memory.name",
+            description_key="assistant.memory.description",
+            status=AssistantStatus.AVAILABLE,
+            category="platform",
+            capabilities=frozenset(capabilities_by_agent.get(MEMORY_MODULE_CODE, set())),
+            allowed_tool_names=allowed_tools.get(MEMORY_MODULE_CODE, frozenset()),
+            intents=("memory.preferences", "memory.facts"),
+            intent_keywords=MEMORY_INTENT_KEYWORDS,
+            supported_operations=frozenset({"read", "store", "search"}),
+            localization_metadata={"system_prompt": "ai.agent.memory.system"},
+        ),
+        AssistantDefinition(
             slug=CROSS_AGENT_MODULE_CODE,
             name_key="assistant.cross_agent.name",
             description_key="assistant.cross_agent.description",
             status=AssistantStatus.AVAILABLE,
             category="intelligence",
-            required_entitlements=frozenset({"retail", "crm", "accounting"}),
             capabilities=frozenset(capabilities_by_agent.get(CROSS_AGENT_MODULE_CODE, set())),
             allowed_tool_names=allowed_tools.get(CROSS_AGENT_MODULE_CODE, frozenset()),
             intents=("business.cross_domain_summary",),
             intent_keywords=CROSS_AGENT_INTENT_KEYWORDS,
             aggregate=True,
-            supported_operations=frozenset({"read", "analyze"}),
+            supported_operations=frozenset({
+                "read", "analyze", "draft", "store", "search", "extract",
+                "appointment.create", "appointment.update", "appointment.cancel",
+                "campaign.create", "marketing.campaign.write",
+                "workflow.create", "workflow.execute", "automation.write",
+            }),
+            mutation_capabilities=frozenset({
+                "calendar.write", "crm.appointment.write", "appointment.create",
+                "appointment.update", "appointment.cancel",
+                "campaign.create", "marketing.campaign.write",
+                "workflow.create", "workflow.execute", "automation.write",
+            }),
+            confirmation_policy="explicit_user_confirmation",
             localization_metadata={"system_prompt": "ai.agent.cross_domain.system"},
         ),
         AssistantDefinition(

@@ -5,10 +5,12 @@ import { Globe } from "lucide-react";
 import { REGIONS, LOCALES } from "@/lib/i18n/locales";
 import { useLocale } from "@/lib/i18n/locale-context";
 import type { RegionCode } from "@/lib/i18n/types";
+import { useOptionalSession } from "@/lib/session-context";
 
 /** Sélecteur région → langue façon Salesforce, avec changement instantané dans tout le site. */
 export function RegionLanguageSelector() {
   const { locale, setLocale } = useLocale();
+  const identity = useOptionalSession()?.identity;
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const active = LOCALES.find((entry) => entry.code === locale) ?? LOCALES[0];
@@ -52,7 +54,9 @@ export function RegionLanguageSelector() {
             if (entries.length === 0) return null;
             return (
               <div className="region-language-group" key={region.code}>
-                <div className="region-language-group-title">{region.label.fr}</div>
+                <div className="region-language-group-title">
+                  {locale.startsWith("fr") ? region.label.fr : region.label.en}
+                </div>
                 {entries.map((entry) => (
                   <button
                     type="button"
@@ -63,6 +67,14 @@ export function RegionLanguageSelector() {
                     onClick={() => {
                       setLocale(entry.code);
                       setOpen(false);
+                      if (identity?.company.id) {
+                        void fetch("/api/v1/auth/preferred-language", {
+                          method: "PATCH",
+                          credentials: "include",
+                          headers: { "Content-Type": "application/json", "X-Requested-With": "avenqo-web" },
+                          body: JSON.stringify({ preferred_language: entry.code }),
+                        }).catch(() => undefined);
+                      }
                     }}
                   >
                     <span className="region-language-flag">{entry.flag}</span>
