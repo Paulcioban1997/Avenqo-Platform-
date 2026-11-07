@@ -20,6 +20,7 @@ from backend.app.ai.tools.contracts import ToolExecutionContext, ToolResult
 from backend.app.models.company_contract import CompanyContract
 from backend.app.models.user import User
 from backend.app.models.workspace import TenantDocument
+from backend.app.services.contract_authorization_service import ContractAuthorizationService
 from backend.app.services.document_ai_service import DocumentAIService, LEGAL_DISCLAIMER
 from backend.app.services.secure_document_token_service import SecureDocumentTokenService
 
@@ -101,6 +102,7 @@ class SearchDocumentsTool(OCRAITool):
 
     def __init__(self, session: Session) -> None:
         self._session = session
+        self._auth = ContractAuthorizationService(session)
 
     async def run(self, context: ToolExecutionContext, arguments: SearchDocumentsArgs) -> ToolResult:
         query = select(TenantDocument).where(TenantDocument.company_id == context.tenant.company_id)
@@ -119,9 +121,11 @@ class SearchDocumentsTool(OCRAITool):
             )
 
         limit = max(1, min(arguments.limit, 25))
-        query = query.order_by(TenantDocument.created_at.desc()).limit(limit)
+        query = query.order_by(TenantDocument.created_at.desc())
 
-        records = self._session.scalars(query).all()
+        all_records = list(self._session.scalars(query).all())
+        records = self._auth.filter_accessible_documents(context.tenant, all_records, context.permissions)[:limit]
+
         results = [
             {
                 "document_id": str(doc.id),
@@ -161,6 +165,7 @@ class GetDocumentDetailTool(OCRAITool):
 
     def __init__(self, session: Session) -> None:
         self._session = session
+        self._auth = ContractAuthorizationService(session)
 
     async def run(self, context: ToolExecutionContext, arguments: GetDocumentDetailArgs) -> ToolResult:
         try:
@@ -178,6 +183,13 @@ class GetDocumentDetailTool(OCRAITool):
             return ToolResult(
                 success=False,
                 error="Document introuvable ou vous n'avez pas l'autorisation d'y accéder.",
+            )
+
+        can_access, err = self._auth.can_access_document(context.tenant, doc, context.permissions)
+        if not can_access:
+            return ToolResult(
+                success=False,
+                error=err or "Document introuvable ou vous n'avez pas l'autorisation d'y accéder.",
             )
 
         analysis = {}
@@ -224,6 +236,7 @@ class GetDocumentDownloadUrlTool(OCRAITool):
 
     def __init__(self, session: Session) -> None:
         self._session = session
+        self._auth = ContractAuthorizationService(session)
         self._token_service = SecureDocumentTokenService()
 
     async def run(self, context: ToolExecutionContext, arguments: GetDocumentDownloadUrlArgs) -> ToolResult:
@@ -242,6 +255,13 @@ class GetDocumentDownloadUrlTool(OCRAITool):
             return ToolResult(
                 success=False,
                 error="Document introuvable ou vous n'avez pas l'autorisation d'y accéder.",
+            )
+
+        can_access, err = self._auth.can_access_document(context.tenant, doc, context.permissions)
+        if not can_access:
+            return ToolResult(
+                success=False,
+                error=err or "Document introuvable ou vous n'avez pas l'autorisation d'y accéder.",
             )
 
         user_id = context.user_id or context.tenant.user_id
@@ -298,6 +318,7 @@ class SearchContractsTool(PlatformContractAITool):
 
     def __init__(self, session: Session) -> None:
         self._session = session
+        self._auth = ContractAuthorizationService(session)
 
     async def run(self, context: ToolExecutionContext, arguments: SearchContractsArgs) -> ToolResult:
         query = select(CompanyContract).where(CompanyContract.company_id == context.tenant.company_id)
@@ -319,9 +340,12 @@ class SearchContractsTool(PlatformContractAITool):
             )
 
         limit = max(1, min(arguments.limit, 25))
-        query = query.order_by(CompanyContract.created_at.desc()).limit(limit)
+        query = query.order_by(CompanyContract.created_at.desc())
 
-        records = self._session.scalars(query).all()
+        all_records = list(self._session.scalars(query).all())
+        # Politique d'autorisation centralisée côté serveur
+        records = self._auth.filter_accessible_contracts(context.tenant, all_records, context.permissions)[:limit]
+
         results = [
             {
                 "contract_id": str(c.id),
@@ -363,6 +387,7 @@ class GetContractDetailTool(PlatformContractAITool):
 
     def __init__(self, session: Session) -> None:
         self._session = session
+        self._auth = ContractAuthorizationService(session)
 
     async def run(self, context: ToolExecutionContext, arguments: GetContractDetailArgs) -> ToolResult:
         try:
@@ -380,6 +405,14 @@ class GetContractDetailTool(PlatformContractAITool):
             return ToolResult(
                 success=False,
                 error="Contrat introuvable ou vous n'avez pas l'autorisation d'y accéder.",
+            )
+
+        # Vérification d'autorisation centralisée côté serveur
+        can_access, err = self._auth.can_access_contract(context.tenant, contract, context.permissions)
+        if not can_access:
+            return ToolResult(
+                success=False,
+                error=err or "Contrat introuvable ou vous n'avez pas l'autorisation d'y accéder.",
             )
 
         raw_content = contract.content_text or ""
@@ -424,6 +457,7 @@ class GetContractDownloadUrlTool(PlatformContractAITool):
 
     def __init__(self, session: Session) -> None:
         self._session = session
+        self._auth = ContractAuthorizationService(session)
         self._token_service = SecureDocumentTokenService()
 
     async def run(self, context: ToolExecutionContext, arguments: GetContractDownloadUrlArgs) -> ToolResult:
@@ -442,6 +476,14 @@ class GetContractDownloadUrlTool(PlatformContractAITool):
             return ToolResult(
                 success=False,
                 error="Contrat introuvable ou vous n'avez pas l'autorisation d'y accéder.",
+            )
+
+        # Vérification d'autorisation centralisée côté serveur
+        can_access, err = self._auth.can_access_contract(context.tenant, contract, context.permissions)
+        if not can_access:
+            return ToolResult(
+                success=False,
+                error=err or "Contrat introuvable ou vous n'avez pas l'autorisation d'y accéder.",
             )
 
         user_id = context.user_id or context.tenant.user_id

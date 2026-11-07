@@ -214,7 +214,7 @@ class SecureDocumentTokenService:
 
     def redeem_download_nonce_atomic(
         self,
-        db: Session | None,
+        db: Session,
         *,
         nonce: str,
         company_id: UUID,
@@ -229,35 +229,35 @@ class SecureDocumentTokenService:
         - Consommation unique même en cas d'appels simultanés/concurrents.
         - Persistance après redémarrage des instances Railway.
         - Nettoyage automatique des nonces expirés.
+        - ZÉRO fallback mémoire sur le chemin de production (DB obligatoire).
         """
+        if db is None:
+            raise RuntimeError(
+                "Une session de base de données PostgreSQL active est strictement requise pour l'anti-rejeu distribué."
+            )
+
         now = datetime.now(timezone.utc)
 
-        if db is not None:
-            # 1. Nettoyage opportuniste des nonces expirés
-            try:
-                db.execute(delete(SecureDownloadNonce).where(SecureDownloadNonce.expires_at < now))
-            except Exception:
-                pass  # Ne bloque jamais le flux principal
+        # 1. Nettoyage opportuniste des nonces expirés
+        try:
+            db.execute(delete(SecureDownloadNonce).where(SecureDownloadNonce.expires_at < now))
+        except Exception:
+            pass  # Ne bloque jamais le flux principal
 
-            # 2. Insertion atomique sous contrainte UNIQUE sur nonce
-            record = SecureDownloadNonce(
-                nonce=nonce,
-                company_id=company_id,
-                user_id=user_id,
-                doc_id=doc_id,
-                doc_type=doc_type,
-                expires_at=expires_at,
-                redeemed_at=now,
-            )
-            db.add(record)
-            try:
-                db.commit()
-            except IntegrityError as exc:
-                db.rollback()
-                logger.warning("download_token_replay_blocked nonce=%s", nonce)
-                raise InvalidSecureTokenError("Ce jeton de téléchargement a déjà été utilisé (anti-rejeu).") from exc
-        else:
-            # Mode de secours en mémoire (tests isolés sans DB)
-            if nonce in self._in_memory_nonces:
-                raise InvalidSecureTokenError("Ce jeton de téléchargement a déjà été utilisé (anti-rejeu).")
-            self._in_memory_nonces[nonce] = expires_at.timestamp()
+        # 2. Insertion atomique sous contrainte UNIQUE sur nonce
+        record = SecureDownloadNonce(
+            nonce=nonce,
+            company_id=company_id,
+            user_id=user_id,
+            doc_id=doc_id,
+            doc_type=doc_type,
+            expires_at=expires_at,
+            redeemed_at=now,
+        )
+        db.add(record)
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            logger.warning("download_token_replay_blocked nonce=%s", nonce)
+            raise InvalidSecureTokenError("Ce jeton de téléchargement a déjà été utilisé (anti-rejeu).") from exc

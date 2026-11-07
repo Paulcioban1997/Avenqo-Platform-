@@ -21,7 +21,7 @@ def upgrade() -> None:
         op.create_table(
             "secure_download_nonces",
             sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-            sa.Column("nonce", sa.String(64), nullable=False, unique=True),
+            sa.Column("nonce", sa.String(64), nullable=False),
             sa.Column("company_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("companies.id", ondelete="CASCADE"), nullable=False),
             sa.Column("user_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
             sa.Column("doc_id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -41,4 +41,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_table("secure_download_nonces")
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if inspector.has_table("secure_download_nonces"):
+        op.drop_table("secure_download_nonces")
+

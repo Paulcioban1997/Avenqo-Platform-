@@ -1297,3 +1297,233 @@ def test_security_platform_contracts_included_without_legal_module(tmp_path: Pat
     session.close()
     engine.dispose()
 
+
+def test_security_third_party_contracts_rigorous_lifecycle_and_tenant_isolation(tmp_path: Path):
+    """Vérification rigoureuse du cycle de vie des contrats tiers, revalidation dynamique et multi-tenant.
+
+    Exigences vérifiées :
+    1. Contrat plateforme accessible sans module Legal (Search, Detail, Download URL, Download HTTP 200).
+    2. Contrat tiers absent des résultats de recherche sans module Legal (count=0, zéro fuite titre/texte).
+    3. Consultation directe de contrat tiers par UUID refusée sans module Legal (success=False, zéro fuite).
+    4. Génération de jeton de téléchargement pour contrat tiers refusée sans module Legal.
+    5. Revalidation dynamique : activation de Legal -> émission jeton -> révocation Legal -> rejet HTTP 403.
+    6. Isolation multi-tenant stricte : Entreprise B (même avec module Legal actif) ne peut ni voir,
+       ni consulter, ni générer d'URL, ni télécharger les contrats de l'Entreprise A.
+    7. Protection des documents TenantDocument de type 'legal' sans module Legal actif.
+    """
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'third_party_lifecycle_test.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)()
+
+    # Modules canoniques
+    mod_legal = Module(id=uuid4(), code="legal", name="Module Juridique", is_active=True)
+    mod_ocr = Module(id=uuid4(), code="ocr", name="Module Documents OCR", is_active=True)
+    session.add_all([mod_legal, mod_ocr])
+    session.commit()
+
+    # Entreprise A (socle standard SANS module legal au départ)
+    company_a = _create_company(session, "Entreprise A Standard", "company-a-standard")
+    user_a = _create_user(session, company_a, "owner_a@company-a.test", role=UserRole.OWNER)
+
+    # Entreprise B (avec module legal activé)
+    company_b = _create_company(session, "Entreprise B Avancée", "company-b-advanced")
+    user_b = _create_user(session, company_b, "owner_b@company-b.test", role=UserRole.OWNER)
+    mod_legal_b = CompanyModule(
+        id=uuid4(),
+        company_id=company_b.id,
+        module_id=mod_legal.id,
+        status=CompanyModuleStatus.ACTIVE,
+        activated_at=datetime.now(timezone.utc),
+    )
+    session.add(mod_legal_b)
+    session.commit()
+
+    # Contrats Entreprise A
+    # A1: Contrat socle Avenqo
+    contract_a_platform = CompanyContract(
+        id=uuid4(),
+        company_id=company_a.id,
+        contract_type="pilot",
+        title="Accord Pilote Officiel Avenqo A",
+        status=ContractLifecycleStatus.READY_FOR_REVIEW.value,
+        execution_state=ContractExecutionPartyState.PENDING_CUSTOMER.value,
+        version="2026-V1",
+        content_text="Clause Socle Avenqo: Droits contractuels garantis de l'entreprise A.",
+        metadata_json={},
+    )
+    # A2: Contrat métier tiers
+    contract_a_third_party = CompanyContract(
+        id=uuid4(),
+        company_id=company_a.id,
+        contract_type="vendor_agreement",
+        title="Accord Fournisseur Externe Sensible A",
+        status=ContractLifecycleStatus.READY_FOR_REVIEW.value,
+        execution_state=ContractExecutionPartyState.PENDING_CUSTOMER.value,
+        version="2026-V1",
+        content_text="Clause Confidentielle Tiers A: Négociation tarifaire 500 000 EUR.",
+        metadata_json={"is_third_party": True},
+    )
+    # A3: TenantDocument légal
+    doc_a_legal = TenantDocument(
+        id=uuid4(),
+        company_id=company_a.id,
+        uploaded_by_user_id=user_a.id,
+        kind="legal",
+        filename="pacte_actionnaires.pdf",
+        sha256="fakelegalhash",
+        extracted_text="Pacte d'actionnaires confidentiel Entreprise A.",
+    )
+    session.add_all([contract_a_platform, contract_a_third_party, doc_a_legal])
+    session.commit()
+
+    # Contexte Entreprise A
+    tenant_ctx_a = TenantContext(company_id=company_a.id, user_id=user_a.id)
+    tool_ctx_a = ToolExecutionContext(
+        tenant=tenant_ctx_a,
+        user_id=user_a.id,
+        permissions=frozenset({"ai:use", "data:read"}),
+        request_id="req-a-lifecycle",
+    )
+
+    # 1. Contrat plateforme accessible sans module Legal
+    search_contracts_tool = SearchContractsTool(session)
+    res_search_platform = asyncio.run(search_contracts_tool.run(tool_ctx_a, SearchContractsArgs(query="Pilote")))
+    assert res_search_platform.success is True
+    assert res_search_platform.data["count"] == 1
+    assert res_search_platform.data["contracts"][0]["contract_id"] == str(contract_a_platform.id)
+
+    get_detail_tool = GetContractDetailTool(session)
+    res_detail_platform = asyncio.run(get_detail_tool.run(tool_ctx_a, GetContractDetailArgs(contract_id=str(contract_a_platform.id))))
+    assert res_detail_platform.success is True
+    assert "Clause Socle Avenqo" in res_detail_platform.data["content"]
+
+    dl_url_tool = GetContractDownloadUrlTool(session)
+    res_dl_platform = asyncio.run(dl_url_tool.run(tool_ctx_a, GetContractDownloadUrlArgs(contract_id=str(contract_a_platform.id))))
+    assert res_dl_platform.success is True
+    assert "download_url" in res_dl_platform.data
+    platform_token = res_dl_platform.data["download_url"].split("/")[-1]
+
+    # 2. Contrat tiers absent des résultats de recherche sans module Legal
+    res_search_tp = asyncio.run(search_contracts_tool.run(tool_ctx_a, SearchContractsArgs(query="Fournisseur")))
+    assert res_search_tp.success is True
+    assert res_search_tp.data["count"] == 0
+    assert len(res_search_tp.data["contracts"]) == 0
+
+    # 3. Consultation directe de contrat tiers par UUID refusée sans module Legal
+    res_detail_tp = asyncio.run(get_detail_tool.run(tool_ctx_a, GetContractDetailArgs(contract_id=str(contract_a_third_party.id))))
+    assert res_detail_tp.success is False
+    assert "requis" in (res_detail_tp.error or "").lower()
+    # Zéro fuite : data ne contient aucun texte ni titre
+    assert "Clause Confidentielle Tiers A" not in str(res_detail_tp.data)
+    assert "500 000" not in str(res_detail_tp.data)
+
+    # 4. Génération de jeton pour contrat tiers refusée sans module Legal
+    res_dl_tp = asyncio.run(dl_url_tool.run(tool_ctx_a, GetContractDownloadUrlArgs(contract_id=str(contract_a_third_party.id))))
+    assert res_dl_tp.success is False
+    assert "requis" in (res_dl_tp.error or "").lower()
+    assert "download_url" not in res_dl_tp.data
+
+    # 5. Documents TenantDocument légaux protégés
+    search_docs_tool = SearchDocumentsTool(session)
+    res_docs_search = asyncio.run(search_docs_tool.run(tool_ctx_a, SearchDocumentsArgs(query="actionnaires")))
+    assert res_docs_search.success is True
+    assert res_docs_search.data["count"] == 0
+
+    get_doc_detail_tool = GetDocumentDetailTool(session)
+    res_doc_detail = asyncio.run(get_doc_detail_tool.run(tool_ctx_a, GetDocumentDetailArgs(document_id=str(doc_a_legal.id))))
+    assert res_doc_detail.success is False
+    assert "requis" in (res_doc_detail.error or "").lower()
+
+    # 6. Revalidation dynamique : activation de Legal -> émission de jeton -> révocation de Legal -> rejet HTTP 403
+    mod_legal_a = CompanyModule(
+        id=uuid4(),
+        company_id=company_a.id,
+        module_id=mod_legal.id,
+        status=CompanyModuleStatus.ACTIVE,
+        activated_at=datetime.now(timezone.utc),
+    )
+    session.add(mod_legal_a)
+    session.commit()
+
+    # Maintenant l'émission du jeton pour le contrat tiers réussit
+    res_dl_tp_granted = asyncio.run(dl_url_tool.run(tool_ctx_a, GetContractDownloadUrlArgs(contract_id=str(contract_a_third_party.id))))
+    assert res_dl_tp_granted.success is True
+    valid_tp_token = res_dl_tp_granted.data["download_url"].split("/")[-1]
+
+    app = create_application()
+    app.dependency_overrides[get_db] = lambda: session
+
+    # Utilisateur A authentifié
+    app.dependency_overrides[get_current_identity] = lambda: CurrentIdentity(
+        auth_session=cast(Any, None),
+        user=user_a,
+        raw_token="fake-jwt-a",
+    )
+
+    with TestClient(app) as client_a:
+        # Pendant que le module Legal est actif : le téléchargement fonctionne (200 OK)
+        res_ok = client_a.get(f"/api/v1/secure-downloads/{valid_tp_token}")
+        assert res_ok.status_code == 200
+
+        # On génère un NOUVEAU jeton valide pour tester la révocation (car le précédent a été consommé de façon unique)
+        res_new_tp = asyncio.run(dl_url_tool.run(tool_ctx_a, GetContractDownloadUrlArgs(contract_id=str(contract_a_third_party.id))))
+        token_to_revoke = res_new_tp.data["download_url"].split("/")[-1]
+
+        # Révocation du module Legal pour Entreprise A
+        mod_legal_a.status = CompanyModuleStatus.INACTIVE
+        session.commit()
+
+        # Tentative de téléchargement post-révocation -> Rejet HTTP 403 Forbidden immédiat !
+        res_revoked = client_a.get(f"/api/v1/secure-downloads/{token_to_revoke}")
+        assert res_revoked.status_code == 403
+
+    # 7. Isolation multi-tenant stricte : Entreprise B tente d'accéder aux contrats d'Entreprise A
+    tenant_ctx_b = TenantContext(company_id=company_b.id, user_id=user_b.id)
+    tool_ctx_b = ToolExecutionContext(
+        tenant=tenant_ctx_b,
+        user_id=user_b.id,
+        permissions=frozenset({"ai:use", "data:read"}),
+        request_id="req-b-isolation",
+    )
+
+    # User B cherche les contrats -> Zéro résultat concernant Entreprise A
+    res_b_search_platform = asyncio.run(search_contracts_tool.run(tool_ctx_b, SearchContractsArgs(query="Officiel Avenqo A")))
+    assert res_b_search_platform.success is True
+    assert res_b_search_platform.data["count"] == 0
+
+    res_b_search_tp = asyncio.run(search_contracts_tool.run(tool_ctx_b, SearchContractsArgs(query="Fournisseur Externe Sensible A")))
+    assert res_b_search_tp.success is True
+    assert res_b_search_tp.data["count"] == 0
+
+    # User B tente un GetContractDetail sur le contrat plateforme de A
+    res_b_detail_platform = asyncio.run(get_detail_tool.run(tool_ctx_b, GetContractDetailArgs(contract_id=str(contract_a_platform.id))))
+    assert res_b_detail_platform.success is False
+    assert "introuvable" in (res_b_detail_platform.error or "").lower()
+
+    # User B tente un GetContractDetail sur le contrat tiers de A
+    res_b_detail_tp = asyncio.run(get_detail_tool.run(tool_ctx_b, GetContractDetailArgs(contract_id=str(contract_a_third_party.id))))
+    assert res_b_detail_tp.success is False
+    assert "introuvable" in (res_b_detail_tp.error or "").lower()
+
+    # User B tente d'obtenir un jeton de téléchargement pour le contrat de A
+    res_b_dl = asyncio.run(dl_url_tool.run(tool_ctx_b, GetContractDownloadUrlArgs(contract_id=str(contract_a_platform.id))))
+    assert res_b_dl.success is False
+    assert "introuvable" in (res_b_dl.error or "").lower()
+
+    # Si User B tente de télécharger avec le jeton de A (platform_token)
+    app.dependency_overrides[get_current_identity] = lambda: CurrentIdentity(
+        auth_session=cast(Any, None),
+        user=user_b,
+        raw_token="fake-jwt-b",
+    )
+    with TestClient(app) as client_b:
+        res_stolen_token = client_b.get(f"/api/v1/secure-downloads/{platform_token}")
+        assert res_stolen_token.status_code == 403
+
+    session.close()
+    engine.dispose()
+
+

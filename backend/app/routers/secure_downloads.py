@@ -24,6 +24,7 @@ from backend.app.models.company import Company
 from backend.app.models.company_contract import CompanyContract, ContractLifecycleStatus
 from backend.app.models.user import User
 from backend.app.models.workspace import TenantDocument
+from backend.app.services.contract_authorization_service import is_third_party_contract
 from backend.app.services.contract_signature_service import ContractSignatureService
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.services.secure_document_token_service import (
@@ -347,9 +348,9 @@ def secure_download(
                 detail="Contrat introuvable pour cette entreprise.",
             )
 
-        # Les contrats du socle Avenqo (pilot, saas, nda, dpa) sont inclus dans la plateforme.
-        # Les contrats tiers personnalisés requièrent expressément le module 'legal'.
-        if contract.metadata_json and contract.metadata_json.get("is_third_party"):
+        # Les contrats du socle Avenqo (pilot, saas, nda, dpa, terms) sont inclus dans la plateforme.
+        # Les contrats tiers requièrent expressément le module 'legal'.
+        if is_third_party_contract(contract):
             if "legal" not in active_modules:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
