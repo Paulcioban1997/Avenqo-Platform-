@@ -92,3 +92,28 @@ def test_dedicated_backup_login_must_target_same_database(monkeypatch):
     with pytest.raises(RuntimeError, match="même serveur") as caught:
         _load_backup_settings()
     assert backup_password not in str(caught.value)
+
+
+def test_backup_db_cli_fails_when_required_artifacts_missing(monkeypatch, tmp_path, capsys):
+    from scripts.backup_db import main
+    from backend.app.services.backup_service import BackupMetadata
+
+    db_path = tmp_path / "app.db"
+    import sqlite3
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("CREATE TABLE t (id INT)")
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path}")
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    monkeypatch.setenv("BACKUP_ROOT", str(tmp_path / "backups"))
+    monkeypatch.setenv("ARTIFACT_ROOT", str(tmp_path / "empty_artifacts"))
+    monkeypatch.setenv("BACKUP_REQUIRE_ARTIFACTS", "true")
+
+    with pytest.raises(SystemExit) as exc_info:
+        main()
+
+    assert exc_info.value.code == 2
+    captured = capsys.readouterr()
+    assert "Échec de la sauvegarde : aucun artefact archivé" in captured.err

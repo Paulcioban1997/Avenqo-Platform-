@@ -161,6 +161,13 @@ def main() -> None:
         "artifacts_archived="
         f"{bool(metadata.artifacts_checksum_sha256)}"
     )
+    require_artifacts = os.getenv("BACKUP_REQUIRE_ARTIFACTS", "").strip().lower() in {"1", "true", "yes"}
+    if require_artifacts and not metadata.artifacts_checksum_sha256:
+        print(
+            "Échec de la sauvegarde : aucun artefact archivé alors que BACKUP_REQUIRE_ARTIFACTS est activé.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
 
 if __name__ == "__main__":
