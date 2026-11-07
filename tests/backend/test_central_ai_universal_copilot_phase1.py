@@ -210,7 +210,7 @@ def test_scenario_2_query_nonexistent_invoice_non_hallucination(db_session: Sess
     detail_tool = GetInvoiceDetailTool(db_session)
     detail_res = asyncio.run(detail_tool.run(context, GetInvoiceDetailArgs(invoice_number="FAC-9999-INEXISTANTE")))
     assert detail_res.success is False
-    assert "introuvable" in detail_res.error.lower()
+    assert "introuvable" in (detail_res.error or "").lower()
 
 
 # ============================================================================
@@ -313,13 +313,13 @@ def test_scenario_4_query_inaccessible_cross_tenant_contract(db_session: Session
     detail_tool = GetContractDetailTool(db_session)
     detail_res = asyncio.run(detail_tool.run(context_a, GetContractDetailArgs(contract_id=str(contract_b.id))))
     assert detail_res.success is False
-    assert "introuvable" in detail_res.error.lower()
+    assert "introuvable" in (detail_res.error or "").lower()
 
     # 3. Génération d'URL de téléchargement direct est rejetée
     dl_tool = GetContractDownloadUrlTool(db_session)
     dl_res = asyncio.run(dl_tool.run(context_a, GetContractDownloadUrlArgs(contract_id=str(contract_b.id))))
     assert dl_res.success is False
-    assert "introuvable" in dl_res.error.lower()
+    assert "introuvable" in (dl_res.error or "").lower()
 
 
 # ============================================================================
@@ -364,7 +364,7 @@ def test_scenario_5_query_document_wrong_tenant_id(db_session: Session):
     detail_tool = GetDocumentDetailTool(db_session)
     detail_res = asyncio.run(detail_tool.run(context_a, GetDocumentDetailArgs(document_id=str(doc_b.id))))
     assert detail_res.success is False
-    assert "introuvable" in detail_res.error.lower()
+    assert "introuvable" in (detail_res.error or "").lower()
 
 
 # ============================================================================
@@ -411,7 +411,7 @@ def test_scenario_6_user_without_rights_download_blocked(tmp_path: Path):
     app = create_application()
     app.dependency_overrides[get_db] = lambda: session
     app.dependency_overrides[get_current_identity] = lambda: CurrentIdentity(
-        auth_session=None,
+        auth_session=cast(Any, None),
         user=unauthorized_user,
         raw_token="fake-jwt",
     )
@@ -468,7 +468,7 @@ def test_scenario_7_expired_download_token(tmp_path: Path):
     app = create_application()
     app.dependency_overrides[get_db] = lambda: session
     app.dependency_overrides[get_current_identity] = lambda: CurrentIdentity(
-        auth_session=None,
+        auth_session=cast(Any, None),
         user=user,
         raw_token="fake-jwt",
     )
@@ -532,7 +532,7 @@ def test_scenario_8_tampered_token_signature_or_cross_tenant(tmp_path: Path):
     tampered_token = f"{parts[0]}.{tampered_sig}"
 
     app.dependency_overrides[get_current_identity] = lambda: CurrentIdentity(
-        auth_session=None,
+        auth_session=cast(Any, None),
         user=user_a,
         raw_token="fake-jwt",
     )
@@ -542,7 +542,7 @@ def test_scenario_8_tampered_token_signature_or_cross_tenant(tmp_path: Path):
 
     # 2. Usurpation par un autre utilisateur / tenant B -> 403
     app.dependency_overrides[get_current_identity] = lambda: CurrentIdentity(
-        auth_session=None,
+        auth_session=cast(Any, None),
         user=user_b,
         raw_token="fake-jwt",
     )
