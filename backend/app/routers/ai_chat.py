@@ -178,9 +178,22 @@ async def message(
     permissions = frozenset(permissions_for(membership.role))
     capabilities = resolve_tenant_capabilities(db, tenant, prediction_service)
     agent = _authorized_agent(request.content, None, tenant, db, agent_registry)
+    active_modules = frozenset(ModuleEntitlementService(db).get_active_modules(tenant))
+    from backend.app.ai.central.universal_planner import UniversalCapabilityPlanner
+
+    planner = UniversalCapabilityPlanner(agent_registry, getattr(service, "_tool_registry", None))
+    planned = planner.plan_tool_scope(
+        request.content,
+        active_modules=active_modules,
+        permissions=permissions,
+        detected_agent=agent,
+    )
+    allowed_tools = planned.allowed_tool_names
+    authorized_tool_agents = planned.authorized_tool_agents
+
     trusted_context = (
         _retail_trusted_context(tenant, db, sales_service, customers_service)
-        if agent is not None and agent.module_code == "retail"
+        if ("retail" in active_modules and ((agent is not None and agent.module_code == "retail") or "retail" in planned.targeted_modules))
         else ""
     )
     company = identity.user.company
@@ -210,8 +223,9 @@ async def message(
             company_currency=getattr(company, "currency_code", None) or "USD",
             company_timezone=company.timezone or "UTC",
             selected_agent_id=agent.agent_id if agent is not None else None,
-            allowed_tool_names=agent.allowed_tool_names if agent is not None else frozenset(),
-            retrieve_tenant_data=agent is not None,
+            allowed_tool_names=allowed_tools if allowed_tools else (agent.allowed_tool_names if agent is not None else frozenset()),
+            authorized_tool_agents=authorized_tool_agents,
+            retrieve_tenant_data=bool(allowed_tools) or agent is not None,
         )
     except ConversationNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Conversation introuvable") from exc
@@ -261,9 +275,22 @@ async def stream(
     capabilities = resolve_tenant_capabilities(db, tenant, prediction_service)
     company = identity.user.company
     agent = _authorized_agent(request.content, None, tenant, db, agent_registry)
+    active_modules = frozenset(ModuleEntitlementService(db).get_active_modules(tenant))
+    from backend.app.ai.central.universal_planner import UniversalCapabilityPlanner
+
+    planner = UniversalCapabilityPlanner(agent_registry, getattr(service, "_tool_registry", None))
+    planned = planner.plan_tool_scope(
+        request.content,
+        active_modules=active_modules,
+        permissions=permissions,
+        detected_agent=agent,
+    )
+    allowed_tools = planned.allowed_tool_names
+    authorized_tool_agents = planned.authorized_tool_agents
+
     trusted_context = (
         _retail_trusted_context(tenant, db, sales_service, customers_service)
-        if agent is not None and agent.module_code == "retail"
+        if ("retail" in active_modules and ((agent is not None and agent.module_code == "retail") or "retail" in planned.targeted_modules))
         else ""
     )
     plan_code = ModuleEntitlementService(db).get_company_plan(tenant).code.value
@@ -298,8 +325,9 @@ async def stream(
                 company_currency=getattr(company, "currency_code", None) or "USD",
                 company_timezone=company.timezone or "UTC",
                 selected_agent_id=agent.agent_id if agent is not None else None,
-                allowed_tool_names=agent.allowed_tool_names if agent is not None else frozenset(),
-                retrieve_tenant_data=agent is not None,
+                allowed_tool_names=allowed_tools if allowed_tools else (agent.allowed_tool_names if agent is not None else frozenset()),
+                authorized_tool_agents=authorized_tool_agents,
+                retrieve_tenant_data=bool(allowed_tools) or agent is not None,
             ):
                 if event.kind == "delta":
                     yield f"data: {json.dumps(event.payload)}\n\n"
