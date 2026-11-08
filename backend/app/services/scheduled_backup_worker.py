@@ -23,7 +23,7 @@ async def backup_loop(settings: Settings, stop_event: asyncio.Event) -> None:
     logger.info(
         "scheduled_backup_worker_started interval_hours=%d s3_enabled=%s artifact_root=%s",
         settings.backup_scheduled_interval_hours,
-        settings.backup_s3_enabled(),
+        settings.backup_s3_enabled,
         settings.artifact_root,
     )
 
