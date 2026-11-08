@@ -444,6 +444,8 @@ class Settings(BaseSettings):
     backup_s3_access_key: str | None = Field(default=None, alias="BACKUP_S3_ACCESS_KEY")
     backup_s3_secret_key: str | None = Field(default=None, alias="BACKUP_S3_SECRET_KEY")
     backup_s3_region: str = Field(default="auto", alias="BACKUP_S3_REGION")
+    backup_scheduled_enabled: bool = Field(default=False, alias="BACKUP_SCHEDULED_ENABLED")
+    backup_scheduled_interval_hours: int = Field(default=24, ge=1, alias="BACKUP_SCHEDULED_INTERVAL_HOURS")
 
     # Stockage S3 dédié aux datasets et fichiers clients (séparation stricte avec les backups DB).
     dataset_s3_endpoint_url: str | None = Field(default=None, alias="DATASET_S3_ENDPOINT_URL")

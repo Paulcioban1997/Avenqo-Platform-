@@ -257,24 +257,23 @@ async def test_central_ai_service_uses_universal_planner_for_unclassified_query(
     assert call_kwargs["authorized_tool_agents"]["get_inventory_summary"] == "retail"
 
 
-# 9. Test de rotation des secrets JWT avec clé de repli (Zero-Downtime)
-def test_jwt_dual_key_zero_downtime_rotation(monkeypatch):
+# 9. Test de sécurité P0 : rejet strict des jetons signés avec un secret compromis
+def test_jwt_strict_verification_rejects_compromised_secret(monkeypatch):
     import jwt
     from datetime import datetime, timezone, timedelta
     from backend.app.config.settings import get_settings
     from backend.app.core.security import decode_access_token
 
     settings = get_settings()
-    old_secret = "old-secret-that-was-used-previously-for-signing-tokens-12345"
-    new_secret = "new-super-secure-secret-rotated-in-production-67890"
+    compromised_secret = "compromised-secret-exposed-in-previous-sessions-12345"
+    new_active_secret = "new-super-secure-secret-rotated-in-production-67890"
 
-    # Simuler la période de transition : new_secret est actif, old_secret est en fallback
-    monkeypatch.setattr(settings, "auth_jwt_secret", new_secret)
-    monkeypatch.setattr(settings, "auth_jwt_secret_fallback", old_secret)
+    # La configuration en production utilise exclusivement le nouveau secret
+    monkeypatch.setattr(settings, "auth_jwt_secret", new_active_secret)
 
     now = datetime.now(timezone.utc)
-    # Jeton généré AVANT la rotation (signé avec old_secret)
-    old_payload = {
+    # Jeton signé avec le secret compromis
+    compromised_payload = {
         "sub": str(uuid4()),
         "tenant_id": str(uuid4()),
         "session_id": str(uuid4()),
@@ -285,10 +284,10 @@ def test_jwt_dual_key_zero_downtime_rotation(monkeypatch):
         "aud": settings.auth_jwt_audience,
         "type": "access",
     }
-    old_token = jwt.encode(old_payload, old_secret, algorithm="HS256")
+    compromised_token = jwt.encode(compromised_payload, compromised_secret, algorithm="HS256")
 
-    # Jeton généré APRÈS la rotation (signé avec new_secret)
-    new_payload = {
+    # Jeton légitime signé avec le nouveau secret
+    valid_payload = {
         "sub": str(uuid4()),
         "tenant_id": str(uuid4()),
         "session_id": str(uuid4()),
@@ -299,14 +298,15 @@ def test_jwt_dual_key_zero_downtime_rotation(monkeypatch):
         "aud": settings.auth_jwt_audience,
         "type": "access",
     }
-    new_token = jwt.encode(new_payload, new_secret, algorithm="HS256")
+    valid_token = jwt.encode(valid_payload, new_active_secret, algorithm="HS256")
 
-    # Vérification : les deux jetons sont valides pendant la fenêtre de rotation
-    decoded_old = decode_access_token(old_token)
-    assert decoded_old["sub"] == old_payload["sub"]
+    # Le jeton du secret compromis DOIT être strictement rejeté
+    with pytest.raises(ValueError, match="Jeton d'accès invalide ou expiré"):
+        decode_access_token(compromised_token)
 
-    decoded_new = decode_access_token(new_token)
-    assert decoded_new["sub"] == new_payload["sub"]
+    # Le jeton du nouveau secret DOIT être accepté
+    decoded_valid = decode_access_token(valid_token)
+    assert decoded_valid["sub"] == valid_payload["sub"]
 
 
 # 10. Test de détection multi-chemins des artefacts pour le cron de sauvegarde
