@@ -161,7 +161,14 @@ def main() -> None:
         "artifacts_archived="
         f"{bool(metadata.artifacts_checksum_sha256)}"
     )
-    require_artifacts = os.getenv("BACKUP_REQUIRE_ARTIFACTS", "").strip().lower() in {"1", "true", "yes"}
+    # Fail closed for production: database-only backups are not full platform backups.
+    # An operator may explicitly opt out only for a documented database-only job.
+    required_setting = os.getenv("BACKUP_REQUIRE_ARTIFACTS")
+    require_artifacts = (
+        settings.environment.strip().lower() == "production"
+        if required_setting is None
+        else required_setting.strip().lower() in {"1", "true", "yes"}
+    )
     if require_artifacts and not metadata.artifacts_checksum_sha256:
         print(
             "Échec de la sauvegarde : aucun artefact archivé alors que BACKUP_REQUIRE_ARTIFACTS est activé.",
