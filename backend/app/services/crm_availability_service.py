@@ -107,7 +107,7 @@ class CRMAvailabilityService:
     async def _external_busy(self, company_id: UUID, start: datetime, end: datetime) -> list[BusySlot]:
         connections = self._session.scalars(select(CRMCalendarConnection).where(
             CRMCalendarConnection.company_id == company_id,
-            CRMCalendarConnection.provider == "google",
+            CRMCalendarConnection.provider.in_(("google", "outlook")),
             CRMCalendarConnection.sync_status != "disconnected",
         )).all()
         if not connections:
@@ -115,14 +115,8 @@ class CRMAvailabilityService:
         try:
             settings = get_settings()
             cipher = self._cipher or ConnectorSecretCipher(settings.connector_encryption_keys)
-            try:
-                provider = GoogleCalendarProvider(
-                    settings.google_calendar_client_id,
-                    settings.google_calendar_client_secret,
-                    settings.google_calendar_redirect_uri,
-                )
-            except TypeError:
-                provider = GoogleCalendarProvider()
+            from backend.app.services.calendar.outlook_provider import OutlookCalendarProvider
+
             busy = []
             for connection in connections:
                 if requires_calendar_reconnect(connection.sync_status, connection.sync_error):
@@ -133,6 +127,22 @@ class CRMAvailabilityService:
                     credentials = cipher.decrypt(connection.encrypted_credentials)
                 except Exception as exc:
                     raise AvailabilityUnavailable("EXTERNAL_AVAILABILITY_UNAVAILABLE") from exc
+
+                if connection.provider == "outlook":
+                    provider = OutlookCalendarProvider(
+                        getattr(settings, "outlook_client_id", None),
+                        getattr(settings, "outlook_client_secret", None),
+                        getattr(settings, "outlook_redirect_uri", None),
+                    )
+                else:
+                    try:
+                        provider = GoogleCalendarProvider(
+                            settings.google_calendar_client_id,
+                            settings.google_calendar_client_secret,
+                            settings.google_calendar_redirect_uri,
+                        )
+                    except TypeError:
+                        provider = GoogleCalendarProvider()
                 try:
                     periods = await provider.check_busy_slots(credentials, start, end, connection.calendar_id)
                 except CalendarProviderError as exc:
@@ -151,16 +161,19 @@ class CRMAvailabilityService:
                         periods = await provider.check_busy_slots(credentials, start, end, connection.calendar_id)
                     except CalendarTokenRevokedError as rev_exc:
                         connection.sync_status = "error"
+                        prov_name = "Outlook" if connection.provider == "outlook" else "Google"
                         if hasattr(connection, "sync_error"):
-                            connection.sync_error = "Google token expired or revoked. Please reconnect."
+                            connection.sync_error = f"{prov_name} token expired or revoked. Please reconnect."
                         self._session.commit()
                         logger.warning(
-                            "Google Calendar OAuth token revoked for tenant. Reconnection required.",
-                            extra={"company_id": str(company_id), "provider": "google"},
+                            "%s Calendar OAuth token revoked for tenant. Reconnection required.",
+                            prov_name,
+                            extra={"company_id": str(company_id), "provider": connection.provider},
                         )
                         raise AvailabilityUnavailable("EXTERNAL_AVAILABILITY_UNAVAILABLE") from rev_exc
                     except Exception as refresh_exc:
                         connection.sync_status = "error"
+                        prov_name = "Outlook" if connection.provider == "outlook" else "Google"
                         err_str = str(refresh_exc).lower()
                         cause = getattr(refresh_exc, "__cause__", None)
                         cause_code = getattr(cause, "code", None)
@@ -173,7 +186,7 @@ class CRMAvailabilityService:
                         )
                         if hasattr(connection, "sync_error"):
                             connection.sync_error = (
-                                "Google token expired or revoked. Please reconnect."
+                                f"{prov_name} token expired or revoked. Please reconnect."
                                 if is_revoked
                                 else "Disponibilités externes temporairement inaccessibles."
                             )

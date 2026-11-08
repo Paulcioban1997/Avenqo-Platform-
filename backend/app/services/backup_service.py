@@ -410,15 +410,29 @@ class BackupService:
 
         import os
         artifact_root_val = getattr(self._settings, "artifact_root", None) or os.getenv("ARTIFACT_ROOT", "var/artifacts")
-        artifact_dir = Path(artifact_root_val)
-        if not artifact_dir.is_absolute():
-            artifact_dir = Path.cwd() / artifact_dir
+        explicit_dir = Path(artifact_root_val)
+        if not explicit_dir.is_absolute():
+            explicit_dir = Path.cwd() / explicit_dir
 
-        if artifact_dir.exists() and any(artifact_dir.iterdir()):
+        found_artifact_dir = None
+        if explicit_dir.exists() and any(explicit_dir.iterdir()):
+            found_artifact_dir = explicit_dir
+        elif artifact_root_val in {"var/artifacts", "/data/artifacts", "data/artifacts"}:
+            candidate_artifact_dirs = [
+                Path("/data/artifacts"),
+                Path.cwd() / "var" / "artifacts",
+                Path.cwd() / "data" / "artifacts",
+            ]
+            found_artifact_dir = next(
+                (p for p in candidate_artifact_dirs if p.exists() and any(p.iterdir())),
+                None,
+            )
+
+        if found_artifact_dir is not None:
             artifacts_archive_path = self.root / f"{backup_id}_artifacts.tar.gz"
             import tarfile
             with tarfile.open(artifacts_archive_path, "w:gz") as tar:
-                tar.add(str(artifact_dir), arcname="artifacts")
+                tar.add(str(found_artifact_dir), arcname="artifacts")
             artifacts_checksum = _sha256_of_file(artifacts_archive_path)
             artifacts_size = artifacts_archive_path.stat().st_size
             artifacts_path = artifacts_archive_path

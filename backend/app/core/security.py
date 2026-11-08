@@ -68,31 +68,44 @@ def create_access_token(
 
 
 def decode_access_token(token: str) -> dict[str, object]:
-    """Valide la signature, l'expiration et le type d'un JWT d'accès."""
+    """Valide la signature, l'expiration et le type d'un JWT d'accès.
+
+    Supporte la rotation zéro-downtime via auth_jwt_secret_fallback :
+    si le secret principal échoue, la clé de repli est vérifiée.
+    """
 
     settings = get_settings()
-    try:
-        payload = jwt.decode(
-            token,
-            settings.auth_jwt_secret,
-            algorithms=[settings.auth_jwt_algorithm],
-            issuer=settings.auth_jwt_issuer,
-            audience=settings.auth_jwt_audience,
-            options={
-                "require": [
-                    "sub",
-                    "tenant_id",
-                    "session_id",
-                    "iat",
-                    "exp",
-                    "iss",
-                    "aud",
-                    "type",
-                ]
-            },
-        )
-    except InvalidTokenError as exc:
-        raise ValueError("Jeton d'accès invalide ou expiré") from exc
-    if payload.get("type") != "access":
-        raise ValueError("Type de jeton invalide")
-    return payload
+    secrets_to_try = [settings.auth_jwt_secret]
+    fallback = getattr(settings, "auth_jwt_secret_fallback", None)
+    if fallback and fallback.strip() and fallback.strip() != settings.auth_jwt_secret:
+        secrets_to_try.append(fallback.strip())
+
+    last_error: Exception | None = None
+    for secret in secrets_to_try:
+        try:
+            payload = jwt.decode(
+                token,
+                secret,
+                algorithms=[settings.auth_jwt_algorithm],
+                issuer=settings.auth_jwt_issuer,
+                audience=settings.auth_jwt_audience,
+                options={
+                    "require": [
+                        "sub",
+                        "tenant_id",
+                        "session_id",
+                        "iat",
+                        "exp",
+                        "iss",
+                        "aud",
+                        "type",
+                    ]
+                },
+            )
+            if payload.get("type") != "access":
+                raise ValueError("Type de jeton invalide")
+            return payload
+        except InvalidTokenError as exc:
+            last_error = exc
+
+    raise ValueError("Jeton d'accès invalide ou expiré") from last_error

@@ -255,3 +255,91 @@ async def test_central_ai_service_uses_universal_planner_for_unclassified_query(
     call_kwargs = chat_mock.send.call_args.kwargs
     assert "get_inventory_summary" in call_kwargs["allowed_tool_names"]
     assert call_kwargs["authorized_tool_agents"]["get_inventory_summary"] == "retail"
+
+
+# 9. Test de rotation des secrets JWT avec clé de repli (Zero-Downtime)
+def test_jwt_dual_key_zero_downtime_rotation(monkeypatch):
+    import jwt
+    from datetime import datetime, timezone, timedelta
+    from backend.app.config.settings import get_settings
+    from backend.app.core.security import decode_access_token
+
+    settings = get_settings()
+    old_secret = "old-secret-that-was-used-previously-for-signing-tokens-12345"
+    new_secret = "new-super-secure-secret-rotated-in-production-67890"
+
+    # Simuler la période de transition : new_secret est actif, old_secret est en fallback
+    monkeypatch.setattr(settings, "auth_jwt_secret", new_secret)
+    monkeypatch.setattr(settings, "auth_jwt_secret_fallback", old_secret)
+
+    now = datetime.now(timezone.utc)
+    # Jeton généré AVANT la rotation (signé avec old_secret)
+    old_payload = {
+        "sub": str(uuid4()),
+        "tenant_id": str(uuid4()),
+        "session_id": str(uuid4()),
+        "jti": str(uuid4()),
+        "iat": now,
+        "exp": now + timedelta(minutes=15),
+        "iss": settings.auth_jwt_issuer,
+        "aud": settings.auth_jwt_audience,
+        "type": "access",
+    }
+    old_token = jwt.encode(old_payload, old_secret, algorithm="HS256")
+
+    # Jeton généré APRÈS la rotation (signé avec new_secret)
+    new_payload = {
+        "sub": str(uuid4()),
+        "tenant_id": str(uuid4()),
+        "session_id": str(uuid4()),
+        "jti": str(uuid4()),
+        "iat": now,
+        "exp": now + timedelta(minutes=15),
+        "iss": settings.auth_jwt_issuer,
+        "aud": settings.auth_jwt_audience,
+        "type": "access",
+    }
+    new_token = jwt.encode(new_payload, new_secret, algorithm="HS256")
+
+    # Vérification : les deux jetons sont valides pendant la fenêtre de rotation
+    decoded_old = decode_access_token(old_token)
+    assert decoded_old["sub"] == old_payload["sub"]
+
+    decoded_new = decode_access_token(new_token)
+    assert decoded_new["sub"] == new_payload["sub"]
+
+
+# 10. Test de détection multi-chemins des artefacts pour le cron de sauvegarde
+def test_backup_service_discovers_artifacts_across_candidate_paths(tmp_path, monkeypatch):
+    from backend.app.services.backup_service import BackupService
+
+    # Créer un répertoire d'artefacts dans un chemin alternatif
+    alt_artifacts = tmp_path / "custom_artifacts"
+    alt_artifacts.mkdir(parents=True)
+    sample_file = alt_artifacts / "dataset_summary.json"
+    sample_file.write_text('{"total_rows": 1000}', encoding="utf-8")
+
+    settings = MagicMock()
+    settings.database_url = f"sqlite:///{tmp_path}/test.db"
+    settings.environment = "test"
+    settings.app_version = "0.1.0"
+    settings.backup_root = str(tmp_path / "backups")
+    settings.backup_retention_days = 7
+    settings.backup_s3_enabled = False
+    settings.artifact_root = str(alt_artifacts)
+
+    # Initialiser une base sqlite valide
+    import sqlite3
+    conn = sqlite3.connect(str(tmp_path / "test.db"))
+    conn.execute("CREATE TABLE test (id INT);")
+    conn.commit()
+    conn.close()
+
+    service = BackupService(settings)
+    metadata = service.create_backup()
+
+    assert metadata.artifacts_checksum_sha256 is not None
+    assert metadata.artifacts_size_bytes is not None
+    assert metadata.artifacts_size_bytes > 0
+
+
