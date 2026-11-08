@@ -49,6 +49,12 @@ class CentralAIService:
         self._chat = chat_service
         self._usage = usage_service
         self._context_builder = context_builder
+        from backend.app.ai.central.universal_planner import UniversalCapabilityPlanner
+
+        self._planner = UniversalCapabilityPlanner(
+            registry,
+            getattr(chat_service, "_tool_registry", None),
+        )
 
     @property
     def usage_service(self) -> AIUsageService:
@@ -83,37 +89,54 @@ class CentralAIService:
                 granted_voice_tools if granted_voice_tools is not None else frozenset(),
             )
 
-        if agent is None:
-            return frozenset(), {}
-        if not agent.aggregate:
-            if not agent_entitlements(agent).issubset(active_modules):
-                return None
-            tool_agents = {name: agent.agent_id for name in agent.allowed_tool_names}
-            return agent.allowed_tool_names, tool_agents
+        # 1. Si un agent spécifique est ciblé
+        if agent is not None:
+            if not agent.aggregate:
+                if not agent_entitlements(agent).issubset(active_modules):
+                    return None
+                tool_agents = {name: agent.agent_id for name in agent.allowed_tool_names}
+                return agent.allowed_tool_names, tool_agents
 
-        requested_agents = self._router.select_matching_agents(
+            # Agent aggregate (ex: cross_agent)
+            requested_agents = self._router.select_matching_agents(
+                query,
+                page_context=page_context,
+            )
+            tool_agents: dict[str, str] = {}
+            for requested_agent in requested_agents:
+                if not agent_entitlements(requested_agent).issubset(active_modules):
+                    return None
+                for tool_name in requested_agent.allowed_tool_names:
+                    tool_agents[tool_name] = requested_agent.agent_id
+
+            if agent_entitlements(agent).issubset(active_modules):
+                tool_reg = getattr(self._chat, "_tool_registry", None)
+                for tool_name in agent.allowed_tool_names:
+                    if tool_reg is not None:
+                        tool_obj = tool_reg.get(tool_name)
+                        if tool_obj and tool_obj.required_entitlements and not tool_obj.required_entitlements.issubset(active_modules):
+                            continue
+                    tool_agents[tool_name] = agent.agent_id
+            elif not requested_agents:
+                return None
+
+            return frozenset(tool_agents), tool_agents
+
+        # 2. Central AI Universel (agent is None) : Planification universelle dynamique des outils autorisés
+        matching_agents = self._router.select_matching_agents(
             query,
             page_context=page_context,
         )
-        tool_agents: dict[str, str] = {}
-        for requested_agent in requested_agents:
-            if not agent_entitlements(requested_agent).issubset(active_modules):
-                return None
-            for tool_name in requested_agent.allowed_tool_names:
-                tool_agents[tool_name] = requested_agent.agent_id
+        planned = self._planner.plan_tool_scope(
+            query,
+            active_modules=active_modules,
+            permissions=permissions,
+            page_context=page_context,
+            detected_agent=agent,
+            matching_agents=matching_agents,
+        )
 
-        if agent_entitlements(agent).issubset(active_modules):
-            tool_reg = getattr(self._chat, "_tool_registry", None)
-            for tool_name in agent.allowed_tool_names:
-                if tool_reg is not None:
-                    tool_obj = tool_reg.get(tool_name)
-                    if tool_obj and tool_obj.required_entitlements and not tool_obj.required_entitlements.issubset(active_modules):
-                        continue
-                tool_agents[tool_name] = agent.agent_id
-        elif not requested_agents:
-            return None
-
-        return frozenset(tool_agents), tool_agents
+        return planned.allowed_tool_names, planned.authorized_tool_agents
 
     def _voice_scope_from_grants(
         self,

@@ -13,24 +13,26 @@ RETAIL_INTENT_KEYWORDS = frozenset({
     "sale", "sales", "vente", "ventes", "revenue", "revenu", "customer",
     "customers", "client", "clients", "order", "orders", "commande",
     "commandes", "product", "products", "produit", "produits", "inventory",
-    "inventaire", "stock", "recommendation", "recommendations", "recommandation",
+    "inventaire", "inventaires", "stock", "stocks", "catalogue", "catalogues",
+    "catalog", "catalogs", "recommendation", "recommendations", "recommandation",
     "recommandations", "kpi", "trend", "trends", "tendance", "tendances",
     "anomaly", "anomalies", "anomalie", "forecast", "prevision", "demand",
     "demande", "churn", "performance", "chiffre", "chiffres", "statistique",
-    "statistiques", "bilan", "overview",
+    "statistiques", "bilan", "overview", "panier", "paniers",
 })
 CRM_INTENT_KEYWORDS = frozenset({
     "crm", "lead", "leads", "opportunity", "opportunities", "prospect",
     "prospects", "deal", "deals", "relance", "relances", "contact", "contacts",
     "appointment", "appointments", "rendez", "rdv", "creneau", "creneaux", "disponibilite",
     "disponibilites", "slot", "slots", "reservation", "reservations", "schedule",
-    "scheduling", "booking", "calendrier", "agenda",
+    "scheduling", "booking", "calendrier", "agenda", "calendar", "calendars",
+    "horaire", "horaires", "reunion", "reunions",
 })
 ACCOUNTING_INTENT_KEYWORDS = frozenset({
     "accounting", "comptabilite", "comptable", "invoice", "invoices", "facture",
     "factures", "impaye", "impayee", "impayes", "impayees", "depense", "depenses",
     "depenser", "marge", "marges", "tresorerie", "cashflow", "cash", "burn",
-    "creance", "creances",
+    "creance", "creances", "unpaid",
 })
 CROSS_AGENT_INTENT_KEYWORDS = frozenset({
     "360", "cross", "synergie", "synergies", "global", "globale", "globales",

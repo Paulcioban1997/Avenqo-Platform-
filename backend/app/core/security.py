@@ -68,7 +68,7 @@ def create_access_token(
 
 
 def decode_access_token(token: str) -> dict[str, object]:
-    """Valide la signature, l'expiration et le type d'un JWT d'accès."""
+    """Valide un JWT avec la clé actuelle uniquement. Une clé exposée ne doit jamais être acceptée comme fallback."""
 
     settings = get_settings()
     try:
@@ -79,16 +79,7 @@ def decode_access_token(token: str) -> dict[str, object]:
             issuer=settings.auth_jwt_issuer,
             audience=settings.auth_jwt_audience,
             options={
-                "require": [
-                    "sub",
-                    "tenant_id",
-                    "session_id",
-                    "iat",
-                    "exp",
-                    "iss",
-                    "aud",
-                    "type",
-                ]
+                "require": ["sub", "tenant_id", "session_id", "iat", "exp", "iss", "aud", "type"],
             },
         )
     except InvalidTokenError as exc:

@@ -51,10 +51,13 @@ async def lifespan(app: FastAPI):
         # docs/production-deployment.md § Migrations.
         create_database_tables()
     import asyncio
-    task=None;stop=asyncio.Event()
+    task=None;backup_task=None;stop=asyncio.Event()
     if settings.voice_commercial_enabled and settings.voice_provisioning_worker_enabled:
         from backend.app.services.voice_provisioning_worker import loop
         task=asyncio.create_task(loop(settings,stop))
+    if getattr(settings, "backup_scheduled_enabled", False):
+        from backend.app.services.scheduled_backup_worker import backup_loop
+        backup_task=asyncio.create_task(backup_loop(settings,stop))
     try:
         yield
     finally:
@@ -62,6 +65,9 @@ async def lifespan(app: FastAPI):
         if task:
             try:await asyncio.wait_for(task,timeout=20)
             except asyncio.TimeoutError:task.cancel()
+        if backup_task:
+            try:await asyncio.wait_for(backup_task,timeout=10)
+            except (asyncio.TimeoutError, asyncio.CancelledError):backup_task.cancel()
 
 
 def create_application() -> FastAPI:
