@@ -9,16 +9,16 @@ if [ "$1" = "/usr/local/bin/docker-entrypoint.sh" ] || [ "$1" = "docker-entrypoi
     shift
 fi
 
-if [ -n "$ARTIFACT_ROOT" ]; then
-    echo "Validating artifact volume ownership at $ARTIFACT_ROOT"
-    volume_owner=$(stat -c '%U:%G' "$ARTIFACT_ROOT" 2>/dev/null || true)
-    if [ "$volume_owner" != "avenqo:avenqo" ]; then
-        install -d -o avenqo -g avenqo -m 2770 "$ARTIFACT_ROOT"
-        find "$ARTIFACT_ROOT" -type d -exec chown avenqo:avenqo {} + -exec chmod u+rwx,g+rx,g+s {} + 2>/dev/null || true
-    else
-        echo "Artifact root already owned by avenqo; skipping ownership walk"
-    fi
+if [ -n "$ARTIFACT_ROOT" ] && [ -d "$ARTIFACT_ROOT" ]; then
+    echo "Ensuring artifact volume permissions at $ARTIFACT_ROOT"
+    chown -R avenqo:avenqo "$ARTIFACT_ROOT" 2>/dev/null || true
+    chmod -R u+rwX,g+rwX "$ARTIFACT_ROOT" 2>/dev/null || true
 fi
+
+BACKUP_DIR="${BACKUP_ROOT:-/srv/var/backups}"
+mkdir -p "$BACKUP_DIR" 2>/dev/null || true
+chown -R avenqo:avenqo /srv/var 2>/dev/null || true
+chmod -R u+rwx,g+rwx /srv/var 2>/dev/null || true
 
 MODEL_DIR="${MODEL_REGISTRY_ROOT:-/srv/var/models}"
 if [ -n "$MODEL_DIR" ]; then

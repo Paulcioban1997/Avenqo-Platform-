@@ -25,6 +25,10 @@ def _pg_dump_failure_category(stderr: str) -> str:
     """Classify a dump failure without returning provider output or credentials."""
 
     message = stderr.lower()
+    if "could not open output file" in message or "open output file" in message:
+        return "filesystem_permission_denied"
+    if "no space left on device" in message:
+        return "staging_unavailable"
     if "row-level security" in message:
         return "row_level_security"
     if "permission denied" in message or "must be owner" in message:
@@ -39,8 +43,6 @@ def _pg_dump_failure_category(stderr: str) -> str:
         return "tls_failed"
     if "connection refused" in message or "connection timed out" in message:
         return "connection_failed"
-    if "no space left on device" in message or "could not open output file" in message:
-        return "staging_unavailable"
     return "unclassified"
 
 
@@ -363,6 +365,15 @@ class BackupService:
         return None
 
     def create_backup(self) -> BackupMetadata:
+        self.root.mkdir(parents=True, exist_ok=True)
+        # Test de pré-vol : s'assurer que le staging local est inscriptible
+        write_check = self.root / ".perm_check"
+        try:
+            write_check.touch()
+            write_check.unlink(missing_ok=True)
+        except OSError as exc:
+            raise BackupError(f"Répertoire de sauvegarde local non inscriptible ({self.root}) : {exc}") from exc
+
         kind = _database_kind(self._effective_database_url)
         backup_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f") + "Z"
         suffix = ".sql" if kind == "postgresql" else ".db"
@@ -437,7 +448,14 @@ class BackupService:
             artifacts_archive_path = self.root / f"{backup_id}_artifacts.tar.gz"
             import tarfile
             with tarfile.open(artifacts_archive_path, "w:gz") as tar:
-                tar.add(str(found_artifact_dir), arcname="artifacts")
+                for root_dir, _, files in os.walk(str(found_artifact_dir)):
+                    for file_name in files:
+                        full_path = os.path.join(root_dir, file_name)
+                        rel_path = os.path.relpath(full_path, str(found_artifact_dir))
+                        try:
+                            tar.add(full_path, arcname=f"artifacts/{rel_path}")
+                        except (PermissionError, OSError):
+                            pass
             artifacts_checksum = _sha256_of_file(artifacts_archive_path)
             artifacts_size = artifacts_archive_path.stat().st_size
             artifacts_path = artifacts_archive_path
