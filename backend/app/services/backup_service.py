@@ -341,6 +341,11 @@ class BackupService:
     def environment(self) -> str:
         return normalize_backup_environment(self._settings.environment)
 
+    @property
+    def _effective_database_url(self) -> str:
+        url = (getattr(self._settings, "backup_database_url", None) or "").strip()
+        return url or self._settings.database_url
+
     def _object_key(self, filename: str, *, prefixed: bool = True) -> str:
         if prefixed:
             return f"{self.environment}/{filename}"
@@ -358,13 +363,13 @@ class BackupService:
         return None
 
     def create_backup(self) -> BackupMetadata:
-        kind = _database_kind(self._settings.database_url)
+        kind = _database_kind(self._effective_database_url)
         backup_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f") + "Z"
         suffix = ".sql" if kind == "postgresql" else ".db"
         destination_path = self.root / f"{backup_id}{suffix}"
 
         if kind == "sqlite":
-            source_path = _sqlite_path_from_url(self._settings.database_url)
+            source_path = _sqlite_path_from_url(self._effective_database_url)
             if not source_path.exists():
                 raise BackupError(f"Base de données introuvable : {source_path}")
             # API de sauvegarde SQLite native (snapshot cohérent) plutôt qu'une
@@ -380,7 +385,7 @@ class BackupService:
             finally:
                 source_conn.close()
         else:  # postgresql — pg_dump cohérent, jamais de secret dans les logs
-            connection, child_env = _postgres_subprocess_connection(self._settings.database_url)
+            connection, child_env = _postgres_subprocess_connection(self._effective_database_url)
             try:
                 result = subprocess.run(
                     ["pg_dump", "--format=plain", "--no-owner", "--no-privileges",
@@ -449,7 +454,7 @@ class BackupService:
             size_bytes=destination_path.stat().st_size,
             artifacts_checksum_sha256=artifacts_checksum,
             artifacts_size_bytes=artifacts_size,
-            alembic_revision=read_alembic_revision(self._settings.database_url),
+            alembic_revision=read_alembic_revision(self._effective_database_url),
         )
         metadata_path = self.root / f"{backup_id}.json"
         metadata_path.write_text(
