@@ -133,11 +133,6 @@ class Settings(BaseSettings):
         min_length=32,
         alias="AUTH_JWT_SECRET",
     )
-    auth_jwt_secret_fallback: str | None = Field(
-        default=None,
-        alias="AUTH_JWT_SECRET_FALLBACK",
-        description="Clé de repli optionnelle pour rotation JWT sans déconnexion des sessions actives.",
-    )
     auth_jwt_algorithm: str = Field(default="HS256", alias="AUTH_JWT_ALGORITHM")
     auth_jwt_issuer: str = Field(default="avenqo-api", alias="AUTH_JWT_ISSUER")
     auth_jwt_audience: str = Field(default="avenqo-clients", alias="AUTH_JWT_AUDIENCE")
