@@ -209,9 +209,10 @@ class CompanyDatasetLoader:
             return stripped
         if hasattr(value, "isoformat") and isinstance(value, (datetime, date)):
             return value
-        if hasattr(value, "item"):
+        item_method = getattr(value, "item", None)
+        if callable(item_method):
             try:
-                native = value.item()
+                native = item_method()
             except Exception:
                 return value
             if isinstance(native, float) and math.isnan(native):

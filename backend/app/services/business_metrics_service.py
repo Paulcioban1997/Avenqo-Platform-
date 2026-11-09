@@ -382,7 +382,7 @@ class BusinessMetricsService:
         covered = current["data_covered"] and previous["data_covered"]
         delta = round(float(current["revenue"]) - float(previous["revenue"]), 2) if covered else None
         prior_revenue = float(previous["revenue"]) if covered else None
-        change = round(delta / prior_revenue * 100, 2) if prior_revenue else None
+        change = round(delta / prior_revenue * 100, 2) if (delta is not None and prior_revenue) else None
         for period in (current, previous):
             if not period["data_covered"]:
                 for metric in ("revenue", "orders", "average_order_value"):
@@ -497,6 +497,8 @@ class BusinessMetricsService:
             "average_customer_value": round(sum(float(customer.get("total_value") or 0) for customer in customers) / total_customers, 2) if total_customers else None,
         }
         freshness = self._freshness.for_snapshot(snapshot, queried_at=calculated_at)
+        coverage: dict[str, Any] = {}
+        current_activity_unknown = False
         if include_coverage:
             coverage = self.sales_summary(snapshot, source, period_start=period_start,
                 period_end=period_end, queried_at=calculated_at)
@@ -504,7 +506,7 @@ class BusinessMetricsService:
             current_activity_unknown = static_dataset and (not dates or max(dates) < active_cutoff)
             if current_activity_unknown:
                 summary["active_customers"] = None
-            if not coverage["data_covered"]:
+            if not coverage.get("data_covered"):
                 summary["new_customers"] = None
         metrics = [
             self.metric_envelope(snapshot, source, metric_id, summary[metric_id], "count", period_start, period_end, orders, calculated_at=calculated_at, state="AVAILABLE" if summary[metric_id] is not None else "INSUFFICIENT_DATA")
@@ -514,8 +516,8 @@ class BusinessMetricsService:
         if not include_coverage:
             return result
         return {**result,
-                "data_coverage": coverage["data_coverage"], "data_covered": coverage["data_covered"],
-                "coverage_message": coverage["coverage_message"],
+                "data_coverage": coverage.get("data_coverage"), "data_covered": coverage.get("data_covered"),
+                "coverage_message": coverage.get("coverage_message"),
                 "population_scope": "selected_source_history",
                 "current_activity_status": "DATA_UNCOVERED" if current_activity_unknown else "AVAILABLE"}
 

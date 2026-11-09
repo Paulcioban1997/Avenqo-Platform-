@@ -15,11 +15,13 @@ import json
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from threading import Lock
+from typing import Any
 
 from backend.app.ai.tools.business.analytics import (
     parse_business_datetime,
@@ -119,10 +121,12 @@ def rows(path):
         from openpyxl import load_workbook
         book = load_workbook(path, read_only=True, data_only=True)
         try:
-            stream = book.active.iter_rows(values_only=True)
-            names = next(stream, ())
-            for values in stream:
-                yield dict(zip(names, values))
+            sheet = book.active or (book.worksheets[0] if book.worksheets else None)
+            if sheet is not None:
+                stream = sheet.iter_rows(values_only=True)
+                names = next(stream, ())
+                for values in stream:
+                    yield dict(zip(names, values))
         finally:
             book.close()
     elif path.suffix.lower() == ".parquet":
@@ -149,7 +153,7 @@ def build(spec):
         if alt not in date_candidates:
             date_candidates.append(alt)
 
-    def _extract_row_ts(r: dict[str, object]) -> datetime | None:
+    def _extract_row_ts(r: Mapping[Any, Any]) -> datetime | None:
         for c in date_candidates:
             if c in r and r[c] not in (None, ""):
                 val = timestamp(r[c])
@@ -189,7 +193,7 @@ def build(spec):
         }
         for name in ranges
     }
-    trend_buckets: dict[str, dict[str, dict[str, object]]] = {
+    trend_buckets: dict[str, dict[str, dict[str, Any]]] = {
         name: {} for name in ranges
     }
     split_buckets: dict[str, dict[str, dict[str, dict[str, float | int]]]] = {
@@ -264,11 +268,11 @@ def build(spec):
                     if granularity == "week"
                     else value.strftime("%Y-%m")
                 )
-                point = trend_buckets[bucket_name].setdefault(
+                point: dict[str, Any] = trend_buckets[bucket_name].setdefault(
                     period, {"revenue": Decimal(0), "orders": set(), "rows": 0}
                 )
-                point["revenue"] += amount
-                point["rows"] += 1
+                point["revenue"] = (point["revenue"] if isinstance(point["revenue"], Decimal) else Decimal(str(point["revenue"]))) + amount
+                point["rows"] = int(point["rows"]) + 1
                 if order_value is not None and str(order_value).strip():
                     point["orders"].add(str(order_value).strip())
             for field_name, column in (
@@ -290,27 +294,29 @@ def build(spec):
     revenue_ready = "total_amount" in fields or {"quantity", "unit_price"} <= fields
     available = {"revenue": revenue_ready, "orders": "order_id" in fields,
                  "customers": "customer_id" in fields, "average_order_value": revenue_ready and "order_id" in fields}
-    def metrics(bucket):
+    def metrics(bucket: dict[str, Any]) -> dict[str, Any]:
         orders = len(bucket["orders"])
-        values = {"revenue": float(round(bucket["revenue"], 2)), "orders": orders,
+        bucket_rev = bucket["revenue"] if isinstance(bucket["revenue"], Decimal) else Decimal(str(bucket["revenue"]))
+        values = {"revenue": float(round(bucket_rev, 2)), "orders": orders,
                   "customers": len(bucket["customers"]),
-                  "average_order_value": float(round(bucket["revenue"] / orders, 2)) if orders else 0.0}
+                  "average_order_value": float(round(bucket_rev / orders, 2)) if orders else 0.0}
         return {key: value for key, value in values.items() if available[key]}
-    def trend(bucket_name):
-        points = [
-            {
+    def trend(bucket_name: str) -> list[dict[str, Any]]:
+        points = []
+        for period, point in sorted(trend_buckets[bucket_name].items()):
+            p_rev = point["revenue"] if isinstance(point["revenue"], Decimal) else Decimal(str(point["revenue"]))
+            points.append({
                 "period": period,
-                "revenue": float(round(point["revenue"], 2)),
+                "revenue": float(round(p_rev, 2)),
                 "orders": len(point["orders"]) or int(point["rows"]),
                 "change_percent": None,
-            }
-            for period, point in sorted(trend_buckets[bucket_name].items())
-        ]
+            })
         if not points and bucket_name in {"all", "source_current"} and buckets[bucket_name]["rows"]:
             bucket = buckets[bucket_name]
+            b_rev = bucket["revenue"] if isinstance(bucket["revenue"], Decimal) else Decimal(str(bucket["revenue"]))
             points.append({
                 "period": "All",
-                "revenue": float(round(bucket["revenue"], 2)),
+                "revenue": float(round(b_rev, 2)),
                 "orders": len(bucket["orders"]) or int(bucket["rows"]),
                 "change_percent": None,
             })
