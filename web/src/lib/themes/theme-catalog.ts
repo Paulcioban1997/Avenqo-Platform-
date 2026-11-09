@@ -204,3 +204,4 @@ export function getThemeById(id: string): ThemeDefinition {
 export function getActivePresets(): ThemeDefinition[] {
   return CANDIDATE_THEMES.filter((t) => t.is_active_preset);
 }
+

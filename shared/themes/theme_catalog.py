@@ -230,3 +230,4 @@ def get_theme(theme_id: str | None) -> ThemeDefinition:
     if theme_id and theme_id in THEMES_BY_ID:
         return THEMES_BY_ID[theme_id]
     return THEMES_BY_ID[DEFAULT_THEME_ID]
+

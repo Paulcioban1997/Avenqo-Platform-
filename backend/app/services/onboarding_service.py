@@ -49,6 +49,8 @@ from shared.themes.theme_catalog import (
     get_theme,
 )
 
+__all__ = ["OnboardingService", "ONBOARDING_STEPS_ORDER"]
+
 
 ONBOARDING_STEPS_ORDER = [
     "company",
@@ -288,8 +290,10 @@ class OnboardingService:
 
         # 2. Modules info
         selected_modules = draft.get("selected_modules") or list(self._active_module_codes(tenant))
-        if not selected_modules and record.draft_payload.get("selected_modules"):
-            selected_modules = list(record.draft_payload.get("selected_modules"))
+        if not selected_modules and record.draft_payload:
+            raw_modules = record.draft_payload.get("selected_modules")
+            if isinstance(raw_modules, (list, tuple)):
+                selected_modules = [str(m) for m in raw_modules]
 
         # 3. Design info
         default_theme = get_theme(DEFAULT_THEME_ID)
@@ -447,8 +451,9 @@ class OnboardingService:
                 if company_info.get("website"):
                     company.website = str(company_info["website"]).strip()
                 if company_info.get("team_size"):
-                    record.team_size = str(company_info["team_size"]).strip()
-                    company.company_size = record.team_size
+                    cleaned_team_size = str(company_info["team_size"]).strip()
+                    record.team_size = cleaned_team_size
+                    company.company_size = cleaned_team_size
                 if company_info.get("description"):
                     record.business_goals = [str(company_info["description"]).strip()]
 
@@ -500,8 +505,8 @@ class OnboardingService:
                 for c in pending:
                     c.status = "SIGNED"
                     c.signed_at = datetime.now(timezone.utc)
-                    c.accepted_by_name = contracts_data.get("accepted_by_name", "Dirigeant")
-                    c.accepted_by_title = contracts_data.get("accepted_by_title", "Représentant")
+                    c.signatory_name = str(contracts_data.get("accepted_by_name") or "Dirigeant")
+                    c.signatory_title = str(contracts_data.get("accepted_by_title") or "Représentant")
 
         elif step_id == "subscription":
             sub_data = data.get("subscription") or data
@@ -547,7 +552,7 @@ class OnboardingService:
         for c in pending_contracts:
             c.status = "SIGNED"
             c.signed_at = datetime.now(timezone.utc)
-            c.accepted_by_name = rep_name
+            c.signatory_name = str(rep_name or "Authorized")
 
         # Mark onboarding completed
         record.status = OnboardingStatus.COMPLETED

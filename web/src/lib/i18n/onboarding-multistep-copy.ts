@@ -212,3 +212,4 @@ export const ONBOARDING_MULTISTEP_COPY: Record<string, OnboardingMultistepCopy> 
 export function getOnboardingCopy(locale: string): OnboardingMultistepCopy {
   return ONBOARDING_MULTISTEP_COPY[locale] || ONBOARDING_MULTISTEP_COPY["fr"];
 }
+
