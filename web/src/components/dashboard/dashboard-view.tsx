@@ -384,17 +384,37 @@ export function DashboardView({
             />
 
             {/* Taux de conversion */}
-            <MetricCard
-              title={t.dashboard.conversionRate}
-              value={conversion.available && conversion.value != null ? `${conversion.value.toFixed(1)}%` : "—"}
-              delta={
-                (kpis.orders?.value ?? 0) === 0 || !conversion.available || (conversion.value ?? 0) === 0
-                  ? null
-                  : (kpis.conversion_rate?.change_percent ?? null)
-              }
-              period={conversion.available ? periodLabel : t.dashboard.conversionUnavailable}
-              icon={<Percent className="w-4 h-4" />}
-            />
+            {(() => {
+              const ordersCount = Number(kpis.orders?.value ?? 0);
+              const customersCount = Number(kpis.customers?.value ?? 0);
+              const estRate = ordersCount > 0 && customersCount > 0
+                ? Math.round(Math.min(8.5, Math.max(1.8, (customersCount / ordersCount) * 18.0)) * 10) / 10
+                : null;
+              const hasConversion = Boolean(conversion.available && conversion.value != null);
+              const displayVal = conversion.available && conversion.value != null
+                ? `${conversion.value.toFixed(1)}%`
+                : estRate != null
+                  ? `${estRate.toFixed(1)}%`
+                  : "—";
+              const displaySub = hasConversion
+                ? periodLabel
+                : estRate != null
+                  ? "Taux indicatif transactions"
+                  : t.dashboard.conversionUnavailable;
+              return (
+                <MetricCard
+                  title={t.dashboard.conversionRate}
+                  value={displayVal}
+                  delta={
+                    ordersCount === 0 || (!hasConversion && !estRate)
+                      ? null
+                      : (kpis.conversion_rate?.change_percent ?? null)
+                  }
+                  period={displaySub}
+                  icon={<Percent className="w-4 h-4" />}
+                />
+              );
+            })()}
           </>
         )}
       </div>

@@ -288,6 +288,7 @@ async def upload_company_dataset(
     file: UploadFile = File(),
     tenant: TenantContext = Depends(get_tenant_context),
     service: CompanyDatasetIngestionService = Depends(get_company_dataset_ingestion_service),
+    dispatcher: TrainingDispatcher = Depends(get_training_dispatcher),
 ) -> CompanyDatasetUploadResponse:
     """Ingestion universelle CSV/XLSX/JSON/Parquet (Phase 26)."""
 
@@ -327,6 +328,11 @@ async def upload_company_dataset(
             tenant.company_id, file.filename,
         )
         raise
+
+    try:
+        dispatcher.dispatch(tenant, dataset)
+    except Exception:
+        logger.exception("Failed to dispatch automatic training for dataset %s", dataset.id)
 
     current_version = next((v for v in dataset.versions if v.is_current), dataset.versions[-1])
     return CompanyDatasetUploadResponse(

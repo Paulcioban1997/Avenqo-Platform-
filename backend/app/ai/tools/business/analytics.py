@@ -143,6 +143,9 @@ def compute_conversion_rate(
     if session_column is None:
         return {"available": False, "reason": "missing_sessions", "value": None}
     rows = filter_rows_by_date(prepared.rows, reverse, date_from, date_to)
+    if not rows:
+        return {"available": False, "reason": "no_data", "value": None}
+
     sessions: set[str] = set()
     orders: set[str] = set()
     order_rows = 0
@@ -155,6 +158,7 @@ def compute_conversion_rate(
             orders.add(str(order_id).strip())
         else:
             order_rows += 1
+
     if not sessions:
         return {"available": False, "reason": "missing_sessions", "value": None}
     order_count = len(orders) or order_rows
@@ -179,11 +183,72 @@ def _reverse_mapping(canonical_columns: dict[str, str]) -> dict[str, str]:
     return {canonical: original for original, canonical in canonical_columns.items()}
 
 
+_DATE_FALLBACK_COLUMNS: tuple[str, ...] = (
+    "Order Date",
+    "Ship Date",
+    "order_date",
+    "ship_date",
+    "date",
+    "Date",
+    "created_at",
+    "timestamp",
+    "transaction_date",
+    "InvoiceDate",
+    "sale_date",
+)
+
+_ORDER_ID_FALLBACK_COLUMNS: tuple[str, ...] = (
+    "Order ID",
+    "order_id",
+    "InvoiceNo",
+    "id",
+    "Transaction ID",
+    "transaction_id",
+)
+
+_CUSTOMER_ID_FALLBACK_COLUMNS: tuple[str, ...] = (
+    "Customer ID",
+    "customer_id",
+    "CustomerID",
+    "client_id",
+    "user_id",
+)
+
+_TOTAL_AMOUNT_FALLBACK_COLUMNS: tuple[str, ...] = (
+    "Sales",
+    "total_amount",
+    "Total",
+    "amount",
+    "revenue",
+    "price",
+    "Price",
+)
+
+
 def _value(row: dict[str, Any], reverse: dict[str, str], field: str) -> Any:
     original = reverse.get(field)
-    if original is None or original not in row:
-        return None
-    return row[original]
+    if original is not None and original in row:
+        val = row[original]
+        if val not in (None, ""):
+            return val
+    # Fallback to alternate column names if mapped column is missing or empty
+    if field == "order_timestamp":
+        for col in _DATE_FALLBACK_COLUMNS:
+            if col in row and row[col] not in (None, ""):
+                return row[col]
+    elif field == "order_id":
+        for col in _ORDER_ID_FALLBACK_COLUMNS:
+            if col in row and row[col] not in (None, ""):
+                return row[col]
+    elif field == "customer_id":
+        for col in _CUSTOMER_ID_FALLBACK_COLUMNS:
+            if col in row and row[col] not in (None, ""):
+                return row[col]
+    elif field == "total_amount":
+        for col in _TOTAL_AMOUNT_FALLBACK_COLUMNS:
+            if col in row and row[col] not in (None, ""):
+                return row[col]
+    return row.get(original) if original in row else None
 
 
 def _as_float(value: Any) -> float | None:
@@ -205,7 +270,7 @@ def parse_business_datetime(value: Any) -> datetime | None:
         return datetime.fromisoformat(normalized)
     except ValueError:
         pass
-    for pattern in ("%Y/%m/%d", "%m/%d/%Y", "%d/%m/%Y", "%Y-%m-%d"):
+    for pattern in ("%Y/%m/%d", "%m/%d/%Y", "%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%m-%d-%Y", "%Y%m%d"):
         try:
             return datetime.strptime(normalized, pattern)
         except ValueError:

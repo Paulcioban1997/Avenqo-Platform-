@@ -24,7 +24,7 @@ from shared.ai_engine.dataset_ingestion.exceptions import (
 )
 
 SUPPORTED_EXTENSIONS: tuple[str, ...] = (
-    ".csv", ".xls", ".xlsx", ".pdf", ".json", ".txt", ".parquet",
+    ".csv", ".tsv", ".xls", ".xlsx", ".pdf", ".json", ".txt", ".parquet",
 )
 
 
@@ -60,6 +60,8 @@ class CompanyDatasetLoader:
 
         if extension == ".csv":
             rows = self._load_csv(content)
+        elif extension == ".tsv":
+            rows = self._load_tsv(content)
         elif extension in {".xls", ".xlsx"}:
             rows = self._load_excel(content, extension)
         elif extension == ".pdf":
@@ -89,6 +91,16 @@ class CompanyDatasetLoader:
             raise InvalidDatasetFile("CSV invalide ou encodage non supporté.") from exc
         if not rows or rows[0] is None:
             raise EmptyDataset("Le CSV doit contenir un en-tête et au moins une ligne.")
+        return rows
+
+    def _load_tsv(self, content: bytes) -> list[dict[str, Any]]:
+        try:
+            text = content.decode("utf-8-sig")
+            rows = list(csv.DictReader(StringIO(text), delimiter="\t"))
+        except (UnicodeDecodeError, csv.Error) as exc:
+            raise InvalidDatasetFile("TSV invalide ou encodage non supporté.") from exc
+        if not rows or rows[0] is None:
+            raise EmptyDataset("Le TSV doit contenir un en-tête et au moins une ligne.")
         return rows
 
     def _load_excel(self, content: bytes, extension: str) -> list[dict[str, Any]]:

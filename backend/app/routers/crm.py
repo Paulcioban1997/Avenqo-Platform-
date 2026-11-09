@@ -1556,8 +1556,10 @@ async def crm_copilot_chat(
         duration_match = re.search(r"(\d+)\s*(?:min|minutes?)", msg)
         duration = int(duration_match.group(1)) if duration_match else 30
 
-        # Extract service title
-        service_title = "Physiotherapy" if req.locale == "en" else "Physiothérapie"
+        # Extract service title (dynamically defaults to company's active service or generic consultation)
+        first_service = db.scalar(select(CRMService).where(CRMService.company_id == tenant.company_id, CRMService.is_active == True))
+        default_title = first_service.name if first_service else ("Client Consultation" if req.locale == "en" else "Consultation client")
+        service_title = default_title
         if "physio" in msg:
             service_title = "Physiotherapy" if req.locale == "en" else "Physiothérapie"
         elif "massage" in msg or "massoth" in msg:
@@ -1568,6 +1570,10 @@ async def crm_copilot_chat(
             service_title = "Maintenance" if req.locale == "en" else "Entretien"
         elif "répar" in msg or "repair" in msg:
             service_title = "Repair" if req.locale == "en" else "Réparation"
+        elif "démo" in msg or "demo" in msg:
+            service_title = "Demo" if req.locale == "en" else "Démonstration"
+        elif "vente" in msg or "sales" in msg:
+            service_title = "Sales meeting" if req.locale == "en" else "Rendez-vous commercial"
 
         start_dt = datetime(target_date.year, target_date.month, target_date.day, hour, minute, tzinfo=timezone.utc)
         end_dt = start_dt + timedelta(minutes=duration)

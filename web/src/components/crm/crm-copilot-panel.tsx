@@ -218,7 +218,7 @@ export function CRMCopilotPanel({
           { label: "Generate a report", query: "Generate a CRM performance report", icon: BarChart3 },
         ]
       : [
-          { label: "Créer un rendez-vous", query: "Crée un rendez-vous aujourd'hui à 14h30 de physiothérapie d'une durée de 30 minutes.", icon: Calendar },
+          { label: "Créer un rendez-vous", query: "Crée un rendez-vous aujourd'hui à 14h30 d'une durée de 30 minutes.", icon: Calendar },
           { label: "Trouver un créneau libre", query: "Trouve-moi un créneau libre aujourd'hui", icon: Clock },
           { label: "Rechercher un client", query: "Rechercher un client", icon: Search },
           { label: "Envoyer des rappels", query: "Envoyer des rappels de rendez-vous", icon: Bell },

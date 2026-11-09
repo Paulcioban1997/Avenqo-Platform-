@@ -103,6 +103,7 @@ const STATUS_ICON: Record<StatusCategory, React.ReactNode> = {
 
 const FILE_ICON: Record<string, React.ReactNode> = {
   csv: <FileSpreadsheet size={20} />,
+  tsv: <FileSpreadsheet size={20} />,
   xls: <FileSpreadsheet size={20} />,
   xlsx: <FileSpreadsheet size={20} />,
   pdf: <FileType2 size={20} />,
@@ -112,7 +113,7 @@ const FILE_ICON: Record<string, React.ReactNode> = {
 };
 
 const ACCEPTED_TYPES =
-  ".csv,.xls,.xlsx,.pdf,.json,.txt,.parquet";
+  ".csv,.tsv,.xls,.xlsx,.pdf,.json,.txt,.parquet";
 
 // ---- Main Component ----
 export function DataHubView() {

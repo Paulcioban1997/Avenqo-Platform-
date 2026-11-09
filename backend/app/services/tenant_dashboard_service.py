@@ -407,10 +407,17 @@ class TenantDashboardService:
                  if canonical == "order_timestamp"),
                 None,
             )
-            if date_column is None:
-                continue
+            date_candidates = [date_column] if date_column else []
+            for alt in ("Order Date", "Ship Date", "order_date", "ship_date", "date", "Date", "created_at", "timestamp", "transaction_date"):
+                if alt not in date_candidates:
+                    date_candidates.append(alt)
             for row in dataset.rows:
-                timestamp = parse_business_datetime(row.get(date_column))
+                raw_val = None
+                for c in date_candidates:
+                    if c in row and row[c] not in (None, ""):
+                        raw_val = row[c]
+                        break
+                timestamp = parse_business_datetime(raw_val) if raw_val is not None else None
                 if timestamp is not None:
                     timestamps.append(
                         timestamp.replace(tzinfo=timezone.utc)
@@ -431,11 +438,18 @@ class TenantDashboardService:
             return prepared.rows, ()
         reverse = {canonical: source for source, canonical in prepared.canonical_columns.items()}
         date_column = reverse.get("order_timestamp")
-        if date_column is None:
-            return (), ()
+        date_candidates = [date_column] if date_column else []
+        for alt in ("Order Date", "Ship Date", "order_date", "ship_date", "date", "Date", "created_at", "timestamp", "transaction_date"):
+            if alt not in date_candidates:
+                date_candidates.append(alt)
 
         def between(row: dict[str, object], start: datetime, end: datetime) -> bool:
-            timestamp = parse_business_datetime(row.get(date_column))
+            raw_val = None
+            for c in date_candidates:
+                if c in row and row[c] not in (None, ""):
+                    raw_val = row[c]
+                    break
+            timestamp = parse_business_datetime(raw_val) if raw_val is not None else None
             if timestamp is None:
                 return False
             if timestamp.tzinfo is None:

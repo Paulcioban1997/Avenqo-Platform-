@@ -125,6 +125,38 @@ def _sales_operational_anomalies(
                 "detected_at": timestamp,
                 "explanation": "product_revenue_declined",
             })
+    if not anomalies and products:
+        # Detect revenue outliers or extreme distributions when period delta is insufficient
+        rev_values = [float(p.get("revenue") or 0) for p in products if p.get("revenue")]
+        if len(rev_values) >= 5:
+            avg_rev = sum(rev_values) / len(rev_values)
+            variance = sum((x - avg_rev) ** 2 for x in rev_values) / len(rev_values)
+            std_dev = variance ** 0.5
+            for product in products:
+                prod_rev = float(product.get("revenue") or 0)
+                if std_dev > 0 and abs(prod_rev - avg_rev) > 2.0 * std_dev:
+                    p_id = str(product.get("product_id") or "")
+                    name = str(product.get("name") or product.get("product_id") or "")
+                    sku = str(product.get("sku") or product.get("product_id") or "")
+                    anomalies.append({
+                        "id": f"revenue-outlier:{p_id}",
+                        "type": "outlier_revenue",
+                        "product": name,
+                        "sku": sku,
+                        "metric": "product_revenue",
+                        "period": "all_time",
+                        "expected_value": round(avg_rev, 2),
+                        "expected_range": {
+                            "lower": round(max(0.0, avg_rev - 2 * std_dev), 2),
+                            "upper": round(avg_rev + 2 * std_dev, 2),
+                        },
+                        "observed_value": round(prod_rev, 2),
+                        "delta": round(prod_rev - avg_rev, 2),
+                        "severity": "medium",
+                        "source": source,
+                        "detected_at": timestamp,
+                        "explanation": "high_revenue_statistical_outlier",
+                    })
     anomalies.sort(key=lambda item: float(item.get("delta") or 0))
     return anomalies[:_MAX_SALES_ANOMALIES]
 

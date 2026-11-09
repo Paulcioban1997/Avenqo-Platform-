@@ -495,7 +495,7 @@ export function ConnectionsView() {
   const connector = company.connectorHub;
   const session = useOptionalSession();
   const currentPlan = session?.identity?.company.subscription_plan?.toLowerCase() || "base";
-  const planMaxMb = currentPlan.includes("enterprise") ? 250 : currentPlan.includes("pro") ? 100 : 50;
+  const planMaxMb = 250;
   const maxFileBytes = planMaxMb * 1024 * 1024;
 
   const [loading, setLoading] = useState(true);
@@ -662,7 +662,7 @@ export function ConnectionsView() {
 
   // File Upload Handlers
   const handleFiles = async (files: FileList | File[]) => {
-    const validExtensions = [".csv", ".xls", ".xlsx", ".json", ".pdf", ".txt", ".parquet"];
+    const validExtensions = [".csv", ".tsv", ".xls", ".xlsx", ".json", ".pdf", ".txt", ".parquet"];
     const fileList = Array.from(files);
 
     if (fileList.length === 0) return;
@@ -670,7 +670,7 @@ export function ConnectionsView() {
     for (const file of fileList) {
       const ext = "." + (file.name.split(".").pop() || "").toLowerCase();
       if (!validExtensions.includes(ext)) {
-        setAlertError(`Format de fichier non pris en charge pour "${file.name}". Formats acceptés : CSV, XLS, XLSX, PDF, JSON, TXT et Parquet.`);
+        setAlertError(`Format de fichier non pris en charge pour "${file.name}". Formats acceptés : CSV, TSV, XLS, XLSX, PDF, JSON, TXT et Parquet.`);
         return;
       }
       if (file.size > maxFileBytes) {
@@ -922,7 +922,7 @@ export function ConnectionsView() {
             ref={fileInputRef}
             type="file"
             multiple
-            accept=".csv,.xls,.xlsx,.json,.pdf,.doc,.docx,.parquet"
+            accept=".csv,.tsv,.xls,.xlsx,.json,.pdf,.doc,.docx,.parquet"
             className="hidden"
             onChange={(e) => {
               if (e.target.files) handleFiles(e.target.files);

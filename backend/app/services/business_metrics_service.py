@@ -564,13 +564,22 @@ class BusinessMetricsService:
             return []
         normalized = BusinessMetricsService.normalize_source_timezone(source, timezone_name)
         column = next((name for name, canonical in normalized.canonical_columns.items() if canonical == "order_timestamp"), None)
-        if column is None:
-            return []
-        return [
-            value.astimezone(timezone.utc)
-            for row in normalized.rows
-            if (value := parse_business_datetime(row.get(column))) is not None and value.tzinfo is not None
-        ]
+        date_candidates = [column] if column else []
+        for alt in ("Order Date", "Ship Date", "order_date", "ship_date", "date", "Date", "created_at", "timestamp", "transaction_date"):
+            if alt not in date_candidates:
+                date_candidates.append(alt)
+        results = []
+        for row in normalized.rows:
+            raw_val = None
+            for c in date_candidates:
+                if c in row and row[c] not in (None, ""):
+                    raw_val = row[c]
+                    break
+            if raw_val is not None and (value := parse_business_datetime(raw_val)) is not None:
+                if value.tzinfo is None:
+                    value = value.replace(tzinfo=timezone.utc)
+                results.append(value.astimezone(timezone.utc))
+        return results
 
     @staticmethod
     def _utc(value: datetime) -> datetime:

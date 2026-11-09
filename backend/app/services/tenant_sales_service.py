@@ -223,10 +223,23 @@ class TenantSalesService:
             return None
         reverse = {canonical: original for original, canonical in source.canonical_columns.items()}
         date_column = reverse.get("order_timestamp")
+        date_candidates = [date_column] if date_column else []
+        for alt in ("Order Date", "Ship Date", "order_date", "ship_date", "date", "Date", "created_at", "timestamp", "transaction_date"):
+            if alt not in date_candidates:
+                date_candidates.append(alt)
+
+        def _row_date(r: dict[str, object]) -> datetime | None:
+            for c in date_candidates:
+                if c in r and r[c] not in (None, ""):
+                    val = parse_business_datetime(r[c])
+                    if val is not None:
+                        return val
+            return None
+
         timestamps = [
-            value
+            val
             for row in source.rows
-            if date_column and (value := parse_business_datetime(row.get(date_column))) is not None
+            if (val := _row_date(row)) is not None
         ]
         if not timestamps:
             return None
@@ -324,10 +337,23 @@ class TenantSalesService:
         )
         reverse = {canonical: original for original, canonical in source.canonical_columns.items()}
         date_column = reverse.get("order_timestamp")
+        date_candidates = [date_column] if date_column else []
+        for alt in ("Order Date", "Ship Date", "order_date", "ship_date", "date", "Date", "created_at", "timestamp", "transaction_date"):
+            if alt not in date_candidates:
+                date_candidates.append(alt)
+
+        def _row_date(r: dict[str, object]) -> datetime | None:
+            for c in date_candidates:
+                if c in r and r[c] not in (None, ""):
+                    val = parse_business_datetime(r[c])
+                    if val is not None:
+                        return val
+            return None
+
         timestamps = [
-            value
+            val
             for row in source.rows
-            if date_column and (value := parse_business_datetime(row.get(date_column))) is not None
+            if (val := _row_date(row)) is not None
         ]
         start, end = resolved["start"], resolved["end"]
         duration = end - start if start is not None and end is not None else timedelta(0)

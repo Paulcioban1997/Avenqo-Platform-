@@ -144,12 +144,24 @@ def build(spec):
     path = Path(spec["artifact"])
     reverse = {v: k for k, v in spec["mapping"].items()}
     date_col = reverse.get("order_timestamp")
+    date_candidates = [date_col] if date_col else []
+    for alt in ("Order Date", "Ship Date", "order_date", "ship_date", "date", "Date", "created_at", "timestamp", "transaction_date"):
+        if alt not in date_candidates:
+            date_candidates.append(alt)
+
+    def _extract_row_ts(r: dict[str, object]) -> datetime | None:
+        for c in date_candidates:
+            if c in r and r[c] not in (None, ""):
+                val = timestamp(r[c])
+                if val is not None:
+                    return val
+        return None
+
     end = None
-    if date_col:
-        for row in rows(path):
-            value = timestamp(row.get(date_col))
-            if value is not None:
-                end = max(end, value) if end else value
+    for row in rows(path):
+        val = _extract_row_ts(row)
+        if val is not None:
+            end = max(end, val) if end else val
     start = end - timedelta(days=29) if end else None
     comparison_start = start - timedelta(days=30) if start else None
     comparison_end = start - timedelta(microseconds=1) if start else None
@@ -202,7 +214,7 @@ def build(spec):
                 "customer_country", mapping, sample
             )
             header_resolved = True
-        value = timestamp(row.get(date_col)) if date_col else None
+        value = _extract_row_ts(row)
         if end:
             if value is None:
                 continue

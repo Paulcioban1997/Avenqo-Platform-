@@ -176,9 +176,9 @@ class DataImportLimits:
 
 
 DATA_IMPORT_LIMITS_BY_PLAN: dict[PlanCode, DataImportLimits] = {
-    PlanCode.BASE: DataImportLimits(max_datasets=25, max_file_mb=50),
-    PlanCode.DEMO: DataImportLimits(max_datasets=25, max_file_mb=50),
-    PlanCode.PROFESSIONAL: DataImportLimits(max_datasets=100, max_file_mb=100),
+    PlanCode.BASE: DataImportLimits(max_datasets=25, max_file_mb=250),
+    PlanCode.DEMO: DataImportLimits(max_datasets=25, max_file_mb=250),
+    PlanCode.PROFESSIONAL: DataImportLimits(max_datasets=100, max_file_mb=250),
     PlanCode.ENTERPRISE: DataImportLimits(max_datasets=1000, max_file_mb=250),
     PlanCode.CUSTOM_ENTERPRISE: DataImportLimits(max_datasets=1000, max_file_mb=250),
 }
