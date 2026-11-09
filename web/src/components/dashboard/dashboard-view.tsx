@@ -383,7 +383,7 @@ export function DashboardView({
               icon={<TrendingUp className="w-4 h-4" />}
             />
 
-            {/* Taux de conversion */}
+            {/* Taux de conversion / Ratio Transactions */}
             {(() => {
               const ordersCount = Number(kpis.orders?.value ?? 0);
               const customersCount = Number(kpis.customers?.value ?? 0);
@@ -396,14 +396,17 @@ export function DashboardView({
                 : estRate != null
                   ? `${estRate.toFixed(1)}%`
                   : "—";
+              const displayTitle = hasConversion
+                ? t.dashboard.conversionRate
+                : "Ratio Indicatif Client / Vente";
               const displaySub = hasConversion
                 ? periodLabel
                 : estRate != null
-                  ? "Taux indicatif transactions"
+                  ? "Ratio indicatif (visites non trackées)"
                   : t.dashboard.conversionUnavailable;
               return (
                 <MetricCard
-                  title={t.dashboard.conversionRate}
+                  title={displayTitle}
                   value={displayVal}
                   delta={
                     ordersCount === 0 || (!hasConversion && !estRate)
