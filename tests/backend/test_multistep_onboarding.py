@@ -53,7 +53,9 @@ def register_user(client: TestClient, notifier: RecordingNotifier, email: str, c
     )
     assert res.status_code == 201, res.text
     session_data = verify_and_login(client, notifier, email)
-    return session_data["access_token"]
+    token = session_data["access_token"]
+    assert isinstance(token, str)
+    return token
 
 
 def test_multistep_onboarding_lifecycle(multistep_env):
