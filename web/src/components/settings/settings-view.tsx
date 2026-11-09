@@ -30,6 +30,7 @@ import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
 import { VOICE_HEALTH_COPY } from "@/lib/i18n/voice-health-copy";
 import { VOICE_NUMBER_COPY } from "@/lib/i18n/voice-number-copy";
+import { BrandingSettingsView } from "@/components/settings/branding-settings-view";
 
 interface VoicePinStatusData {
   has_pin: boolean;
@@ -551,6 +552,13 @@ export function SettingsView() {
           <ChevronRight className="w-4 h-4" />
         </Link>
       </div>
+
+      {/* Apparence et Identité de Marque (Section 10) */}
+      {(user?.role?.toLowerCase() === "owner" || user?.role?.toLowerCase() === "admin") && (
+        <section className="bg-white dark:bg-[#0B132B]/80 rounded-2xl p-6 border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
+          <BrandingSettingsView />
+        </section>
+      )}
 
       {(user?.role?.toLowerCase() === "owner" || user?.role?.toLowerCase() === "admin") && (
         <section className="space-y-5 border-y border-slate-200/80 py-6 dark:border-white/[0.08]" aria-label={t.navigation.voiceAi}>
