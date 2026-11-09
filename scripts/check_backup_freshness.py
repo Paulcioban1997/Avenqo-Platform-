@@ -32,10 +32,6 @@ def main() -> int:
         print("BACKUP_MAX_AGE_HOURS invalide", file=sys.stderr)
         return 1
     if not settings.backup_s3_enabled:
-        allow_unconfigured = os.getenv("BACKUP_ALLOW_UNCONFIGURED", "").strip().lower() in {"1", "true", "yes"}
-        if allow_unconfigured or not os.getenv("BACKUP_S3_BUCKET", "").strip():
-            print(f"backup_environment={settings.environment} s3_enabled=false freshness=unconfigured (skipping)")
-            return 0
         print("s3_enabled=false freshness=unconfigured", file=sys.stderr)
         return 1
 
@@ -59,21 +55,30 @@ def main() -> int:
         created = created.replace(tzinfo=timezone.utc)
     age_hours = (datetime.now(timezone.utc) - created).total_seconds() / 3600
     artifacts_present = bool(latest.artifacts_checksum_sha256)
+
+    # Verify that the DB dump object (.sql or .db) actually exists in S3
+    db_filename = f"{latest.backup_id}.sql" if latest.database_type == "postgresql" else f"{latest.backup_id}.db"
+    db_archive_present = bool(service._s3_exists(db_filename))
+
     print(
         f"backup_environment={settings.environment} "
         f"latest_backup_id={latest.backup_id} "
         f"latest_age_hours={age_hours:.2f} "
         f"artifacts_archived={artifacts_present} "
+        f"db_archive_present={db_archive_present} "
         f"s3_prefix={settings.environment}/"
     )
+    if not db_archive_present:
+        print("db_archive=missing", file=sys.stderr)
+        return 2
     if age_hours > max_age_hours:
         print("freshness=stale", file=sys.stderr)
         return 2
-    print("freshness=ok")
     if os.getenv("BACKUP_REQUIRE_ARTIFACTS", "").strip().lower() in {"1", "true", "yes"}:
         if not artifacts_present:
             print("artifacts=missing", file=sys.stderr)
             return 2
+    print("freshness=ok")
     return 0
 
 

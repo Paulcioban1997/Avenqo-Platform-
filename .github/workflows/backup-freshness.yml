@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        environment: [sandbox, production]
+        environment: [sandbox, Production]
     environment: ${{ matrix.environment }}
     steps:
       - name: Checkout code
@@ -39,6 +39,6 @@ jobs:
           BACKUP_S3_SECRET_KEY: ${{ secrets.BACKUP_S3_SECRET_KEY }}
           BACKUP_S3_REGION: ${{ secrets.BACKUP_S3_REGION }}
           BACKUP_MAX_AGE_HOURS: "26"
-          BACKUP_ALLOW_UNCONFIGURED: "true"
+          BACKUP_REQUIRE_ARTIFACTS: "true"
         run: python scripts/check_backup_freshness.py
 
