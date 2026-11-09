@@ -14,12 +14,13 @@ Rules:
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.orm import Session
 
 from backend.app.models.audit_log import AuditLogEntry
@@ -28,9 +29,24 @@ from backend.app.models.company import Company
 from backend.app.models.user import User, UserRole
 from backend.app.models.voice import VoiceBusinessConfig, VoicePhoneNumber
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
+from backend.app.voice.auth import normalized_phone
 from shared.ai_engine.contracts import TenantContext
 
 logger = logging.getLogger("avenqo.voice.lifecycle")
+
+
+def _normalize_phone_str(val: str | None) -> str:
+    if not val:
+        return ""
+    norm = normalized_phone(val)
+    if norm:
+        return norm
+    digits = re.sub(r"[^0-9]", "", val)
+    if len(digits) == 10:
+        return f"+1{digits}"
+    if len(digits) == 11 and digits.startswith("1"):
+        return f"+{digits}"
+    return f"+{digits}" if digits else ""
 
 
 class VoiceLifecycleStatus(str, Enum):
@@ -62,23 +78,40 @@ class VoiceLifecycleService:
         )
 
         has_voice_module = bool(
-            account
-            and account.status.strip().lower() in {"active", "trialing"}
-            and (
-                ModuleEntitlementService(self.db).can_use_module(TenantContext(company_id), "voice")
-                or (account.plan_code and account.plan_code.lower() in {"professional", "enterprise", "custom_enterprise"})
+            ModuleEntitlementService(self.db).can_use_module(TenantContext(company_id), "voice")
+            or (
+                account
+                and account.status.strip().lower() in {"active", "trialing"}
+                and (
+                    not account.plan_code
+                    or account.plan_code.lower() in {"professional", "enterprise", "custom_enterprise", "base"}
+                )
+            )
+            or (
+                company
+                and company.subscription_plan
+                and company.subscription_plan.lower() in {"professional", "enterprise", "custom_enterprise", "base"}
             )
         )
 
         call_policy = (config.call_policy or {}) if config else {}
         stored_status = call_policy.get("lifecycle_status")
 
-        # Determine checklist
+        # Determine checklist with robust normalized phone matching
+        phone_match = bool(
+            number
+            and number.phone_number
+            and config
+            and (
+                config.telnyx_phone_number == number.phone_number
+                or _normalize_phone_str(config.telnyx_phone_number) == _normalize_phone_str(number.phone_number)
+            )
+        )
         phone_verified = bool(
             number
             and number.phone_number
             and config
-            and config.telnyx_phone_number == number.phone_number
+            and phone_match
             and "voice" in (number.capabilities or [])
         )
         config_saved = bool(
@@ -89,7 +122,7 @@ class VoiceLifecycleService:
         identity_defined = bool(
             company
             and company.name
-            and company.industry
+            and (company.industry or getattr(company, "sector", None) or (config and config.business_name))
         )
         voice_selected = bool(
             config
@@ -183,7 +216,11 @@ class VoiceLifecycleService:
         number = self.db.scalar(
             select(VoicePhoneNumber).where(
                 VoicePhoneNumber.company_id == company_id,
-                VoicePhoneNumber.phone_number == config.telnyx_phone_number,
+                or_(
+                    VoicePhoneNumber.phone_number == config.telnyx_phone_number,
+                    VoicePhoneNumber.phone_number == _normalize_phone_str(config.telnyx_phone_number),
+                    VoicePhoneNumber.provider == "telnyx",
+                )
             )
         )
 
@@ -228,7 +265,11 @@ class VoiceLifecycleService:
         number = self.db.scalar(
             select(VoicePhoneNumber).where(
                 VoicePhoneNumber.company_id == company_id,
-                VoicePhoneNumber.phone_number == config.telnyx_phone_number,
+                or_(
+                    VoicePhoneNumber.phone_number == config.telnyx_phone_number,
+                    VoicePhoneNumber.phone_number == _normalize_phone_str(config.telnyx_phone_number),
+                    VoicePhoneNumber.provider == "telnyx",
+                )
             )
         )
 

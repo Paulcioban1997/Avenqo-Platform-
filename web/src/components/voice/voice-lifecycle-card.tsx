@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api-request";
 import {
   ShieldCheck,
   ShieldAlert,
@@ -85,7 +86,7 @@ export function VoiceLifecycleCard({
     try {
       setLoading(true);
       setErrorMsg(null);
-      const res = await fetch("/api/v1/voice/lifecycle/status", {
+      const res = await apiFetch("/api/v1/voice/lifecycle/status", {
         cache: "no-store",
       });
       if (res.ok) {
@@ -98,7 +99,7 @@ export function VoiceLifecycleCard({
         );
       }
 
-      const pinRes = await fetch("/api/v1/voice/auth/pin", {
+      const pinRes = await apiFetch("/api/v1/voice/auth/pin", {
         cache: "no-store",
       });
       if (pinRes.ok) {
@@ -127,7 +128,7 @@ export function VoiceLifecycleCard({
     setErrorMsg(null);
     setSuccessMsg(null);
     try {
-      const res = await fetch("/api/v1/voice/lifecycle/activate", {
+      const res = await apiFetch("/api/v1/voice/lifecycle/activate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -163,7 +164,7 @@ export function VoiceLifecycleCard({
     setErrorMsg(null);
     setSuccessMsg(null);
     try {
-      const res = await fetch("/api/v1/voice/lifecycle/suspend", {
+      const res = await apiFetch("/api/v1/voice/lifecycle/suspend", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -199,7 +200,7 @@ export function VoiceLifecycleCard({
     setErrorMsg(null);
     setSuccessMsg(null);
     try {
-      const res = await fetch("/api/v1/voice/lifecycle/ivr", {
+      const res = await apiFetch("/api/v1/voice/lifecycle/ivr", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -242,7 +243,7 @@ export function VoiceLifecycleCard({
     setErrorMsg(null);
     setSuccessMsg(null);
     try {
-      const res = await fetch("/api/v1/voice/auth/pin", {
+      const res = await apiFetch("/api/v1/voice/auth/pin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -278,7 +279,7 @@ export function VoiceLifecycleCard({
     setErrorMsg(null);
     setSuccessMsg(null);
     try {
-      const res = await fetch("/api/v1/voice/auth/sessions/revoke", {
+      const res = await apiFetch("/api/v1/voice/auth/sessions/revoke", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ all_sessions: true }),

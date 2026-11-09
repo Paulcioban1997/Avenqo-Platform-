@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { useLocale } from "@/lib/i18n/locale-context";
+import { apiFetch } from "@/lib/api-request";
 
 type Offer={phone_number:string;number_type:string;country_code:string};
 type Order={id:string;status:string;phone_number:string;paid:boolean;phone_assigned:boolean;audio_ready:boolean;invoice_url:string|null;billing:{currency:string;number_monthly_amount:number;monthly_total_before_tax:number;monthly_invoice_total?:number;monthly_tax?:number;initial_amount_due:number;initial_tax:number;tax_status:string};provider_cost:{monthly_cost:string;upfront_cost?:string;currency:string}};
@@ -25,7 +26,7 @@ export function VoiceProvisioningSection({tenantId,canManage,crmEnabled}:{tenant
   queueMicrotask(()=>{if(current){setOffers([]);setOrders([]);setSelected(null);setCatalog(null);setConsent(false);setBookings(false);setMessage("");}});
   if(!tenantId||!canManage)return ()=>abort.abort();
   const load=async()=>{
-   try{const responses=await Promise.all([fetch("/api/v1/voice/provisioning/catalog",{signal:abort.signal,cache:"no-store"}),fetch("/api/v1/voice/provisioning/orders",{signal:abort.signal,cache:"no-store"})]);
+   try{const responses=await Promise.all([apiFetch("/api/v1/voice/provisioning/catalog",{signal:abort.signal,cache:"no-store"}),apiFetch("/api/v1/voice/provisioning/orders",{signal:abort.signal,cache:"no-store"})]);
     if(responses.every(r=>r.ok)){const [c,o]=await Promise.all(responses.map(r=>r.json()));if(current){setCatalog(c);setOrders(o);setLoadedTenant(tenantId);}}
    }catch{/* The account or deployment may not yet have commercial Voice enabled. */}
   };
@@ -33,14 +34,14 @@ export function VoiceProvisioningSection({tenantId,canManage,crmEnabled}:{tenant
  },[tenantId,canManage]);
  const money=(amount:number,currency="CAD")=>{const f=new Intl.NumberFormat(locale,{style:"currency",currency});return f.format(amount/(10**(f.resolvedOptions().maximumFractionDigits??2)));};
  async function operation(run:()=>Promise<void>){setBusy(true);setMessage("");try{await run();}catch{if(activeTenant.current===tenantId)setMessage(t.failed);}finally{if(activeTenant.current===tenantId)setBusy(false);}}
- async function post(path:string,body:unknown){const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});if(!r.ok||activeTenant.current!==tenantId)throw Error("Operation unavailable");return r.json();}
+ async function post(path:string,body:unknown){const r=await apiFetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});if(!r.ok||activeTenant.current!==tenantId)throw Error("Operation unavailable");return r.json();}
  if(!canManage)return null;
  return <section className="space-y-4 rounded-2xl border border-slate-200 p-5 dark:border-white/10" aria-label={t.title}>
   <h2 className="text-lg font-semibold">{t.title}</h2><p>{t.price}</p><p className="text-sm text-slate-500">{t.usage}</p>
   {(loadedTenant!==tenantId||!catalog?.commercial_enabled)&&<p role="status" className="rounded-xl bg-amber-50 p-3 text-amber-900 dark:bg-amber-900/20 dark:text-amber-200">{t.disabled}</p>}
   <form className="flex flex-wrap items-end gap-3" onSubmit={e=>{e.preventDefault();void operation(async()=>{
    const params=new URLSearchParams({country_code:country,number_type:type,limit:"20"});if(region)params.set("area_code",region);
-   const r=await fetch(`/api/v1/voice/numbers/search?${params}`);if(!r.ok)throw Error();const data=await r.json();if(activeTenant.current!==tenantId)return;setOffers(data.offers||[]);setSelected(null);setConsent(false);if(!data.offers?.length)setMessage(t.empty);
+   const r=await apiFetch(`/api/v1/voice/numbers/search?${params}`);if(!r.ok)throw Error();const data=await r.json();if(activeTenant.current!==tenantId)return;setOffers(data.offers||[]);setSelected(null);setConsent(false);if(!data.offers?.length)setMessage(t.empty);
   });}}>
    <label className="space-y-1 text-sm"><span>{t.country}</span><input value={country} onChange={e=>setCountry(e.target.value.toUpperCase())} pattern="[A-Z]{2}" maxLength={2} required className="block rounded-lg border bg-transparent p-2"/></label>
    <label className="space-y-1 text-sm"><span>{locale==="fr"?"Devise de l’abonnement":locale==="es"?"Moneda de la suscripción":"Subscription currency"}</span><input value={currency} onChange={e=>setCurrency(e.target.value.toUpperCase())} pattern="[A-Z]{3}" maxLength={3} required className="block rounded-lg border bg-transparent p-2"/></label>

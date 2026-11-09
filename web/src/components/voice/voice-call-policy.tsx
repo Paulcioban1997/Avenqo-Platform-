@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useLocale } from "@/lib/i18n/locale-context";
+import { apiFetch } from "@/lib/api-request";
 
 type Policy = {
   max_call_seconds: number | null; idle_seconds: number; concurrent_calls: number;
@@ -28,7 +29,7 @@ export function VoiceCallPolicy({ tenantId, canManage }: { tenantId?: string; ca
     const abort = new AbortController();
     if (tenantId && canManage) {
       const tenant = tenantId;
-      void fetch("/api/v1/voice/call-policy", { signal: abort.signal, cache: "no-store" })
+      void apiFetch("/api/v1/voice/call-policy", { signal: abort.signal, cache: "no-store" })
         .then(async response => { if (!response.ok) throw new Error("Unavailable"); return response.json() as Promise<Limits>; })
         .then(limits => {
           if (!limits || typeof limits !== "object" || !limits.policy ||
@@ -53,7 +54,7 @@ export function VoiceCallPolicy({ tenantId, canManage }: { tenantId?: string; ca
     const tenant = tenantId;
     setBusy(true); setNotice("");
     try {
-      const response = await fetch("/api/v1/voice/call-policy", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(policy) });
+      const response = await apiFetch("/api/v1/voice/call-policy", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(policy) });
       if (!response.ok) throw new Error("Rejected");
       const next = await response.json() as Limits;
       if (activeTenant.current === tenant) { setLoaded({ tenant: tenant!, limits: next }); setNotice(t.saved); }

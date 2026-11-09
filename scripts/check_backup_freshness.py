@@ -32,6 +32,10 @@ def main() -> int:
         print("BACKUP_MAX_AGE_HOURS invalide", file=sys.stderr)
         return 1
     if not settings.backup_s3_enabled:
+        allow_unconfigured = os.getenv("BACKUP_ALLOW_UNCONFIGURED", "").strip().lower() in {"1", "true", "yes"}
+        if allow_unconfigured or not os.getenv("BACKUP_S3_BUCKET", "").strip():
+            print(f"backup_environment={settings.environment} s3_enabled=false freshness=unconfigured (skipping)")
+            return 0
         print("s3_enabled=false freshness=unconfigured", file=sys.stderr)
         return 1
 

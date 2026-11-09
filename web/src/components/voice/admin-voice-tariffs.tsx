@@ -1,9 +1,10 @@
 "use client";
 import { useEffect,useState } from "react";
+import { apiFetch } from "@/lib/api-request";
 type Tariff={id:string;country:string;number_type:string;currency:string;monthly_amount:number;approved:boolean};
 export function AdminVoiceTariffs({isFr}:{isFr:boolean}){
  const [rows,setRows]=useState<Tariff[]>([]),[busy,setBusy]=useState(false),[message,setMessage]=useState("");
- useEffect(()=>{const c=new AbortController();void fetch("/api/v1/voice/provisioning/tariffs",{signal:c.signal,cache:"no-store"}).then(async r=>{if(r.ok)setRows(await r.json());}).catch(()=>{});return()=>c.abort();},[]);
+ useEffect(()=>{const c=new AbortController();void apiFetch("/api/v1/voice/provisioning/tariffs",{signal:c.signal,cache:"no-store"}).then(async r=>{if(r.ok)setRows(await r.json());}).catch(()=>{});return()=>c.abort();},[]);
  return <section className="rounded-2xl border p-5 dark:border-white/10"><h2 className="text-lg font-semibold">{isFr?"Tarifs des numéros Voice":"Voice number tariffs"}</h2>
   <p className="my-3 text-sm">{isFr?"Configurer un tarif ne déclenche aucun achat ni paiement. L’activation commerciale reste séparée.":"Saving a tariff does not purchase a number or charge a customer. Commercial activation is separate."}</p>
   <form className="grid gap-3 sm:grid-cols-3" onSubmit={async e=>{e.preventDefault();const form=e.currentTarget;const d=new FormData(form);setBusy(true);setMessage("");try{
@@ -11,8 +12,8 @@ export function AdminVoiceTariffs({isFr}:{isFr:boolean}){
    const currency=String(d.get("currency")).toUpperCase();const digits=new Intl.NumberFormat("en",{style:"currency",currency}).resolvedOptions().maximumFractionDigits??2;
    const body={country:String(d.get("country")).toUpperCase(),number_type:String(d.get("type")),currency,monthly_amount:Math.round(monthly*(10**digits)),stripe_price_id:String(d.get("price"))||null,
     provider_cost_limits:{monthly:{USD:String(d.get("providerMonthly"))},upfront:{USD:String(d.get("providerUpfront"))}},approved:d.get("approved")==="on"};
-   const r=await fetch("/api/v1/voice/provisioning/tariffs",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});if(!r.ok)throw Error();
-   const list=await fetch("/api/v1/voice/provisioning/tariffs",{cache:"no-store"});if(list.ok)setRows(await list.json());setMessage(isFr?"Tarif enregistré.":"Tariff saved.");
+   const r=await apiFetch("/api/v1/voice/provisioning/tariffs",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});if(!r.ok)throw Error();
+   const list=await apiFetch("/api/v1/voice/provisioning/tariffs",{cache:"no-store"});if(list.ok)setRows(await list.json());setMessage(isFr?"Tarif enregistré.":"Tariff saved.");
   }catch{setMessage(isFr?"Le tarif n’a pas été enregistré. Vérifiez les montants et les droits.":"Tariff was not saved. Check amounts and permissions.");}finally{setBusy(false);}}}>
    <label>{isFr?"Pays":"Country"}<input name="country" defaultValue="CA" maxLength={2} pattern="[A-Za-z]{2}" required className="block w-full rounded border bg-transparent p-2"/></label>
    <label>{isFr?"Type":"Type"}<select name="type" className="block w-full rounded border bg-transparent p-2"><option value="local">Local</option><option value="mobile">Mobile</option><option value="toll_free">Toll free</option></select></label>

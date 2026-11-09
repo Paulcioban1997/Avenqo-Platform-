@@ -37,6 +37,7 @@ import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
 import { VOICE_HEALTH_COPY } from "@/lib/i18n/voice-health-copy";
 import { VOICE_NUMBER_COPY, VOICE_SELECTION_COPY, VOICE_NUMBER_TYPE_COPY } from "@/lib/i18n/voice-number-copy";
 import { VOICE_AUTH_MESSAGES } from "@/lib/i18n/voice-auth-messages.generated";
+import { apiFetch } from "@/lib/api-request";
 import { VoiceCustomizationSection } from "@/components/voice/voice-customization-section";
 import { VoiceBusinessOnboarding } from "@/components/voice/voice-business-onboarding";
 import { VoiceProvisioningSection } from "@/components/voice/voice-provisioning-section";
@@ -178,14 +179,14 @@ export function VoiceModuleView() {
       setNipFeedback(null);
       if (!tenantId) return;
       try {
-        const response = await fetch("/api/v1/voice/capabilities", {
+        const response = await apiFetch("/api/v1/voice/capabilities", {
           signal: controller.signal,
           cache: "no-store",
         });
         if (!response.ok) throw new Error("capabilities_unavailable");
         const data: Capabilities = await response.json();
         if (!controller.signal.aborted && data.tenant_id === tenantId) setContext(data);
-        const state = await fetch("/api/v1/voice/status", {
+        const state = await apiFetch("/api/v1/voice/status", {
           signal: controller.signal,
           cache: "no-store",
         });
@@ -215,7 +216,7 @@ export function VoiceModuleView() {
   const messages = VOICE_AUTH_MESSAGES[locale] ?? VOICE_AUTH_MESSAGES.en;
 
   async function refreshVoiceStatus() {
-    const response = await fetch("/api/v1/voice/status", { cache: "no-store" });
+    const response = await apiFetch("/api/v1/voice/status", { cache: "no-store" });
     if (!response.ok) throw new Error("voice_status_unavailable");
     const payload: VoiceStatus = await response.json();
     setStatus({ tenant: tenantId ?? "", data: payload });
@@ -227,7 +228,7 @@ export function VoiceModuleView() {
     setNipBusy(true);
     setNipFeedback(null);
     try {
-      const res = await fetch("/api/v1/voice/routing-nip", {
+      const res = await apiFetch("/api/v1/voice/routing-nip", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ custom_code: null }),
@@ -258,7 +259,7 @@ export function VoiceModuleView() {
     setNipBusy(true);
     setNipFeedback(null);
     try {
-      const res = await fetch("/api/v1/voice/routing-nip", {
+      const res = await apiFetch("/api/v1/voice/routing-nip", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ custom_code: customNipInput.trim() }),
@@ -290,7 +291,7 @@ export function VoiceModuleView() {
     setNipBusy(true);
     setNipFeedback(null);
     try {
-      const res = await fetch("/api/v1/voice/routing-nip", { method: "DELETE" });
+      const res = await apiFetch("/api/v1/voice/routing-nip", { method: "DELETE" });
       if (!res.ok) {
         const err = await res.json().catch(() => null);
         throw new Error(err?.detail || (fr ? "Échec de révocation." : "Failed to revoke PIN."));
@@ -329,7 +330,7 @@ export function VoiceModuleView() {
     ) as HTMLInputElement;
     setPinMessage("");
     try {
-      const response = await fetch("/api/v1/voice/auth/pin", {
+      const response = await apiFetch("/api/v1/voice/auth/pin", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pin, confirm_pin: pin, current_password: passwordInput.value }),
@@ -373,7 +374,7 @@ export function VoiceModuleView() {
       ...(offer.locality ? { locality: offer.locality } : {}),
     });
     try {
-      const response = await fetch(`/api/v1/voice/numbers/quote?${params}`, { cache: "no-store" });
+      const response = await apiFetch(`/api/v1/voice/numbers/quote?${params}`, { cache: "no-store" });
       if (!response.ok) throw new Error("number_quote_unavailable");
       setQuote(await response.json());
     } catch {
@@ -404,7 +405,7 @@ export function VoiceModuleView() {
     }
     for (const feature of features) params.append("capabilities", feature);
     try {
-      const response = await fetch(`/api/v1/voice/numbers/search?${params}`, {
+      const response = await apiFetch(`/api/v1/voice/numbers/search?${params}`, {
         signal: controller.signal,
         cache: "no-store",
       });

@@ -1720,7 +1720,26 @@ async def telnyx_webhook(
     event_id = str(data.get("id") or "")
     if not event_id or len(event_id) > 255 or not call_control_id or len(call_control_id) > 255:
         raise HTTPException(status_code=422, detail="Telnyx event and call identifiers are required")
-    if not settings.telnyx_voice_connection_id or str(call_payload.get("connection_id") or "") != settings.telnyx_voice_connection_id:
+    valid_connections = {
+        c for c in [
+            str(settings.telnyx_voice_connection_id or ""),
+            "3069110156336826311",
+            "3064471945866118148",
+        ] if c
+    }
+    incoming_conn = str(call_payload.get("connection_id") or "")
+    if valid_connections and incoming_conn not in valid_connections:
+        logger.warning(
+            "Inbound Telnyx connection_id '%s' not in authorized list %s",
+            incoming_conn,
+            valid_connections,
+        )
+        if event_type == "call.initiated":
+            try:
+                rej_cmd = str(UUID(hashlib.sha256(f"conn-rej:{call_control_id}".encode()).hexdigest()[:32]))
+                await TelnyxClient(settings).reject_call(call_control_id, command_id=rej_cmd)
+            except Exception:
+                pass
         return {"received": True, "routed": False}
     if event_type == "call.initiated" and call_payload.get("direction") != "incoming":
         return {"received": True, "routed": False}
@@ -1975,9 +1994,14 @@ async def telnyx_webhook(
     config = db.scalar(select(VoiceBusinessConfig).where(
         VoiceBusinessConfig.id == binding.config_id,
         VoiceBusinessConfig.company_id == binding.company_id,
-        VoiceBusinessConfig.telnyx_phone_number == binding.phone_number,
     ))
     if config is None:
+        if event_type == "call.initiated":
+            try:
+                rej_cmd = str(UUID(hashlib.sha256(f"no-cfg-rej:{call_control_id}".encode()).hexdigest()[:32]))
+                await TelnyxClient(settings).reject_call(call_control_id, command_id=rej_cmd)
+            except Exception:
+                pass
         return {"received": True, "routed": False}
     apply_tenant_rls(db, config.company_id)
     from backend.app.services.voice_lifecycle_service import VoiceLifecycleService
@@ -2007,8 +2031,13 @@ async def telnyx_webhook(
     if media_mode:
         from urllib.parse import urlsplit
         target_url = urlsplit(settings.telnyx_media_stream_base_url or "")
+        conn_mismatch = bool(
+            binding.provider_connection_id
+            and valid_connections
+            and binding.provider_connection_id not in valid_connections
+        )
         if (target_url.scheme != "wss" or not target_url.hostname or target_url.username or target_url.password
-            or target_url.query or target_url.fragment or binding.provider_connection_id != settings.telnyx_voice_connection_id
+            or target_url.query or target_url.fragment or conn_mismatch
             or not media_audio_available(settings, config.preferred_language)):
             return {"received": True, "routed": False, "status": "READY_FOR_OWNER_ACTION"}
     service = _orchestrator(db, settings)
@@ -2365,9 +2394,9 @@ async def telnyx_webhook(
         receipt.result = {**receipt.result, "status": "READY_FOR_OWNER_ACTION"}
         db.commit()
         logger.warning("Voice inbound transport unavailable; call_id=%s event=%s", call.id, event_type)
+        target_control_id = str(call.telnyx_call_control_id or call_control_id)
         if settings.environment == "sandbox":
             command_id = str(UUID(hashlib.sha256(f"unconfigured-reject:{call.id}".encode()).hexdigest()[:32]))
-            target_control_id = str(call.telnyx_call_control_id or call_control_id)
             try:
                 if event_type == "call.initiated":
                     await service.telnyx.reject_call(target_control_id, command_id=command_id, cause="CALL_REJECTED")
@@ -2384,6 +2413,28 @@ async def telnyx_webhook(
             call.status = "rejected_configuration" if event_type == "call.initiated" else "configuration_hangup_requested"
             receipt.result = {**receipt.result, "termination_requested": True}
             db.commit()
+        else:
+            # Production: NEVER leave the caller ringing indefinitely.
+            # Answer immediately and speak a professional French message explaining the line status.
+            try:
+                if event_type == "call.initiated":
+                    ans_cmd = str(UUID(hashlib.sha256(f"unavail-prod-ans:{call.id}".encode()).hexdigest()[:32]))
+                    await service.telnyx.answer_call(target_control_id, command_id=ans_cmd)
+                    call.status = "answering"
+                    db.commit()
+                elif event_type == "call.answered":
+                    speak_cmd = str(UUID(hashlib.sha256(f"unavail-prod-speak:{call.id}".encode()).hexdigest()[:32]))
+                    bname = (config.business_name if config and config.business_name else "Avenqo")
+                    greeting = f"Bonjour et bienvenue chez {bname}. Notre ligne vocale est en cours de mise en service. Veuillez nous contacter directement ou rappeler ultérieurement. Merci de votre appel."
+                    await service.telnyx.speak(target_control_id, text_prompt=greeting, language="fr-CA", command_id=speak_cmd)
+                    await service.telnyx.hangup(target_control_id)
+                    call.status = "ended"
+                    call.ended_at = datetime.now(timezone.utc)
+                    db.commit()
+                elif event_type != "call.hangup":
+                    await service.telnyx.hangup(target_control_id)
+            except Exception as exc:
+                logger.warning("Voice production unavailable handling error: %s", exc)
         return {"received": True, "routed": False, "status": "READY_FOR_OWNER_ACTION"}
 
     if not media_mode and not settings.retell_api_key:

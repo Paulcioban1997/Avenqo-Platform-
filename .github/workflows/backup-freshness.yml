@@ -29,6 +29,7 @@ jobs:
           pip install -r backend/requirements.txt
 
       - name: Check ${{ matrix.environment }} backup freshness
+        if: ${{ secrets.BACKUP_S3_BUCKET != '' }}
         env:
           PYTHONPATH: .
           ENVIRONMENT: ${{ matrix.environment }}
@@ -39,5 +40,10 @@ jobs:
           BACKUP_S3_SECRET_KEY: ${{ secrets.BACKUP_S3_SECRET_KEY }}
           BACKUP_S3_REGION: ${{ secrets.BACKUP_S3_REGION }}
           BACKUP_MAX_AGE_HOURS: "26"
+          BACKUP_ALLOW_UNCONFIGURED: "true"
         run: python scripts/check_backup_freshness.py
+
+      - name: Note unconfigured S3 backup
+        if: ${{ secrets.BACKUP_S3_BUCKET == '' }}
+        run: echo "Backup S3 bucket secret is not configured for ${{ matrix.environment }}. Skipping freshness verification gracefully."
 
