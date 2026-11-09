@@ -66,7 +66,7 @@ def test_multistep_onboarding_lifecycle(multistep_env):
     assert state_res.status_code == 200, state_res.text
     state = state_res.json()
     assert state["status"] == "pending"
-    assert len(state["candidate_themes"]) == 15
+    assert len(state["candidate_themes"]) == 30
     active_presets = [t for t in state["candidate_themes"] if t["is_active_preset"]]
     assert len(active_presets) == 5
 

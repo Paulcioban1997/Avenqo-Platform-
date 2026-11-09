@@ -49,6 +49,12 @@ export interface OnboardingMultistepCopy {
     subtitle: string;
     candidateThemesTitle: string;
     approvedPresetsTitle: string;
+    recommendedBadge: string;
+    availableCount: string;
+    searchPlaceholder: string;
+    filterAll: string;
+    filterDark: string;
+    filterLight: string;
     customColors: string;
     primaryColor: string;
     secondaryColor: string;
@@ -149,11 +155,17 @@ export const ONBOARDING_MULTISTEP_COPY: Record<string, OnboardingMultistepCopy> 
       selectedCount: "modules sélectionnés",
     },
     design: {
-      title: "Personnalisation Visuelle & Identité de Marque",
-      subtitle: "Choisissez l'apparence de votre espace parmi nos styles d'exception ou ajustez vos couleurs.",
-      candidateThemesTitle: "Concepts Visuels Professionnels (15 styles disponibles)",
-      approvedPresetsTitle: "Styles Recommandés & Approuvés",
-      customColors: "Ajustement des Couleurs & Thème",
+      title: "Choisissez votre univers Avenqo",
+      subtitle: "Découvrez les styles recommandés ou explorez librement les 30 thèmes.",
+      candidateThemesTitle: "Explorer les 30 thèmes disponibles",
+      approvedPresetsTitle: "Les 5 styles recommandés pour votre entreprise",
+      recommendedBadge: "Recommandé",
+      availableCount: "30 disponibles",
+      searchPlaceholder: "Rechercher parmi les 30 thèmes...",
+      filterAll: "Tous les modes",
+      filterDark: "Sombre",
+      filterLight: "Clair",
+      customColors: "Studio de Personnalisation & Identité de Marque",
       primaryColor: "Couleur principale",
       secondaryColor: "Couleur secondaire",
       accentColor: "Couleur d'accentuation",
