@@ -216,3 +216,139 @@ def test_tenant_isolation_on_onboarding(multistep_env):
     state_b = client.get("/api/v1/onboarding/state", headers={"Authorization": f"Bearer {token_b}"}).json()
     assert state_b["design"]["display_name"] == "Onboarding Test Co" or "Corp B" in state_b["design"]["display_name"]
     assert state_b["design"]["theme_id"] == "avenqo_obsidian"
+
+
+def test_full_8_step_transactional_journey(multistep_env):
+    """Valide l'intégralité du parcours transactionnel en 8 étapes indépendantes :
+    Entreprise -> Modules -> 30 thèmes -> Personnalisation -> Aperçu -> Contrats -> Base/Professional -> Stripe -> Activation.
+    """
+    client, notifier, _ = multistep_env
+    token = register_user(client, notifier, "directeur@innovations-quebec.ca", "Innovations Québec Inc.")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Étape 0 : État initial et présence des 30 univers
+    init_state = client.get("/api/v1/onboarding/state", headers=headers).json()
+    assert init_state["status"] == "pending"
+    assert len(init_state["candidate_themes"]) == 30
+    theme_ids = {t["id"] for t in init_state["candidate_themes"]}
+    assert "galaxy_orbit" in theme_ids
+    assert "midnight_gold" in theme_ids
+    assert "titanium_minimal" in theme_ids
+
+    # Étape 1 : Entreprise (/step/company)
+    s1 = client.put(
+        "/api/v1/onboarding/step/company",
+        headers=headers,
+        json={
+            "commercial_name": "Innovations Québec",
+            "legal_name": "9488-5678 Québec Inc.",
+            "country": "Canada",
+            "region": "Québec",
+            "timezone": "America/Montreal",
+            "industry": "Intelligence Artificielle & Commerce",
+            "team_size": "20-99",
+            "website": "https://innovations-quebec.ca",
+            "description": "Plateforme d'automatisation des opérations retail et relation client.",
+            "authorized_rep_first_name": "Sophie",
+            "authorized_rep_last_name": "Tremblay",
+            "authorized_rep_title": "Directrice Générale",
+        },
+    ).json()
+    assert "company" in s1["completed_steps"]
+
+    # Étape 2 : Modules (/step/modules)
+    s2 = client.put(
+        "/api/v1/onboarding/step/modules",
+        headers=headers,
+        json={
+            "selected_modules": ["retail", "crm", "voice"],
+            "industry_category": "Technologies",
+        },
+    ).json()
+    assert "modules" in s2["completed_steps"]
+
+    # Étape 3 : 30 Thèmes & Personnalisation (/step/design)
+    s3 = client.put(
+        "/api/v1/onboarding/step/design",
+        headers=headers,
+        json={
+            "theme_id": "galaxy_orbit",
+            "primary_color": "#3B82F6",
+            "secondary_color": "#8B5CF6",
+            "accent_color": "#06B6D4",
+            "mode": "dark",
+            "background_style": "neon_grid",
+            "display_name": "Espace IA Innovations",
+            "company_logo_url": "https://innovations-quebec.ca/logo.png",
+            "company_emblem_url": "https://innovations-quebec.ca/emblem.png",
+        },
+    ).json()
+    assert "design" in s3["completed_steps"]
+    assert s3["design"]["theme_id"] == "galaxy_orbit"
+
+    # Étape 4 : Aperçu interactif (/step/preview)
+    s4 = client.put(
+        "/api/v1/onboarding/step/preview",
+        headers=headers,
+        json={"confirmed_preview": True},
+    ).json()
+    assert "preview" in s4["completed_steps"]
+
+    # Étape 5 : Contrats et conformité légale (/step/contracts)
+    s5 = client.put(
+        "/api/v1/onboarding/step/contracts",
+        headers=headers,
+        json={
+            "accepted_contract_types": ["terms_of_service", "saas_subscription", "privacy_policy", "data_processing"],
+            "accepted_by_name": "Sophie Tremblay",
+            "accepted_by_title": "Directrice Générale",
+            "marketing_consent": False,
+        },
+    ).json()
+    assert "contracts" in s5["completed_steps"]
+
+    # Étape 6 : Abonnement Base / Professional (/step/subscription)
+    s6 = client.put(
+        "/api/v1/onboarding/step/subscription",
+        headers=headers,
+        json={
+            "plan_code": "professional",
+            "billing_cycle": "monthly",
+            "currency": "CAD",
+        },
+    ).json()
+    assert "subscription" in s6["completed_steps"]
+
+    # Étape 7 : Checkout Stripe sécurisé (/step/checkout)
+    s7 = client.put(
+        "/api/v1/onboarding/step/checkout",
+        headers=headers,
+        json={
+            "checkout_status": "verified_test",
+            "plan_code": "professional",
+            "currency": "CAD",
+        },
+    ).json()
+    assert "checkout" in s7["completed_steps"]
+
+    # Étape 8 : Finalisation et activation de l'espace (/finalize)
+    fin_res = client.post("/api/v1/onboarding/finalize", headers=headers)
+    assert fin_res.status_code == 200, fin_res.text
+    fin_data = fin_res.json()
+    assert fin_data["success"] is True
+    assert fin_data["status"] == "completed"
+    assert "retail" in fin_data["activated_modules"]
+    assert "crm" in fin_data["activated_modules"]
+
+    # Vérification post-activation dans Settings
+    post_state = client.get("/api/v1/onboarding/state", headers=headers).json()
+    assert post_state["status"] == "completed"
+    assert post_state["design"]["theme_id"] == "galaxy_orbit"
+
+    # Modification de thème post-activation vers #9 Midnight Gold
+    updated_branding = client.put(
+        "/api/v1/onboarding/branding",
+        headers=headers,
+        json={"theme_id": "midnight_gold", "primary_color": "#F59E0B"},
+    ).json()
+    assert updated_branding["theme_id"] == "midnight_gold"
