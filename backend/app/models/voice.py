@@ -70,10 +70,36 @@ class VoiceBusinessConfig(TimestampMixin, Base):
     voice_provider: Mapped[str] = mapped_column(String(32), nullable=False, default="openai")
     speech_speed: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
     personality_tone: Mapped[str] = mapped_column(String(32), nullable=False, default="professionnel")
+    voice_display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     custom_pronunciation: Mapped[str | None] = mapped_column(String(255), nullable=True)
     farewell_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     enabled: Mapped[bool] = mapped_column(nullable=False, default=False)
     call_policy: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    @property
+    def effective_voice_name(self) -> str:
+        """Nom vocal utilisé par la synthèse TTS, l'IVR et Central AI sans slug technique ni tiret bas."""
+        import re
+        if self.custom_pronunciation:
+            val = str(self.custom_pronunciation).strip()
+            if not val.startswith("{"):
+                return val
+            try:
+                import json as _json
+                data = _json.loads(val)
+                if isinstance(data, dict):
+                    if data.get("company") or data.get("company_name"):
+                        return str(data.get("company") or data.get("company_name")).strip()
+                    if data.get("term"):
+                        return str(data.get("term")).strip()
+            except Exception:
+                pass
+        if self.voice_display_name and self.voice_display_name.strip():
+            return self.voice_display_name.strip()
+        name = self.business_name or ""
+        cleaned = name.replace("_", " ").replace("-", " ")
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        return cleaned or "Avenqo"
 
 
 class VoiceCall(TimestampMixin, Base):

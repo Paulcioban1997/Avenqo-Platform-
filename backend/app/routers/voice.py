@@ -801,8 +801,9 @@ async def preview_voice(
     if not settings.openai_api_key:
         raise HTTPException(status_code=503, detail="Speech preview provider is not configured")
     company = identity.user.company
-    lang = resolve_locale(request.language or company.preferred_language or "fr")
-    company_name = company.name if company else "Avenqo"
+    config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == identity.user.company_id))
+    lang = resolve_locale(request.language or (config.preferred_language if config else None) or company.preferred_language or "fr")
+    company_name = (config.effective_voice_name if config else (company.name if company else "Avenqo")).replace("_", " ")
     if request.text and request.text.strip():
         text_to_speak = request.text.strip()
     else:
@@ -916,6 +917,27 @@ def get_voice_status(
         "voice_ai_credits_charged": voice_ai_credits,
         "routing_nip": active_nip.routing_code if active_nip is not None else None,
         "dispatcher_number": getattr(settings, "voice_shared_dispatcher_number", "+14386075438"),
+        "voice_display_name": getattr(config, "voice_display_name", None) or (config.effective_voice_name if config else (identity.user.company.name if identity.user.company else "Avenqo").replace("_", " ")),
+        "voice_pronunciation": getattr(config, "custom_pronunciation", None) if config else None,
+        "active_modules": list(ModuleEntitlementService(db).get_active_modules(TenantContext(company_id))),
+        "data_sources": [
+            {
+                "type": "retail",
+                "name": snapshot.active_source_name or "Catalogue Retail / Commerce",
+                "provider": snapshot.active_source_provider or "commerce",
+                "connected": snapshot.active_source_provider is not None or "retail" in ModuleEntitlementService(db).get_active_modules(TenantContext(company_id)),
+                "freshness_status": DataFreshnessService().for_snapshot(snapshot).as_dict().get("freshness_status", "LIVE"),
+                "last_sync_at": DataFreshnessService().for_snapshot(snapshot).as_dict().get("freshness_timestamp"),
+            },
+            {
+                "type": "crm",
+                "name": "Google Calendar" if calendar_connected else "Avenqo CRM",
+                "provider": "google_calendar" if calendar_connected else "crm",
+                "connected": calendar_connected or "crm" in ModuleEntitlementService(db).get_active_modules(TenantContext(company_id)),
+                "freshness_status": "LIVE" if calendar_connected else "CONFIGURED",
+                "last_sync_at": _as_utc(datetime.now(timezone.utc)).isoformat() if calendar_connected else None,
+            },
+        ],
     }
 
 
@@ -1320,11 +1342,15 @@ def get_voice_customization(
             pronunciation_dict = _json.loads(config.custom_pronunciation) if config.custom_pronunciation.startswith("{") else {"term": config.custom_pronunciation}
         except Exception:
             pronunciation_dict = {}
+    spoken_name = getattr(config, "voice_display_name", None) or getattr(config, "effective_voice_name", config.business_name)
+    spoken_pronun = config.custom_pronunciation if (config.custom_pronunciation and not config.custom_pronunciation.startswith("{")) else (pronunciation_dict.get("term") or pronunciation_dict.get("company"))
     return VoiceCustomizationResponse(
         voice_id=getattr(config, "voice_id", "alloy") or "alloy",
         voice_provider=getattr(config, "voice_provider", "openai") or "openai",
         speech_speed=float(getattr(config, "speech_speed", 1.0) or 1.0),
         personality_tone=getattr(config, "personality_tone", "professionnel") or "professionnel",
+        voice_display_name=spoken_name,
+        voice_pronunciation=spoken_pronun,
         greeting_message=getattr(config, "greeting_message", None),
         farewell_message=getattr(config, "farewell_message", None),
         custom_pronunciation=pronunciation_dict,
@@ -1354,6 +1380,10 @@ def update_voice_customization(
         config.speech_speed = request.speech_speed
     if request.personality_tone is not None:
         config.personality_tone = request.personality_tone
+    if request.voice_display_name is not None:
+        config.voice_display_name = request.voice_display_name.strip() if request.voice_display_name else None
+    if request.voice_pronunciation is not None:
+        config.custom_pronunciation = request.voice_pronunciation.strip() if request.voice_pronunciation else None
     if request.greeting_message is not None:
         config.greeting_message = request.greeting_message
     if request.farewell_message is not None:
@@ -1373,11 +1403,15 @@ def update_voice_customization(
         except Exception:
             pronunciation_dict = {}
 
+    spoken_name = getattr(config, "voice_display_name", None) or getattr(config, "effective_voice_name", config.business_name)
+    spoken_pronun = config.custom_pronunciation if (config.custom_pronunciation and not config.custom_pronunciation.startswith("{")) else (pronunciation_dict.get("term") or pronunciation_dict.get("company"))
     return VoiceCustomizationResponse(
         voice_id=config.voice_id,
         voice_provider=config.voice_provider,
         speech_speed=config.speech_speed,
         personality_tone=config.personality_tone,
+        voice_display_name=spoken_name,
+        voice_pronunciation=spoken_pronun,
         greeting_message=config.greeting_message,
         farewell_message=config.farewell_message,
         custom_pronunciation=pronunciation_dict,
@@ -1409,6 +1443,12 @@ async def update_voice_config(
             raise HTTPException(status_code=422, detail="Speech speed must be between 0.5 and 1.5") from None
     if "personality_tone" in request and request["personality_tone"]:
         config.personality_tone = str(request["personality_tone"])
+    if "voice_display_name" in request:
+        val = request["voice_display_name"]
+        config.voice_display_name = str(val).strip() if val else None
+    if "voice_pronunciation" in request:
+        val = request["voice_pronunciation"]
+        config.custom_pronunciation = str(val).strip() if val else None
     if "greeting_message" in request and request["greeting_message"]:
         config.greeting_message = str(request["greeting_message"])
     if "farewell_message" in request and request["farewell_message"]:
@@ -2299,10 +2339,11 @@ async def telnyx_webhook(
                 except Exception as exc:
                     logger.error("Failed to start media stream for customer call %s: %s", call.id, exc)
                     try:
+                        spoken_name = getattr(config, "effective_voice_name", None) or (config.business_name or "Avenqo").replace("_", " ")
                         err_cmd = str(UUID(hashlib.sha256(f"media-cust-err:{call.id}".encode()).hexdigest()[:32]))
                         await service.telnyx.speak(
                             active_control_id,
-                            text_prompt=f"Bienvenue chez {config.business_name}. Notre service vocal rencontre une interruption temporaire. Veuillez nous excuser et rappeler plus tard. Au revoir.",
+                            text_prompt=f"Bienvenue chez {spoken_name}. Notre service vocal rencontre une interruption temporaire. Veuillez nous excuser et rappeler plus tard. Au revoir.",
                             language="fr-CA" if (config.preferred_language or "fr").startswith("fr") else "en-US",
                             command_id=err_cmd,
                         )
@@ -2525,10 +2566,12 @@ async def telnyx_webhook(
             current_stage = (call.source_context or {}).get("ivr_stage")
             # If IVR enabled and call has not yet completed menu selection, prompt IVR greeting
             if ivr_enabled and current_stage not in {"customer_public", "staff_authenticated"}:
-                greeting = (config.call_policy or {}).get(
-                    "ivr_greeting",
-                    f"Bienvenue chez {config.business_name}. Pour les employés, composez le 1. Pour le service clientèle, composez le 2."
-                )
+                spoken_name = getattr(config, "effective_voice_name", None) or (config.business_name or "Avenqo").replace("_", " ")
+                raw_greeting = (config.call_policy or {}).get("ivr_greeting")
+                if not raw_greeting:
+                    greeting = f"Bienvenue chez {spoken_name}. Pour les employés, composez le 1. Pour le service clientèle, composez le 2."
+                else:
+                    greeting = str(raw_greeting).replace("Produits_Ero", spoken_name).replace("_", " ")
                 command_id = str(UUID(hashlib.sha256(f"ivr-greeting:{call.id}".encode()).hexdigest()[:32]))
                 auth_controller = VoiceCallerAuth(db, settings)
                 client_state = auth_controller.challenge(call)

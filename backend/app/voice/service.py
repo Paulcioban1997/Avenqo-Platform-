@@ -224,6 +224,8 @@ class VoiceOrchestrator:
             "voice_provider": getattr(config, "voice_provider", "openai") or "openai",
             "speech_speed": getattr(config, "speech_speed", 1.0) or 1.0,
             "personality_tone": getattr(config, "personality_tone", "professionnel") or "professionnel",
+            "voice_display_name": getattr(config, "voice_display_name", None) or getattr(config, "effective_voice_name", config.business_name),
+            "voice_pronunciation": getattr(config, "custom_pronunciation", None),
             "custom_pronunciation": getattr(config, "custom_pronunciation", None),
             "farewell_message": getattr(config, "farewell_message", None),
             "enabled": config.enabled,
@@ -248,6 +250,12 @@ class VoiceOrchestrator:
             raise ValueError("A real conversation provider is required to enable inbound audio")
         if agent_id:
             await self.provider.validate_agent(agent_id)
+
+        values = dict(values)
+        if "voice_pronunciation" in values:
+            pronunciation = values.pop("voice_pronunciation")
+            if pronunciation is not None and not values.get("custom_pronunciation"):
+                values["custom_pronunciation"] = pronunciation
 
         config = self.config_for_tenant(tenant)
         requested_number = values.get("telnyx_phone_number")
@@ -594,9 +602,11 @@ class VoiceOrchestrator:
         if tool_name == "get_business_info":
             from backend.app.services.company_intelligence_service import CompanyIntelligenceService
             profile = CompanyIntelligenceService(self.db).get_profile(config.company_id)
+            effective_name = getattr(config, "effective_voice_name", None) or profile.voice_display_name or config.business_name or profile.business_name
             return {
                 "success": True,
-                "business_name": config.business_name or profile.business_name,
+                "business_name": effective_name,
+                "voice_display_name": effective_name,
                 "phone": profile.phone or config.transfer_phone,
                 "website": profile.website,
                 "opening_hours": config.opening_hours or profile.opening_hours,

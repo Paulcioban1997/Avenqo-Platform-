@@ -41,6 +41,8 @@ interface VoiceConfig {
   voice_provider: string;
   speech_speed: number;
   personality_tone: string;
+  voice_display_name?: string;
+  voice_pronunciation?: string;
   custom_pronunciation: Record<string, string>;
   greeting_message?: string;
   farewell_message?: string;
@@ -70,6 +72,7 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
   const [selectedVoiceId, setSelectedVoiceId] = useState<string>("shimmer");
   const [speechSpeed, setSpeechSpeed] = useState<number>(1.0);
   const [personalityTone, setPersonalityTone] = useState<string>("professionnel");
+  const [voiceDisplayName, setVoiceDisplayName] = useState<string>("");
   const [greetingMessage, setGreetingMessage] = useState<string>("");
   const [farewellMessage, setFarewellMessage] = useState<string>("");
   const [pronunciations, setPronunciations] = useState<{ term: string; replaceWith: string }[]>([]);
@@ -83,12 +86,14 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
   // Audio preview state
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
   const [audioLoadingVoiceId, setAudioLoadingVoiceId] = useState<string | null>(null);
+  const [pronunciationLoading, setPronunciationLoading] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const applyConfig = (config: VoiceConfig) => {
     setSelectedVoiceId(config.voice_id);
     setSpeechSpeed(config.speech_speed);
     setPersonalityTone(config.personality_tone);
+    setVoiceDisplayName(config.voice_display_name || config.voice_pronunciation || "");
     setGreetingMessage(config.greeting_message ?? "");
     setFarewellMessage(config.farewell_message ?? "");
     setPronunciations(Object.entries(config.custom_pronunciation ?? {}).map(([term, replaceWith]) => ({ term, replaceWith: String(replaceWith) })));
@@ -186,6 +191,57 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
     }
   };
 
+  const handlePlayPronunciationPreview = async () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+    setPronunciationLoading(true);
+    setErrorMessage(null);
+
+    const testText = voiceDisplayName.trim()
+      ? `Bienvenue chez ${voiceDisplayName.trim()}. Comment puis-je vous aider aujourd'hui ?`
+      : "Bonjour et bienvenue. Comment puis-je vous renseigner aujourd'hui ?";
+
+    try {
+      const response = await apiFetch("/api/v1/voice/voices/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          voice_id: selectedVoiceId,
+          text: testText,
+          speech_speed: speechSpeed,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Impossible de générer l'extrait audio");
+      }
+
+      const blob = await response.blob();
+      const audioUrl = URL.createObjectURL(blob);
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+
+      audio.onended = () => {
+        setPlayingVoiceId(null);
+        URL.revokeObjectURL(audioUrl);
+      };
+
+      audio.onerror = () => {
+        setPlayingVoiceId(null);
+        setErrorMessage("Erreur lors de la lecture audio");
+        URL.revokeObjectURL(audioUrl);
+      };
+
+      await audio.play();
+      setPlayingVoiceId("pronunciation-preview");
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : "Erreur de prévisualisation");
+    } finally {
+      setPronunciationLoading(false);
+    }
+  };
+
   const handleAddPronunciation = () => {
     if (!newTerm.trim() || !newReplacement.trim()) return;
     setPronunciations([...pronunciations, { term: newTerm.trim(), replaceWith: newReplacement.trim() }]);
@@ -213,6 +269,8 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
         voice_provider: "openai",
         speech_speed: speechSpeed,
         personality_tone: personalityTone,
+        voice_display_name: voiceDisplayName.trim() || undefined,
+        voice_pronunciation: voiceDisplayName.trim() || undefined,
         greeting_message: greetingMessage,
         farewell_message: farewellMessage,
         custom_pronunciation: customPronunciationRecord,
@@ -503,6 +561,43 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
           <p className="text-[11px] text-slate-500 dark:text-slate-400">
             Module la courtoisie, le vocabulaire et les tournures de phrases générées par l&apos;IA.
           </p>
+        </div>
+      </div>
+
+      {/* Prononciation officielle du nom commercial */}
+      <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-4 dark:border-blue-900/30 dark:bg-blue-950/20">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <label className="flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-white">
+              <Volume2 size={14} className="text-[#0076FF]" />
+              <span>Comment votre entreprise doit-elle être prononcée par l&apos;agent vocal ?</span>
+            </label>
+            <p className="text-[11px] text-slate-600 dark:text-slate-400">
+              Sépare l&apos;identifiant technique ou le slug (ex: <code>produits_ero</code>) du nom prononcé à voix haute par la synthèse vocale (ex: <strong>Produits Éro</strong>). Élimine les « tiret bas » et prononciations robotiques.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handlePlayPronunciationPreview}
+            disabled={pronunciationLoading}
+            className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-blue-200 bg-white px-3.5 py-2 text-xs font-semibold text-[#0076FF] shadow-xs transition hover:bg-blue-50 disabled:opacity-50 dark:border-blue-800 dark:bg-blue-900/40 dark:text-blue-300 dark:hover:bg-blue-900/60"
+          >
+            {pronunciationLoading ? (
+              <Loader2 size={14} className="animate-spin text-[#0076FF]" />
+            ) : (
+              <Play size={14} className="fill-[#0076FF] text-[#0076FF]" />
+            )}
+            <span>Écouter un aperçu</span>
+          </button>
+        </div>
+        <div className="mt-3">
+          <input
+            type="text"
+            value={voiceDisplayName}
+            onChange={(e) => setVoiceDisplayName(e.target.value)}
+            placeholder="Ex: Produits Éro"
+            className="w-full rounded-xl border border-slate-200 bg-white p-2.5 text-xs font-medium text-slate-900 shadow-2xs outline-none focus:border-[#0076FF] dark:border-white/10 dark:bg-[#111D3D] dark:text-white"
+          />
         </div>
       </div>
 

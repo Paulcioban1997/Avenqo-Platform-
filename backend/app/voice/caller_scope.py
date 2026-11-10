@@ -29,9 +29,14 @@ PUBLIC_VOICE_CRM_TOOLS: frozenset[str] = frozenset({
     "get_crm_services",
 })
 
+# Public retail catalog tools - real-time lookup when tenant has Retail module active
+PUBLIC_VOICE_RETAIL_TOOLS: frozenset[str] = frozenset({
+    "get_product_detail",
+})
+
 # Union of all possible public tools for backward compatibility
 PUBLIC_VOICE_TOOLS: frozenset[str] = (
-    PUBLIC_VOICE_BASE_TOOLS | PUBLIC_VOICE_CRM_TOOLS
+    PUBLIC_VOICE_BASE_TOOLS | PUBLIC_VOICE_CRM_TOOLS | PUBLIC_VOICE_RETAIL_TOOLS
 )
 
 # Permissions granted to an unauthenticated caller. The public marker is what
@@ -52,11 +57,14 @@ def public_voice_tool_allowed(
     tool_name: str,
     *,
     has_crm_booking: bool = True,
+    has_retail_commerce: bool = True,
 ) -> bool:
     if tool_name in PUBLIC_VOICE_BASE_TOOLS:
         return True
     if tool_name in PUBLIC_VOICE_CRM_TOOLS:
         return has_crm_booking
+    if tool_name in PUBLIC_VOICE_RETAIL_TOOLS:
+        return has_retail_commerce
     return False
 
 
@@ -65,6 +73,7 @@ __all__ = [
     "PUBLIC_VOICE_CALLER_PERMISSION",
     "PUBLIC_VOICE_CALLER_PERMISSIONS",
     "PUBLIC_VOICE_CRM_TOOLS",
+    "PUBLIC_VOICE_RETAIL_TOOLS",
     "PUBLIC_VOICE_TOOLS",
     "is_public_voice_caller",
     "public_voice_tool_allowed",

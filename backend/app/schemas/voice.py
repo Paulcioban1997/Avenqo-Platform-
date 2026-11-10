@@ -33,6 +33,8 @@ class VoiceConfigRequest(BaseModel):
     voice_provider: str = Field(default="openai", min_length=1, max_length=32)
     speech_speed: float = Field(default=1.0, ge=0.5, le=1.5)
     personality_tone: str = Field(default="professionnel", min_length=1, max_length=64)
+    voice_display_name: str | None = Field(default=None, max_length=255)
+    voice_pronunciation: str | None = Field(default=None, max_length=255)
     custom_pronunciation: str | None = Field(default=None, max_length=255)
     farewell_message: str | None = Field(default=None, max_length=1000)
     enabled: bool = False
@@ -86,6 +88,8 @@ class VoiceConfigResponse(BaseModel):
     voice_provider: str = "openai"
     speech_speed: float = 1.0
     personality_tone: str = "professionnel"
+    voice_display_name: str | None = None
+    voice_pronunciation: str | None = None
     custom_pronunciation: str | None = None
     farewell_message: str | None = None
     enabled: bool
@@ -261,6 +265,8 @@ class VoiceCustomizationUpdateRequest(BaseModel):
     voice_provider: str | None = Field(default=None, max_length=32)
     speech_speed: float | None = Field(default=None, ge=0.5, le=1.5)
     personality_tone: str | None = Field(default=None, max_length=64)
+    voice_display_name: str | None = Field(default=None, max_length=255)
+    voice_pronunciation: str | None = Field(default=None, max_length=255)
     greeting_message: str | None = Field(default=None, max_length=2000)
     farewell_message: str | None = Field(default=None, max_length=2000)
     custom_pronunciation: dict[str, Any] | None = None
@@ -271,6 +277,8 @@ class VoiceCustomizationResponse(BaseModel):
     voice_provider: str = "openai"
     speech_speed: float = 1.0
     personality_tone: str = "professionnel"
+    voice_display_name: str | None = None
+    voice_pronunciation: str | None = None
     greeting_message: str | None = None
     farewell_message: str | None = None
     custom_pronunciation: dict[str, Any] | None = None

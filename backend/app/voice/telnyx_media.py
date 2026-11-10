@@ -294,7 +294,8 @@ class PublicInboundConversation:
     def greeting(self) -> str:
         _call, config, _company = self.context()
         from backend.app.voice.messages import voice_natural_greeting
-        return voice_natural_greeting(voice_agent_language(self.db, config), config.business_name)
+        spoken_name = getattr(config, "effective_voice_name", None) or (config.business_name or "Avenqo").replace("_", " ")
+        return voice_natural_greeting(voice_agent_language(self.db, config), spoken_name)
 
     def portal_message(self) -> str:
         _call, config, _company = self.context()

@@ -41,10 +41,14 @@ class CompanyIntelligenceProfile:
     public_products: tuple[dict, ...] = ()
     phone: str | None = None
     website: str | None = None
+    voice_display_name: str | None = None
+    voice_pronunciation: str | None = None
 
     def as_context(self, *, public: bool = False) -> dict:
         data = asdict(self)
         data["company_id"] = str(self.company_id)
+        data["voice_display_name"] = self.voice_display_name or self.business_name.replace("_", " ")
+        data["voice_pronunciation"] = self.voice_pronunciation or data["voice_display_name"]
         if public:
             # Connection/dataset identities and operational state are private.
             data.pop("connected_integrations", None)
@@ -106,37 +110,58 @@ class CompanyIntelligenceService:
                 records = self._session.scalars(
                     select(NormalizedCommerceRecord).where(
                         NormalizedCommerceRecord.company_id == company_id,
-                        NormalizedCommerceRecord.entity_type == "products",
+                        NormalizedCommerceRecord.entity_type.in_(["products", "product"]),
                         NormalizedCommerceRecord.deleted.is_(False),
-                    ).limit(30)
+                    ).order_by(NormalizedCommerceRecord.source_updated_at.desc().nullslast()).limit(50)
                 ).all()
                 for r in records:
                     pdata = r.normalized_data or {}
-                    pname = pdata.get("product_name")
+                    status = str(pdata.get("status") or pdata.get("stock_status") or "").lower().strip()
+                    if status in ("archived", "draft", "trash"):
+                        continue
+                    pname = pdata.get("product_name") or pdata.get("name") or pdata.get("title")
                     if not pname:
                         continue
                     variants = pdata.get("variants") or []
-                    price = None
-                    inventory = 0
-                    if isinstance(variants, list) and variants:
-                        price = variants[0].get("unit_price")
+                    price = pdata.get("unit_price")
+                    if price is None:
+                        price = pdata.get("price") if pdata.get("price") is not None else pdata.get("regular_price")
+                    if price is None and isinstance(variants, list) and variants:
+                        price = variants[0].get("unit_price") or variants[0].get("price")
+
+                    inventory = pdata.get("inventory_level")
+                    if inventory is None:
+                        inventory = pdata.get("stock_quantity")
+                    if inventory is None and isinstance(variants, list) and variants:
                         inventory = sum(v.get("inventory_level", 0) for v in variants if isinstance(v.get("inventory_level"), (int, float)))
+                    inventory_count = int(inventory) if isinstance(inventory, (int, float)) else 0
+
+                    in_stock = pdata.get("in_stock")
+                    if in_stock is None:
+                        in_stock = inventory_count > 0 or status == "instock"
+
                     products_list.append({
-                        "name": pname,
-                        "category": pdata.get("product_category") or "",
-                        "price": price,
+                        "id": str(r.id),
+                        "name": str(pname).strip(),
+                        "category": pdata.get("product_category") or pdata.get("category") or "",
+                        "price": float(price) if isinstance(price, (int, float)) else None,
                         "currency": company.currency_code,
-                        "in_stock": inventory > 0,
-                        "inventory_count": inventory,
+                        "in_stock": bool(in_stock),
+                        "inventory_count": inventory_count,
+                        "description": pdata.get("description") or pdata.get("body_html") or "",
                     })
             except Exception:
                 products_list = []
+
+        voice_spoken_name = config.effective_voice_name if config else company.name.replace("_", " ")
+        voice_pronun = getattr(config, "custom_pronunciation", None) if config else None
 
         signature = {"business": business, "services": offerings, "modules": active,
                      "name": company.name, "industry": company.industry, "timezone": company.timezone,
                      "hours": company.business_hours, "voice_services": config.services if config else [],
                      "datasets": [(str(d.id), str(d.status)) for d in datasets], "calendar": connected_calendar,
-                     "products": products_list, "phone": company.phone, "website": company.website}
+                     "products": products_list, "phone": company.phone, "website": company.website,
+                     "voice_display_name": voice_spoken_name, "voice_pronunciation": voice_pronun}
         signature["resources"] = [(str(r.id), r.name, r.working_hours) for r in resources]
         version = hashlib.sha256(json.dumps(signature, sort_keys=True, default=str).encode()).hexdigest()[:24]
         return CompanyIntelligenceProfile(
@@ -156,6 +181,8 @@ class CompanyIntelligenceService:
             public_products=tuple(products_list),
             phone=company.phone or (config.transfer_phone if config else None),
             website=company.website,
+            voice_display_name=voice_spoken_name,
+            voice_pronunciation=voice_pronun or voice_spoken_name,
         )
 
     def require_service(self, company_id: UUID, *, service_id=None, service_name=None) -> dict:
