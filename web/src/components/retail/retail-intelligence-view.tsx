@@ -236,14 +236,13 @@ export function RetailIntelligenceView({
       ]);
       if (!statusRes && !prodRes && !ordRes && !custRes && !invRes && !salesRes && !recommendationsRes) {
         setRetailStatus({
-          tenant_locale: locale,
           is_connected: false,
           provider: null,
           store_url: null,
           status: "DISCONNECTED",
           last_synced_at: null,
           source_context: { state: "NO_SOURCES", selection: "all", name: null, provider: null, dataset_id: null },
-          data_freshness: { freshness_status: "DISCONNECTED", last_successful_sync: null, hours_since_sync: null },
+          data_freshness: { freshness_status: "DISCONNECTED", source: null, last_updated_at: null, age_seconds: null },
           records_count: 0,
           product_count: 0,
           order_count: 0,
