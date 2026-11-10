@@ -255,7 +255,7 @@ class RetailSourceService:
         tenant: TenantContext,
         *,
         source_type: str,
-        source_id: UUID,
+        source_id: UUID | None = None,
     ) -> RetailSource:
         from backend.app.core.cache import tenant_cache
 

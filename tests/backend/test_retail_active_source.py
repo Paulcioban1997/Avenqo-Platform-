@@ -32,6 +32,7 @@ from backend.app.routers.retail import (
     list_retail_orders,
     list_retail_products,
 )
+from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
 from backend.app.services.retail_source_service import (
     RetailSourceNotFound,
     RetailSourceService,
@@ -43,9 +44,10 @@ from backend.app.services.tenant_recommendations_service import TenantRecommenda
 from backend.app.services.tenant_sales_service import TenantSalesService
 from backend.app.voice.service import resolve_voice_source_context
 from shared.ai_engine.contracts import TenantContext
+from shared.ai_engine.prediction.service import PredictionService
 
 
-class _PreparedIngestion:
+class _PreparedIngestion(CompanyDatasetIngestionService):
     def __init__(self, prepared_by_id):
         self._prepared_by_id = prepared_by_id
 
@@ -56,7 +58,10 @@ class _PreparedIngestion:
         return prepared
 
 
-class _UnusedPredictions:
+class _UnusedPredictions(PredictionService):
+    def __init__(self):
+        pass
+
     def predict(self, *args, **kwargs):
         raise AssertionError("No active model should request predictions")
 
@@ -203,21 +208,26 @@ def test_user_data_context_isolated_and_does_not_change_activation(source_enviro
     before = [(source.source_id, source.enabled) for source in service.list_sources(TenantContext(company.id))]
     service.select_source(tenant_a, source_type="dataset", source_id=uploaded.id)
     service.select_source(tenant_b, source_type="connector", source_id=connection.id)
-    assert service.active_selection(tenant_a).dataset_id == uploaded.id
-    assert service.active_selection(tenant_b).connection_id == connection.id
+    selection_a = service.active_selection(tenant_a)
+    selection_b = service.active_selection(tenant_b)
+    assert selection_a is not None and selection_a.dataset_id == uploaded.id
+    assert selection_b is not None and selection_b.connection_id == connection.id
     assert [(source.source_id, source.enabled) for source in service.list_sources(TenantContext(company.id))] == before
     with pytest.raises(RetailSourceNotFound):
         service.select_source(TenantContext(other.id, user_a), source_type="connector", source_id=connection.id)
     connection.status = "DISCONNECTED"
     session.commit()
-    assert service.active_selection(tenant_b).connection_id == connection.id
+    selection_b_disc = service.active_selection(tenant_b)
+    assert selection_b_disc is not None and selection_b_disc.connection_id == connection.id
     snapshot = TenantAnalyticsService(session, _PreparedIngestion(prepared)).load(tenant_b)
     assert snapshot.status == "source_unavailable"
     assert snapshot.prepared == ()
     assert service.context(tenant_b)["state"] == "SOURCE_DISCONNECTED"
     session.expire_all()
-    assert RetailSourceService(session).active_selection(tenant_a).dataset_id == uploaded.id
-    assert RetailSourceService(session).active_selection(tenant_b).connection_id == connection.id
+    reloaded_a = RetailSourceService(session).active_selection(tenant_a)
+    reloaded_b = RetailSourceService(session).active_selection(tenant_b)
+    assert reloaded_a is not None and reloaded_a.dataset_id == uploaded.id
+    assert reloaded_b is not None and reloaded_b.connection_id == connection.id
 
 
 def test_user_all_mode_and_selection_do_not_toggle_sources(source_environment):
@@ -243,7 +253,9 @@ def test_source_context_api_contract_and_untrusted_identity_fields(source_enviro
     assert context["source_type"] == "all"
     assert context["source_id"] is None
     with pytest.raises(ValidationError):
-        RetailSourceSelectionRequest(source_type="all", tenant_id=str(uuid4()), user_id=str(uuid4()))
+        RetailSourceSelectionRequest.model_validate(
+            {"source_type": "all", "tenant_id": str(uuid4()), "user_id": str(uuid4())}
+        )
 
 
 def test_all_sources_deduplicates_logical_commerce_rows(source_environment):
@@ -254,7 +266,9 @@ def test_all_sources_deduplicates_logical_commerce_rows(source_environment):
     second = SimpleNamespace(**{**vars(prepared[shopify_dataset.id]), "canonical_columns": {key: key for key in row}, "rows": ({**row, "technical_representation": "copy"},)})
     snapshot = TenantAnalyticsService(session, _PreparedIngestion(prepared)).load(TenantContext(company.id))
     snapshot = replace(snapshot, prepared=(first, second), relationships=())
-    assert len(snapshot.source_for(frozenset({"order_id", "total_amount"})).rows) == 1
+    source = snapshot.source_for(frozenset({"order_id", "total_amount"}))
+    assert source is not None
+    assert len(source.rows) == 1
     second = SimpleNamespace(**{**vars(second), "rows": ({**row, "currency": "USD", "source_line_item_id": "line-2"},)})
     with pytest.raises(ValueError, match="INCOMPATIBLE_SOURCE_CURRENCIES"):
         replace(snapshot, prepared=(first, second)).source_for(frozenset({"total_amount"}))
@@ -956,7 +970,7 @@ def test_connector_initial_orders_generate_forecast_and_recommendations(source_e
     service.select_source(tenant, source_type="connector", source_id=connection.id)
 
     analytics = TenantAnalyticsService(session, _MissingArtifactIngestion(prepared))
-    sales = TenantSalesService(session, analytics, None)
+    sales = TenantSalesService(session, analytics, _UnusedPredictions())
     sales_result = sales.build(tenant)
     assert sales_result["forecast"] is not None
     assert sales_result["forecast"]["horizon"] == 4
