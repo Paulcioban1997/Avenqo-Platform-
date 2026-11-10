@@ -438,7 +438,7 @@ class PublicInboundConversation:
             self.db.commit()
             return {"status": "success", "answer": answer, "public": True}
         if re.search(r"heures|horaires|hours|ouvert|opening|schedule", normalized):
-            raw_hours = getattr(company, "business_hours", None) or getattr(config, "opening_hours", None) or {}
+            raw_hours = getattr(_company, "business_hours", None) or getattr(config, "opening_hours", None) or {}
             hours_dict = {}
             if isinstance(raw_hours, dict) and "weekly" in raw_hours and isinstance(raw_hours["weekly"], dict):
                 for day, ranges in raw_hours["weekly"].items():

@@ -334,24 +334,44 @@ export function VoiceOnboardingWizard({
         }
       }
 
+      let finalOpeningHours: any = cleanOpeningHours;
+      if (isCrmSchedule) {
+        const weeklyObj: Record<string, Array<{ open: string; close: string }>> = {};
+        for (const [day, period] of Object.entries(cleanOpeningHours)) {
+          if (period && period.open && period.close) {
+            weeklyObj[day] = [{ open: period.open, close: period.close }];
+          } else {
+            weeklyObj[day] = [];
+          }
+        }
+        finalOpeningHours = {
+          ...(typeof profile.opening_hours === "object" ? profile.opening_hours : {}),
+          weekly: {
+            ...(typeof (profile.opening_hours as any)?.weekly === "object" ? (profile.opening_hours as any).weekly : {}),
+            ...weeklyObj,
+          },
+        };
+      }
+
       const payload = {
         ...profile,
         expected_version: profile.expected_version ?? 0,
         contact_phone: profile.contact_phone?.trim() || null,
-        opening_hours: isCrmSchedule ? profile.opening_hours : cleanOpeningHours,
+        opening_hours: finalOpeningHours,
         allowed_actions: allowedActions,
       };
 
-      let res = await apiFetch("/api/v1/voice/business-profile", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (res.status === 409) {
-        // Transparent optimistic concurrency recovery: fetch fresh server version and retry once
-        const freshRes = await apiFetch("/api/v1/voice/business-profile").catch(() => null);
-        if (freshRes && freshRes.ok) {
+      let res: Response;
+      try {
+        res = await apiFetch("/api/v1/voice/business-profile", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } catch (firstErr: any) {
+        if (firstErr?.status === 409) {
+          // Transparent optimistic concurrency recovery: fetch fresh server version and retry once
+          const freshRes = await apiFetch("/api/v1/voice/business-profile");
           const freshData = await freshRes.json();
           const freshVersion = freshData?.profile?.expected_version ?? 0;
           const retryPayload = { ...payload, expected_version: freshVersion };
@@ -360,6 +380,8 @@ export function VoiceOnboardingWizard({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(retryPayload),
           });
+        } else {
+          throw firstErr;
         }
       }
 
@@ -450,15 +472,17 @@ export function VoiceOnboardingWizard({
     setEmployeePinSaving(true);
     setEmployeePinFeedback(null);
     try {
-      let res = await apiFetch("/api/v1/voice/auth/pin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pin: employeePin,
-          confirm_pin: employeePin,
-        }),
-      });
-      if (!res.ok) {
+      let res: Response;
+      try {
+        res = await apiFetch("/api/v1/voice/auth/pin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pin: employeePin,
+            confirm_pin: employeePin,
+          }),
+        });
+      } catch {
         res = await apiFetch("/api/v1/voice/auth/pin", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -467,10 +491,6 @@ export function VoiceOnboardingWizard({
             confirm_pin: employeePin,
           }),
         });
-      }
-      if (!res.ok) {
-        const err = await res.json().catch(() => null);
-        throw new Error(err?.detail || (fr ? "Impossible d'enregistrer le NIP." : "Could not save employee PIN."));
       }
       setEmployeePinFeedback(
         fr

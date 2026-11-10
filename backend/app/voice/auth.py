@@ -299,8 +299,8 @@ class VoiceCallerAuth:
         if call.ended_at is not None or call.verification_attempts >= maximum:
             return failed
 
-        pin_clean = str(pin or "").strip().rstrip("#")
-        valid_format = isinstance(pin_clean, str) and bool(re.fullmatch(r"[0-9]{4,12}", pin_clean))
+        pin_clean = pin.strip().rstrip("#") if isinstance(pin, str) else ""
+        valid_format = isinstance(pin, str) and bool(re.fullmatch(r"[0-9]{4,12}", pin_clean))
         if not valid_format:
             call.verification_attempts += 1
             self.db.flush()
