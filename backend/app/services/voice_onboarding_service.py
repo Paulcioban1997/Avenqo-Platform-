@@ -94,25 +94,38 @@ class VoiceOnboardingService:
         company = self.db.get(Company, tenant.company_id, populate_existing=True)
         schedule = company.business_hours or {}
         if ("weekly" in schedule or "date_overrides" in schedule) and request.opening_hours != schedule:
-            if "weekly" not in request.opening_hours and "date_overrides" not in request.opening_hours and request.opening_hours:
-                converted_weekly = {
-                    day: [{"open": val["open"], "close": val["close"]}]
-                    for day, val in request.opening_hours.items()
-                    if isinstance(val, dict) and "open" in val and "close" in val
-                }
-                if schedule.get("weekly") == converted_weekly:
+            has_complex_crm = bool(
+                schedule.get("date_overrides") or
+                any(len(periods) > 1 for periods in schedule.get("weekly", {}).values() if isinstance(periods, list))
+            )
+            if not has_complex_crm:
+                if "weekly" in request.opening_hours:
+                    req_weekly = request.opening_hours.get("weekly") or {}
+                    request.opening_hours = {**schedule, "weekly": req_weekly}
+                elif request.opening_hours and "date_overrides" not in request.opening_hours:
+                    converted_weekly = {
+                        day: [{"open": val["open"], "close": val["close"]}]
+                        for day, val in request.opening_hours.items()
+                        if isinstance(val, dict) and "open" in val and "close" in val
+                    }
+                    request.opening_hours = {**schedule, "weekly": converted_weekly}
+                elif not request.opening_hours:
                     request.opening_hours = schedule
                 else:
-                    has_complex_crm = bool(
-                        schedule.get("date_overrides") or
-                        any(len(periods) > 1 for periods in schedule.get("weekly", {}).values() if isinstance(periods, list))
-                    )
-                    if not has_complex_crm:
-                        request.opening_hours = {"weekly": converted_weekly}
+                    raise ValueError("Edit CRM schedules and dated exceptions in the CRM workspace")
+            else:
+                if "weekly" not in request.opening_hours and "date_overrides" not in request.opening_hours and request.opening_hours:
+                    converted_weekly = {
+                        day: [{"open": val["open"], "close": val["close"]}]
+                        for day, val in request.opening_hours.items()
+                        if isinstance(val, dict) and "open" in val and "close" in val
+                    }
+                    if schedule.get("weekly") == converted_weekly:
+                        request.opening_hours = schedule
                     else:
                         raise ValueError("Edit CRM schedules and dated exceptions in the CRM workspace")
-            else:
-                raise ValueError("Edit CRM schedules and dated exceptions in the CRM workspace")
+                else:
+                    raise ValueError("Edit CRM schedules and dated exceptions in the CRM workspace")
         limit = PlanLimitsService(self.db).limits_for(tenant.company_id).max_sites
         if limit is not None and len(request.locations) > limit:
             raise ValueError("Location count exceeds subscription allowance")

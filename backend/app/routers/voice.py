@@ -309,7 +309,20 @@ def set_user_voice_pin(
     except (ValueError, PermissionError) as exc:
         db.rollback()
         raise HTTPException(status_code=422, detail=str(exc) or "Voice credential setup is unavailable") from None
-    return {"status": "CONFIGURED"}
+    
+    credential = db.scalar(select(VoiceCallerCredential).where(
+        VoiceCallerCredential.company_id == identity.user.company_id,
+        VoiceCallerCredential.principal_type == "USER",
+        VoiceCallerCredential.principal_id == identity.user.id,
+    ))
+    return {
+        "status": "CONFIGURED",
+        "configured": True,
+        "enabled": credential.enabled if credential else True,
+        "phone_number": credential.phone_number if credential else request.phone_number,
+        "failed_attempts": credential.failed_attempts if credential else 0,
+        "locked_until": credential.locked_until if credential else None,
+    }
 
 
 @router.post("/auth/sessions/revoke")
@@ -1614,6 +1627,18 @@ def set_voice_auth_pin(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> VoiceAuthPinStatusResponse:
+    existing_cred = db.scalar(
+        select(VoiceCallerCredential).where(
+            VoiceCallerCredential.company_id == identity.user.company_id,
+            VoiceCallerCredential.principal_type == "USER",
+            VoiceCallerCredential.principal_id == identity.user.id,
+        )
+    )
+    if existing_cred is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Un code NIP est déjà configuré pour ce compte. Veuillez utiliser la mise à jour (PUT) avec votre mot de passe actuel.",
+        )
     auth_controller = VoiceCallerAuth(db, settings)
     tenant = TenantContext(company_id=identity.user.company_id, user_id=identity.user.id)
     phone_to_use = payload.phone_number or identity.user.phone
@@ -1624,6 +1649,15 @@ def set_voice_auth_pin(
             principal_id=identity.user.id,
             pin=payload.pin_value,
             phone_number=phone_to_use,
+        )
+        AuditLogService(db).record(
+            actor_user_id=identity.user.id,
+            action="voice_pin_created",
+            target_type="user",
+            target_id=str(identity.user.id),
+            company_id=identity.user.company_id,
+            metadata={"credential_type": "USER", "initial_setup": True},
+            commit=False,
         )
         db.commit()
     except (ValueError, PermissionError) as exc:
@@ -2408,6 +2442,54 @@ async def telnyx_webhook(
                     return {"received": True, "routed": False, "status": "MEDIA_STREAM_START_FAILED"}
 
         if ivr_stage == "employee_pin":
+            if not digits_str or len(digits_str) < 4:
+                prompt_count = int((call.source_context or {}).get("pin_empty_prompts", 0)) + 1
+                call.source_context = {
+                    **(call.source_context or {}),
+                    "pin_empty_prompts": prompt_count,
+                }
+                flag_modified(call, "source_context")
+                if prompt_count > 2:
+                    goodbye_msg = (
+                        "Aucun code NIP reçu. Au revoir."
+                        if (config.preferred_language or "fr").startswith("fr")
+                        else "No PIN received. Goodbye."
+                    )
+                    command_id = str(UUID(hashlib.sha256(f"pin-timeout-bye:{call.id}:{prompt_count}".encode()).hexdigest()[:32]))
+                    try:
+                        await service.telnyx.speak(active_control_id, text_prompt=goodbye_msg, command_id=command_id)
+                        await asyncio.sleep(3.0)
+                        await service.telnyx.hangup(active_control_id)
+                    except Exception:
+                        pass
+                    call.status = "ended"
+                    call.ended_at = datetime.now(timezone.utc)
+                    db.commit()
+                    return {"received": True, "status": "PIN_TIMEOUT"}
+
+                re_prompt = (
+                    "Veuillez composer votre NIP personnel suivi de la touche dièse."
+                    if (config.preferred_language or "fr").startswith("fr")
+                    else "Please enter your personal PIN followed by pound."
+                )
+                command_id = str(UUID(hashlib.sha256(f"re-prompt-pin:{call.id}:{prompt_count}".encode()).hexdigest()[:32]))
+                client_state = auth_controller.challenge(call)
+                receipt.result = {**receipt.result, "ivr": "pin_empty_reprompt"}
+                db.commit()
+                await service.telnyx.gather_using_speak(
+                    active_control_id,
+                    text_prompt=re_prompt,
+                    command_id=command_id,
+                    client_state=client_state,
+                    language="fr-CA" if (config.preferred_language or "fr").startswith("fr") else "en-US",
+                    minimum_digits=4,
+                    maximum_digits=12,
+                    valid_digits="0123456789#",
+                    terminating_digit="#",
+                    timeout_millis=20000,
+                )
+                return {"received": True, "ivr_stage": "pin_reprompted"}
+
             auth_result = auth_controller.verify_gather(call, digits_str)
             if auth_result.get("authenticated"):
                 call.source_context = {
@@ -2591,11 +2673,13 @@ async def telnyx_webhook(
             # If IVR enabled and call has not yet completed menu selection, prompt IVR greeting
             if ivr_enabled and current_stage not in {"customer_public", "staff_authenticated"}:
                 spoken_name = getattr(config, "effective_voice_name", None) or (config.business_name or "Avenqo").replace("_", " ")
+                if spoken_name in {"Produits_Ero", "Produits Ero", "Produits Éro"}:
+                    spoken_name = "Produit Éro"
                 raw_greeting = (config.call_policy or {}).get("ivr_greeting")
                 if not raw_greeting:
                     greeting = f"Bienvenue chez {spoken_name}. Pour les employés, composez le 1. Pour le service clientèle, composez le 2."
                 else:
-                    greeting = str(raw_greeting).replace("Produits_Ero", spoken_name).replace("_", " ")
+                    greeting = str(raw_greeting).replace("Produits_Ero", spoken_name).replace("Produits Ero", spoken_name).replace("Produits Éro", spoken_name).replace("_", " ")
                 command_id = str(UUID(hashlib.sha256(f"ivr-greeting:{call.id}".encode()).hexdigest()[:32]))
                 auth_controller = VoiceCallerAuth(db, settings)
                 client_state = auth_controller.challenge(call)

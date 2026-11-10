@@ -41,3 +41,4 @@ export default async function RetailSubTabPage({ params }: RetailSubTabPageProps
     </AppShell>
   );
 }
+

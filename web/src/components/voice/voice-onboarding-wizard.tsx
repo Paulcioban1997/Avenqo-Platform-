@@ -140,8 +140,18 @@ export function VoiceOnboardingWizard({
   // Step 4: Telephony & Employees (Canonical Architecture)
   const [assignedNumber, setAssignedNumber] = useState<string>("");
   const [employeePin, setEmployeePin] = useState<string>("");
+  const [employeePinConfirm, setEmployeePinConfirm] = useState<string>("");
+  const [currentPassword, setCurrentPassword] = useState<string>("");
+  const [employeePhone, setEmployeePhone] = useState<string>("");
   const [employeePinSaving, setEmployeePinSaving] = useState<boolean>(false);
-  const [employeePinFeedback, setEmployeePinFeedback] = useState<string | null>(null);
+  const [employeePinFeedback, setEmployeePinFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [pinStatus, setPinStatus] = useState<{
+    configured: boolean;
+    enabled: boolean;
+    phone_number: string | null;
+    failed_attempts: number;
+    locked_until: string | null;
+  } | null>(null);
 
   // Advanced Section toggle (Shared Dispatcher & DTMF fallback)
   const [showAdvancedAccordion, setShowAdvancedAccordion] = useState<boolean>(false);
@@ -153,11 +163,12 @@ export function VoiceOnboardingWizard({
     if (!tenantId) return;
     setLoading(true);
     try {
-      const [profileRes, customRes, voicesRes, statusRes] = await Promise.all([
+      const [profileRes, customRes, voicesRes, statusRes, pinRes] = await Promise.all([
         apiFetch("/api/v1/voice/business-profile").catch(() => null),
         apiFetch("/api/v1/voice/customization").catch(() => null),
         apiFetch("/api/v1/voice/voices").catch(() => null),
         apiFetch("/api/v1/voice/status").catch(() => null),
+        apiFetch("/api/v1/voice/auth/pin").catch(() => null),
       ]);
 
       if (profileRes && profileRes.ok) {
@@ -221,6 +232,14 @@ export function VoiceOnboardingWizard({
         if (statusData.business_number) setAssignedNumber(statusData.business_number);
         if (statusData.routing_nip) setRoutingNip(statusData.routing_nip);
         if (statusData.dispatcher_number) setDispatcherNumber(statusData.dispatcher_number);
+      }
+
+      if (pinRes && pinRes.ok) {
+        const pinData = await pinRes.json();
+        setPinStatus(pinData);
+        if (pinData.phone_number) {
+          setEmployeePhone(pinData.phone_number);
+        }
       }
     } catch {
       // Graceful fallback
@@ -464,43 +483,71 @@ export function VoiceOnboardingWizard({
   // Configure Personal Employee PIN (Step 4)
   const savePersonalPin = async () => {
     if (!employeePin || employeePin.length < 6 || employeePin.length > 12) {
-      setEmployeePinFeedback(
-        fr ? "Le code NIP doit comporter de 6 à 12 chiffres (ex: 839201)." : "PIN must be between 6 and 12 digits."
-      );
+      setEmployeePinFeedback({
+        type: "error",
+        message: fr ? "Le code NIP doit comporter de 6 à 12 chiffres (ex: 839201)." : "PIN must be between 6 and 12 digits.",
+      });
       return;
     }
+    if (employeePin !== employeePinConfirm) {
+      setEmployeePinFeedback({
+        type: "error",
+        message: fr ? "La confirmation du code NIP ne correspond pas." : "PIN and confirmation PIN do not match.",
+      });
+      return;
+    }
+    if (pinStatus?.configured && !currentPassword) {
+      setEmployeePinFeedback({
+        type: "error",
+        message: fr ? "Votre mot de passe actuel est requis pour modifier le NIP." : "Current account password is required to change PIN.",
+      });
+      return;
+    }
+
     setEmployeePinSaving(true);
     setEmployeePinFeedback(null);
     try {
-      let res: Response;
-      try {
-        res = await apiFetch("/api/v1/voice/auth/pin", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            pin: employeePin,
-            confirm_pin: employeePin,
-          }),
-        });
-      } catch {
-        res = await apiFetch("/api/v1/voice/auth/pin", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            pin: employeePin,
-            confirm_pin: employeePin,
-          }),
-        });
+      const isUpdate = Boolean(pinStatus?.configured);
+      const url = "/api/v1/voice/auth/pin";
+      const payload: Record<string, any> = {
+        pin: employeePin,
+        confirm_pin: employeePinConfirm,
+      };
+      if (employeePhone.trim()) {
+        payload.phone_number = employeePhone.trim();
       }
-      setEmployeePinFeedback(
-        fr
-          ? "NIP personnel configuré avec succès ! Haché de manière sécurisée (Argon2)."
-          : "Personal PIN successfully set! Securely hashed with Argon2."
-      );
+      if (isUpdate) {
+        payload.current_password = currentPassword;
+      }
+
+      await apiFetch(url, {
+        method: isUpdate ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      // Verify server state via GET /api/v1/voice/auth/pin
+      const verifyRes = await apiFetch("/api/v1/voice/auth/pin").catch(() => null);
+      if (verifyRes && verifyRes.ok) {
+        const freshPinStatus = await verifyRes.json();
+        setPinStatus(freshPinStatus);
+      }
+
+      setEmployeePinFeedback({
+        type: "success",
+        message: fr
+          ? "NIP personnel configuré et vérifié avec succès ! Haché de manière sécurisée (Argon2)."
+          : "Personal PIN successfully configured and verified! Securely hashed with Argon2.",
+      });
       setEmployeePin("");
+      setEmployeePinConfirm("");
+      setCurrentPassword("");
       onRefreshStatus?.();
-    } catch (err) {
-      setEmployeePinFeedback(err instanceof Error ? err.message : String(err));
+    } catch (err: any) {
+      setEmployeePinFeedback({
+        type: "error",
+        message: err?.publicMessage || err?.message || String(err),
+      });
     } finally {
       setEmployeePinSaving(false);
     }
@@ -1424,43 +1471,127 @@ export function VoiceOnboardingWizard({
               </div>
 
               {/* EMPLOYEE PERSONAL PIN CONFIGURATION FORM */}
-              <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 space-y-3">
-                <div className="flex items-center gap-2">
-                  <Lock className="w-4 h-4 text-[#0076FF]" />
-                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                    {fr ? "Définir ou modifier votre code NIP personnel employé" : "Set or change your employee PIN"}
-                  </h4>
-                </div>
-                <p className="text-xs text-slate-500">
-                  {fr
-                    ? "Permet d'accéder au mode interne lorsque vous appelez votre numéro dédié et appuyez sur 1."
-                    : "Allows you to access the staff private mode when dialing your dedicated line and pressing 1."}
-                </p>
+              <div className="p-6 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-900/40 text-[#0076FF] flex items-center justify-center shrink-0">
+                      <Lock className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                        {pinStatus?.configured
+                          ? (fr ? "Modifier votre code NIP personnel employé" : "Update your employee PIN")
+                          : (fr ? "Définir votre code NIP personnel employé" : "Set your employee PIN")}
+                      </h4>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {fr
+                          ? "Permet d'accéder au mode interne lorsque vous appelez votre numéro dédié et appuyez sur 1."
+                          : "Allows you to access the staff private mode when dialing your dedicated line and pressing 1."}
+                      </p>
+                    </div>
+                  </div>
 
-                <div className="flex items-center gap-2 max-w-sm">
-                  <input
-                    type="password"
-                    pattern="[0-9]*"
-                    maxLength={12}
-                    placeholder="NIP (6 à 12 chiffres, ex: 839201)"
-                    value={employeePin}
-                    onChange={(e) => setEmployeePin(e.target.value.replace(/\D/g, ""))}
-                    className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden focus:border-[#0076FF]"
-                  />
-                  <button
-                    type="button"
-                    disabled={employeePinSaving || employeePin.length < 6}
-                    onClick={savePersonalPin}
-                    className="px-4 py-2.5 rounded-xl bg-[#0076FF] hover:bg-blue-600 text-white text-xs font-bold shadow-xs transition disabled:opacity-50"
-                  >
-                    {employeePinSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : (fr ? "Enregistrer" : "Save")}
-                  </button>
+                  {pinStatus?.configured && (
+                    <span className="self-start sm:self-auto px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                      {fr ? "NIP actif et configuré" : "PIN active & configured"}
+                    </span>
+                  )}
+                </div>
+
+                {pinStatus?.locked_until && (
+                  <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-200">
+                    {fr
+                      ? "Attention : Le NIP est temporairement verrouillé suite à plusieurs tentatives erronées. La modification avec votre mot de passe réinitialisera ce verrou."
+                      : "Warning: PIN is temporarily locked due to failed attempts. Updating it with your password will reset this lock."}
+                  </div>
+                )}
+
+                <div className="space-y-3.5 pt-1">
+                  {pinStatus?.configured && (
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                        {fr ? "Mot de passe de votre compte Avenqo *" : "Avenqo Account Password *"}
+                      </label>
+                      <input
+                        type="password"
+                        placeholder={fr ? "Mot de passe de votre compte (requis pour sécuriser la modification)" : "Account password (required for update)"}
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                        className="w-full max-w-md px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-hidden focus:border-[#0076FF]"
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                      {fr ? "Numéro de téléphone employé autorisé" : "Authorized Staff Phone Number"}
+                    </label>
+                    <input
+                      type="tel"
+                      placeholder="+15142955720"
+                      value={employeePhone}
+                      onChange={(e) => setEmployeePhone(e.target.value)}
+                      className="w-full max-w-md px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden focus:border-[#0076FF]"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md">
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                        {pinStatus?.configured
+                          ? (fr ? "Nouveau code NIP (6 à 12 chiffres) *" : "New PIN (6 to 12 digits) *")
+                          : (fr ? "Code NIP (6 à 12 chiffres) *" : "PIN (6 to 12 digits) *")}
+                      </label>
+                      <input
+                        type="password"
+                        pattern="[0-9]*"
+                        maxLength={12}
+                        placeholder="Ex: 839201"
+                        value={employeePin}
+                        onChange={(e) => setEmployeePin(e.target.value.replace(/\D/g, ""))}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden focus:border-[#0076FF]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+                        {fr ? "Confirmer le code NIP *" : "Confirm PIN *"}
+                      </label>
+                      <input
+                        type="password"
+                        pattern="[0-9]*"
+                        maxLength={12}
+                        placeholder="Ex: 839201"
+                        value={employeePinConfirm}
+                        onChange={(e) => setEmployeePinConfirm(e.target.value.replace(/\D/g, ""))}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden focus:border-[#0076FF]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      disabled={employeePinSaving || employeePin.length < 6 || (Boolean(pinStatus?.configured) && !currentPassword)}
+                      onClick={savePersonalPin}
+                      className="px-5 py-2.5 rounded-xl bg-[#0076FF] hover:bg-blue-600 text-white text-xs font-bold shadow-xs transition disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {employeePinSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
+                      {pinStatus?.configured ? (fr ? "Mettre à jour le NIP" : "Update PIN") : (fr ? "Enregistrer le NIP" : "Save PIN")}
+                    </button>
+                  </div>
                 </div>
 
                 {employeePinFeedback && (
-                  <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 mt-1">
-                    {employeePinFeedback}
-                  </p>
+                  <div
+                    className={`p-3.5 rounded-xl text-xs font-semibold border ${
+                      employeePinFeedback.type === "success"
+                        ? "bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-800"
+                        : "bg-red-50 text-red-800 border-red-200 dark:bg-red-950/40 dark:text-red-200 dark:border-red-800"
+                    }`}
+                  >
+                    {employeePinFeedback.message}
+                  </div>
                 )}
               </div>
 

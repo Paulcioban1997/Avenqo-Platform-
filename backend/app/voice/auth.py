@@ -1,12 +1,15 @@
 from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
+import logging
 import re
 import secrets
 import base64
 import json
 from typing import Any
 from uuid import UUID
+
+logger = logging.getLogger("avenqo.voice.auth")
 
 from pwdlib.exceptions import UnknownHashError
 from sqlalchemy import or_, select, text
@@ -23,8 +26,19 @@ def utc(value):
 
 
 def normalized_phone(value):
-    phone = re.sub(r"[^0-9+]", "", value or "")
-    return phone if re.fullmatch(r"\+[1-9]\d{7,14}", phone) else None
+    if not value or not isinstance(value, str):
+        return None
+    cleaned = re.sub(r"[^\d+]", "", value.strip())
+    if cleaned.startswith("+"):
+        return cleaned if re.fullmatch(r"\+[1-9]\d{7,14}", cleaned) else None
+    digits = cleaned
+    if len(digits) == 10:
+        return "+1" + digits
+    if len(digits) == 11 and digits.startswith("1"):
+        return "+" + digits
+    if 8 <= len(digits) <= 15:
+        return "+" + digits
+    return None
 
 
 def redact_voice_secrets(value):
@@ -297,20 +311,33 @@ class VoiceCallerAuth:
         maximum = getattr(self.settings, "voice_pin_max_attempts", 5)
         now = datetime.now(timezone.utc)
         if call.ended_at is not None or call.verification_attempts >= maximum:
+            logger.warning(
+                "VoiceCallerAuth.verify_gather rejected: call_ended=%s, attempts=%s/%s, call_id=%s, company_id=%s",
+                bool(call.ended_at), call.verification_attempts, maximum, call.id, call.company_id,
+            )
             return failed
 
         pin_clean = pin.strip().rstrip("#") if isinstance(pin, str) else ""
         valid_format = isinstance(pin, str) and bool(re.fullmatch(r"[0-9]{4,12}", pin_clean))
         if not valid_format:
-            call.verification_attempts += 1
-            self.db.flush()
+            if pin_clean:
+                call.verification_attempts += 1
+                self.db.flush()
+            logger.warning(
+                "VoiceCallerAuth.verify_gather: invalid pin format (length=%s, attempts=%s/%s, call_id=%s, company_id=%s)",
+                len(pin_clean), call.verification_attempts, maximum, call.id, call.company_id,
+            )
             return failed
-        
+
+        caller_norm = normalized_phone(call.caller_phone)
         credential = None
         if identifier:
             id_str = str(identifier).strip()
             # Lookup user by email, phone, or UUID within company
             user_filters = [User.email == id_str, User.phone == id_str]
+            id_phone_norm = normalized_phone(id_str)
+            if id_phone_norm:
+                user_filters.append(User.phone == id_phone_norm)
             try:
                 user_filters.append(User.id == UUID(id_str))
             except Exception:
@@ -332,14 +359,15 @@ class VoiceCallerAuth:
                     ).with_for_update()
                 )
 
-        if credential is None and not identifier and call.caller_phone:
+        if credential is None and not identifier and caller_norm:
             credential = self.db.scalar(select(VoiceCallerCredential).where(
                 VoiceCallerCredential.company_id == call.company_id,
-                VoiceCallerCredential.phone_number == normalized_phone(call.caller_phone),
+                VoiceCallerCredential.phone_number == caller_norm,
                 VoiceCallerCredential.enabled.is_(True),
             ).with_for_update())
 
         # Fallback: if caller phone did not match a credential, match PIN against active company credentials
+        matched_in_fallback = False
         if credential is None and not identifier:
             company_creds = self.db.scalars(
                 select(VoiceCallerCredential).where(
@@ -355,30 +383,49 @@ class VoiceCallerAuth:
                 try:
                     if verify_password(cand_candidate, cand_cred.pin_hash):
                         credential = cand_cred
+                        matched_in_fallback = True
                         break
                 except (ValueError, UnknownHashError):
                     continue
 
         call.verification_attempts += 1
+        logger.info(
+            "VoiceCallerAuth.verify_gather: company_id=%s call_id=%s caller_matched=%s credential_found=%s fallback=%s attempt=%s/%s",
+            call.company_id, call.id, bool(caller_norm), bool(credential), matched_in_fallback, call.verification_attempts, maximum,
+        )
+
         if credential is None:
             verify_password(self._peppered(call.company_id, call.id, pin_clean), hash_password(secrets.token_urlsafe(32)))
             self.db.flush()
             return failed
         if credential.locked_until is not None and utc(credential.locked_until) > now:
+            logger.warning(
+                "VoiceCallerAuth.verify_gather: credential locked (company_id=%s, principal_id=%s, locked_until=%s)",
+                call.company_id, credential.principal_id, credential.locked_until,
+            )
             self.db.flush()
             return failed
         if credential.locked_until is not None:
             credential.failed_attempts = 0
             credential.locked_until = None
-        candidate = self._peppered(call.company_id, credential.principal_id, pin_clean)
-        try:
-            matches = verify_password(candidate, credential.pin_hash)
-        except (ValueError, UnknownHashError):
-            matches = False
+
+        if not matched_in_fallback:
+            candidate = self._peppered(call.company_id, credential.principal_id, pin_clean)
+            try:
+                matches = verify_password(candidate, credential.pin_hash)
+            except (ValueError, UnknownHashError):
+                matches = False
+        else:
+            matches = True
+
         if not matches:
             credential.failed_attempts += 1
             if credential.failed_attempts >= maximum:
                 credential.locked_until = now + timedelta(seconds=getattr(self.settings, "voice_pin_lockout_seconds", 900))
+                logger.warning(
+                    "VoiceCallerAuth.verify_gather: lockout triggered (company_id=%s, principal_id=%s, failed_attempts=%s)",
+                    call.company_id, credential.principal_id, credential.failed_attempts,
+                )
             self.db.flush()
             return failed
         principal_model = User if credential.principal_type == "USER" else CRMClient
@@ -409,6 +456,10 @@ class VoiceCallerAuth:
         credential.locked_until = None
         self.establish(call)
         self.db.flush()
+        logger.info(
+            "VoiceCallerAuth.verify_gather: authentication succeeded (company_id=%s, call_id=%s, principal_id=%s, caller_type=%s)",
+            call.company_id, call.id, principal.id, call.caller_type,
+        )
         return {"success": True, "authenticated": True}
 
     def logout_session(self, call) -> dict[str, Any]:
