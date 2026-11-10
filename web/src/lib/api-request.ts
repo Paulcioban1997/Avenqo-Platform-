@@ -26,7 +26,22 @@ export async function apiFetch(input: string, init: RequestInit = {}): Promise<R
         window.dispatchEvent(new Event("avenqo:session-expired"));
       }
       const payload = await response.json().catch(() => null);
-      const message = typeof payload?.error?.message === "string" ? payload.error.message : undefined;
+      let message: string | undefined = undefined;
+      if (typeof payload?.error?.message === "string") {
+        message = payload.error.message;
+      } else if (typeof payload?.detail === "string") {
+        message = payload.detail;
+      } else if (Array.isArray(payload?.detail)) {
+        message = payload.detail
+          .map((item: any) => {
+            const loc = Array.isArray(item.loc) ? item.loc.filter((p: any) => p !== "body").join(".") : "";
+            return loc ? `${loc}: ${item.msg}` : item.msg;
+          })
+          .filter(Boolean)
+          .join(" | ");
+      } else if (typeof payload?.message === "string") {
+        message = payload.message;
+      }
       throw new ApiRequestError(category, response.status, message);
     }
     return response;

@@ -802,7 +802,7 @@ async def preview_voice(
         raise HTTPException(status_code=503, detail="Speech preview provider is not configured")
     company = identity.user.company
     config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == identity.user.company_id))
-    lang = resolve_locale(request.language or (config.preferred_language if config else None) or company.preferred_language or "fr")
+    lang = resolve_locale(request.language or (company.preferred_language if company and company.preferred_language else None) or (config.preferred_language if config else None) or "fr")
     company_name = (config.effective_voice_name if config else (company.name if company else "Avenqo")).replace("_", " ")
     if request.text and request.text.strip():
         text_to_speak = request.text.strip()
@@ -872,6 +872,9 @@ def get_voice_status(
     )).all() if session_ids else []
     voice_ai_credits = sum(int(item.avenqo_credits_charged or 0) for item in voice_attempts)
     telnyx_configured = bool(settings.telnyx_api_key and settings.telnyx_public_key and settings.telnyx_voice_connection_id)
+    env_str = (getattr(settings, "environment", "") or "development").strip().lower()
+    is_prod = env_str in {"production", "prod"}
+    telnyx_environment = "production" if is_prod else "sandbox"
     active_nip = CompanyRoutingNipService(db, settings).get_active_nip(company_id)
     return {
         "voice_status": "ENABLED" if config is not None and config.enabled else "DISABLED" if config is not None else "NOT_CONFIGURED",
@@ -887,6 +890,9 @@ def get_voice_status(
         "voice_capability": "voice" in (active_number.capabilities or []) if active_number is not None else False,
         "sms_capability": "sms" in (active_number.capabilities or []) if active_number is not None else False,
         "telnyx_status": "CONFIGURED" if telnyx_configured else "NOT_CONFIGURED",
+        "telnyx_configured": telnyx_configured,
+        "telnyx_environment": telnyx_environment,
+        "is_production": is_prod,
         "retell_status": "CONFIGURED" if settings.retell_api_key else "NOT_CONFIGURED",
         "stt_status": "CONFIGURED" if settings.voice_stt_provider and settings.openai_api_key else "NOT_CONFIGURED",
         "tts_status": "CONFIGURED" if settings.voice_tts_provider and settings.openai_api_key else "NOT_CONFIGURED",

@@ -83,6 +83,10 @@ interface VoiceStatus {
   data_freshness?: { freshness_status: string };
   routing_nip?: string | null;
   dispatcher_number?: string | null;
+  telnyx_status?: string | null;
+  telnyx_configured?: boolean;
+  telnyx_environment?: "production" | "sandbox" | string;
+  is_production?: boolean;
 }
 
 interface Offer {
@@ -131,6 +135,7 @@ export function VoiceModuleView() {
   const [ownedNumber, setOwnedNumber] = useState("");
   const [pinMessage, setPinMessage] = useState("");
   const [error, setError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [filters, setFilters] = useState({
     country_code: "",
@@ -157,7 +162,7 @@ export function VoiceModuleView() {
 
   // COMPANY TELEPHONE ROUTING NIP (DTMF) STATE
   const [routingNip, setRoutingNip] = useState<string | null>(null);
-  const [dispatcherNumber, setDispatcherNumber] = useState<string>("+1 438-607-5438");
+  const [dispatcherNumber, setDispatcherNumber] = useState<string>("");
   const [customNipInput, setCustomNipInput] = useState<string>("");
   const [nipBusy, setNipBusy] = useState<boolean>(false);
   const [nipFeedback, setNipFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -172,6 +177,7 @@ export function VoiceModuleView() {
       setSelected(null);
       setStatus(null);
       setError(false);
+      setErrorMessage(null);
       setBusy(false);
       setQuote(null);
       setOwnedNumber("");
@@ -198,8 +204,11 @@ export function VoiceModuleView() {
             if (payload.dispatcher_number) setDispatcherNumber(payload.dispatcher_number);
           }
         }
-      } catch {
-        if (!controller.signal.aborted) setError(true);
+      } catch (err) {
+        if (!controller.signal.aborted) {
+          setError(true);
+          setErrorMessage(err instanceof Error ? err.message : null);
+        }
       }
     });
     return () => {
@@ -472,13 +481,28 @@ export function VoiceModuleView() {
             </div>
           )}
           {currentStatus?.business_number ? (
-            <div className="px-3.5 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-mono font-bold flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>{currentStatus.business_number}</span>
+            <div className="flex items-center gap-2">
+              <div className="px-3.5 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-mono font-bold flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>{currentStatus.business_number}</span>
+              </div>
+              <div className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[10px] font-semibold uppercase tracking-wider">
+                {currentStatus.telnyx_environment === "production" ? "Production" : "Sandbox"}
+              </div>
+            </div>
+          ) : currentStatus?.telnyx_status === "CONFIGURED" ? (
+            <div className="px-3.5 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900 text-blue-700 dark:text-blue-300 text-xs font-semibold">
+              {currentStatus.telnyx_environment === "production"
+                ? (fr ? "Production configurée" : "Production configured")
+                : (fr ? "Sandbox configuré" : "Sandbox configured")}
+            </div>
+          ) : error ? (
+            <div className="px-3.5 py-1.5 rounded-xl bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-900 text-red-700 dark:text-red-300 text-xs font-semibold">
+              {fr ? "Erreur de configuration" : "Configuration error"}
             </div>
           ) : (
-            <div className="px-3.5 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900 text-blue-700 dark:text-blue-300 text-xs font-semibold">
-              {fr ? "Sandbox Telnyx Prête" : "Telnyx Sandbox Ready"}
+            <div className="px-3.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-xs font-semibold">
+              {fr ? "Non configuré" : "Not configured"}
             </div>
           )}
         </div>
@@ -488,7 +512,7 @@ export function VoiceModuleView() {
       {error && (
         <p role="alert" className="flex items-center gap-2 text-sm text-red-700 dark:text-red-300">
           <ShieldAlert size={16} />
-          {company.connectionsGenericError}
+          {errorMessage || company.connectionsGenericError}
         </p>
       )}
 
@@ -507,6 +531,7 @@ export function VoiceModuleView() {
 
       {/* UNIFIED 5-STEP VOICE ONBOARDING WIZARD */}
       <VoiceOnboardingWizard
+        key={tenantId}
         tenantId={tenantId}
         canManage={canManageVoice}
         businessName={identity?.company?.name || "Entreprise"}

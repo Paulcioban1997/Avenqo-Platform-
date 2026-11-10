@@ -107,8 +107,23 @@ class VoiceOnboardingService:
         if {s.id for s in services} != ids:
             raise ValueError("Select active CRM services owned by this company")
         known = {f"{m}:{a}" for m in catalog_modules() for a in actions_for_module(m)}
+        action_aliases = {
+            "retail.products.query": "retail:read_products",
+            "retail.inventory.query": "retail:read_inventory",
+            "crm.appointments.view": "crm:read_availability",
+            "crm.appointments.create": "crm:create_appointment",
+            "read_client_self": "crm:read_client_self",
+            "business.info.query": "crm:read_client_self",
+            "read_sales_summary": "retail:read_sales_summary",
+            "read_cashflow": "accounting:read_cashflow",
+            "read_business_health": "cross_agent:read_business_health",
+        }
+        request.allowed_actions = list(dict.fromkeys(
+            action_aliases.get(action, action.replace(".", ":")) for action in request.allowed_actions
+        ))
         if not set(request.allowed_actions) <= known:
-            raise ValueError("Unknown Voice capability")
+            invalid = set(request.allowed_actions) - known
+            raise ValueError(f"Unknown Voice capability: {', '.join(sorted(invalid))}")
         config = self.db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == tenant.company_id))
         if config is None:
             from backend.app.voice.service import new_voice_api_key, _api_key_hash, VoiceOrchestrator

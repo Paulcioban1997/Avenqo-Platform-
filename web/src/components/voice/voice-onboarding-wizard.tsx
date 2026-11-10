@@ -63,6 +63,8 @@ interface CustomizationConfig {
   voice_id: string;
   speech_speed: number;
   personality_tone: string;
+  voice_display_name?: string;
+  voice_pronunciation?: string;
   greeting_message?: string;
   farewell_message?: string;
   custom_pronunciation?: Record<string, string>;
@@ -93,19 +95,19 @@ export function VoiceOnboardingWizard({
 
   // Step 1: Business Profile State
   const [profile, setProfile] = useState<BusinessProfile>({
-    business_name: businessName,
-    industry: "Commerce & Équipement sportif",
-    description: "Vente d'équipements de sport, snowboards, fixations et entretien technique.",
-    activities: ["Vente au détail", "Conseil équipement", "Entretien et réparation"],
-    locations: ["Montréal"],
+    business_name: businessName || "",
+    industry: "",
+    description: "",
+    activities: [],
+    locations: [],
     timezone: "America/Montreal",
     opening_hours: {},
     primary_locale: "fr-CA",
     secondary_locales: ["en-US"],
-    contact_phone: "+1 438-607-5438",
+    contact_phone: null,
     website: "",
     bookable_service_ids: [],
-    allowed_actions: ["crm.appointments.view", "crm.appointments.create", "retail.products.query"],
+    allowed_actions: ["retail:read_products", "crm:read_availability", "crm:create_appointment", "crm:read_client_self"],
     communication_style: "professionnel",
   });
 
@@ -118,10 +120,13 @@ export function VoiceOnboardingWizard({
     voice_id: "shimmer",
     speech_speed: 1.0,
     personality_tone: "professionnel",
-    greeting_message: "Bonjour et bienvenue chez Produits Ero ! Comment puis-je vous aider aujourd'hui ?",
-    farewell_message: "Merci pour votre appel et à très bientôt chez Produits Ero.",
+    voice_display_name: "",
+    voice_pronunciation: "",
+    greeting_message: "",
+    farewell_message: "",
   });
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState<boolean>(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Step 3: 4 Business Capabilities State (Zero Technical Clutter)
@@ -131,7 +136,7 @@ export function VoiceOnboardingWizard({
   const [internalInsightsEnabled, setInternalInsightsEnabled] = useState<boolean>(false);
 
   // Step 4: Telephony & Employees (Canonical Architecture)
-  const [assignedNumber, setAssignedNumber] = useState<string>("+1 438-607-5438");
+  const [assignedNumber, setAssignedNumber] = useState<string>("");
   const [employeePin, setEmployeePin] = useState<string>("");
   const [employeePinSaving, setEmployeePinSaving] = useState<boolean>(false);
   const [employeePinFeedback, setEmployeePinFeedback] = useState<string | null>(null);
@@ -139,7 +144,7 @@ export function VoiceOnboardingWizard({
   // Advanced Section toggle (Shared Dispatcher & DTMF fallback)
   const [showAdvancedAccordion, setShowAdvancedAccordion] = useState<boolean>(false);
   const [routingNip, setRoutingNip] = useState<string | null>(null);
-  const [dispatcherNumber, setDispatcherNumber] = useState<string>("+1 438-607-5438");
+  const [dispatcherNumber, setDispatcherNumber] = useState<string>("");
 
   // Load initial configuration from server APIs
   const loadConfiguration = useCallback(async () => {
@@ -180,10 +185,12 @@ export function VoiceOnboardingWizard({
           setCustomization((prev) => ({
             ...prev,
             voice_id: data.voice_id || prev.voice_id,
-            speech_speed: data.speech_speed || prev.speech_speed,
+            speech_speed: typeof data.speech_speed === "number" ? data.speech_speed : prev.speech_speed,
             personality_tone: data.personality_tone || prev.personality_tone,
-            greeting_message: data.greeting_message || prev.greeting_message,
-            farewell_message: data.farewell_message || prev.farewell_message,
+            voice_display_name: data.voice_display_name || data.voice_pronunciation || prev.voice_display_name,
+            voice_pronunciation: data.voice_pronunciation || data.voice_display_name || prev.voice_pronunciation,
+            greeting_message: data.greeting_message ?? prev.greeting_message,
+            farewell_message: data.farewell_message ?? prev.farewell_message,
           }));
         }
       }
@@ -212,41 +219,67 @@ export function VoiceOnboardingWizard({
     void loadConfiguration();
   }, [loadConfiguration]);
 
-  // Audio preview playback
-  const togglePlayVoice = (voiceId: string) => {
-    if (playingVoice === voiceId) {
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
+  // Audio preview playback with real TTS endpoint
+  const playPreviewAudio = async (text: string, voiceId?: string) => {
+    const targetVoice = voiceId || customization.voice_id || "shimmer";
+    if (playingVoice === targetVoice) {
+      if (audioRef.current) audioRef.current.pause();
       setPlayingVoice(null);
       return;
     }
 
-    const voice = voices.find((v) => v.id === voiceId);
-    if (!voice?.sample_url) {
-      // Browser SpeechSynthesis fallback preview
-      if ("speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(
-          customization.greeting_message || (fr ? "Bonjour, comment puis-je vous aider ?" : "Hello, how can I help you?")
-        );
-        utterance.lang = profile.primary_locale || "fr-CA";
-        utterance.rate = customization.speech_speed;
-        utterance.onend = () => setPlayingVoice(null);
-        window.speechSynthesis.speak(utterance);
-        setPlayingVoice(voiceId);
+    if (audioRef.current) audioRef.current.pause();
+    setPreviewLoading(true);
+    setPlayingVoice(targetVoice);
+
+    try {
+      const res = await apiFetch("/api/v1/voice/voices/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          voice_id: targetVoice,
+          speech_speed: customization.speech_speed || 1.0,
+          text: text,
+        }),
+      });
+
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audioRef.current = audio;
+        audio.onended = () => {
+          setPlayingVoice(null);
+          URL.revokeObjectURL(url);
+        };
+        audio.onerror = () => {
+          setPlayingVoice(null);
+          URL.revokeObjectURL(url);
+        };
+        await audio.play();
+        return;
       }
-      return;
+    } catch {
+      // Fallback to speech synthesis if network fails
+    } finally {
+      setPreviewLoading(false);
     }
 
-    if (audioRef.current) {
-      audioRef.current.pause();
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = profile.primary_locale || "fr-CA";
+      utterance.rate = customization.speech_speed;
+      utterance.onend = () => setPlayingVoice(null);
+      window.speechSynthesis.speak(utterance);
+    } else {
+      setPlayingVoice(null);
     }
-    const audio = new Audio(voice.sample_url);
-    audioRef.current = audio;
-    audio.onended = () => setPlayingVoice(null);
-    audio.play().catch(() => setPlayingVoice(null));
-    setPlayingVoice(voiceId);
+  };
+
+  const togglePlayVoice = (voiceId: string) => {
+    const defaultGreeting = customization.greeting_message || (fr ? `Bonjour et bienvenue chez ${customization.voice_display_name || profile.business_name || "notre entreprise"}. Comment puis-je vous aider aujourd'hui ?` : "Hello and welcome! How can I help you today?");
+    void playPreviewAudio(defaultGreeting, voiceId);
   };
 
   // Save Step 1 & 3: Business Profile
@@ -256,16 +289,16 @@ export function VoiceOnboardingWizard({
     try {
       const allowedActions: string[] = [];
       if (retailEnabled) {
-        allowedActions.push("retail.products.query");
+        allowedActions.push("retail:read_products", "retail:read_inventory");
       }
       if (crmEnabled) {
-        allowedActions.push("crm.appointments.view", "crm.appointments.create");
+        allowedActions.push("crm:read_availability", "crm:create_appointment");
       }
       if (customerServiceEnabled) {
-        allowedActions.push("read_client_self", "business.info.query");
+        allowedActions.push("crm:read_client_self");
       }
       if (internalInsightsEnabled) {
-        allowedActions.push("read_sales_summary", "read_cashflow", "read_business_health");
+        allowedActions.push("retail:read_sales_summary", "accounting:read_cashflow", "cross_agent:read_business_health");
       }
 
       // Clean and validate real business hours
@@ -283,6 +316,7 @@ export function VoiceOnboardingWizard({
 
       const payload = {
         ...profile,
+        contact_phone: profile.contact_phone?.trim() || null,
         opening_hours: cleanOpeningHours,
         allowed_actions: allowedActions,
       };
@@ -325,8 +359,10 @@ export function VoiceOnboardingWizard({
         voice_provider: "openai",
         speech_speed: customization.speech_speed,
         personality_tone: customization.personality_tone,
-        greeting_message: customization.greeting_message,
-        farewell_message: customization.farewell_message,
+        voice_display_name: customization.voice_display_name?.trim() || undefined,
+        voice_pronunciation: customization.voice_pronunciation?.trim() || customization.voice_display_name?.trim() || undefined,
+        greeting_message: customization.greeting_message?.trim() || undefined,
+        farewell_message: customization.farewell_message?.trim() || undefined,
         custom_pronunciation: customization.custom_pronunciation || {},
       };
 
@@ -527,7 +563,7 @@ export function VoiceOnboardingWizard({
                     value={profile.business_name}
                     onChange={(e) => setProfile((p) => ({ ...p, business_name: e.target.value }))}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-900 dark:text-white focus:outline-hidden focus:border-[#0076FF]"
-                    placeholder="Ex: Produits Ero"
+                    placeholder={fr ? "Ex: Nom commercial de l'entreprise" : "Ex: Acme Corp"}
                   />
                 </div>
 
@@ -540,7 +576,7 @@ export function VoiceOnboardingWizard({
                     value={profile.industry}
                     onChange={(e) => setProfile((p) => ({ ...p, industry: e.target.value }))}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-900 dark:text-white focus:outline-hidden focus:border-[#0076FF]"
-                    placeholder="Ex: Commerce d'équipement sportif"
+                    placeholder={fr ? "Ex: Commerce de détail, services professionnels" : "Ex: Retail store, professional services"}
                   />
                 </div>
 
@@ -553,7 +589,7 @@ export function VoiceOnboardingWizard({
                     value={profile.description}
                     onChange={(e) => setProfile((p) => ({ ...p, description: e.target.value }))}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-hidden focus:border-[#0076FF]"
-                    placeholder="Décrivez les produits et services proposés aux appelants..."
+                    placeholder={fr ? "Décrivez les produits et services proposés aux appelants..." : "Describe products and services offered to callers..."}
                   />
                 </div>
 
@@ -873,6 +909,57 @@ export function VoiceOnboardingWizard({
                 </div>
               </div>
 
+              {/* SPOKEN BUSINESS NAME & PRONUNCIATION */}
+              <div className="p-4 rounded-2xl border border-blue-200/80 dark:border-blue-900/60 bg-blue-50/40 dark:bg-blue-950/20 space-y-3">
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                      {fr
+                        ? "Comment votre entreprise doit-elle être prononcée par l'agent vocal ?"
+                        : "How should your business name be pronounced by the voice agent?"}
+                    </label>
+                    <span className="text-[10px] font-semibold text-slate-400">
+                      {fr ? "Personnalisation audio" : "Audio tuning"}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    {fr
+                      ? "Évite que l'agent ne prononce des tirets ou identifiants techniques (ex: « Produits Éro » au lieu de « Produits_Ero »)."
+                      : "Ensures the agent uses a natural spoken identity instead of technical database slugs."}
+                  </p>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <input
+                    type="text"
+                    value={customization.voice_display_name || ""}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setCustomization((c) => ({ ...c, voice_display_name: val, voice_pronunciation: val }));
+                    }}
+                    placeholder={profile.business_name ? profile.business_name.replace(/_/g, " ") : (fr ? "Ex: Produits Éro" : "Ex: Acme Corp")}
+                    className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-900 dark:text-white focus:outline-hidden focus:border-[#0076FF]"
+                  />
+                  <button
+                    type="button"
+                    disabled={previewLoading}
+                    onClick={() => {
+                      const spokenName = customization.voice_display_name?.trim() || profile.business_name?.replace(/_/g, " ") || (fr ? "votre entreprise" : "your company");
+                      const phrase = fr ? `Bienvenue chez ${spokenName}. Comment puis-je vous aider aujourd'hui ?` : `Welcome to ${spokenName}. How can I help you today?`;
+                      void playPreviewAudio(phrase);
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-[#0076FF] text-xs font-bold hover:bg-blue-50 dark:hover:bg-blue-950/40 transition flex items-center justify-center gap-1.5 shrink-0"
+                  >
+                    {previewLoading ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Volume2 className="w-3.5 h-3.5" />
+                    )}
+                    <span>{fr ? "Écouter un aperçu" : "Listen to preview"}</span>
+                  </button>
+                </div>
+              </div>
+
               {/* GREETING & FAREWELL MESSAGES */}
               <div className="space-y-4 pt-2">
                 <div>
@@ -884,7 +971,7 @@ export function VoiceOnboardingWizard({
                     value={customization.greeting_message}
                     onChange={(e) => setCustomization((c) => ({ ...c, greeting_message: e.target.value }))}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-hidden focus:border-[#0076FF]"
-                    placeholder="Ex: Bonjour et bienvenue chez Produits Ero ! En quoi puis-je vous renseigner ?"
+                    placeholder={fr ? `Ex: Bonjour et bienvenue chez ${customization.voice_display_name || profile.business_name || "notre entreprise"} ! En quoi puis-je vous renseigner ?` : "Ex: Hello and welcome! How can I help you today?"}
                   />
                 </div>
 
@@ -1209,13 +1296,13 @@ export function VoiceOnboardingWizard({
                         {fr ? "Ligne Dédiée Entreprise" : "Dedicated Business Line"}
                       </span>
                       <h4 className="text-lg font-mono font-black text-slate-900 dark:text-white">
-                        {assignedNumber}
+                        {assignedNumber || (fr ? "Numéro en attente d'assignation" : "Pending phone number assignment")}
                       </h4>
                     </div>
                   </div>
 
-                  <span className="self-start sm:self-auto px-3 py-1 rounded-full text-xs font-bold bg-blue-100 dark:bg-blue-950 text-[#0076FF] border border-blue-200 dark:border-blue-900">
-                    {fr ? "Numéro vérifié" : "Verified Line"}
+                  <span className={`self-start sm:self-auto px-3 py-1 rounded-full text-xs font-bold ${assignedNumber ? "bg-blue-100 dark:bg-blue-950 text-[#0076FF] border border-blue-200 dark:border-blue-900" : "bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700"}`}>
+                    {assignedNumber ? (fr ? "Numéro vérifié" : "Verified Line") : (fr ? "En attente" : "Pending")}
                   </span>
                 </div>
 
@@ -1232,8 +1319,8 @@ export function VoiceOnboardingWizard({
                     </div>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
                       {fr
-                        ? "Accueil direct sans AUCUN NIP. Le client pose ses questions sur les snowboards, les prix ou réserve un entretien."
-                        : "Direct access with ZERO PIN. Caller asks about equipment, prices or books appointments immediately."}
+                        ? "Accueil direct sans AUCUN NIP. Le client pose ses questions sur vos produits, vos tarifs ou réserve un créneau."
+                        : "Direct access with ZERO PIN. Caller inquires about products, prices or books appointments immediately."}
                     </p>
                   </div>
 
