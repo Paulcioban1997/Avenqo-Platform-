@@ -57,6 +57,7 @@ interface BusinessProfile {
   bookable_service_ids: string[];
   allowed_actions: string[];
   communication_style: string;
+  expected_version?: number;
 }
 
 interface CustomizationConfig {
@@ -109,6 +110,7 @@ export function VoiceOnboardingWizard({
     bookable_service_ids: [],
     allowed_actions: ["retail:read_products", "crm:read_availability", "crm:create_appointment", "crm:read_client_self"],
     communication_style: "professionnel",
+    expected_version: 0,
   });
 
   // Step 1: Real Business Hours Schedule State (Not pre-selected!)
@@ -164,6 +166,7 @@ export function VoiceOnboardingWizard({
           setProfile((prev) => ({
             ...prev,
             ...data.profile,
+            expected_version: typeof data.profile.expected_version === "number" ? data.profile.expected_version : prev.expected_version ?? 0,
             business_name: data.profile.business_name || businessName,
           }));
           if (data.profile.opening_hours && typeof data.profile.opening_hours === "object") {
@@ -333,16 +336,32 @@ export function VoiceOnboardingWizard({
 
       const payload = {
         ...profile,
+        expected_version: profile.expected_version ?? 0,
         contact_phone: profile.contact_phone?.trim() || null,
         opening_hours: isCrmSchedule ? profile.opening_hours : cleanOpeningHours,
         allowed_actions: allowedActions,
       };
 
-      const res = await apiFetch("/api/v1/voice/business-profile", {
+      let res = await apiFetch("/api/v1/voice/business-profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+
+      if (res.status === 409) {
+        // Transparent optimistic concurrency recovery: fetch fresh server version and retry once
+        const freshRes = await apiFetch("/api/v1/voice/business-profile").catch(() => null);
+        if (freshRes && freshRes.ok) {
+          const freshData = await freshRes.json();
+          const freshVersion = freshData?.profile?.expected_version ?? 0;
+          const retryPayload = { ...payload, expected_version: freshVersion };
+          res = await apiFetch("/api/v1/voice/business-profile", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(retryPayload),
+          });
+        }
+      }
 
       if (!res.ok) {
         const err = await res.json().catch(() => null);
@@ -422,16 +441,16 @@ export function VoiceOnboardingWizard({
 
   // Configure Personal Employee PIN (Step 4)
   const savePersonalPin = async () => {
-    if (!employeePin || employeePin.length < 4 || employeePin.length > 8) {
+    if (!employeePin || employeePin.length < 6 || employeePin.length > 12) {
       setEmployeePinFeedback(
-        fr ? "Le code NIP doit comporter de 4 à 8 chiffres." : "PIN must be between 4 and 8 digits."
+        fr ? "Le code NIP doit comporter de 6 à 12 chiffres (ex: 839201)." : "PIN must be between 6 and 12 digits."
       );
       return;
     }
     setEmployeePinSaving(true);
     setEmployeePinFeedback(null);
     try {
-      const res = await apiFetch("/api/v1/voice/auth/pin", {
+      let res = await apiFetch("/api/v1/voice/auth/pin", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -439,6 +458,16 @@ export function VoiceOnboardingWizard({
           confirm_pin: employeePin,
         }),
       });
+      if (!res.ok) {
+        res = await apiFetch("/api/v1/voice/auth/pin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pin: employeePin,
+            confirm_pin: employeePin,
+          }),
+        });
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => null);
         throw new Error(err?.detail || (fr ? "Impossible d'enregistrer le NIP." : "Could not save employee PIN."));
@@ -1392,15 +1421,15 @@ export function VoiceOnboardingWizard({
                   <input
                     type="password"
                     pattern="[0-9]*"
-                    maxLength={8}
-                    placeholder="NIP (4 à 8 chiffres)"
+                    maxLength={12}
+                    placeholder="NIP (6 à 12 chiffres, ex: 839201)"
                     value={employeePin}
                     onChange={(e) => setEmployeePin(e.target.value.replace(/\D/g, ""))}
                     className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden focus:border-[#0076FF]"
                   />
                   <button
                     type="button"
-                    disabled={employeePinSaving || employeePin.length < 4}
+                    disabled={employeePinSaving || employeePin.length < 6}
                     onClick={savePersonalPin}
                     className="px-4 py-2.5 rounded-xl bg-[#0076FF] hover:bg-blue-600 text-white text-xs font-bold shadow-xs transition disabled:opacity-50"
                   >

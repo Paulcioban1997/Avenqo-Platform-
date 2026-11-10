@@ -151,3 +151,45 @@ def test_inbound_ivr_touche_1_prompts_employee_pin(signed_telnyx_webhook):
 
     call = env.session.scalar(select(VoiceCall))
     assert (call.source_context or {}).get("ivr_stage") == "employee_pin"
+
+    # Configure an employee PIN in DB
+    from backend.app.voice.auth import VoiceCallerAuth
+    from backend.app.models.user import User
+    from backend.app.models.base import UserRole
+    from backend.app.models.company_membership import CompanyMembership
+    from shared.ai_engine.contracts import TenantContext
+    employee = User(
+        company_id=env.company.id,
+        first_name="Jean",
+        last_name="Employe",
+        email="jean@produits-ero.ca",
+        password_hash="mock-hash",
+        phone="+15149998877",
+        role=UserRole.USER,
+        is_active=True,
+    )
+    env.session.add(employee)
+    env.session.flush()
+    env.session.add(CompanyMembership(company_id=env.company.id, user_id=employee.id, role=UserRole.USER, is_active=True))
+    auth = VoiceCallerAuth(env.session, env.settings)
+    auth.set_pin(TenantContext(company_id=env.company.id, user_id=employee.id), "USER", employee.id, "907182", phone_number="+15149998877")
+    env.session.commit()
+
+    # Enter PIN with trailing # from a different caller phone
+    pin_gather_cmds = [x for x in env.service.telnyx.commands if x[0] == "gather_using_speak"]
+    assert len(pin_gather_cmds) == 2
+    pin_client_state = pin_gather_cmds[1][4]
+
+    pin_event = env.event("call.gather.ended")
+    pin_event["data"]["payload"]["digits"] = "907182#"
+    pin_event["data"]["payload"]["client_state"] = pin_client_state
+    pin_res = env.send(pin_event)
+    assert pin_res.status_code == 200
+    assert pin_res.json()["authenticated"] is True
+    assert pin_res.json()["caller_mode"] == "STAFF"
+
+    env.session.expire(call)
+    call = env.session.get(VoiceCall, call.id)
+    assert call.caller_type == "EMPLOYEE"
+    assert (call.source_context or {}).get("ivr_stage") == "staff_authenticated"
+

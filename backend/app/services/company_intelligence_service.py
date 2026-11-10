@@ -144,7 +144,7 @@ class CompanyIntelligenceService:
                         "id": str(r.id),
                         "name": str(pname).strip(),
                         "category": pdata.get("product_category") or pdata.get("category") or "",
-                        "price": float(price) if isinstance(price, (int, float)) else None,
+                        "price": str(price) if isinstance(price, str) else (float(price) if isinstance(price, (int, float)) else None),
                         "currency": company.currency_code,
                         "in_stock": bool(in_stock),
                         "inventory_count": inventory_count,

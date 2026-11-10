@@ -57,7 +57,7 @@ def public_voice_tool_allowed(
     tool_name: str,
     *,
     has_crm_booking: bool = True,
-    has_retail_commerce: bool = True,
+    has_retail_commerce: bool = False,
 ) -> bool:
     if tool_name in PUBLIC_VOICE_BASE_TOOLS:
         return True

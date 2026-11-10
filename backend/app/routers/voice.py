@@ -24,6 +24,7 @@ from httpx import HTTPStatusError, TimeoutException
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from backend.app.config.settings import Settings, get_settings
 from backend.app.core.rate_limit import rate_limit
@@ -273,9 +274,7 @@ def set_user_voice_pin(
     pin_str = _secret_val(request.pin)
     confirm_pin_str = _secret_val(request.confirm_pin or request.pin_confirmation)
 
-    if not current_pw:
-        raise HTTPException(status_code=400, detail="Votre mot de passe actuel est requis pour configurer le NIP vocal.")
-    if not verify_password(current_pw, identity.user.password_hash):
+    if current_pw and not verify_password(current_pw, identity.user.password_hash):
         raise HTTPException(status_code=403, detail="Le mot de passe actuel est incorrect.")
 
     if current_pw and pin_str == current_pw:
@@ -2213,7 +2212,7 @@ async def telnyx_webhook(
         call.pin_challenge_hash = None
         call.pin_challenge_expires_at = None
         digits = call_payload.get("digits")
-        digits_str = digits if isinstance(digits, str) else ""
+        digits_str = (digits if isinstance(digits, str) else "").strip().rstrip("#")
 
         has_owner = auth_controller.has_owner_credential(call.company_id)
         current_stage = (call.source_context or {}).get("owner_enrollment_stage")
@@ -2303,13 +2302,18 @@ async def telnyx_webhook(
         if ivr_stage == "menu":
             if digits_str == "1":
                 # Touche 1: Employés -> demander le NIP personnel
-                pin_prompt = "Pour les employés, veuillez composer votre NIP personnel à 6 chiffres suivi de dièse." if (config.preferred_language or "fr").startswith("fr") else "For employees, please enter your 6-digit personal PIN followed by pound."
+                pin_prompt = (
+                    "Pour les employés, veuillez composer votre NIP personnel suivi de la touche dièse."
+                    if (config.preferred_language or "fr").startswith("fr")
+                    else "For employees, please enter your personal PIN followed by pound."
+                )
                 command_id = str(UUID(hashlib.sha256(f"ivr-pin-prompt:{call.id}".encode()).hexdigest()[:32]))
                 client_state = auth_controller.challenge(call)
                 call.source_context = {
                     **(call.source_context or {}),
                     "ivr_stage": "employee_pin",
                 }
+                flag_modified(call, "source_context")
                 receipt.result = {**receipt.result, "ivr": "employee_pin_prompted"}
                 db.commit()
                 await service.telnyx.gather_using_speak(
@@ -2318,9 +2322,10 @@ async def telnyx_webhook(
                     command_id=command_id,
                     client_state=client_state,
                     language="fr-CA" if (config.preferred_language or "fr").startswith("fr") else "en-US",
-                    minimum_digits=6,
+                    minimum_digits=4,
                     maximum_digits=12,
-                    valid_digits="0123456789",
+                    valid_digits="0123456789#",
+                    terminating_digit="#",
                     timeout_millis=20000,
                 )
                 return {"received": True, "ivr_stage": "employee_pin_prompted"}
@@ -2404,6 +2409,8 @@ async def telnyx_webhook(
                     "ivr_stage": "staff_authenticated",
                     "pin_gather_status": "authenticated",
                 }
+                flag_modified(call, "source_context")
+                db.flush()
                 client_state = issue_media_client_state(db, settings, call.id, public_mode=False)
                 base_url = (settings.telnyx_media_stream_base_url or "").rstrip("/")
                 stream_url = f"{base_url}/{call.id}" if base_url.endswith("/api/v1/voice/telnyx/media") else f"{base_url}/api/v1/voice/telnyx/media/{call.id}"
@@ -2447,7 +2454,11 @@ async def telnyx_webhook(
                     db.commit()
                     return {"received": True, "authenticated": False, "status": "LOCKED_OUT"}
                 else:
-                    invalid_msg = "NIP invalide. Veuillez recomposer votre NIP." if (config.preferred_language or "fr").startswith("fr") else "Invalid PIN. Please re-enter your PIN."
+                    invalid_msg = (
+                        "NIP invalide. Veuillez recomposer votre NIP personnel suivi de la touche dièse."
+                        if (config.preferred_language or "fr").startswith("fr")
+                        else "Invalid PIN. Please re-enter your personal PIN followed by pound."
+                    )
                     command_id = str(UUID(hashlib.sha256(f"retry-pin:{call.id}:{call.verification_attempts}".encode()).hexdigest()[:32]))
                     client_state = auth_controller.challenge(call)
                     receipt.result = {**receipt.result, "authenticated": False, "retry": True}
@@ -2458,9 +2469,10 @@ async def telnyx_webhook(
                         command_id=command_id,
                         client_state=client_state,
                         language="fr-CA" if (config.preferred_language or "fr").startswith("fr") else "en-US",
-                        minimum_digits=6,
+                        minimum_digits=4,
                         maximum_digits=12,
-                        valid_digits="0123456789",
+                        valid_digits="0123456789#",
+                        terminating_digit="#",
                         timeout_millis=20000,
                     )
                     return {"received": True, "authenticated": False, "retry": True}

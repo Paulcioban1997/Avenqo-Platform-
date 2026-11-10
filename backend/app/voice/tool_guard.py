@@ -78,13 +78,17 @@ class VoiceToolGuard:
         canonical = VOICE_TOOL_ALIASES.get(tool_name, tool_name)
         if public_caller:
             has_crm_booking = True
+            has_retail_commerce = False
             try:
-                has_crm_booking = CompanyIntelligenceService(self._session).get_profile(tenant.company_id).has_crm_booking
+                prof = CompanyIntelligenceService(self._session).get_profile(tenant.company_id)
+                has_crm_booking = prof.has_crm_booking
+                has_retail_commerce = prof.has_retail_commerce
             except Exception:
                 has_crm_booking = False
+                has_retail_commerce = False
             if not (
-                public_voice_tool_allowed(tool_name, has_crm_booking=has_crm_booking)
-                or public_voice_tool_allowed(canonical, has_crm_booking=has_crm_booking)
+                public_voice_tool_allowed(tool_name, has_crm_booking=has_crm_booking, has_retail_commerce=has_retail_commerce)
+                or public_voice_tool_allowed(canonical, has_crm_booking=has_crm_booking, has_retail_commerce=has_retail_commerce)
             ):
                 raise VoiceToolDenied("Caller authentication is required for this tool.")
         mapping = action_for_tool(tool_name)

@@ -282,7 +282,7 @@ class VoiceCallerAuth:
             return session if principal is not None and call.verified_client_id == principal.id and normalized_phone(principal.phone) == normalized_phone(call.caller_phone) else None
         principal = self.db.scalar(select(User).where(User.id == session.principal_id, User.company_id == call.company_id, User.is_active.is_(True)))
         membership = self.db.scalar(select(CompanyMembership).where(CompanyMembership.user_id == session.principal_id, CompanyMembership.company_id == call.company_id, CompanyMembership.is_active.is_(True)))
-        if principal is None or membership is None or call.authenticated_user_id != principal.id or normalized_phone(principal.phone) != normalized_phone(call.caller_phone):
+        if principal is None or membership is None or call.authenticated_user_id != principal.id:
             return None
         credential = self.db.scalar(select(VoiceCallerCredential).where(
             VoiceCallerCredential.company_id == call.company_id,
@@ -297,6 +297,13 @@ class VoiceCallerAuth:
         maximum = getattr(self.settings, "voice_pin_max_attempts", 5)
         now = datetime.now(timezone.utc)
         if call.ended_at is not None or call.verification_attempts >= maximum:
+            return failed
+
+        pin_clean = str(pin or "").strip().rstrip("#")
+        valid_format = isinstance(pin_clean, str) and bool(re.fullmatch(r"[0-9]{4,12}", pin_clean))
+        if not valid_format:
+            call.verification_attempts += 1
+            self.db.flush()
             return failed
         
         credential = None
@@ -325,49 +332,81 @@ class VoiceCallerAuth:
                     ).with_for_update()
                 )
 
+        if credential is None and not identifier and call.caller_phone:
+            credential = self.db.scalar(select(VoiceCallerCredential).where(
+                VoiceCallerCredential.company_id == call.company_id,
+                VoiceCallerCredential.phone_number == normalized_phone(call.caller_phone),
+                VoiceCallerCredential.enabled.is_(True),
+            ).with_for_update())
+
+        # Fallback: if caller phone did not match a credential, match PIN against active company credentials
         if credential is None and not identifier:
-            credential = self.db.scalar(select(VoiceCallerCredential).where(VoiceCallerCredential.company_id == call.company_id,
-                VoiceCallerCredential.phone_number == normalized_phone(call.caller_phone), VoiceCallerCredential.enabled.is_(True)).with_for_update())
-        
+            company_creds = self.db.scalars(
+                select(VoiceCallerCredential).where(
+                    VoiceCallerCredential.company_id == call.company_id,
+                    VoiceCallerCredential.principal_type == "USER",
+                    VoiceCallerCredential.enabled.is_(True),
+                ).with_for_update()
+            ).all()
+            for cand_cred in company_creds:
+                if cand_cred.locked_until is not None and utc(cand_cred.locked_until) > now:
+                    continue
+                cand_candidate = self._peppered(call.company_id, cand_cred.principal_id, pin_clean)
+                try:
+                    if verify_password(cand_candidate, cand_cred.pin_hash):
+                        credential = cand_cred
+                        break
+                except (ValueError, UnknownHashError):
+                    continue
+
         call.verification_attempts += 1
         if credential is None:
-            verify_password(self._peppered(call.company_id, call.id, pin), hash_password(secrets.token_urlsafe(32)))
-            self.db.flush(); return failed
+            verify_password(self._peppered(call.company_id, call.id, pin_clean), hash_password(secrets.token_urlsafe(32)))
+            self.db.flush()
+            return failed
         if credential.locked_until is not None and utc(credential.locked_until) > now:
-            self.db.flush(); return failed
+            self.db.flush()
+            return failed
         if credential.locked_until is not None:
-            credential.failed_attempts = 0; credential.locked_until = None
-        valid_format = isinstance(pin, str) and re.fullmatch(r"[0-9]{6,12}", pin)
-        candidate = self._peppered(call.company_id, credential.principal_id, pin if isinstance(pin, str) else "")
+            credential.failed_attempts = 0
+            credential.locked_until = None
+        candidate = self._peppered(call.company_id, credential.principal_id, pin_clean)
         try:
-            matches = bool(valid_format) and verify_password(candidate, credential.pin_hash)
+            matches = verify_password(candidate, credential.pin_hash)
         except (ValueError, UnknownHashError):
             matches = False
         if not matches:
             credential.failed_attempts += 1
             if credential.failed_attempts >= maximum:
                 credential.locked_until = now + timedelta(seconds=getattr(self.settings, "voice_pin_lockout_seconds", 900))
-            self.db.flush(); return failed
+            self.db.flush()
+            return failed
         principal_model = User if credential.principal_type == "USER" else CRMClient
         principal = self.db.get(principal_model, credential.principal_id)
         if principal is None or principal.company_id != call.company_id:
-            self.db.flush(); return failed
-        if not identifier and normalized_phone(principal.phone) != credential.phone_number:
-            self.db.flush(); return failed
+            self.db.flush()
+            return failed
         if credential.principal_type == "USER" and isinstance(principal, User):
             membership = self.db.scalar(select(CompanyMembership).where(CompanyMembership.user_id == principal.id, CompanyMembership.company_id == call.company_id, CompanyMembership.is_active.is_(True)))
             if not principal.is_active or membership is None:
-                self.db.flush(); return failed
+                self.db.flush()
+                return failed
             call.caller_type = "OWNER" if membership.role == UserRole.OWNER else "EMPLOYEE"
-            call.authenticated_user_id = principal.id; call.verified_client_id = None
+            call.authenticated_user_id = principal.id
+            call.verified_client_id = None
         elif isinstance(principal, CRMClient):
             if principal.is_deleted:
-                self.db.flush(); return failed
-            call.caller_type = "CLIENT"; call.verified_client_id = principal.id; call.authenticated_user_id = None
+                self.db.flush()
+                return failed
+            call.caller_type = "CLIENT"
+            call.verified_client_id = principal.id
+            call.authenticated_user_id = None
         else:
-            self.db.flush(); return failed
+            self.db.flush()
+            return failed
         call.caller_verified_at = now
-        credential.failed_attempts = 0; credential.locked_until = None
+        credential.failed_attempts = 0
+        credential.locked_until = None
         self.establish(call)
         self.db.flush()
         return {"success": True, "authenticated": True}
