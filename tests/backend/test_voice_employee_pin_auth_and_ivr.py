@@ -51,7 +51,7 @@ def test_voice_auth_set_pin_and_verify_gather_e2e(tmp_path):
     user_a.phone = phone
     session.commit()
 
-    settings = Settings(auth_jwt_secret="test-secret-key-32-chars-minimum--")
+    settings = Settings(AUTH_JWT_SECRET="test-secret-key-32-chars-minimum--")
     tenant = TenantContext(company_id=company_a.id, user_id=user_a.id)
     auth = VoiceCallerAuth(session, settings)
 
