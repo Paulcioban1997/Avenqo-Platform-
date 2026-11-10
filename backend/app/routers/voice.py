@@ -274,7 +274,13 @@ def set_user_voice_pin(
     pin_str = _secret_val(request.pin)
     confirm_pin_str = _secret_val(request.confirm_pin or request.pin_confirmation)
 
-    if current_pw and not verify_password(current_pw, identity.user.password_hash):
+    if not current_pw:
+        raise HTTPException(
+            status_code=400,
+            detail="Votre mot de passe actuel est requis pour configurer le NIP vocal."
+        )
+
+    if not verify_password(current_pw, identity.user.password_hash):
         raise HTTPException(status_code=403, detail="Le mot de passe actuel est incorrect.")
 
     if current_pw and pin_str == current_pw:

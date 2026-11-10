@@ -451,7 +451,7 @@ export function VoiceOnboardingWizard({
     setEmployeePinFeedback(null);
     try {
       let res = await apiFetch("/api/v1/voice/auth/pin", {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           pin: employeePin,
@@ -460,7 +460,7 @@ export function VoiceOnboardingWizard({
       });
       if (!res.ok) {
         res = await apiFetch("/api/v1/voice/auth/pin", {
-          method: "POST",
+          method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             pin: employeePin,

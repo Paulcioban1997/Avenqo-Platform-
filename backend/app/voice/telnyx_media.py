@@ -274,6 +274,8 @@ def clean_voice_text(text: str) -> str:
     cleaned = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", cleaned)
     cleaned = re.sub(r"^\s*\d+[\.\)]\s*", "", cleaned, flags=re.MULTILINE)
     cleaned = re.sub(r"^\s*[\-\*•]\s*", "", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"\bProduits?[_\s-]Ero\b", "Produits Éro", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\bProduits?[_\s-]Zero\b", "Produits Éro", cleaned, flags=re.IGNORECASE)
     lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
     cleaned = " ".join(lines)
     return re.sub(r"\s+", " ", cleaned).strip()
@@ -435,14 +437,49 @@ class PublicInboundConversation:
             call.source_context = {**(call.source_context or {}), "public_appointment_request": True}
             self.db.commit()
             return {"status": "success", "answer": answer, "public": True}
-        if re.search(r"heures|horaires|hours|ouvert|opening", normalized):
-            hours = {day: {key: value[key] for key in ("open", "close") if key in value}
-                for day, value in config.opening_hours.items() if day in {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"} and isinstance(value, dict)}
-            if hours:
-                summary = ", ".join(f"{day}: {hours[day].get('open', '')} - {hours[day].get('close', '')}" for day in hours)
-                answer = ("Nos heures d'ouverture: " if french else "Our opening hours: ") + summary
+        if re.search(r"heures|horaires|hours|ouvert|opening|schedule", normalized):
+            raw_hours = getattr(company, "business_hours", None) or getattr(config, "opening_hours", None) or {}
+            hours_dict = {}
+            if isinstance(raw_hours, dict) and "weekly" in raw_hours and isinstance(raw_hours["weekly"], dict):
+                for day, ranges in raw_hours["weekly"].items():
+                    if isinstance(ranges, list) and ranges:
+                        r_str = ", ".join(f"{r.get('open')} à {r.get('close')}" for r in ranges if isinstance(r, dict) and r.get("open") and r.get("close"))
+                        if r_str:
+                            hours_dict[day.lower()] = r_str
+            elif isinstance(raw_hours, dict):
+                for day, val in raw_hours.items():
+                    if isinstance(val, dict) and val.get("open") and val.get("close"):
+                        hours_dict[day.lower()] = f"{val.get('open')} à {val.get('close')}"
+            day_map_fr = {
+                "monday": "lundi", "tuesday": "mardi", "wednesday": "mercredi",
+                "thursday": "jeudi", "friday": "vendredi", "saturday": "samedi", "sunday": "dimanche"
+            }
+            if hours_dict:
+                if french:
+                    summary = ", ".join(f"{day_map_fr.get(day, day)}: {h}" for day, h in hours_dict.items())
+                    answer = f"Nos heures d'ouverture sont : {summary}."
+                else:
+                    summary = ", ".join(f"{day}: {h}" for day, h in hours_dict.items())
+                    answer = f"Our opening hours are: {summary}."
             else:
-                answer = "Les heures d'ouverture ne sont pas encore renseignées." if french else "Opening hours have not been supplied yet."
+                answer = "Les heures d'ouverture ne sont pas encore configurées." if french else "Opening hours have not been supplied yet."
+            return {"status": "success", "answer": answer, "public": True}
+
+        if re.search(r"shopify|site web|boutique en ligne|commander en ligne|achat en ligne|online store|website", normalized):
+            if profile.has_online_store and profile.online_store_url:
+                answer = (
+                    f"Oui ! Vous pouvez passer commande directement sur notre boutique officielle : {profile.online_store_url}. "
+                    "Pour des raisons de sécurité, nous ne prenons pas de carte bancaire par téléphone."
+                    if french else
+                    f"Yes! You can place orders on our official store: {profile.online_store_url}. "
+                    "For your security, we do not accept credit card details over the phone."
+                )
+            else:
+                answer = (
+                    "Notre boutique en ligne est en cours de configuration. Pour commander, vous pouvez nous joindre en magasin ou par téléphone."
+                    if french else
+                    "Our online store is currently being configured. You can reach us directly to place an order."
+                )
             return {"status": "success", "answer": answer, "public": True}
         if re.search(r"services|prix|price|tarif", normalized):
             services = [{key: value[key] for key in ("name", "duration_minutes", "price", "currency") if key in value} for value in profile.configured_crm_services if isinstance(value, dict)]

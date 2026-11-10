@@ -245,6 +245,7 @@ class TelnyxClient:
         terminating_digit: str | None = None,
         timeout_millis: int = 15000,
         inter_digit_timeout_millis: int = 3000,
+        maximum_tries: int = 1,
         command_id: str | None = None,
         client_state: str | None = None,
     ) -> None:
@@ -257,6 +258,7 @@ class TelnyxClient:
             "language": lang,
             "minimum_digits": minimum_digits,
             "maximum_digits": maximum_digits,
+            "maximum_tries": maximum_tries,
             "valid_digits": valid_digits,
             "timeout_millis": timeout_millis,
             "inter_digit_timeout_millis": inter_digit_timeout_millis,

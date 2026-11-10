@@ -43,6 +43,11 @@ class CompanyIntelligenceProfile:
     website: str | None = None
     voice_display_name: str | None = None
     voice_pronunciation: str | None = None
+    has_online_store: bool = False
+    online_store_url: str | None = None
+    online_store_name: str | None = None
+    online_ordering_available: bool = False
+    phone_ordering_policy: str | None = None
 
     def as_context(self, *, public: bool = False) -> dict:
         data = asdict(self)
@@ -156,12 +161,37 @@ class CompanyIntelligenceService:
         voice_spoken_name = config.effective_voice_name if config else company.name.replace("_", " ")
         voice_pronun = getattr(config, "custom_pronunciation", None) if config else None
 
+        online_store_conn = next(
+            (c for c in connections if c.provider in ("shopify", "woocommerce") and str(c.status).upper() in ("READY", "SYNCING", "ACTIVE")),
+            None
+        )
+        has_store = online_store_conn is not None
+        store_url = None
+        store_name = None
+        if online_store_conn:
+            store_name = online_store_conn.display_name or (company.name.replace("_", " "))
+            sync_cur = online_store_conn.sync_cursor or {}
+            shop_domain = sync_cur.get("shop", {}).get("domain") or online_store_conn.external_account_id
+            if company.website and "http" in company.website:
+                store_url = company.website
+            elif shop_domain:
+                store_url = f"https://{str(shop_domain).removeprefix('https://').removeprefix('http://')}"
+            else:
+                store_url = company.website
+        ordering_policy = (
+            f"Les clients peuvent consulter notre catalogue et passer commande en ligne sur notre boutique officielle : {store_url}. "
+            "Pour des raisons de conformité et de sécurité des paiements, nous ne prenons pas de coordonnées bancaires par téléphone."
+            if has_store and store_url else
+            "La commande en ligne est en cours de configuration. Pour le moment, les clients sont invités à nous contacter directement ou à se rendre en boutique."
+        )
+
         signature = {"business": business, "services": offerings, "modules": active,
                      "name": company.name, "industry": company.industry, "timezone": company.timezone,
                      "hours": company.business_hours, "voice_services": config.services if config else [],
                      "datasets": [(str(d.id), str(d.status)) for d in datasets], "calendar": connected_calendar,
                      "products": products_list, "phone": company.phone, "website": company.website,
-                     "voice_display_name": voice_spoken_name, "voice_pronunciation": voice_pronun}
+                     "voice_display_name": voice_spoken_name, "voice_pronunciation": voice_pronun,
+                     "online_store_url": store_url}
         signature["resources"] = [(str(r.id), r.name, r.working_hours) for r in resources]
         version = hashlib.sha256(json.dumps(signature, sort_keys=True, default=str).encode()).hexdigest()[:24]
         return CompanyIntelligenceProfile(
@@ -183,6 +213,11 @@ class CompanyIntelligenceService:
             website=company.website,
             voice_display_name=voice_spoken_name,
             voice_pronunciation=voice_pronun or voice_spoken_name,
+            has_online_store=has_store,
+            online_store_url=store_url,
+            online_store_name=store_name,
+            online_ordering_available=has_store,
+            phone_ordering_policy=ordering_policy,
         )
 
     def require_service(self, company_id: UUID, *, service_id=None, service_name=None) -> dict:
