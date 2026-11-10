@@ -544,7 +544,7 @@ class TenantAnalyticsService:
         prepared_ids = {item.dataset_id for item in prepared if item is not None}
         candidate_conn_ids: list[UUID] = []
         if active_source is not None:
-            if getattr(active_source, "source_type", None) == "single":
+            if getattr(active_source, "source_type", None) in ("single", "connector"):
                 conn_id = getattr(active_source, "connection_id", None)
                 if conn_id is not None:
                     candidate_conn_ids = [conn_id]

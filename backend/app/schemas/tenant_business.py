@@ -73,6 +73,7 @@ class TenantSalesResponse(BaseModel):
     strongest_period: SalesTrendPointResponse | None
     weakest_period: SalesTrendPointResponse | None
     forecast: SalesForecastResponse | None
+    forecast_unavailable_reason: str | None = None
 
 
 class CustomerSummaryResponse(BaseModel):

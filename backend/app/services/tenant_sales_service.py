@@ -255,11 +255,15 @@ class TenantSalesService:
         )["points"]
         observations = [float(point["revenue"]) for point in history[-4:]]
         order_observations = [int(point.get("orders") or 0) for point in history[-4:]]
-        if len(observations) < 2:
+        if len(observations) < 1 or sum(observations) <= 0:
             return None
         weekly_baseline = sum(observations) / len(observations)
         weekly_orders_baseline = sum(order_observations) / len(order_observations) if order_observations else 0.0
-        variance = sum((x - weekly_baseline) ** 2 for x in observations) / (len(observations) - 1) if len(observations) > 1 else 0.0
+        variance = (
+            sum((x - weekly_baseline) ** 2 for x in observations) / (len(observations) - 1)
+            if len(observations) > 1
+            else (weekly_baseline * 0.15) ** 2
+        )
         std_err = (variance / len(observations)) ** 0.5
 
         if period_key in ("last_7_days", "7d", "week"):

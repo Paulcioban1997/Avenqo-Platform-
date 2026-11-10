@@ -26,7 +26,7 @@ from shared.ai_engine.prediction.service import PredictionService
 
 
 _MAX_SYNCHRONOUS_RECOMMENDATION_CUSTOMERS = 25
-_MIN_RECOMMENDATION_ORDERS = 10
+_MIN_RECOMMENDATION_ORDERS = 5
 
 
 class TenantRecommendationsService:

@@ -884,3 +884,87 @@ def test_ready_connector_without_records_or_artifact_stays_unavailable(source_en
     assert listed.status.upper() == "SOURCE_UNAVAILABLE"
     with pytest.raises(RetailSourceNotFound):
         service.select_source(tenant, source_type="connector", source_id=connection.id)
+
+
+def test_connector_initial_orders_generate_forecast_and_recommendations(source_environment, tmp_path):
+    session, company, _, _, shopify_dataset, connection, prepared = source_environment
+    _missing_artifact(session, shopify_dataset, tmp_path)
+    connection.provider = "shopify"
+    connection.status = CommerceConnectionStatus.READY.value
+
+    # Insert products and 5 normalized orders within the same week
+    session.add_all(
+        [
+            NormalizedCommerceRecord(
+                company_id=company.id,
+                connection_id=connection.id,
+                provider="shopify",
+                entity_type="products",
+                source_record_id="prod-1",
+                normalized_data={
+                    "product_id": "prod-1",
+                    "product_name": "Snowboard Pro",
+                    "sku": "SNOW-1",
+                    "unit_price": 100.0,
+                    "inventory_level": 10,
+                    "product_category": "Sports",
+                    "variants": [],
+                },
+            ),
+            NormalizedCommerceRecord(
+                company_id=company.id,
+                connection_id=connection.id,
+                provider="shopify",
+                entity_type="products",
+                source_record_id="prod-2",
+                normalized_data={
+                    "product_id": "prod-2",
+                    "product_name": "Snowboard Wax",
+                    "sku": "WAX-1",
+                    "unit_price": 10.0,
+                    "inventory_level": 50,
+                    "product_category": "Accessories",
+                    "variants": [],
+                },
+            ),
+        ]
+    )
+
+    now = datetime.now(timezone.utc)
+    for index in range(5):
+        session.add(
+            NormalizedCommerceRecord(
+                company_id=company.id,
+                connection_id=connection.id,
+                provider="shopify",
+                entity_type="orders",
+                source_record_id=f"test-ord-{index}",
+                normalized_data={
+                    "order_id": f"test-ord-{index}",
+                    "total_amount": 100.0,
+                    "order_timestamp": (now - timedelta(days=index)).isoformat(),
+                    "customer_id": f"cust-{index}",
+                    "currency": "CAD",
+                    "line_items": [{"product_id": "prod-1", "quantity": 1, "unit_price": 100.0}],
+                },
+            )
+        )
+    session.commit()
+
+    tenant = TenantContext(company.id, uuid4())
+    service = RetailSourceService(session)
+    service.select_source(tenant, source_type="connector", source_id=connection.id)
+
+    analytics = TenantAnalyticsService(session, _MissingArtifactIngestion(prepared))
+    sales = TenantSalesService(session, analytics, None)
+    sales_result = sales.build(tenant)
+    assert sales_result["forecast"] is not None
+    assert sales_result["forecast"]["horizon"] == 4
+    assert sales_result["forecast"]["forecasted_total"] == 1000.0
+
+    products = TenantProductsService(analytics)
+    recommendations = TenantRecommendationsService(analytics, products, None)
+    rec_result = recommendations.build(tenant)
+    assert rec_result["recommendation_state"] == "READY"
+    assert len(rec_result["recommendations"]) >= 1
+
