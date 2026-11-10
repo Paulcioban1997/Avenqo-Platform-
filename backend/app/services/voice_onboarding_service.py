@@ -137,10 +137,10 @@ class VoiceOnboardingService:
             "read_business_health": "cross_agent:read_business_health",
         }
         request.allowed_actions = list(dict.fromkeys(
-            action_aliases.get(action, action.replace(".", ":")) for action in request.allowed_actions
+            action_aliases.get(action) or action.replace(".", ":") for action in request.allowed_actions if action
         ))
         if not set(request.allowed_actions) <= known:
-            invalid = set(request.allowed_actions) - known
+            invalid: set[str] = {str(item) for item in (set(request.allowed_actions) - known) if item is not None}
             raise ValueError(f"Unknown Voice capability: {', '.join(sorted(invalid))}")
         config = self.db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == tenant.company_id))
         if config is None:
