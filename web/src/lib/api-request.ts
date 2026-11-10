@@ -27,7 +27,15 @@ export async function apiFetch(input: string, init: RequestInit = {}): Promise<R
       }
       const payload = await response.json().catch(() => null);
       let message: string | undefined = undefined;
-      if (typeof payload?.error?.message === "string") {
+      if (Array.isArray(payload?.error?.details) && payload.error.details.length > 0) {
+        message = payload.error.details
+          .map((item: any) => {
+            const loc = Array.isArray(item.loc) ? item.loc.filter((p: any) => p !== "body").join(".") : "";
+            return loc ? `${loc}: ${item.msg}` : item.msg;
+          })
+          .filter(Boolean)
+          .join(" | ");
+      } else if (typeof payload?.error?.message === "string") {
         message = payload.error.message;
       } else if (typeof payload?.detail === "string") {
         message = payload.detail;

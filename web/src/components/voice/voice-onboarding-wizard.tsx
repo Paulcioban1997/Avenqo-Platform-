@@ -167,7 +167,18 @@ export function VoiceOnboardingWizard({
             business_name: data.profile.business_name || businessName,
           }));
           if (data.profile.opening_hours && typeof data.profile.opening_hours === "object") {
-            setOpeningHours(data.profile.opening_hours);
+            const rawHours = data.profile.opening_hours;
+            if (rawHours.weekly && typeof rawHours.weekly === "object") {
+              const extracted: Record<string, { open: string; close: string }> = {};
+              for (const [day, periods] of Object.entries(rawHours.weekly)) {
+                if (Array.isArray(periods) && periods.length > 0 && periods[0]?.open && periods[0]?.close) {
+                  extracted[day] = { open: String(periods[0].open), close: String(periods[0].close) };
+                }
+              }
+              setOpeningHours(extracted);
+            } else {
+              setOpeningHours(rawHours);
+            }
           }
           if (Array.isArray(data.profile.allowed_actions)) {
             const acts = data.profile.allowed_actions;
@@ -301,6 +312,12 @@ export function VoiceOnboardingWizard({
         allowedActions.push("retail:read_sales_summary", "accounting:read_cashflow", "cross_agent:read_business_health");
       }
 
+      const isCrmSchedule = Boolean(
+        profile.opening_hours &&
+        typeof profile.opening_hours === "object" &&
+        ("weekly" in profile.opening_hours || "date_overrides" in profile.opening_hours)
+      );
+
       // Clean and validate real business hours
       const cleanOpeningHours: Record<string, { open: string; close: string }> = {};
       const validDays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
@@ -317,7 +334,7 @@ export function VoiceOnboardingWizard({
       const payload = {
         ...profile,
         contact_phone: profile.contact_phone?.trim() || null,
-        opening_hours: cleanOpeningHours,
+        opening_hours: isCrmSchedule ? profile.opening_hours : cleanOpeningHours,
         allowed_actions: allowedActions,
       };
 
@@ -330,6 +347,15 @@ export function VoiceOnboardingWizard({
       if (!res.ok) {
         const err = await res.json().catch(() => null);
         throw new Error(err?.detail || (fr ? "Erreur de sauvegarde de l'entreprise." : "Failed to save business profile."));
+      }
+
+      const updated = await res.json().catch(() => null);
+      if (updated?.profile) {
+        setProfile((prev) => ({
+          ...prev,
+          ...updated.profile,
+          expected_version: updated.profile.expected_version,
+        }));
       }
 
       setSaveFeedback({
@@ -625,6 +651,12 @@ export function VoiceOnboardingWizard({
 
               {/* REAL BUSINESS HOURS SCHEDULE (CUSTOMIZABLE PER BUSINESS) */}
               <div className="pt-4 border-t border-slate-100 dark:border-white/[0.06] space-y-4">
+                {Boolean(profile.opening_hours && ("weekly" in profile.opening_hours || "date_overrides" in profile.opening_hours)) && (
+                  <div className="p-3 rounded-xl bg-blue-50/80 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/40 text-xs text-blue-700 dark:text-blue-300 flex items-center justify-between gap-2">
+                    <span>{fr ? "Les plages horaires de votre entreprise sont synchronisées depuis le CRM. Vous pouvez consulter les créneaux ci-dessous." : "Your opening hours are synced from the CRM module. You can view them below."}</span>
+                    <Link href="/crm" className="underline font-bold shrink-0">{fr ? "Gérer dans le CRM →" : "Manage in CRM →"}</Link>
+                  </div>
+                )}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
                     <div className="flex items-center gap-2">

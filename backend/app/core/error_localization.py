@@ -984,6 +984,8 @@ def http_error_message(
         return ERROR_MESSAGES[locale]["email_verification_required"]
     if "email ou mot de passe incorrect" in detail_text:
         return ERROR_MESSAGES[locale]["invalid_credentials"]
+    if "crm schedule" in detail_text:
+        return "Les horaires de cette entreprise sont configurés dans le module CRM. Modifiez-les dans le CRM." if locale.startswith("fr") else "Edit CRM schedules and dated exceptions in the CRM workspace."
     if isinstance(detail, dict) and detail.get("code") == "mfa_required":
         return "Un code d'authentification est requis." if locale.startswith("fr") else "An authentication code is required."
     if "stripe" in detail_text:
