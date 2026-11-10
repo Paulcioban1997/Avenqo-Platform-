@@ -133,10 +133,28 @@ class VoiceOnboardingService:
         if request.bookable_service_ids and "crm" not in active:
             raise PermissionError("CRM entitlement required for booking")
         ids = set(request.bookable_service_ids)
-        services = self.db.scalars(select(CRMService).where(CRMService.company_id == tenant.company_id,
-            CRMService.id.in_(ids), CRMService.is_active.is_(True))).all() if ids else []
-        if {s.id for s in services} != ids:
-            raise ValueError("Select active CRM services owned by this company")
+        if ids:
+            services = self.db.scalars(select(CRMService).where(
+                CRMService.company_id == tenant.company_id,
+                CRMService.id.in_(ids),
+                CRMService.is_active.is_(True),
+            )).all()
+            if {s.id for s in services} != ids:
+                raise ValueError("Select active CRM services owned by this company")
+        else:
+            is_booking_requested = any(
+                a in request.allowed_actions
+                for a in ("crm:create_appointment", "crm.appointments.create", "crm:read_availability", "crm.appointments.view")
+            )
+            if is_booking_requested and "crm" in active:
+                services = self.db.scalars(select(CRMService).where(
+                    CRMService.company_id == tenant.company_id,
+                    CRMService.is_active.is_(True),
+                    CRMService.is_published.is_(True),
+                    CRMService.is_approved_by_owner.is_(True),
+                )).all()
+            else:
+                services = []
         known = {f"{m}:{a}" for m in catalog_modules() for a in actions_for_module(m)}
         action_aliases = {
             "retail.products.query": "retail:read_products",

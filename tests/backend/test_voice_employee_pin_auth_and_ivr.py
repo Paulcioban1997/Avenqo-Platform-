@@ -129,3 +129,82 @@ def test_ivr_pronunciation_formatting():
         enabled=True,
     )
     assert config.effective_voice_name == "Produit Éro"
+
+
+def test_voice_store_pickup_reservation_and_crm_services(tmp_path):
+    from backend.app.models.crm import CRMService
+    from backend.app.services.company_intelligence_service import CompanyIntelligenceService
+    from backend.app.services.module_entitlement_service import ModuleEntitlementService
+    from backend.app.voice.telnyx_media import PublicInboundConversation
+
+    engine, session, company_a, config_a, user_a, company_b, config_b, user_b = _setup_multi_tenant_db(tmp_path)
+    
+    # Activate CRM for company_a
+    ModuleEntitlementService(session).activate_module(TenantContext(company_a.id), "crm", auto_init_voice=False)
+
+    # Add store pickup service to company_a
+    pickup_svc = CRMService(
+        id=uuid4(),
+        company_id=company_a.id,
+        name="Cueillette en magasin (Réservation de produit)",
+        description="Réservation et cueillette de produit en boutique",
+        duration_minutes=15,
+        price=0.0,
+        currency="CAD",
+        is_active=True,
+        is_published=True,
+        is_approved_by_owner=True,
+    )
+    session.add(pickup_svc)
+    session.commit()
+
+    intel = CompanyIntelligenceService(session)
+    profile = intel.get_profile(company_a.id)
+
+    assert profile.has_crm_booking is True
+    assert len(profile.configured_crm_services) >= 1
+    assert any("Cueillette" in s["name"] for s in profile.configured_crm_services)
+
+    # Test keyword fallback in require_service
+    matched = intel.require_service(company_a.id, service_name="Je veux reserver un snowboard pour cueillette en magasin")
+    assert matched["id"] == str(pickup_svc.id)
+
+    # Add routing NIP for company_a
+    from backend.app.models.voice import CompanyRoutingNip
+    session.add(CompanyRoutingNip(
+        id=uuid4(),
+        company_id=company_a.id,
+        routing_code="58392",
+        routing_code_hash="hash",
+        status="ACTIVE",
+        created_by_user_id=user_a.id,
+    ))
+    session.commit()
+
+    # Test PublicVoiceConversation intent recognition
+    call = VoiceCall(
+        id=uuid4(),
+        company_id=company_a.id,
+        config_id=config_a.id,
+        caller_phone="+15149999999",
+        telnyx_call_control_id="v3:test-control-pickup-123",
+        source_context={"dispatcher_routing": True},
+        status="in_progress",
+        locale="fr-CA",
+    )
+    session.add(call)
+    session.commit()
+
+    pub = PublicInboundConversation(session, Settings(AUTH_JWT_SECRET="test-secret-key-32-chars-minimum--", TELNYX_MEDIA_INBOUND_ENABLED=True, TELNYX_MEDIA_ENABLED=True), call.id)
+
+    # Test product pickup reservation question
+    resp = pub.public_answer("Bonjour, est-ce que je peux réserver une planche pour venir la chercher en magasin ?")
+    assert resp["status"] == "success"
+    assert "ramassage" in resp["answer"].lower() or "cueillette" in resp["answer"].lower()
+    assert (call.source_context or {}).get("public_appointment_request") is True
+
+    # Test general appointment question
+    resp2 = pub.public_answer("Je voudrais prendre un rendez-vous pour demain")
+    assert resp2["status"] == "success"
+    assert (call.source_context or {}).get("public_appointment_request") is True
+

@@ -430,10 +430,25 @@ class PublicInboundConversation:
         if re.search(r"mes rendez.vous|my appointments|mon dossier|my record|annuler|cancel|deplacer|reschedule", normalized):
             answer = "Une vérification de votre identité client est nécessaire pour accéder à vos données personnelles ou modifier un rendez-vous." if french else "Customer identity verification is required to access personal information or change an appointment."
             return {"status": "success", "answer": answer, "customer_verification_required": True, "public": True}
-        if re.search(r"rendez.vous|appointment|booking|reservation|disponibilit|disponible|availability|available", normalized):
+        is_pickup_reservation = bool(re.search(
+            r"reserver|reserve|reservation|cueillette|cueillir|ramassage|ramasser|venir chercher|passer prendre|recuperer|retrait|pick.?up|mettre de cote|bloquer",
+            normalized,
+        ))
+        is_booking_request = bool(re.search(
+            r"rendez.vous|appointment|booking|disponibilit|disponible|availability|available",
+            normalized,
+        )) or is_pickup_reservation
+        if is_booking_request:
             if not profile.has_crm_booking:
-                return {"status": "success", "answer": "Aucune prestation réservable vérifiée n’est configurée pour cette entreprise." if french else "This business has no verified bookable service configured.", "public": True}
-            answer = "Pour demander un rendez-vous, indiquez le service et la date souhaités. Aucune réservation n'est encore confirmée." if french else "For an appointment request, please provide the service and desired date. No booking is confirmed yet."
+                return {"status": "success", "answer": "Aucune prestation réservable ou cueillette en magasin n’est actuellement configurée pour cette entreprise." if french else "No bookable service or store pickup is currently configured for this business.", "public": True}
+            if is_pickup_reservation:
+                answer = (
+                    "Absolument ! Vous pouvez réserver votre équipement pour un ramassage ou une cueillette en magasin. Quel produit ou planche souhaitez-vous réserver et quel jour souhaitez-vous passer en boutique ?"
+                    if french
+                    else "Absolutely! You can reserve your equipment for in-store pickup. Which product would you like to reserve, and what date would you like to pick it up?"
+                )
+            else:
+                answer = "Pour demander un rendez-vous ou une cueillette en magasin, indiquez le service ou produit et la date souhaités. Aucune réservation n'est encore confirmée." if french else "For an appointment or store pickup request, please provide the service or product and desired date. No booking is confirmed yet."
             call.source_context = {**(call.source_context or {}), "public_appointment_request": True}
             self.db.commit()
             return {"status": "success", "answer": answer, "public": True}
@@ -500,7 +515,7 @@ class PublicInboundConversation:
             return {"status": "success", "answer": answer, "public": True}
         if re.search(r"^\s*(bonjour|salut|allo|bon matin|bonsoir|oui bonjour|hello|hi|hey)\b", normalized):
             return {"status": "success", "answer": "Bonjour ! Comment puis-je vous aider aujourd'hui ?" if french else "Hello! How can I help you today?", "public": True}
-        answer = "Je peux vous renseigner sur nos heures d'ouverture, nos services ou pour une demande de rendez-vous. Comment puis-je vous aider ?" if french else "I can help with our opening hours, services, or an appointment request. How can I help you?"
+        answer = "Je peux vous renseigner sur nos heures d'ouverture, nos produits, ou pour une réservation et cueillette en magasin. Comment puis-je vous aider ?" if french else "I can help with our opening hours, products, or a booking and store pickup. How can I help you?"
         return {"status": "success", "answer": answer, "public": True}
 
     async def begin_pin(self, item_id: str) -> dict:

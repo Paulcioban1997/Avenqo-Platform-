@@ -95,7 +95,7 @@ class CompanyIntelligenceService:
             services = [s for s in services if str(s.id) in ids or s.name.strip().casefold() in names]
             if not services:
                 status = "voice_crm_catalog_mismatch"
-        if business:
+        if business and business.get("bookable_service_ids"):
             selected = set(business.get("bookable_service_ids", []))
             services = [s for s in services if str(s.id) in selected]
             if not services:
@@ -230,6 +230,16 @@ class CompanyIntelligenceService:
         if not matches and service_name and service_id is None:
             norm_name = str(service_name).strip().casefold()
             matches = [s for s in profile.configured_crm_services if norm_name in s["name"].strip().casefold() or s["name"].strip().casefold() in norm_name]
+            if not matches:
+                # Fallback: check for store pickup / product reservation keywords
+                pickup_kw = ("cueillette", "ramassage", "retrait", "reserve", "reserver", "reservation", "produit", "magasin", "boutique", "pickup", "pick up", "snowboard")
+                if any(k in norm_name for k in pickup_kw):
+                    pickup_matches = [
+                        s for s in profile.configured_crm_services
+                        if any(k in s["name"].lower() for k in ("cueillette", "ramassage", "retrait", "magasin", "reservation", "boutique"))
+                    ]
+                    if len(pickup_matches) == 1:
+                        matches = pickup_matches
         if service_id is None and not service_name and len(profile.configured_crm_services) == 1:
             matches = list(profile.configured_crm_services)
         if len(matches) != 1:
