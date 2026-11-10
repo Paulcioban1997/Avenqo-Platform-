@@ -325,6 +325,43 @@ class RetailSourceService:
     def active_selection(self, tenant: TenantContext) -> UserSourceSelection | RetailActiveSource | None:
         user_selection = self._user_selection(tenant)
         if user_selection is not None:
+            if user_selection.source_type == "dataset" and user_selection.dataset_id is not None:
+                dataset = self._session.get(Dataset, user_selection.dataset_id)
+                if dataset is not None:
+                    version = next((v for v in dataset.versions if v.is_current), None)
+                    from pathlib import Path
+                    if version and version.artifact_path and not Path(version.artifact_path).is_file():
+                        connections = tuple(
+                            self._session.scalars(
+                                select(CommerceConnection)
+                                .where(
+                                    CommerceConnection.company_id == tenant.company_id,
+                                    CommerceConnection.status != CommerceConnectionStatus.DISCONNECTED.value,
+                                )
+                                .order_by(
+                                    CommerceConnection.last_successful_sync.desc(),
+                                    CommerceConnection.created_at.desc(),
+                                )
+                            ).all()
+                        )
+                        healthy_datasets = tuple(
+                            self._session.scalars(
+                                select(Dataset)
+                                .where(
+                                    Dataset.company_id == tenant.company_id,
+                                    Dataset.status == DatasetStatus.READY,
+                                    Dataset.id != user_selection.dataset_id,
+                                )
+                                .order_by(Dataset.uploaded_at.desc())
+                            ).all()
+                        )
+                        resolved = self._resolve_active(tenant, connections, healthy_datasets)
+                        if resolved is not None:
+                            user_selection.source_type = resolved.source_type
+                            user_selection.dataset_id = resolved.dataset_id
+                            user_selection.connection_id = resolved.connection_id
+                            self._session.commit()
+                            return user_selection
             return user_selection
         if tenant.user_id is not None:
             inherited = self._session.scalar(select(RetailActiveSource).where(RetailActiveSource.company_id == tenant.company_id))

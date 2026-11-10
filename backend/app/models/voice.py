@@ -99,8 +99,6 @@ class VoiceBusinessConfig(TimestampMixin, Base):
         name = self.business_name or ""
         cleaned = name.replace("_", " ").replace("-", " ")
         cleaned = re.sub(r"\s+", " ", cleaned).strip()
-        if cleaned.lower() in {"produits ero", "produit ero"}:
-            return "Produits Éro"
         return cleaned or "Avenqo"
 
 

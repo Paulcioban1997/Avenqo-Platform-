@@ -201,7 +201,7 @@ export function AppShell({ children }: AppShellProps) {
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#060B13] text-slate-900 dark:text-[#F4F7FB] flex flex-col font-sans transition-colors duration-200">
       {/* Universal Topbar */}
-      <header className="sticky top-0 z-30 h-16 bg-white/80 dark:bg-[#0B132B]/80 backdrop-blur-md border-b border-slate-200/80 dark:border-white/[0.08] px-2 sm:px-4 lg:px-6 flex items-center justify-between gap-1 sm:gap-4">
+      <header className="sticky top-0 z-50 h-16 bg-white/80 dark:bg-[#0B132B]/80 backdrop-blur-md border-b border-slate-200/80 dark:border-white/[0.08] px-2 sm:px-4 lg:px-6 flex items-center justify-between gap-1 sm:gap-4 shadow-xs">
         <div className="min-w-0 flex items-center gap-1 sm:gap-3 lg:gap-4">
           {/* Mobile menu toggle */}
           <button
@@ -383,12 +383,12 @@ export function AppShell({ children }: AppShellProps) {
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar */}
         <aside
-          className={`fixed inset-y-0 left-0 z-40 w-64 bg-white dark:bg-[#0B132B] border-r border-slate-200/80 dark:border-white/[0.08] flex flex-col justify-between transition-transform duration-200 lg:static lg:translate-x-0 ${
+          className={`fixed inset-y-0 left-0 z-40 w-64 bg-white dark:bg-[#0B132B] border-r border-slate-200/80 dark:border-white/[0.08] flex flex-col justify-between transition-transform duration-200 lg:sticky lg:top-16 lg:h-[calc(100vh-4rem)] lg:z-20 lg:translate-x-0 ${
             isSidebarOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
-          {/* Top of Sidebar: Brand + Tagline */}
-          <div className="p-5 border-b border-slate-200/80 dark:border-white/[0.08]">
+          {/* Top of Sidebar: Brand + Tagline (Mobile drawer only) */}
+          <div className="p-5 border-b border-slate-200/80 dark:border-white/[0.08] lg:hidden">
             <Link
               href="/dashboard"
               onClick={() => setIsSidebarOpen(false)}
