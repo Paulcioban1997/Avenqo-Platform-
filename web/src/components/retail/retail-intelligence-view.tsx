@@ -202,6 +202,31 @@ export function RetailIntelligenceView({
   // Search filter
   const [searchFilter, setSearchFilter] = useState("");
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get("tab");
+    if (
+      tabParam &&
+      [
+        "overview",
+        "sales",
+        "products",
+        "customers",
+        "inventory",
+        "forecasts",
+        "anomalies",
+        "recommendations",
+      ].includes(tabParam)
+    ) {
+      setActiveTab(tabParam as RetailSubTab);
+    }
+    const productId = params.get("product_id") || params.get("search");
+    if (productId) {
+      setSearchFilter(productId);
+    }
+  }, []);
+
   const loadData = useCallback(async () => {
     const revision = ++loadRevision.current;
     setIsLoading(true);
@@ -343,8 +368,39 @@ export function RetailIntelligenceView({
       !searchFilter.trim() ||
       p.product_name.toLowerCase().includes(searchFilter.toLowerCase()) ||
       p.sku.toLowerCase().includes(searchFilter.toLowerCase()) ||
-      p.product_category.toLowerCase().includes(searchFilter.toLowerCase())
+      p.product_category.toLowerCase().includes(searchFilter.toLowerCase()) ||
+      p.id.toLowerCase().includes(searchFilter.toLowerCase()) ||
+      p.source_record_id.toLowerCase().includes(searchFilter.toLowerCase())
   );
+
+  const handleActionRoute = (e: React.MouseEvent<HTMLAnchorElement>, route: string) => {
+    e.preventDefault();
+    try {
+      const url = new URL(route, window.location.origin);
+      const productId = url.searchParams.get("product_id") || url.searchParams.get("search");
+      if (productId) {
+        setSearchFilter(productId);
+      }
+      if (url.pathname.includes("/products") || url.searchParams.get("tab") === "products") {
+        setActiveTab("products");
+      } else if (url.pathname.includes("/customers") || url.searchParams.get("tab") === "customers") {
+        setActiveTab("customers");
+      } else if (url.pathname.includes("/sales") || url.searchParams.get("tab") === "sales") {
+        setActiveTab("sales");
+      } else if (url.pathname.includes("/inventory") || url.searchParams.get("tab") === "inventory") {
+        setActiveTab("inventory");
+      } else if (url.pathname.includes("/forecasts") || url.searchParams.get("tab") === "forecasts") {
+        setActiveTab("forecasts");
+      } else if (url.pathname.includes("/anomalies") || url.searchParams.get("tab") === "anomalies") {
+        setActiveTab("anomalies");
+      } else if (url.pathname.includes("/recommendations") || url.searchParams.get("tab") === "recommendations") {
+        setActiveTab("recommendations");
+      }
+      window.history.pushState({}, "", route);
+    } catch {
+      if (route.includes("products")) setActiveTab("products");
+    }
+  };
   const forecast = salesSummary?.forecast ?? null;
   const forecastPoints = forecast?.points ?? [];
   const catalog = getApplicationCatalog(locale);
@@ -1070,8 +1126,13 @@ export function RetailIntelligenceView({
                 <div className="flex h-56 items-end gap-3 pt-6">
                   {forecastPoints.map((point) => {
                     const hasBounds = point.lower_bound != null && point.upper_bound != null;
+                    const isNumericPeriod = /^\d+$/.test(point.period);
+                    const isWeekGranularity = forecast?.granularity === "week";
+                    const periodLabel = isWeekGranularity && isNumericPeriod
+                      ? (locale.startsWith("fr") ? `Semaine ${point.period}` : `Week ${point.period}`)
+                      : point.period;
                     const tooltipText = [
-                      `${point.period}`,
+                      periodLabel,
                       `Chiffre d'affaires prévu: ${forecastCurrency.format(point.value)}`,
                       hasBounds ? `${locale.startsWith("fr") ? "Intervalle estimé (±1.96 σ)" : "Estimated interval (±1.96 σ)"}: [${forecastCurrency.format(point.lower_bound!)} – ${forecastCurrency.format(point.upper_bound!)}]` : null,
                       point.orders_volume != null ? `Volume: ${point.orders_volume} commandes` : null,
@@ -1090,8 +1151,8 @@ export function RetailIntelligenceView({
                             </span>
                           )}
                         </div>
-                        <span className="text-xs font-medium text-slate-600 dark:text-[#94A3B8] text-center">
-                          {point.period}
+                        <span className="text-xs font-medium text-slate-600 dark:text-[#94A3B8] text-center whitespace-nowrap">
+                          {periodLabel}
                         </span>
                         {hasBounds && (
                           <span className="text-[9px] text-slate-400 font-mono -mt-1 hidden sm:inline">
@@ -1236,8 +1297,19 @@ export function RetailIntelligenceView({
                       </p>
                     )}
                     {recommendation.action_route?.startsWith("/") && (
-                      <Link href={recommendation.action_route} className="mt-2 inline-flex text-xs font-semibold text-[#0076FF] hover:underline">
-                        {retail.products}
+                      <Link
+                        href={recommendation.action_route}
+                        onClick={(e) => handleActionRoute(e, recommendation.action_route!)}
+                        className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-xs font-semibold text-[#0076FF] transition-colors"
+                      >
+                        {recommendation.action_route.includes("products")
+                          ? (locale.startsWith("fr") ? "Consulter les produits" : "View products")
+                          : recommendation.action_route.includes("customers")
+                          ? (locale.startsWith("fr") ? "Consulter les clients" : "View customers")
+                          : recommendation.action_route.includes("sales")
+                          ? (locale.startsWith("fr") ? "Consulter les ventes" : "View sales")
+                          : retail.products}
+                        <ArrowRight size={12} />
                       </Link>
                     )}
                   </div>
