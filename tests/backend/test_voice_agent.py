@@ -155,7 +155,36 @@ class _FakeTelnyx:
     async def gather_pin(self, call_control_id: str, *, command_id: str, client_state: str) -> None:
         self.gathers.append((call_control_id, command_id, client_state))
 
+    async def gather_using_speak(
+        self,
+        call_control_id: str,
+        *,
+        text_prompt: str,
+        language: str = "fr-CA",
+        minimum_digits: int = 1,
+        maximum_digits: int = 12,
+        valid_digits: str = "0123456789",
+        terminating_digit: str | None = None,
+        timeout_millis: int = 15000,
+        inter_digit_timeout_millis: int = 3000,
+        command_id: str | None = None,
+        client_state: str | None = None,
+    ) -> None:
+        self.commands.append(("gather_using_speak", call_control_id, text_prompt, command_id, client_state))
+
+    async def speak(
+        self,
+        call_control_id: str,
+        *,
+        text_prompt: str,
+        language: str = "fr-CA",
+        command_id: str | None = None,
+        client_state: str | None = None,
+    ) -> None:
+        self.commands.append(("speak", call_control_id, text_prompt, command_id, client_state))
+
     async def start_media_stream(self, call_control_id: str, *, stream_url: str, client_state: str, command_id: str) -> None:
+        self.commands.append(("start_media_stream", call_control_id, stream_url, command_id))
         self.media_streams.append((call_control_id, stream_url, client_state, command_id))
 
     async def send_sms(self, *, from_number: str, to_number: str, text: str) -> str:

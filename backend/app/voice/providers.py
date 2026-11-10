@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import logging
 import re
 from typing import Any, Protocol
@@ -13,6 +14,21 @@ from backend.app.config.settings import Settings
 from backend.app.models.voice import VoiceBusinessConfig
 
 logger = logging.getLogger("avenqo.voice.telnyx")
+
+def _ensure_base64_client_state(value: str | None) -> str | None:
+    """Ensure client_state sent to Telnyx is strictly Base64 encoded as required by Telnyx API."""
+    if not value:
+        return None
+    val_str = str(value).strip()
+    try:
+        decoded = base64.b64decode(val_str.encode("ascii"), validate=True)
+        # If re-encoding matches, it is already valid Base64
+        if base64.b64encode(decoded).decode("ascii") == val_str:
+            return val_str
+    except Exception:
+        pass
+    # Encode UTF-8 bytes to valid Base64
+    return base64.b64encode(val_str.encode("utf-8")).decode("ascii")
 
 _UNAVAILABLE_MESSAGES = {
     "fr": "L’assistant téléphonique est temporairement indisponible. Veuillez contacter l’entreprise autrement. Merci.",
@@ -203,10 +219,11 @@ class TelnyxClient:
             raise ValueError("A secure credential-free media URL is required")
         if not self._settings.telnyx_media_enabled:
             raise RuntimeError("Telnyx media transport disabled")
+        encoded_state = _ensure_base64_client_state(client_state) or ""
         return {
             "stream_url": stream_url, "stream_track": "inbound_track", "stream_codec": "PCMU",
             "stream_bidirectional_mode": "rtp", "stream_bidirectional_codec": "PCMU",
-            "client_state": client_state, "command_id": command_id,
+            "client_state": encoded_state, "command_id": command_id,
         }
 
     async def start_media_stream(self, call_control_id: str, *, stream_url: str, client_state: str, command_id: str) -> None:
@@ -249,7 +266,7 @@ class TelnyxClient:
         if command_id:
             payload["command_id"] = command_id
         if client_state:
-            payload["client_state"] = client_state
+            payload["client_state"] = _ensure_base64_client_state(client_state)
         await self._request("POST", f"/calls/{call_control_id}/actions/gather_using_speak", json=payload)
 
     async def speak(
@@ -259,6 +276,7 @@ class TelnyxClient:
         text_prompt: str,
         language: str = "fr-CA",
         command_id: str | None = None,
+        client_state: str | None = None,
     ) -> None:
         lang = "en-US" if language.startswith("en") else "fr-CA"
         payload: dict[str, object] = {
@@ -270,11 +288,13 @@ class TelnyxClient:
         }
         if command_id:
             payload["command_id"] = command_id
+        if client_state:
+            payload["client_state"] = _ensure_base64_client_state(client_state)
         await self._request("POST", f"/calls/{call_control_id}/actions/speak", json=payload)
 
     async def gather_pin(self, call_control_id: str, *, command_id: str, client_state: str) -> None:
         await self._request("POST", f"/calls/{call_control_id}/actions/gather", json={
-            "command_id": command_id, "client_state": client_state,
+            "command_id": command_id, "client_state": _ensure_base64_client_state(client_state) or "",
             "minimum_digits": 6, "maximum_digits": 12, "maximum_tries": 1,
             "terminating_digit": "#", "valid_digits": "0123456789", "timeout_millis": 30000,
         })

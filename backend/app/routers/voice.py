@@ -1807,23 +1807,43 @@ async def telnyx_webhook(
     if is_dispatcher:
         if event_type == "call.initiated":
             answer_cmd = str(UUID(hashlib.sha256(f"disp-ans:{call_control_id}".encode()).hexdigest()[:32]))
-            await TelnyxClient(settings).answer_call(call_control_id, command_id=answer_cmd)
-            return {"received": True, "routed": False, "status": "DISPATCHER_ANSWERED"}
+            try:
+                await TelnyxClient(settings).answer_call(call_control_id, command_id=answer_cmd)
+                return {"received": True, "routed": False, "status": "DISPATCHER_ANSWERED"}
+            except Exception as exc:
+                logger.error("Failed to answer dispatcher call %s: %s", call_control_id, exc)
+                return {"received": True, "routed": False, "status": "DISPATCHER_ANSWER_FAILED"}
 
         if event_type == "call.answered":
             gather_cmd = str(UUID(hashlib.sha256(f"disp-gather:{call_control_id}".encode()).hexdigest()[:32]))
             greeting = "Bienvenue sur la plateforme Avenqo. Veuillez entrer le code d'accès NIP de votre entreprise suivi de la touche dièse."
-            await TelnyxClient(settings).gather_using_speak(
-                call_control_id,
-                text_prompt=greeting,
-                command_id=gather_cmd,
-                client_state="dispatcher_nip_gather",
-                language="fr-CA",
-                minimum_digits=4,
-                maximum_digits=8,
-                terminating_digit="#",
-            )
-            return {"received": True, "routed": False, "status": "DISPATCHER_GATHER_STARTED"}
+            try:
+                await TelnyxClient(settings).gather_using_speak(
+                    call_control_id,
+                    text_prompt=greeting,
+                    command_id=gather_cmd,
+                    client_state="dispatcher_nip_gather",
+                    language="fr-CA",
+                    minimum_digits=4,
+                    maximum_digits=8,
+                    terminating_digit="#",
+                )
+                return {"received": True, "routed": False, "status": "DISPATCHER_GATHER_STARTED"}
+            except Exception as exc:
+                logger.error("Failed to gather_using_speak on dispatcher call %s: %s", call_control_id, exc)
+                try:
+                    fallback_cmd = str(UUID(hashlib.sha256(f"disp-err:{call_control_id}".encode()).hexdigest()[:32]))
+                    await TelnyxClient(settings).speak(
+                        call_control_id,
+                        text_prompt="Bienvenue sur la plateforme Avenqo. L'assistance vocale est temporairement indisponible. Veuillez rappeler ultérieurement. Au revoir.",
+                        language="fr-CA",
+                        command_id=fallback_cmd,
+                    )
+                    await asyncio.sleep(4.0)
+                    await TelnyxClient(settings).hangup(call_control_id)
+                except Exception:
+                    pass
+                return {"received": True, "routed": False, "status": "DISPATCHER_GATHER_FAILED"}
 
         if event_type == "call.gather.ended":
             raw_digits = str(call_payload.get("digits") or "")
@@ -1835,6 +1855,7 @@ async def telnyx_webhook(
                 error_prompt = "Le code NIP entré est invalide. Veuillez vérifier le code d'accès de votre entreprise et rappeler. Au revoir."
                 try:
                     await TelnyxClient(settings).speak(call_control_id, text_prompt=error_prompt, language="fr-CA", command_id=speak_cmd)
+                    await asyncio.sleep(4.0)
                     await TelnyxClient(settings).hangup(call_control_id)
                 except Exception:
                     pass
@@ -2265,14 +2286,34 @@ async def telnyx_webhook(
                     "ivr_stage": "customer_public",
                     "pin_gather_status": "public_customer",
                 }
+                db.flush()
                 client_state = issue_media_client_state(db, settings, call.id, public_mode=True)
                 base_url = (settings.telnyx_media_stream_base_url or "").rstrip("/")
                 stream_url = f"{base_url}/{call.id}" if base_url.endswith("/api/v1/voice/telnyx/media") else f"{base_url}/api/v1/voice/telnyx/media/{call.id}"
                 command_id = str(UUID(hashlib.sha256(f"media-cust:{call.id}".encode()).hexdigest()[:32]))
-                await service.telnyx.start_media_stream(active_control_id, stream_url=stream_url, client_state=client_state, command_id=command_id)
-                receipt.result = {**receipt.result, "routed": True, "transport": "telnyx_media", "caller_mode": "CLIENT"}
-                db.commit()
-                return {"received": True, "routed": True, "caller_mode": "CLIENT"}
+                try:
+                    await service.telnyx.start_media_stream(active_control_id, stream_url=stream_url, client_state=client_state, command_id=command_id)
+                    receipt.result = {**receipt.result, "routed": True, "transport": "telnyx_media", "caller_mode": "CLIENT"}
+                    db.commit()
+                    return {"received": True, "routed": True, "caller_mode": "CLIENT"}
+                except Exception as exc:
+                    logger.error("Failed to start media stream for customer call %s: %s", call.id, exc)
+                    try:
+                        err_cmd = str(UUID(hashlib.sha256(f"media-cust-err:{call.id}".encode()).hexdigest()[:32]))
+                        await service.telnyx.speak(
+                            active_control_id,
+                            text_prompt=f"Bienvenue chez {config.business_name}. Notre service vocal rencontre une interruption temporaire. Veuillez nous excuser et rappeler plus tard. Au revoir.",
+                            language="fr-CA" if (config.preferred_language or "fr").startswith("fr") else "en-US",
+                            command_id=err_cmd,
+                        )
+                        await asyncio.sleep(4.0)
+                        await service.telnyx.hangup(active_control_id)
+                    except Exception:
+                        pass
+                    call.status = "ended"
+                    call.ended_at = datetime.now(timezone.utc)
+                    db.commit()
+                    return {"received": True, "routed": False, "status": "MEDIA_STREAM_START_FAILED"}
             else:
                 # Invalid or timeout on menu -> default to public customer receptionist
                 call.caller_type = "CLIENT"
@@ -2284,10 +2325,29 @@ async def telnyx_webhook(
                 base_url = (settings.telnyx_media_stream_base_url or "").rstrip("/")
                 stream_url = f"{base_url}/{call.id}" if base_url.endswith("/api/v1/voice/telnyx/media") else f"{base_url}/api/v1/voice/telnyx/media/{call.id}"
                 command_id = str(UUID(hashlib.sha256(f"media-def:{call.id}".encode()).hexdigest()[:32]))
-                await service.telnyx.start_media_stream(active_control_id, stream_url=stream_url, client_state=client_state, command_id=command_id)
-                receipt.result = {**receipt.result, "routed": True, "transport": "telnyx_media", "caller_mode": "CLIENT_FALLBACK"}
-                db.commit()
-                return {"received": True, "routed": True, "caller_mode": "CLIENT_FALLBACK"}
+                try:
+                    await service.telnyx.start_media_stream(active_control_id, stream_url=stream_url, client_state=client_state, command_id=command_id)
+                    receipt.result = {**receipt.result, "routed": True, "transport": "telnyx_media", "caller_mode": "CLIENT_FALLBACK"}
+                    db.commit()
+                    return {"received": True, "routed": True, "caller_mode": "CLIENT_FALLBACK"}
+                except Exception as exc:
+                    logger.error("Failed to start media stream fallback for call %s: %s", call.id, exc)
+                    try:
+                        err_cmd = str(UUID(hashlib.sha256(f"media-def-err:{call.id}".encode()).hexdigest()[:32]))
+                        await service.telnyx.speak(
+                            active_control_id,
+                            text_prompt=f"Bienvenue chez {config.business_name}. Notre service vocal rencontre une interruption temporaire. Veuillez nous excuser et rappeler plus tard. Au revoir.",
+                            language="fr-CA" if (config.preferred_language or "fr").startswith("fr") else "en-US",
+                            command_id=err_cmd,
+                        )
+                        await asyncio.sleep(4.0)
+                        await service.telnyx.hangup(active_control_id)
+                    except Exception:
+                        pass
+                    call.status = "ended"
+                    call.ended_at = datetime.now(timezone.utc)
+                    db.commit()
+                    return {"received": True, "routed": False, "status": "MEDIA_STREAM_START_FAILED"}
 
         if ivr_stage == "employee_pin":
             auth_result = auth_controller.verify_gather(call, digits_str)
@@ -2301,10 +2361,29 @@ async def telnyx_webhook(
                 base_url = (settings.telnyx_media_stream_base_url or "").rstrip("/")
                 stream_url = f"{base_url}/{call.id}" if base_url.endswith("/api/v1/voice/telnyx/media") else f"{base_url}/api/v1/voice/telnyx/media/{call.id}"
                 command_id = str(UUID(hashlib.sha256(f"media-staff:{call.id}".encode()).hexdigest()[:32]))
-                await service.telnyx.start_media_stream(active_control_id, stream_url=stream_url, client_state=client_state, command_id=command_id)
-                receipt.result = {**receipt.result, "routed": True, "authenticated": True, "caller_mode": "STAFF"}
-                db.commit()
-                return {"received": True, "authenticated": True, "caller_mode": "STAFF"}
+                try:
+                    await service.telnyx.start_media_stream(active_control_id, stream_url=stream_url, client_state=client_state, command_id=command_id)
+                    receipt.result = {**receipt.result, "routed": True, "authenticated": True, "caller_mode": "STAFF"}
+                    db.commit()
+                    return {"received": True, "authenticated": True, "caller_mode": "STAFF"}
+                except Exception as exc:
+                    logger.error("Failed to start staff media stream for call %s: %s", call.id, exc)
+                    try:
+                        err_cmd = str(UUID(hashlib.sha256(f"media-staff-err:{call.id}".encode()).hexdigest()[:32]))
+                        await service.telnyx.speak(
+                            active_control_id,
+                            text_prompt="Une erreur technique empêche la connexion à l'espace employé. Veuillez rappeler plus tard. Au revoir.",
+                            language="fr-CA" if (config.preferred_language or "fr").startswith("fr") else "en-US",
+                            command_id=err_cmd,
+                        )
+                        await asyncio.sleep(4.0)
+                        await service.telnyx.hangup(active_control_id)
+                    except Exception:
+                        pass
+                    call.status = "ended"
+                    call.ended_at = datetime.now(timezone.utc)
+                    db.commit()
+                    return {"received": True, "routed": False, "status": "MEDIA_STREAM_START_FAILED"}
             else:
                 max_att = getattr(settings, "voice_pin_max_attempts", 5)
                 if call.verification_attempts >= max_att:
@@ -2413,28 +2492,6 @@ async def telnyx_webhook(
             call.status = "rejected_configuration" if event_type == "call.initiated" else "configuration_hangup_requested"
             receipt.result = {**receipt.result, "termination_requested": True}
             db.commit()
-        else:
-            # Production: NEVER leave the caller ringing indefinitely.
-            # Answer immediately and speak a professional French message explaining the line status.
-            try:
-                if event_type == "call.initiated":
-                    ans_cmd = str(UUID(hashlib.sha256(f"unavail-prod-ans:{call.id}".encode()).hexdigest()[:32]))
-                    await service.telnyx.answer_call(target_control_id, command_id=ans_cmd)
-                    call.status = "answering"
-                    db.commit()
-                elif event_type == "call.answered":
-                    speak_cmd = str(UUID(hashlib.sha256(f"unavail-prod-speak:{call.id}".encode()).hexdigest()[:32]))
-                    bname = (config.business_name if config and config.business_name else "Avenqo")
-                    greeting = f"Bonjour et bienvenue chez {bname}. Notre ligne vocale est en cours de mise en service. Veuillez nous contacter directement ou rappeler ultérieurement. Merci de votre appel."
-                    await service.telnyx.speak(target_control_id, text_prompt=greeting, language="fr-CA", command_id=speak_cmd)
-                    await service.telnyx.hangup(target_control_id)
-                    call.status = "ended"
-                    call.ended_at = datetime.now(timezone.utc)
-                    db.commit()
-                elif event_type != "call.hangup":
-                    await service.telnyx.hangup(target_control_id)
-            except Exception as exc:
-                logger.warning("Voice production unavailable handling error: %s", exc)
         return {"received": True, "routed": False, "status": "READY_FOR_OWNER_ACTION"}
 
     if not media_mode and not settings.retell_api_key:
