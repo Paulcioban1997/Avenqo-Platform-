@@ -29,8 +29,8 @@ def test_ensure_base64_client_state():
 @pytest.mark.asyncio
 async def test_telnyx_client_gather_using_speak_encodes_client_state():
     settings = Settings(
-        telnyx_api_key="test_key",
-        telnyx_public_key="test_public_key",
+        TELNYX_API_KEY="test_key",
+        TELNYX_PUBLIC_KEY="test_public_key",
     )
     client = TelnyxClient(settings)
     mock_request = AsyncMock(return_value={})
@@ -54,8 +54,8 @@ async def test_telnyx_client_gather_using_speak_encodes_client_state():
 @pytest.mark.asyncio
 async def test_telnyx_client_media_stream_payload_encodes_client_state():
     settings = Settings(
-        telnyx_api_key="test_key",
-        telnyx_media_enabled=True,
+        TELNYX_API_KEY="test_key",
+        TELNYX_MEDIA_ENABLED=True,
     )
     client = TelnyxClient(settings)
     payload = client.media_stream_payload(
