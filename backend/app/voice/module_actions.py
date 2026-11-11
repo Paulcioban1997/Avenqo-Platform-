@@ -116,7 +116,7 @@ VOICE_ACTION_TOOLS: dict[str, dict[str, frozenset[str]]] = {
             "get_expense_anomalies",
         }),
     },
-    "ocr": {"read_documents": frozenset({"search_documents", "get_document_detail"})},
+    "ocr": {"read_documents": frozenset()},
     "marketing": {"read": frozenset()},
     "appointments": {"read": frozenset()},
     "hr": {"read": frozenset()},
