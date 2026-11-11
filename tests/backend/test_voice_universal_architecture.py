@@ -21,11 +21,11 @@ Vérifie:
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 from uuid import UUID, uuid4
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from backend.app.assistants.registry import AssistantRegistry
@@ -48,6 +48,7 @@ from backend.app.ai.tools.contracts import ToolExecutionContext
 from backend.app.ai.tools.exceptions import ToolAuthorizationError
 from backend.app.models import (
     Base,
+    CommerceConnection,
     Company,
     CompanyMembership,
     CompanyModule,
@@ -400,7 +401,7 @@ def test_reserve_product_tool_in_store_pickup(tmp_path):
     )
     res_conf = asyncio.run(tool.run(ctx, args_confirmed))
     assert res_conf.success is True
-    assert res_conf.data["status"] == "confirmed"
+    assert res_conf.data["status"].upper() == "CONFIRMED"
     assert res_conf.data["reference_code"].startswith("RES-")
     assert res_conf.data["reservation_type"] == "in_store_pickup_hold"
     # Doit explicitement indiquer que le stock distant n'est pas bloqué électroniquement
@@ -408,7 +409,138 @@ def test_reserve_product_tool_in_store_pickup(tmp_path):
     assert "Jean Tremblay" in res_conf.data["message"]
     assert "mise" in res_conf.data["message"] or "mis" in res_conf.data["message"]
 
-    # 3. Produit en rupture de stock -> Doit refuser clairement
+    # Vérification de la persistance réelle en base de données
+    from backend.app.models.product_reservation import ProductReservation, ReservationStatus
+    from backend.app.models.audit_log import AuditLogEntry
+
+    db_res = session.scalars(
+        select(ProductReservation).where(ProductReservation.reference_code == res_conf.data["reference_code"])
+    ).first()
+    assert db_res is not None
+    assert db_res.company_id == company_a.id
+    assert db_res.client_name == "Jean Tremblay"
+    assert db_res.status == ReservationStatus.CONFIRMED
+    assert db_res.quantity == 1
+    assert db_res.source_freshness == "LIVE"
+
+    # Vérification de l'enregistrement de l'audit log
+    audit_entry = session.scalars(
+        select(AuditLogEntry).where(AuditLogEntry.target_id == str(db_res.id))
+    ).first()
+    assert audit_entry is not None
+    assert audit_entry.action == "retail.reservation.created"
+    assert audit_entry.safe_metadata.get("actor_type") == "ai_voice"
+
+    # 3. Concurrence et protection contre les doubles réservations
+    # Le stock nominal de "The 3p Fulfilled Snowboard" est de 8 unités.
+    # 1 unité est réservée par Jean Tremblay -> reste 7 unités nettes disponibles.
+    # Réservation de 5 unités supplémentaires par un second client
+    args_reserve_5 = ReserveProductArgs(
+        product_name_or_id="The 3p Fulfilled Snowboard",
+        quantity=5,
+        client_name="Marc Bouchard",
+        client_phone="+15145550200",
+        pickup_date="2026-11-16",
+        confirmed=True,
+    )
+    res_conf_5 = asyncio.run(tool.run(ctx, args_reserve_5))
+    assert res_conf_5.success is True
+    # Reste 2 unités (8 - 1 - 5 = 2).
+    # Une tentative de réserver 3 unités doit être refusée pour stock insuffisant
+    args_attempt_3 = ReserveProductArgs(
+        product_name_or_id="The 3p Fulfilled Snowboard",
+        quantity=3,
+        client_name="Alice Belanger",
+        confirmed=True,
+    )
+    res_refused = asyncio.run(tool.run(ctx, args_attempt_3))
+    assert res_refused.success is False
+    assert "supérieure au stock disponible" in res_refused.error
+    assert res_refused.data.get("available_quantity") == 2
+
+    # Réserver exactement les 2 unités restantes -> Doit réussir
+    args_reserve_2 = ReserveProductArgs(
+        product_name_or_id="The 3p Fulfilled Snowboard",
+        quantity=2,
+        client_name="Alice Belanger",
+        confirmed=True,
+    )
+    res_conf_2 = asyncio.run(tool.run(ctx, args_reserve_2))
+    assert res_conf_2.success is True
+
+    # Reste 0 unité -> Toute nouvelle réservation doit être refusée comme FULLY_RESERVED
+    args_attempt_1 = ReserveProductArgs(
+        product_name_or_id="The 3p Fulfilled Snowboard",
+        quantity=1,
+        client_name="Paul Tremblay",
+        confirmed=True,
+    )
+    res_fully_reserved = asyncio.run(tool.run(ctx, args_attempt_1))
+    assert res_fully_reserved.success is False
+    assert res_fully_reserved.data.get("state") == "FULLY_RESERVED"
+
+    # 4. Discrimination de fraîcheur de la source (Import / CSV Statique -> Statut PENDING)
+    conn_csv = CommerceConnection(
+        id=uuid4(),
+        company_id=company_a.id,
+        provider="csv_import",
+        external_account_id="manual-csv-1",
+        status="READY",
+        display_name="Import CSV Produits",
+    )
+    session.add(conn_csv)
+    session.flush()
+
+    prod_csv = NormalizedCommerceRecord(
+        id=uuid4(),
+        company_id=company_a.id,
+        connection_id=conn_csv.id,
+        provider="csv_import",
+        entity_type="product",
+        source_record_id="csv-boots-1",
+        normalized_data={
+            "product_id": "prod-boots-99",
+            "product_name": "Bottes de planche Burton Moto",
+            "unit_price": 289.99,
+            "inventory_level": 4,
+            "sku": "BT-MOTO-99",
+            "in_stock": True,
+            "product_category": "Bottes",
+        },
+        source_updated_at=datetime.now(timezone.utc) - timedelta(days=7),
+        deleted=False,
+    )
+    session.add(prod_csv)
+    session.flush()
+
+    args_csv_reserve = ReserveProductArgs(
+        product_name_or_id="Bottes de planche Burton Moto",
+        quantity=1,
+        client_name="Camille Roy",
+        confirmed=True,
+    )
+    res_csv = asyncio.run(tool.run(ctx, args_csv_reserve))
+    assert res_csv.success is True
+    assert res_csv.data["status"] == "PENDING"
+    assert res_csv.data["source_freshness"] == "HISTORICAL_IMPORT"
+    assert "attente de confirmation physique" in res_csv.data["message"]
+
+    # 5. Visibilité commerçant et transition d'état (COLLECTED, CANCELLED)
+    from backend.app.services.product_reservation_service import ProductReservationService
+    res_service = ProductReservationService(session)
+    merchant_list = res_service.list_reservations(company_a.id)
+    assert len(merchant_list) >= 4  # Jean, Marc, Alice, Camille
+
+    # Le commerçant marque la réservation comme COLLECTED lors de la remise au client
+    updated_res = res_service.update_reservation_status(
+        company_a.id,
+        db_res.reference_code,
+        new_status="COLLECTED",
+    )
+    assert updated_res.status == ReservationStatus.COLLECTED
+    assert updated_res.collected_at is not None
+
+    # 6. Produit en rupture de stock -> Doit refuser clairement
     args_oos = ReserveProductArgs(
         product_name_or_id="Pro Alpine Competition Board",
         quantity=1,
@@ -420,7 +552,7 @@ def test_reserve_product_tool_in_store_pickup(tmp_path):
     assert "rupture de stock" in res_oos.error
     assert res_oos.data.get("state") == "OUT_OF_STOCK"
 
-    # 4. Quantité excessive -> Doit refuser pour stock insuffisant
+    # 7. Quantité excessive -> Doit refuser pour stock insuffisant
     args_excessive = ReserveProductArgs(
         product_name_or_id="The Powder Cruiser Snowboard",
         quantity=99,
@@ -555,4 +687,66 @@ def test_chat_service_universal_system_instruction_neutrality():
     assert "Resolve relative dates ('lundi prochain', 'mercredi matin', 'demain')" in prompt
     assert "Business Policies, Delivery Delays & Document Knowledge" in prompt
     assert "Current date and time:" in prompt
+
+
+def test_retail_reservation_router_endpoints(tmp_path):
+    """Vérifie les endpoints REST exposés aux commerçants (/retail/reservations)."""
+    from backend.app.routers.retail import (
+        list_retail_reservations,
+        update_retail_reservation_status,
+        UpdateReservationStatusRequest,
+    )
+    from backend.app.services.product_reservation_service import ProductReservationService
+
+    session, company_a, user_a, _, _, _, _, _, _ = _create_test_db(tmp_path)
+    tenant_a = TenantContext(company_id=company_a.id, user_id=user_a.id)
+
+    # 1. Créer une réservation via le service
+    res_svc = ProductReservationService(session)
+    res_data = res_svc.reserve_product(
+        company_a.id,
+        product_name_or_id="The 3p Fulfilled Snowboard",
+        quantity=2,
+        client_name="Nathalie Simard",
+        client_phone="+14385551234",
+        pickup_date="2026-11-14",
+        confirmed=True,
+    )
+    assert res_data["success"] is True
+    ref_code = res_data["data"]["reference_code"]
+
+    # 2. Appel GET /retail/reservations
+    get_res = list_retail_reservations(tenant=tenant_a, db=session)
+    assert get_res["total"] >= 1
+    found = [r for r in get_res["reservations"] if r["reference_code"] == ref_code]
+    assert len(found) == 1
+    item = found[0]
+    assert item["client_name"] == "Nathalie Simard"
+    assert item["quantity"] == 2
+    assert item["status"] == "CONFIRMED"
+    assert item["electronic_stock_locked"] is False
+
+    # 3. Appel PATCH /retail/reservations/{id}/status -> COLLECTED
+    patch_req = UpdateReservationStatusRequest(status="COLLECTED")
+    patch_res = update_retail_reservation_status(
+        reservation_id=ref_code,
+        payload=patch_req,
+        tenant=tenant_a,
+        db=session,
+    )
+    assert patch_res["success"] is True
+    assert patch_res["reservation"]["status"] == "COLLECTED"
+    assert patch_res["reservation"]["collected_at"] is not None
+
+    # 4. Appel PATCH avec statut invalide -> 400 Bad Request
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as exc_info:
+        update_retail_reservation_status(
+            reservation_id=ref_code,
+            payload=UpdateReservationStatusRequest(status="INVALID_STATUS"),
+            tenant=tenant_a,
+            db=session,
+        )
+    assert exc_info.value.status_code == 400
+
 

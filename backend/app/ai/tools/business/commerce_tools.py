@@ -630,158 +630,34 @@ class ReserveProductTool(RetailAITool):
         self._ingestion = ingestion
 
     async def run(self, context: ToolExecutionContext, arguments: ReserveProductArgs) -> ToolResult:
-        company_id = context.tenant.company_id
-        if not arguments.product_name_or_id or not arguments.product_name_or_id.strip():
-            return ToolResult(
-                success=False,
-                error="Veuillez spécifier le nom ou l'identifiant du produit à réserver.",
-            )
+        from backend.app.services.product_reservation_service import ProductReservationService
 
-        base_query = (
-            select(NormalizedCommerceRecord)
-            .where(
-                NormalizedCommerceRecord.company_id == company_id,
-                NormalizedCommerceRecord.entity_type.in_(_PRODUCT_ENTITY_TYPES),
-                NormalizedCommerceRecord.deleted.is_(False),
-            )
-            .order_by(NormalizedCommerceRecord.source_updated_at.desc())
+        service = ProductReservationService(self._session)
+        result = service.reserve_product(
+            context.tenant.company_id,
+            product_name_or_id=arguments.product_name_or_id,
+            quantity=arguments.quantity,
+            client_name=arguments.client_name,
+            client_phone=arguments.client_phone,
+            client_email=arguments.client_email,
+            pickup_date=arguments.pickup_date,
+            notes=arguments.notes,
+            confirmed=arguments.confirmed,
         )
-        query_val = arguments.product_name_or_id.strip()
-        records: list[NormalizedCommerceRecord] = []
-        try:
-            q_term = _normalize_query(query_val)
-            rows = list(
-                self._session.scalars(
-                    base_query.where(
-                        or_(
-                            NormalizedCommerceRecord.normalized_data["product_id"].astext == query_val,
-                            func.lower(NormalizedCommerceRecord.normalized_data["sku"].astext) == q_term,
-                            func.lower(NormalizedCommerceRecord.normalized_data["product_name"].astext).contains(q_term),
-                        )
-                    ).limit(5)
-                ).all()
-            )
-            records = rows
-        except Exception:
-            records = []
 
-        if not records:
-            all_rows = list(self._session.scalars(base_query.limit(200)).all())
-            records = _python_product_search(
-                all_rows,
-                product_name=query_val,
-                product_id=query_val,
-                sku=query_val,
-            )
+        source_ref = result.get("source_ref")
+        source_refs = (source_ref,) if source_ref else ()
 
-        if not records:
-            from difflib import SequenceMatcher
-            q_norm = _normalize_query(query_val)
-            all_records = list(self._session.scalars(base_query.limit(200)).all())
-            scored = []
-            for r in all_records:
-                data = r.normalized_data or {}
-                pname = str(data.get("product_name") or data.get("name") or "")
-                ratio = SequenceMatcher(None, q_norm, pname.lower()).ratio()
-                if ratio >= 0.5:
-                    scored.append((ratio, r))
-            if scored:
-                scored.sort(key=lambda x: x[0], reverse=True)
-                records = [scored[0][1]]
-
-        if not records:
+        if not result.get("success"):
             return ToolResult(
                 success=False,
-                error=f"Produit introuvable dans le catalogue : '{query_val}'.",
-                data={"found": False, "product_query": query_val},
+                error=result.get("error", "Impossible d'effectuer la réservation."),
+                data=result.get("data", {}),
+                source_refs=source_refs,
             )
-
-        matched_rec = records[0]
-        prod_data = _product_to_dict(matched_rec)
-        pname = prod_data.get("product_name") or query_val
-        price = prod_data.get("unit_price")
-        inv_level = _safe_float(prod_data.get("inventory_level"))
-        in_stock = bool(prod_data.get("in_stock", False))
-
-        if (inv_level is not None and inv_level <= 0) or not in_stock:
-            return ToolResult(
-                success=False,
-                error=f"Le produit '{pname}' est actuellement en rupture de stock et ne peut être réservé pour cueillette immédiate.",
-                data={
-                    "found": True,
-                    "product_name": pname,
-                    "in_stock": False,
-                    "inventory_level": inv_level or 0,
-                    "state": "OUT_OF_STOCK",
-                },
-                source_refs=(str(matched_rec.id),),
-            )
-
-        if inv_level is not None and arguments.quantity > inv_level:
-            return ToolResult(
-                success=False,
-                error=f"Quantité demandée ({arguments.quantity}) supérieure au stock disponible ({int(inv_level)}).",
-                data={
-                    "found": True,
-                    "product_name": pname,
-                    "requested_quantity": arguments.quantity,
-                    "available_quantity": inv_level,
-                    "state": "INSUFFICIENT_STOCK",
-                },
-                source_refs=(str(matched_rec.id),),
-            )
-
-        if not arguments.confirmed:
-            return ToolResult(
-                success=False,
-                data={
-                    "confirmation_required": True,
-                    "product_name": pname,
-                    "product_id": prod_data.get("product_id"),
-                    "sku": prod_data.get("sku"),
-                    "unit_price": price,
-                    "quantity": arguments.quantity,
-                    "client_name": arguments.client_name,
-                    "pickup_date": arguments.pickup_date,
-                    "stock_available": inv_level,
-                },
-                error=(
-                    f"Confirmez explicitement la mise de côté en magasin de {arguments.quantity}x '{pname}' "
-                    f"pour {arguments.client_name} ({arguments.pickup_date or 'date à convenir'})."
-                ),
-                source_refs=(str(matched_rec.id),),
-            )
-
-        unique_seed = f"{company_id}:{arguments.client_name}:{pname}:{time.time()}"
-        code_suffix = hashlib.sha256(unique_seed.encode()).hexdigest()[:4].upper()
-        date_prefix = datetime.now(timezone.utc).strftime("%y%m%d")
-        reference_code = f"RES-{date_prefix}-{code_suffix}"
-        electronic_stock_locked = False
 
         return ToolResult(
             success=True,
-            data={
-                "status": "confirmed",
-                "reference_code": reference_code,
-                "reservation_id": reference_code,
-                "reservation_type": "in_store_pickup_hold",
-                "electronic_inventory_locked": electronic_stock_locked,
-                "product_name": pname,
-                "product_id": prod_data.get("product_id"),
-                "sku": prod_data.get("sku"),
-                "unit_price": price,
-                "quantity": arguments.quantity,
-                "client_name": arguments.client_name,
-                "client_phone": arguments.client_phone,
-                "client_email": arguments.client_email,
-                "pickup_date": arguments.pickup_date,
-                "notes": arguments.notes,
-                "message": (
-                    f"Réservation confirmée sous la référence {reference_code}. "
-                    f"{arguments.quantity} unité(s) de '{pname}' ont été mises de côté pour {arguments.client_name}. "
-                    f"Cueillette prévue : {arguments.pickup_date or 'prochainement en magasin'}. "
-                    "Note d'inventaire : Le produit est mis de côté par l'équipe en boutique ; aucun débit de stock distant n'a été effectué."
-                ),
-            },
-            source_refs=(str(matched_rec.id),),
+            data=result.get("data", {}),
+            source_refs=source_refs,
         )

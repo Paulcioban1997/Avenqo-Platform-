@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from math import ceil, floor, isfinite
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from backend.app.database import get_db
@@ -598,4 +599,89 @@ def list_retail_inventory(
         "anomaly_sample_size": sample_size,
         "source": source_context,
         "data_freshness": freshness,
+    }
+
+
+class UpdateReservationStatusRequest(BaseModel):
+    status: str = Field(description="Nouveau statut : COLLECTED, CANCELLED, PENDING, CONFIRMED, EXPIRED")
+    reason: str | None = Field(default=None, description="Motif de changement ou d'annulation.")
+
+
+@router.get("/reservations")
+def list_retail_reservations(
+    status: str | None = None,
+    limit: int = 50,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+):
+    """Retourne la liste des réservations de produits pour cueillette en boutique pour le tenant."""
+    from backend.app.services.product_reservation_service import ProductReservationService
+
+    service = ProductReservationService(db)
+    reservations = service.list_reservations(tenant.company_id, status=status, limit=limit)
+    return {
+        "reservations": [
+            {
+                "id": str(r.id),
+                "reference_code": r.reference_code,
+                "status": str(r.status),
+                "product_name": r.product_name,
+                "product_id": r.product_id,
+                "sku": r.sku,
+                "quantity": r.quantity,
+                "unit_price": float(r.unit_price) if r.unit_price is not None else None,
+                "currency": r.currency,
+                "client_name": r.client_name,
+                "client_phone": r.client_phone,
+                "client_email": r.client_email,
+                "pickup_date": r.pickup_date_text,
+                "notes": r.notes,
+                "source_freshness": r.source_freshness,
+                "electronic_stock_locked": r.electronic_stock_locked,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "expires_at": r.expires_at.isoformat() if r.expires_at else None,
+                "collected_at": r.collected_at.isoformat() if r.collected_at else None,
+                "cancelled_at": r.cancelled_at.isoformat() if r.cancelled_at else None,
+                "cancellation_reason": r.cancellation_reason,
+            }
+            for r in reservations
+        ],
+        "total": len(reservations),
+    }
+
+
+@router.patch("/reservations/{reservation_id}/status")
+def update_retail_reservation_status(
+    reservation_id: str,
+    payload: UpdateReservationStatusRequest,
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+):
+    """Permet au commerçant de mettre à jour le statut d'une réservation (ex: COLLECTED, CANCELLED)."""
+    from backend.app.services.product_reservation_service import ProductReservationService
+
+    service = ProductReservationService(db)
+    try:
+        updated = service.update_reservation_status(
+            tenant.company_id,
+            reservation_id,
+            new_status=payload.status,
+            reason=payload.reason,
+        )
+        db.commit()
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "success": True,
+        "reservation": {
+            "id": str(updated.id),
+            "reference_code": updated.reference_code,
+            "status": str(updated.status),
+            "collected_at": updated.collected_at.isoformat() if updated.collected_at else None,
+            "cancelled_at": updated.cancelled_at.isoformat() if updated.cancelled_at else None,
+            "cancellation_reason": updated.cancellation_reason,
+        },
     }

@@ -75,6 +75,7 @@ from backend.app.models.mapping import Mapping
 from backend.app.models.model_registry import ModelRegistry
 from backend.app.models.module import Module
 from backend.app.models.prediction import Prediction
+from backend.app.models.product_reservation import ProductReservation, ReservationStatus
 from backend.app.models.retail_active_source import RetailActiveSource
 from backend.app.models.retail_source_state import RetailSourceState
 from backend.app.models.training_job import TrainingJob
@@ -166,6 +167,8 @@ __all__ = [
     "NormalizedCommerceRecord",
     "OnboardingStatus",
     "Prediction",
+    "ProductReservation",
+    "ReservationStatus",
     "RetailActiveSource",
     "RetailSourceState",
     "TimestampMixin",
