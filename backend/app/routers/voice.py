@@ -1385,6 +1385,16 @@ def get_voice_customization(
         greeting_message=getattr(config, "greeting_message", None),
         farewell_message=getattr(config, "farewell_message", None),
         custom_pronunciation=pronunciation_dict,
+        personality_preset=getattr(config, "personality_preset", "professional_premium_warm") or "professional_premium_warm",
+        professionalism_level=int(getattr(config, "professionalism_level", 100) if getattr(config, "professionalism_level", None) is not None else 100),
+        warmth_level=int(getattr(config, "warmth_level", 85) if getattr(config, "warmth_level", None) is not None else 85),
+        humor_level=int(getattr(config, "humor_level", 40) if getattr(config, "humor_level", None) is not None else 40),
+        formality_level=int(getattr(config, "formality_level", 65) if getattr(config, "formality_level", None) is not None else 65),
+        response_length=getattr(config, "response_length", "concise") or "concise",
+        allow_natural_interruptions=bool(getattr(config, "allow_natural_interruptions", True)),
+        preferred_accent=getattr(config, "preferred_accent", None),
+        realtime_provider=getattr(config, "realtime_provider", "retell") or "retell",
+        gemini_live_enabled=bool(getattr(config, "gemini_live_enabled", False)),
     )
 
 
@@ -1422,6 +1432,26 @@ def update_voice_customization(
     if request.custom_pronunciation is not None:
         import json as _json
         config.custom_pronunciation = _json.dumps(request.custom_pronunciation)
+    if request.personality_preset is not None:
+        config.personality_preset = request.personality_preset
+    if request.professionalism_level is not None:
+        config.professionalism_level = request.professionalism_level
+    if request.warmth_level is not None:
+        config.warmth_level = request.warmth_level
+    if request.humor_level is not None:
+        config.humor_level = request.humor_level
+    if request.formality_level is not None:
+        config.formality_level = request.formality_level
+    if request.response_length is not None:
+        config.response_length = request.response_length
+    if request.allow_natural_interruptions is not None:
+        config.allow_natural_interruptions = bool(request.allow_natural_interruptions)
+    if request.preferred_accent is not None:
+        config.preferred_accent = request.preferred_accent.strip() if request.preferred_accent else None
+    if request.realtime_provider is not None:
+        config.realtime_provider = request.realtime_provider
+    if request.gemini_live_enabled is not None:
+        config.gemini_live_enabled = bool(request.gemini_live_enabled)
 
     db.commit()
     db.refresh(config)
@@ -1446,6 +1476,16 @@ def update_voice_customization(
         greeting_message=config.greeting_message,
         farewell_message=config.farewell_message,
         custom_pronunciation=pronunciation_dict,
+        personality_preset=getattr(config, "personality_preset", "professional_premium_warm") or "professional_premium_warm",
+        professionalism_level=int(getattr(config, "professionalism_level", 100) if getattr(config, "professionalism_level", None) is not None else 100),
+        warmth_level=int(getattr(config, "warmth_level", 85) if getattr(config, "warmth_level", None) is not None else 85),
+        humor_level=int(getattr(config, "humor_level", 40) if getattr(config, "humor_level", None) is not None else 40),
+        formality_level=int(getattr(config, "formality_level", 65) if getattr(config, "formality_level", None) is not None else 65),
+        response_length=getattr(config, "response_length", "concise") or "concise",
+        allow_natural_interruptions=bool(getattr(config, "allow_natural_interruptions", True)),
+        preferred_accent=getattr(config, "preferred_accent", None),
+        realtime_provider=getattr(config, "realtime_provider", "retell") or "retell",
+        gemini_live_enabled=bool(getattr(config, "gemini_live_enabled", False)),
     )
 
 
@@ -1488,6 +1528,27 @@ async def update_voice_config(
         import json as _json
         val = request["custom_pronunciation"]
         config.custom_pronunciation = _json.dumps(val) if isinstance(val, dict) else str(val)
+    if "personality_preset" in request and request["personality_preset"]:
+        config.personality_preset = str(request["personality_preset"])
+    if "professionalism_level" in request and request["professionalism_level"] is not None:
+        config.professionalism_level = max(0, min(100, int(request["professionalism_level"])))
+    if "warmth_level" in request and request["warmth_level"] is not None:
+        config.warmth_level = max(0, min(100, int(request["warmth_level"])))
+    if "humor_level" in request and request["humor_level"] is not None:
+        config.humor_level = max(0, min(100, int(request["humor_level"])))
+    if "formality_level" in request and request["formality_level"] is not None:
+        config.formality_level = max(0, min(100, int(request["formality_level"])))
+    if "response_length" in request and request["response_length"]:
+        config.response_length = str(request["response_length"])
+    if "allow_natural_interruptions" in request and request["allow_natural_interruptions"] is not None:
+        config.allow_natural_interruptions = bool(request["allow_natural_interruptions"])
+    if "preferred_accent" in request:
+        val = request["preferred_accent"]
+        config.preferred_accent = str(val).strip() if val else None
+    if "realtime_provider" in request and request["realtime_provider"]:
+        config.realtime_provider = str(request["realtime_provider"])
+    if "gemini_live_enabled" in request and request["gemini_live_enabled"] is not None:
+        config.gemini_live_enabled = bool(request["gemini_live_enabled"])
 
     # If full VoiceConfigRequest fields (business_name, etc.) are present, run full upsert
     if "business_name" in request:

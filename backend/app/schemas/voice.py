@@ -270,6 +270,16 @@ class VoiceCustomizationUpdateRequest(BaseModel):
     greeting_message: str | None = Field(default=None, max_length=2000)
     farewell_message: str | None = Field(default=None, max_length=2000)
     custom_pronunciation: dict[str, Any] | None = None
+    personality_preset: str | None = Field(default=None, max_length=64)
+    professionalism_level: int | None = Field(default=None, ge=0, le=100)
+    warmth_level: int | None = Field(default=None, ge=0, le=100)
+    humor_level: int | None = Field(default=None, ge=0, le=100)
+    formality_level: int | None = Field(default=None, ge=0, le=100)
+    response_length: str | None = Field(default=None, max_length=32)
+    allow_natural_interruptions: bool | None = None
+    preferred_accent: str | None = Field(default=None, max_length=32)
+    realtime_provider: str | None = Field(default=None, max_length=32)
+    gemini_live_enabled: bool | None = None
 
 
 class VoiceCustomizationResponse(BaseModel):
@@ -282,6 +292,16 @@ class VoiceCustomizationResponse(BaseModel):
     greeting_message: str | None = None
     farewell_message: str | None = None
     custom_pronunciation: dict[str, Any] | None = None
+    personality_preset: str = "professional_premium_warm"
+    professionalism_level: int = 100
+    warmth_level: int = 85
+    humor_level: int = 40
+    formality_level: int = 65
+    response_length: str = "concise"
+    allow_natural_interruptions: bool = True
+    preferred_accent: str | None = None
+    realtime_provider: str = "retell"
+    gemini_live_enabled: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 

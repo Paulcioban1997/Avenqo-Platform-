@@ -683,6 +683,8 @@ class TelnyxMediaBridge:
         max_output_queue: int = 64,
         max_session_seconds: float | None = None,
         idle_seconds: float | None = None,
+        allow_natural_interruptions: bool = True,
+        interruption_manager: Any | None = None,
     ) -> None:
         self.socket = socket
         self.adapter = adapter
@@ -699,6 +701,8 @@ class TelnyxMediaBridge:
         self.poll_pin: Callable[[], Awaitable[str]] | None = poll_pin
         self.consume_pending_query: Callable[[], Awaitable[str | None]] | None = consume_pending_query
         self.hangup_call: Callable[[], Awaitable[None]] | None = hangup_call
+        self.allow_natural_interruptions = bool(allow_natural_interruptions)
+        self.interruption_manager = interruption_manager
         if max_session_seconds is not None and max_session_seconds <= 0:
             raise ValueError("Session duration must be positive")
         self.max_session_seconds = max_session_seconds
@@ -775,6 +779,7 @@ class TelnyxMediaBridge:
 
     async def interrupt(self, *, pause_input: bool = False) -> None:
         cancel_response = self.response_id is not None or self.pending_epoch is not None
+        session_key = str(self.stream_id or "default")
         self.epoch += 1
         self.pending_epoch = None
         self.response_epoch = None
@@ -784,15 +789,21 @@ class TelnyxMediaBridge:
         self.reorder_buffer.reset()
         while not self._turns.empty():
             item_id, _transcript, _epoch = self._turns.get_nowait()
+            if self.interruption_manager is not None:
+                self.interruption_manager.cancel_turn(session_key, str(item_id))
             if self.usage is not None:
                 self.usage.settle(item_id)
         while not self._output.empty():
             self._output.get_nowait()
         while self._pending_speech:
             item_id, _epoch, turn_ledger = self._pending_speech.popleft()
+            if self.interruption_manager is not None:
+                self.interruption_manager.cancel_turn(session_key, str(item_id))
             if turn_ledger is not None:
                 turn_ledger.settle(item_id)
         for _resp_id, (item_id, _resp_epoch, resp_ledger) in list(self._responses.items()):
+            if self.interruption_manager is not None:
+                self.interruption_manager.cancel_turn(session_key, str(item_id))
             if resp_ledger is not None:
                 resp_ledger.settle(item_id)
         self._responses.clear()
@@ -810,6 +821,8 @@ class TelnyxMediaBridge:
         try:
             if epoch != self.epoch or self.input_paused:
                 return
+            if self.interruption_manager is not None and self.interruption_manager.is_turn_cancelled(str(item_id)):
+                return
             if not transcript or not transcript.strip():
                 return
             await self.authorize()
@@ -823,6 +836,8 @@ class TelnyxMediaBridge:
                 self.central_ai_timeouts += 1
                 return
             if epoch != self.epoch:
+                return
+            if self.interruption_manager is not None and self.interruption_manager.is_turn_cancelled(str(item_id)):
                 return
             if result.get("auth_required"):
                 if self.begin_pin is None or self.poll_pin is None:
@@ -950,7 +965,20 @@ class TelnyxMediaBridge:
                 logger.info("Caller speech started (epoch=%s)", self.epoch)
                 self.telemetry["speech_detected"] = True
                 self.telemetry["final_state"] = "USER_SPEAKING"
-                await self.interrupt()
+                session_key = str(self.stream_id or "default")
+                if self.interruption_manager is not None:
+                    self.interruption_manager.on_caller_speech_detected(
+                        session_key,
+                        is_dtmf_pin_entry=bool(self.input_paused or self._pin_turn is not None),
+                        allow_interruptions=self.allow_natural_interruptions,
+                    )
+                active_playback = (
+                    self.response_id is not None
+                    or self.pending_epoch is not None
+                    or not self._output.empty()
+                )
+                if self.allow_natural_interruptions or not active_playback:
+                    await self.interrupt()
                 item_id = getattr(event, "item_id", "")
                 if self.usage is not None and isinstance(item_id, str) and item_id:
                     if not self.usage.reserve(item_id):
@@ -987,6 +1015,8 @@ class TelnyxMediaBridge:
                     item_id, response_epoch, response_ledger = self._pending_speech.popleft()
                     self._responses[self.response_id] = (item_id, response_epoch, response_ledger)
                     self.response_epoch = response_epoch
+                    if self.interruption_manager is not None:
+                        self.interruption_manager.register_playback(str(self.stream_id or "default"), str(item_id))
                 else:
                     self.response_epoch = None
                 self.pending_epoch = None
@@ -997,6 +1027,8 @@ class TelnyxMediaBridge:
                 self.telemetry["final_state"] = "LISTENING"
                 completed_id = getattr(getattr(event, "response", None), "id", None)
                 completed = self._responses.pop(completed_id, None)
+                if completed is not None and self.interruption_manager is not None:
+                    self.interruption_manager.complete_turn(str(self.stream_id or "default"), str(completed[0]))
                 if completed is not None and completed[2] is not None:
                     completed[2].record_realtime_response(completed[0], event, model=self.realtime_model)
                     completed[2].settle(completed[0])
@@ -1311,11 +1343,28 @@ async def complete_media_hangup(db: Session, settings: Settings, call_id: UUID):
     return c_call
 
 
-def media_audio_available(settings: Settings, locale: str) -> bool:
-    return bool(settings.openai_api_key and settings.voice_realtime_provider == "openai" and settings.voice_realtime_model
-        and settings.voice_stt_provider == "openai" and settings.voice_stt_model
-        and settings.voice_tts_provider == "openai" and settings.voice_tts_voice and settings.voice_tts_model
-        and resolve_locale(locale) in {resolve_locale(item) for item in settings.voice_realtime_supported_locales})
+def media_audio_available(settings: Settings, locale: str, config: VoiceBusinessConfig | None = None) -> bool:
+    if resolve_locale(locale) not in {resolve_locale(item) for item in settings.voice_realtime_supported_locales}:
+        return False
+    openai_ok = bool(
+        settings.openai_api_key
+        and settings.voice_realtime_provider == "openai"
+        and settings.voice_realtime_model
+        and settings.voice_stt_provider == "openai"
+        and settings.voice_stt_model
+        and settings.voice_tts_provider == "openai"
+        and settings.voice_tts_voice
+        and settings.voice_tts_model
+    )
+    gemini_ok = bool(
+        config is not None
+        and (
+            bool(getattr(config, "gemini_live_enabled", False))
+            or getattr(config, "realtime_provider", "") == "gemini_live"
+        )
+        and settings.google_ai_api_key
+    )
+    return openai_ok or gemini_ok
 
 
 async def telnyx_media_socket(
@@ -1331,7 +1380,7 @@ async def telnyx_media_socket(
             call, config, company, _user, _permissions, _auth = media_call_context(db, settings, call_id)
         call_lang_session = company_call_language_session(db, config, call)
         locale = resolve_locale(call_lang_session.active_locale)
-        if not media_audio_available(settings, locale) or service.usage_service is None:
+        if not media_audio_available(settings, locale, config) or service.usage_service is None:
             raise PermissionError("Validated audio configuration required")
         plan = ModuleEntitlementService(db).get_company_plan(TenantContext(company.id)).code.value
         service.usage_service.ensure_quota_available(company.id, plan)
@@ -1356,9 +1405,17 @@ async def telnyx_media_socket(
     auth_epoch = None
     public_conversation = PublicInboundConversation(db, settings, call_id) if public_mode else None
     from backend.app.voice.audio_preferences import phone_audio_config
+    from backend.app.voice.realtime_provider import VoiceRealtimeRouter
     tenant_audio = phone_audio_config(db, settings, config)
-    adapter = build_phone_adapter(settings, lambda: OpenAIRealtimeAudioAdapter(
-        tenant_audio, settings.voice_realtime_model))
+    realtime_router = VoiceRealtimeRouter(settings)
+    adapter = realtime_router.build_realtime_adapter(
+        config,
+        tenant_audio,
+        fallback_factory=lambda: build_phone_adapter(
+            settings,
+            lambda: OpenAIRealtimeAudioAdapter(tenant_audio, settings.voice_realtime_model),
+        ),
+    )
     bridge: TelnyxMediaBridge
 
     async def authorize() -> None:
@@ -1646,9 +1703,18 @@ async def telnyx_media_socket(
         elif policy.max_call_seconds is not None:
             sandbox_duration = min(sandbox_duration, float(policy.max_call_seconds)) if sandbox_duration is not None else float(policy.max_call_seconds)
         idle_seconds = policy.idle_seconds
-        adapter = RotatingRealtimeAdapter(lambda: build_phone_adapter(settings, lambda: OpenAIRealtimeAudioAdapter(
-            tenant_audio,
-            settings.voice_realtime_model)), authorize, rotation_seconds=settings.voice_realtime_rotation_seconds)
+        adapter = RotatingRealtimeAdapter(
+            lambda: realtime_router.build_realtime_adapter(
+                config,
+                tenant_audio,
+                fallback_factory=lambda: build_phone_adapter(
+                    settings,
+                    lambda: OpenAIRealtimeAudioAdapter(tenant_audio, settings.voice_realtime_model),
+                ),
+            ),
+            authorize,
+            rotation_seconds=settings.voice_realtime_rotation_seconds,
+        )
 
     # For production-like Sandbox calls (and live calls without a lower synthetic/policy limit),
     # ensure an appropriate bounded session duration based on plan / commercial limits (default 3600s).
@@ -1659,16 +1725,23 @@ async def telnyx_media_socket(
         bounded_limit = settings.voice_plan_max_call_seconds.get(plan_code, 3600) or settings.voice_commercial_max_call_seconds or 3600
         sandbox_duration = float(bounded_limit)
 
+    use_gemini_live = bool(
+        (bool(getattr(config, "gemini_live_enabled", False)) or getattr(config, "realtime_provider", "") == "gemini_live")
+        and settings.google_ai_api_key
+    )
+    active_realtime_model = settings.gemini_live_model if use_gemini_live else settings.voice_realtime_model
     bridge = TelnyxMediaBridge(BoundedMediaSocket(websocket), adapter, locale=locale,
         validate_start=validate_start, authorize=authorize, execute_turn=execute_turn,
-        stt_model=settings.voice_stt_model, realtime_model=settings.voice_realtime_model,
+        stt_model=settings.voice_stt_model, realtime_model=active_realtime_model,
         initial_answer=public_conversation.greeting() if public_conversation is not None else None,
         begin_pin=begin_pin if public_mode else None, poll_pin=poll_pin if public_mode else None,
         consume_pending_query=consume_pending_query if public_mode else None,
         hangup_call=hangup_call,
         max_session_seconds=sandbox_duration,
         idle_seconds=idle_seconds,
-        max_output_queue=2000)
+        max_output_queue=2000,
+        allow_natural_interruptions=bool(getattr(config, "allow_natural_interruptions", True)),
+        interruption_manager=realtime_router.interruptions)
     await websocket.accept()
     try:
         await bridge.run()

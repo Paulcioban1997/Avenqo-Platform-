@@ -49,6 +49,30 @@ def voice_pricing_catalog(rate_card: dict[str, dict[str, object]] | None = None)
             "input_cost_per_million_usd": "0.6",
             "audio_output_cost_per_million_usd": "12",
         },
+        "gemini-2.0-flash-live-001": {
+            "input_cost_per_million_usd": "0.30",
+            "cached_input_cost_per_million_usd": "0.03",
+            "output_cost_per_million_usd": "1.20",
+            "audio_input_cost_per_million_usd": "2.10",
+            "audio_output_cost_per_million_usd": "8.50",
+            "audio_input_cost_per_second_usd": "0.000083",
+        },
+        "gemini-2.0-flash-exp": {
+            "input_cost_per_million_usd": "0.30",
+            "cached_input_cost_per_million_usd": "0.03",
+            "output_cost_per_million_usd": "1.20",
+            "audio_input_cost_per_million_usd": "2.10",
+            "audio_output_cost_per_million_usd": "8.50",
+            "audio_input_cost_per_second_usd": "0.000083",
+        },
+        "gemini-2.5-flash-native-audio-preview-12-2025": {
+            "input_cost_per_million_usd": "0.30",
+            "cached_input_cost_per_million_usd": "0.03",
+            "output_cost_per_million_usd": "1.20",
+            "audio_input_cost_per_million_usd": "2.10",
+            "audio_output_cost_per_million_usd": "8.50",
+            "audio_input_cost_per_second_usd": "0.000083",
+        },
     }
     for model, defaults_for_model in defaults.items():
         override = (

@@ -373,6 +373,29 @@ class ChatService:
             return "DEV: requete_provider_invalide"
         return "DEV: provider_indisponible"
 
+    def _voice_personality_kwargs(self, tenant_id: UUID, is_voice_call: bool) -> dict[str, object]:
+        if not is_voice_call:
+            return {}
+        db = getattr(self._conversations, "_db", None)
+        if db is None:
+            return {}
+        try:
+            from sqlalchemy import select
+            from backend.app.models.voice import VoiceBusinessConfig
+            cfg = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == tenant_id))
+            if cfg is None:
+                return {}
+            return {
+                "personality_preset": str(getattr(cfg, "personality_preset", "professional_premium_warm") or "professional_premium_warm"),
+                "professionalism_level": int(getattr(cfg, "professionalism_level", 100) if getattr(cfg, "professionalism_level", None) is not None else 100),
+                "warmth_level": int(getattr(cfg, "warmth_level", 85) if getattr(cfg, "warmth_level", None) is not None else 85),
+                "humor_level": int(getattr(cfg, "humor_level", 40) if getattr(cfg, "humor_level", None) is not None else 40),
+                "formality_level": int(getattr(cfg, "formality_level", 65) if getattr(cfg, "formality_level", None) is not None else 65),
+                "allow_natural_interruptions": bool(getattr(cfg, "allow_natural_interruptions", True)),
+            }
+        except Exception:
+            return {}
+
     @bounded_ai_request
     async def send(
         self,
@@ -514,6 +537,7 @@ class ChatService:
                 AIMessageRole.USER,
                 query,
             )
+            is_voice = bool(voice_path or client_context == "/voice" or client_context.startswith("/voice"))
             system_instruction = _localized_system_instruction(
                 SYSTEM_INSTRUCTION,
                 user_language=user_language,
@@ -523,7 +547,8 @@ class ChatService:
                 follow_latest_utterance_language=follow_latest_utterance_language,
                 language_explicitly_requested=language_explicitly_requested,
                 language_auto_detect=language_auto_detect,
-                is_voice_call=(client_context == "/voice" or client_context.startswith("/voice")),
+                is_voice_call=is_voice,
+                **self._voice_personality_kwargs(tenant_id, is_voice),
             )
             with self._provider.routing(routing_context):
                 if self._orchestrator is not None:
@@ -688,12 +713,15 @@ class ChatService:
         attempts = ()
         tool_call_results: tuple[ToolCallResult, ...] = ()
         cancelled = False
+        is_voice = bool(voice_path or client_context == "/voice" or client_context.startswith("/voice"))
         system_instruction = _localized_system_instruction(
             SYSTEM_INSTRUCTION,
             user_language=user_language,
             company_country=company_country,
             company_currency=company_currency,
             company_timezone=company_timezone,
+            is_voice_call=is_voice,
+            **self._voice_personality_kwargs(tenant_id, is_voice),
         )
 
         avenqo_request_id = request_id or str(uuid4())

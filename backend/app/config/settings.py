@@ -276,6 +276,8 @@ class Settings(BaseSettings):
     voice_certified_realtime_locales: list[str] = Field(default_factory=list, alias="VOICE_CERTIFIED_REALTIME_LOCALES")
     voice_approved_realtime_models: list[str] = Field(default_factory=list, alias="VOICE_APPROVED_REALTIME_MODELS")
     voice_realtime_model: str | None = Field(default="gpt-realtime-2.1", alias="VOICE_REALTIME_MODEL")
+    gemini_live_model: str = Field(default="gemini-2.0-flash-live-001", alias="GEMINI_LIVE_MODEL")
+    gemini_live_voice: str = Field(default="Aoede", alias="GEMINI_LIVE_VOICE")
     voice_realtime_supported_locales: list[str] = Field(default_factory=lambda: ["fr", "en", "ro"], alias="VOICE_REALTIME_SUPPORTED_LOCALES")
 
     @field_validator("voice_realtime_supported_locales", mode="before")

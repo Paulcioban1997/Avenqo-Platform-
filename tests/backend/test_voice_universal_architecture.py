@@ -839,4 +839,450 @@ def test_voice_realtime_provider_and_barge_in(tmp_path):
     assert mgr.is_turn_cancelled("turn-002") is False
 
 
+def test_gemini_live_realtime_audio_adapter_telnyx_bridge_end_to_end_and_barge_in():
+    """Test E2E audio bidirectionnel : Telnyx G.711 mu-law 8kHz <-> TelnyxMediaBridge <-> GeminiLiveRealtimeAudioAdapter (16kHz/24kHz) + Barge-in réel."""
+    import asyncio
+    import audioop
+    import base64
+    from types import SimpleNamespace
+    from backend.app.voice.audio_preferences import OpenAIAudioConfig
+    from backend.app.voice.realtime_provider import (
+        GeminiLiveRealtimeAudioAdapter,
+        NaturalInterruptionManager,
+    )
+    from backend.app.voice.telnyx_media import TelnyxMediaBridge
+
+    class FakeGeminiLiveSession:
+        def __init__(self) -> None:
+            self.realtime_inputs: list[Any] = []
+            self.client_contents: list[Any] = []
+            self._server_queue: asyncio.Queue[Any] = asyncio.Queue()
+            self._closed = False
+
+        async def send_realtime_input(self, **kwargs: Any) -> None:
+            self.realtime_inputs.append(kwargs)
+            # Dès réception du premier paquet audio significatif, simuler la transcription Gemini Live
+            if len(self.realtime_inputs) == 2:
+                await self._server_queue.put(
+                    SimpleNamespace(
+                        server_content=SimpleNamespace(
+                            interrupted=False,
+                            input_transcription=SimpleNamespace(text="Quels snowboards avez-vous en stock ?"),
+                            output_transcription=None,
+                            model_turn=None,
+                            turn_complete=False,
+                        ),
+                        tool_call=None,
+                    )
+                )
+
+        async def send_client_content(self, **kwargs: Any) -> None:
+            self.client_contents.append(kwargs)
+            # Quand TelnyxMediaBridge demande à Gemini Live de prononcer la réponse Central AI,
+            # émettre de l'audio PCM 24kHz en sortie
+            pcm_24k = b"\x10\x08" * 2400  # 100ms @ 24kHz PCM16
+            await self._server_queue.put(
+                SimpleNamespace(
+                    server_content=SimpleNamespace(
+                        interrupted=False,
+                        input_transcription=None,
+                        output_transcription=SimpleNamespace(text="Nous avons le modèle 3p Fulfilled en stock."),
+                        model_turn=SimpleNamespace(
+                            parts=[
+                                SimpleNamespace(
+                                    inline_data=SimpleNamespace(
+                                        data=pcm_24k,
+                                        mime_type="audio/pcm;rate=24000",
+                                    )
+                                )
+                            ]
+                        ),
+                        turn_complete=True,
+                    ),
+                    tool_call=None,
+                )
+            )
+
+        async def receive(self):
+            while not self._closed:
+                msg = await self._server_queue.get()
+                if msg is None:
+                    return
+                yield msg
+
+    fake_session = FakeGeminiLiveSession()
+
+    class FakeConnectCtx:
+        async def __aenter__(self):
+            return fake_session
+
+        async def __aexit__(self, exc_type, exc, tb):
+            fake_session._closed = True
+            await fake_session._server_queue.put(None)
+
+    fake_client = SimpleNamespace(
+        aio=SimpleNamespace(
+            live=SimpleNamespace(
+                connect=lambda **_kwargs: FakeConnectCtx(),
+            )
+        )
+    )
+
+    class FakeTelnyxSocket:
+        def __init__(self) -> None:
+            self.inbound: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+            self.outbound: list[dict[str, Any]] = []
+
+        async def receive_json(self) -> dict[str, Any]:
+            return await self.inbound.get()
+
+        async def send_json(self, payload: dict[str, Any]) -> None:
+            self.outbound.append(payload)
+
+    async def _run_test():
+        audio_cfg = OpenAIAudioConfig(
+            api_key="test-key",
+            stt_model="gpt-4o-mini-transcribe",
+            tts_model="gpt-4o-mini-tts",
+            tts_voice="shimmer",
+        )
+        adapter = GeminiLiveRealtimeAudioAdapter(
+            audio_cfg,
+            api_key="gemini-test-key",
+            model="gemini-2.0-flash-live-001",
+            voice_name="Aoede",
+            company_name="Produits Ero",
+            client_factory=lambda _key: fake_client,
+        )
+        interruption_mgr = NaturalInterruptionManager()
+        socket = FakeTelnyxSocket()
+        executed_turns: list[tuple[str, str]] = []
+
+        async def validate_start(_start: dict) -> None:
+            return None
+
+        async def authorize() -> None:
+            return None
+
+        async def execute_turn(item_id: str, transcript: str) -> dict:
+            executed_turns.append((item_id, transcript))
+            return {
+                "status": "success",
+                "answer": "Nous avons le snowboard 3p Fulfilled en stock à 2629 dollars.",
+                "hangup": False,
+            }
+
+        bridge = TelnyxMediaBridge(
+            socket,
+            adapter,
+            locale="fr-CA",
+            validate_start=validate_start,
+            authorize=authorize,
+            execute_turn=execute_turn,
+            allow_natural_interruptions=True,
+            interruption_manager=interruption_mgr,
+        )
+
+        # Préparer les trames Telnyx G.711 mu-law 8kHz (160 octets = 20ms @ 8kHz)
+        pcm_8k_speech = b"\x00\x20" * 160  # 20ms d'énergie vocale
+        ulaw_frame = audioop.lin2ulaw(pcm_8k_speech, 2)
+        b64_ulaw = base64.b64encode(ulaw_frame).decode("ascii")
+
+        await socket.inbound.put({"event": "connected"})
+        await socket.inbound.put(
+            {
+                "event": "start",
+                "stream_id": "stream-ero-1",
+                "start": {
+                    "stream_id": "stream-ero-1",
+                    "media_format": {"encoding": "PCMU", "sample_rate": 8000, "channels": 1},
+                },
+            }
+        )
+        await socket.inbound.put({"event": "media", "stream_id": "stream-ero-1", "media": {"chunk": "1", "payload": b64_ulaw}})
+        await socket.inbound.put({"event": "media", "stream_id": "stream-ero-1", "media": {"chunk": "2", "payload": b64_ulaw}})
+
+        bridge_task = asyncio.create_task(bridge.run())
+
+        # Attendre que Central AI soit appelé et que des trames audio G.711 sortantes soient émises vers Telnyx
+        for _ in range(60):
+            if any(msg.get("event") == "media" for msg in socket.outbound):
+                break
+            await asyncio.sleep(0.05)
+
+        assert len(fake_session.realtime_inputs) >= 2
+        assert len(executed_turns) == 1
+        assert "snowboards" in executed_turns[0][1]
+        media_frames = [msg for msg in socket.outbound if msg.get("event") == "media"]
+        assert len(media_frames) >= 1
+
+        # Simuler une interruption (barge-in) pendant la conversation
+        await fake_session._server_queue.put(
+            SimpleNamespace(
+                server_content=SimpleNamespace(
+                    interrupted=True,
+                    input_transcription=None,
+                    output_transcription=None,
+                    model_turn=None,
+                    turn_complete=False,
+                ),
+                tool_call=None,
+            )
+        )
+        await asyncio.sleep(0.08)
+        clear_events = [msg for msg in socket.outbound if msg.get("event") == "clear"]
+        assert len(clear_events) >= 1
+
+        # Terminer proprement le flux Telnyx
+        await socket.inbound.put({"event": "stop", "stream_id": "stream-ero-1"})
+        await asyncio.wait_for(bridge_task, timeout=5.0)
+
+    asyncio.run(_run_test())
+
+
+def test_gemini_live_provider_stream_conversation_tools_and_deduplication():
+    """Vérifie GoogleGeminiLiveRealtimeProvider.stream_conversation : appels d'outils Central AI, anti-doublon et blocage de reserve_product."""
+    import asyncio
+    import audioop
+    from types import SimpleNamespace
+    from uuid import uuid4
+    from backend.app.config.settings import Settings
+    from backend.app.voice.realtime_provider import (
+        GoogleGeminiLiveRealtimeProvider,
+        VoiceAudioChunk,
+        VoiceTurnContext,
+    )
+
+    tool_executions: list[tuple[str, dict[str, Any]]] = []
+
+    class FakeLiveSession:
+        def __init__(self) -> None:
+            self.tool_responses: list[Any] = []
+            self._queue: asyncio.Queue[Any] = asyncio.Queue()
+
+        async def send_realtime_input(self, **_kwargs: Any) -> None:
+            # Déclencher un tool_call avec:
+            # 1) un appel autorisé (check_availability)
+            # 2) un doublon identique dans le même tour (doit être dédupliqué)
+            # 3) une tentative interdite reserve_product (doit être bloquée)
+            if not self.tool_responses and self._queue.empty():
+                await self._queue.put(
+                    SimpleNamespace(
+                        tool_call=SimpleNamespace(
+                            function_calls=[
+                                SimpleNamespace(
+                                    id="call-1",
+                                    name="check_availability",
+                                    args={"date": "2026-11-15"},
+                                ),
+                                SimpleNamespace(
+                                    id="call-2",
+                                    name="check_availability",
+                                    args={"date": "2026-11-15"},
+                                ),
+                                SimpleNamespace(
+                                    id="call-3",
+                                    name="reserve_product",
+                                    args={"product_name": "Snowboard", "quantity": 1},
+                                ),
+                            ]
+                        ),
+                        server_content=None,
+                    )
+                )
+
+        async def send_tool_response(self, **kwargs: Any) -> None:
+            self.tool_responses.append(kwargs)
+            # Après réponse aux outils, émettre l'audio final 24kHz et terminer le tour
+            await self._queue.put(
+                SimpleNamespace(
+                    tool_call=None,
+                    server_content=SimpleNamespace(
+                        interrupted=False,
+                        input_transcription=SimpleNamespace(text="Avez-vous de la disponibilité demain ?"),
+                        output_transcription=SimpleNamespace(text="Oui, nous avons un créneau à 14h."),
+                        model_turn=SimpleNamespace(
+                            parts=[
+                                SimpleNamespace(
+                                    inline_data=SimpleNamespace(
+                                        data=b"\x08\x04" * 1200,
+                                        mime_type="audio/pcm;rate=24000",
+                                    )
+                                )
+                            ]
+                        ),
+                        turn_complete=True,
+                    ),
+                )
+            )
+
+        async def receive(self):
+            while True:
+                item = await self._queue.get()
+                if item is None:
+                    return
+                yield item
+
+    fake_session = FakeLiveSession()
+
+    class FakeCtx:
+        async def __aenter__(self):
+            return fake_session
+
+        async def __aexit__(self, exc_type, exc, tb):
+            await fake_session._queue.put(None)
+
+    fake_client = SimpleNamespace(
+        aio=SimpleNamespace(live=SimpleNamespace(connect=lambda **_kw: FakeCtx()))
+    )
+
+    async def tool_executor(name: str, args: dict[str, Any]) -> dict[str, Any]:
+        tool_executions.append((name, args))
+        return {"available_slots": ["14:00", "15:30"]}
+
+    async def _run():
+        settings = Settings(GOOGLE_AI_API_KEY="test-gemini-key")
+        provider = GoogleGeminiLiveRealtimeProvider(
+            settings,
+            client_factory=lambda _key: fake_client,
+            tool_executor=tool_executor,
+        )
+        ctx = VoiceTurnContext(
+            session_id="sess-ero-live",
+            turn_id="turn-ero-1",
+            tenant_id=uuid4(),
+            company_name="Produits Ero",
+            language="fr-CA",
+            personality_preset="professional_premium_warm",
+            professionalism_level=100,
+            warmth_level=85,
+            humor_level=40,
+            formality_level=65,
+            allow_natural_interruptions=True,
+            is_dtmf_pin_entry=False,
+            allowed_tools=frozenset({"check_availability", "create_appointment", "reserve_product"}),
+        )
+
+        async def _audio_stream():
+            ulaw = audioop.lin2ulaw(b"\x10\x00" * 160, 2)
+            yield VoiceAudioChunk(
+                data=ulaw,
+                sequence_id=1,
+                turn_id="turn-ero-1",
+                sample_rate=8000,
+                format="pcmu_8k",
+            )
+            await asyncio.sleep(0.05)
+
+        events = []
+        async for ev in provider.stream_conversation(ctx, _audio_stream(), output_codec="pcmu_8k"):
+            events.append(ev)
+
+        event_types = [e.event_type for e in events]
+        assert "turn_started" in event_types
+        assert "tool_call" in event_types
+        assert "audio_chunk" in event_types
+        assert "turn_completed" in event_types
+
+        # check_availability ne doit avoir été exécuté qu'UNE SEULE fois (déduplication du 2e appel)
+        # et reserve_product ne doit JAMAIS avoir été exécuté !
+        assert len(tool_executions) == 1
+        assert tool_executions[0][0] == "check_availability"
+
+        tool_events = [e for e in events if e.event_type == "tool_call"]
+        blocked = [e for e in tool_events if e.payload.get("tool_name") == "reserve_product"]
+        assert len(blocked) == 1
+        assert blocked[0].payload.get("blocked") is True
+
+    asyncio.run(_run())
+
+
+def test_fallback_realtime_audio_adapter_and_router_wiring(tmp_path):
+    """Vérifie le repli automatique vers OpenAI/Telnyx lorsque Gemini Live échoue à l'ouverture et la disponibilité audio multi-provider."""
+    import asyncio
+    from backend.app.config.settings import Settings
+    from backend.app.voice.audio_preferences import OpenAIAudioConfig
+    from backend.app.voice.realtime_provider import (
+        FallbackRealtimeAudioAdapter,
+        VoiceRealtimeRouter,
+    )
+    from backend.app.voice.telnyx_media import media_audio_available
+
+    session, company_a, _, _, _, _, _, _, _ = _create_test_db(tmp_path)
+    config = session.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_a.id))
+    assert config is not None
+    config.gemini_live_enabled = True
+    config.realtime_provider = "gemini_live"
+    session.commit()
+
+    settings = Settings(GOOGLE_AI_API_KEY="gemini-key", OPENAI_API_KEY="")
+    assert media_audio_available(settings, "fr-CA", config) is True
+
+    class FailingPrimaryAdapter:
+        async def open(self) -> None:
+            raise ConnectionError("Gemini Live endpoint unreachable")
+
+        async def close(self) -> None:
+            return None
+
+    class WorkingFallbackAdapter:
+        def __init__(self) -> None:
+            self.opened = False
+            self.spoken: list[str] = []
+
+        async def open(self) -> None:
+            self.opened = True
+
+        async def speak(self, text: str) -> None:
+            self.spoken.append(text)
+
+        async def send_audio(self, pcm: bytes) -> None:
+            return None
+
+        async def clear_input(self) -> None:
+            return None
+
+        async def interrupt(self) -> None:
+            return None
+
+        async def close(self) -> None:
+            return None
+
+        async def events(self):
+            if False:
+                yield None
+
+    fallback_instance = WorkingFallbackAdapter()
+
+    async def _test_fallback():
+        adapter = FallbackRealtimeAudioAdapter(
+            primary_factory=lambda: FailingPrimaryAdapter(),
+            fallback_factory=lambda: fallback_instance,
+        )
+        await adapter.open()
+        assert adapter.using_fallback is True
+        assert fallback_instance.opened is True
+        await adapter.speak("Bonjour chez Produits Ero")
+        assert fallback_instance.spoken == ["Bonjour chez Produits Ero"]
+        await adapter.close()
+
+    asyncio.run(_test_fallback())
+
+    # Vérifier également VoiceRealtimeRouter.build_realtime_adapter
+    router = VoiceRealtimeRouter(settings)
+    audio_cfg = OpenAIAudioConfig(
+        api_key="test",
+        stt_model="gpt-4o-mini-transcribe",
+        tts_model="gpt-4o-mini-tts",
+        tts_voice="shimmer",
+    )
+    built = router.build_realtime_adapter(
+        config,
+        audio_cfg,
+        fallback_factory=lambda: fallback_instance,
+    )
+    assert isinstance(built, FallbackRealtimeAudioAdapter)
+
+
+
 

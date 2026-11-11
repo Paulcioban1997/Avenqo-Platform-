@@ -69,6 +69,14 @@ interface CustomizationConfig {
   greeting_message?: string;
   farewell_message?: string;
   custom_pronunciation?: Record<string, string>;
+  personality_preset?: string;
+  professionalism_level?: number;
+  warmth_level?: number;
+  humor_level?: number;
+  formality_level?: number;
+  allow_natural_interruptions?: boolean;
+  realtime_provider?: string;
+  gemini_live_enabled?: boolean;
 }
 
 interface VoiceItem {
@@ -126,6 +134,14 @@ export function VoiceOnboardingWizard({
     voice_pronunciation: "",
     greeting_message: "",
     farewell_message: "",
+    personality_preset: "professional_premium_warm",
+    professionalism_level: 100,
+    warmth_level: 85,
+    humor_level: 40,
+    formality_level: 65,
+    allow_natural_interruptions: true,
+    realtime_provider: "retell",
+    gemini_live_enabled: false,
   });
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState<boolean>(false);
@@ -216,6 +232,14 @@ export function VoiceOnboardingWizard({
             voice_pronunciation: data.voice_pronunciation || data.voice_display_name || prev.voice_pronunciation,
             greeting_message: data.greeting_message ?? prev.greeting_message,
             farewell_message: data.farewell_message ?? prev.farewell_message,
+            personality_preset: data.personality_preset || prev.personality_preset || "professional_premium_warm",
+            professionalism_level: typeof data.professionalism_level === "number" ? data.professionalism_level : prev.professionalism_level ?? 100,
+            warmth_level: typeof data.warmth_level === "number" ? data.warmth_level : prev.warmth_level ?? 85,
+            humor_level: typeof data.humor_level === "number" ? data.humor_level : prev.humor_level ?? 40,
+            formality_level: typeof data.formality_level === "number" ? data.formality_level : prev.formality_level ?? 65,
+            allow_natural_interruptions: typeof data.allow_natural_interruptions === "boolean" ? data.allow_natural_interruptions : prev.allow_natural_interruptions ?? true,
+            realtime_provider: data.realtime_provider || prev.realtime_provider || "retell",
+            gemini_live_enabled: typeof data.gemini_live_enabled === "boolean" ? data.gemini_live_enabled : prev.gemini_live_enabled ?? false,
           }));
         }
       }
@@ -450,6 +474,14 @@ export function VoiceOnboardingWizard({
         greeting_message: customization.greeting_message?.trim() || undefined,
         farewell_message: customization.farewell_message?.trim() || undefined,
         custom_pronunciation: customization.custom_pronunciation || {},
+        personality_preset: customization.personality_preset || "professional_premium_warm",
+        professionalism_level: customization.professionalism_level ?? 100,
+        warmth_level: customization.warmth_level ?? 85,
+        humor_level: customization.humor_level ?? 40,
+        formality_level: customization.formality_level ?? 65,
+        allow_natural_interruptions: customization.allow_natural_interruptions ?? true,
+        realtime_provider: customization.realtime_provider || "retell",
+        gemini_live_enabled: customization.gemini_live_enabled ?? false,
       };
 
       const res = await apiFetch("/api/v1/voice/customization", {
@@ -1061,7 +1093,7 @@ export function VoiceOnboardingWizard({
                   </div>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                     {fr
-                      ? "Évite que l'agent ne prononce des tirets ou identifiants techniques (ex: « Produits Éro » au lieu de « Produits_Ero »)."
+                      ? "Évite que l'agent ne prononce des tirets ou identifiants techniques (ex: « Produits Ero » au lieu de « Produits_Ero »)."
                       : "Ensures the agent uses a natural spoken identity instead of technical database slugs."}
                   </p>
                 </div>
@@ -1074,7 +1106,7 @@ export function VoiceOnboardingWizard({
                       const val = e.target.value;
                       setCustomization((c) => ({ ...c, voice_display_name: val, voice_pronunciation: val }));
                     }}
-                    placeholder={profile.business_name ? profile.business_name.replace(/_/g, " ") : (fr ? "Ex: Produits Éro" : "Ex: Acme Corp")}
+                    placeholder={profile.business_name ? profile.business_name.replace(/_/g, " ") : (fr ? "Ex: Produits Ero" : "Ex: Acme Corp")}
                     className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-900 dark:text-white focus:outline-hidden focus:border-[#0076FF]"
                   />
                   <button
@@ -1094,6 +1126,100 @@ export function VoiceOnboardingWizard({
                     )}
                     <span>{fr ? "Écouter un aperçu" : "Listen to preview"}</span>
                   </button>
+                </div>
+              </div>
+
+              {/* PERSONALITY PROFILE, HUMOR & NATURAL INTERRUPTIONS */}
+              <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 mb-2">
+                    {fr ? "Personnalité de l'assistant :" : "Assistant Personality:"}
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    {[
+                      {
+                        id: "professional_premium_warm",
+                        label: fr ? "Professionnel premium — chaleureux et naturel" : "Premium Professional — warm & natural",
+                      },
+                      {
+                        id: "formal",
+                        label: fr ? "Formel — sérieux et institutionnel" : "Formal — serious & institutional",
+                      },
+                      {
+                        id: "casual_friendly",
+                        label: fr ? "Décontracté — amical et dynamique" : "Casual — friendly & dynamic",
+                      },
+                    ].map((preset) => {
+                      const active = (customization.personality_preset || "professional_premium_warm") === preset.id;
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => setCustomization((c) => ({ ...c, personality_preset: preset.id }))}
+                          className={`p-3 rounded-xl border text-left text-xs font-semibold transition ${
+                            active
+                              ? "border-[#0076FF] bg-blue-50/70 dark:bg-blue-950/40 text-[#0076FF]"
+                              : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300"
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center pt-1">
+                  <div>
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      <span>{fr ? "Humour et spontanéité" : "Humor & spontaneity"}</span>
+                      <span className="text-[#0076FF]">{customization.humor_level ?? 40}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={5}
+                      value={customization.humor_level ?? 40}
+                      onChange={(e) => setCustomization((c) => ({ ...c, humor_level: Number(e.target.value) }))}
+                      className="w-full accent-[#0076FF]"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2.5 cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={customization.allow_natural_interruptions ?? true}
+                        onChange={(e) => setCustomization((c) => ({ ...c, allow_natural_interruptions: e.target.checked }))}
+                        className="rounded border-slate-300 text-[#0076FF] focus:ring-[#0076FF]"
+                      />
+                      <span>
+                        {fr
+                          ? "Permettre les interruptions naturelles pendant les conversations"
+                          : "Allow natural interruptions (barge-in) during conversations"}
+                      </span>
+                    </label>
+                    <label className="flex items-center gap-2.5 cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={customization.gemini_live_enabled ?? false}
+                        onChange={(e) =>
+                          setCustomization((c) => ({
+                            ...c,
+                            gemini_live_enabled: e.target.checked,
+                            realtime_provider: e.target.checked ? "gemini_live" : "retell",
+                          }))
+                        }
+                        className="rounded border-slate-300 text-[#0076FF] focus:ring-[#0076FF]"
+                      />
+                      <span>
+                        {fr
+                          ? "Activer Google Gemini Live (Audio temps réel bidirectionnel + repli automatique)"
+                          : "Enable Google Gemini Live (Bidirectional real-time audio + automatic fallback)"}
+                      </span>
+                    </label>
+                  </div>
                 </div>
               </div>
 
