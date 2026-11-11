@@ -124,7 +124,7 @@ def test_ivr_pronunciation_formatting():
         id=uuid4(),
         company_id=uuid4(),
         business_name="Produits_Ero",
-        voice_display_name="Produits Éro",
+        voice_display_name="Produits Ero",
         custom_pronunciation='{"company": "Produit Éro"}',
         enabled=True,
     )

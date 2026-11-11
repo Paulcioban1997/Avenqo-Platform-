@@ -2161,6 +2161,11 @@ def test_clean_voice_text_strips_markdown_lists_and_formatting():
     assert not re.search(r"^\s*-\s+", cleaned_complex)
     assert "Bonjour ! Option A : Consultation Option B : Suivi" == cleaned_complex
 
+    # Commercial brand must stay "Produits Ero" (no accent), including slug/ASR variants.
+    assert clean_voice_text("Bienvenue chez Produits_Ero") == "Bienvenue chez Produits Ero"
+    assert clean_voice_text("Bienvenue chez Produits Éro") == "Bienvenue chez Produits Ero"
+    assert clean_voice_text("Bienvenue chez Produits-Zero") == "Bienvenue chez Produits Ero"
+
 
 @pytest.mark.asyncio
 async def test_public_caller_does_not_have_data_read_permission(authorized_media_call, monkeypatch):

@@ -125,13 +125,13 @@ def _setup_multi_tenant_db(tmp_path):
     config_a = VoiceBusinessConfig(
         company_id=company_a.id,
         business_name="Produits_Ero",
-        voice_display_name="Produits Éro",
-        custom_pronunciation="Produits Éro",
+        voice_display_name="Produits Ero",
+        custom_pronunciation="Produits Ero",
         timezone_name="America/Toronto",
         opening_hours={"monday": {"open": "09:00", "close": "18:00"}},
         services=[],
         preferred_language="fr",
-        greeting_message="Bonjour, bienvenue chez Produits Éro.",
+        greeting_message="Bonjour, bienvenue chez Produits Ero.",
         voice_api_key_hash=_api_key_hash("key_a"),
         voice_api_key_last4="keya",
         enabled=True,
@@ -169,17 +169,17 @@ def _setup_multi_tenant_db(tmp_path):
 def test_effective_voice_name_and_pronunciation_formatting(tmp_path):
     engine, session, company_a, config_a, user_a, company_b, config_b, user_b = _setup_multi_tenant_db(tmp_path)
     try:
-        # 1. Config A: Custom pronunciation "Produits Éro"
-        assert config_a.effective_voice_name == "Produits Éro"
+        # 1. Config A: Custom pronunciation "Produits Ero"
+        assert config_a.effective_voice_name == "Produits Ero"
 
         # 2. If custom_pronunciation is JSON dictionary
-        config_a.custom_pronunciation = json.dumps({"company": "Produits Éro Sport"})
-        assert config_a.effective_voice_name == "Produits Éro Sport"
+        config_a.custom_pronunciation = json.dumps({"company": "Produits Ero Sport"})
+        assert config_a.effective_voice_name == "Produits Ero Sport"
 
         # 3. If custom_pronunciation is empty but voice_display_name is set
         config_a.custom_pronunciation = None
-        config_a.voice_display_name = "Produits Éro Boutique"
-        assert config_a.effective_voice_name == "Produits Éro Boutique"
+        config_a.voice_display_name = "Produits Ero Boutique"
+        assert config_a.effective_voice_name == "Produits Ero Boutique"
 
         # 4. Fallback: if neither is set, replace underscores and hyphens (never pronounce tiret bas)
         config_a.voice_display_name = None
@@ -205,13 +205,13 @@ def test_changing_voice_name_preserves_technical_slug_and_company_name(tmp_path)
 
         # Update voice display name via customization endpoint
         update_req = VoiceCustomizationUpdateRequest(
-            voice_display_name="Produits Éro Neige & Montagne",
-            voice_pronunciation="Produits Éro Neige & Montagne",
+            voice_display_name="Produits Ero Neige & Montagne",
+            voice_pronunciation="Produits Ero Neige & Montagne",
         )
         res = update_voice_customization(update_req, identity=identity, db=session, settings=settings)
 
-        assert res.voice_display_name == "Produits Éro Neige & Montagne"
-        assert res.voice_pronunciation == "Produits Éro Neige & Montagne"
+        assert res.voice_display_name == "Produits Ero Neige & Montagne"
+        assert res.voice_pronunciation == "Produits Ero Neige & Montagne"
 
         # Re-query DB to verify stability of technical slug and business name
         session.refresh(company_a)
@@ -219,8 +219,8 @@ def test_changing_voice_name_preserves_technical_slug_and_company_name(tmp_path)
 
         assert company_a.slug == "produits-ero"  # Technical slug MUST remain untouched!
         assert company_a.name == "Produits_Ero"  # DB company name MUST remain untouched!
-        assert config_a.voice_display_name == "Produits Éro Neige & Montagne"
-        assert config_a.effective_voice_name == "Produits Éro Neige & Montagne"
+        assert config_a.voice_display_name == "Produits Ero Neige & Montagne"
+        assert config_a.effective_voice_name == "Produits Ero Neige & Montagne"
     finally:
         session.close()
         engine.dispose()
@@ -467,7 +467,7 @@ def test_strict_multi_tenant_isolation_between_two_distinct_companies(tmp_path):
 
         # 1. Company A check
         assert profile_a.business_name == "Produits_Ero"
-        assert profile_a.voice_display_name == "Produits Éro"
+        assert profile_a.voice_display_name == "Produits Ero"
         assert len(profile_a.public_products) == 1
         assert profile_a.public_products[0]["name"] == "The Hidden Snowboard"
         assert len(profile_a.configured_crm_services) == 0

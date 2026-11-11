@@ -2,7 +2,7 @@
 
 Vérifie:
 1. Découverte dynamique des sources et capacités à l'exécution pour deux entreprises de secteurs distincts :
-   - Tenant A : Commerce / Retail (Produits Éro) avec catalogue, stock et réservation en magasin.
+   - Tenant A : Commerce / Retail (Produits Ero) avec catalogue, stock et réservation en magasin.
    - Tenant B : Services professionnels / Juridique (Cabinet Juridique Lex) avec consultations CRM,
      documents de politiques internes (RAG), et AUCUN module Retail.
 2. Outil ReserveProductTool :
@@ -96,7 +96,7 @@ def _create_test_db(tmp_path):
     session.add_all(modules)
     session.flush()
 
-    # 2. Tenant A: Retail (Produits Éro)
+    # 2. Tenant A: Retail (Produits Ero)
     company_a = Company(
         id=uuid4(),
         name="Produits_Ero",
