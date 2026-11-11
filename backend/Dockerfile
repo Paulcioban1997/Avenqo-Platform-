@@ -18,14 +18,19 @@ WORKDIR /srv
 
 # Dépendances système minimales. Railway PostgreSQL tourne en 18.x ; le client
 # pg_dump doit être de la même version majeure (un pg_dump 17 refuse un serveur 18).
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl gosu \
+RUN apt-get -o Acquire::Retries=5 update \
+    && apt-get -o Acquire::Retries=5 install -y --no-install-recommends ca-certificates curl gosu \
     && install -d /usr/share/postgresql-common/pgdg \
-    && curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    && (curl --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 10 --max-time 30 -fsSL \
+        -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+        https://apt.postgresql.org/pub/repos/apt/ACCC4CF8.asc \
+      || curl --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 10 --max-time 45 -fsSL \
+        -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+        https://www.postgresql.org/media/keys/ACCC4CF8.asc) \
     && . /etc/os-release \
     && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends postgresql-client-18 \
+    && apt-get -o Acquire::Retries=5 update \
+    && apt-get -o Acquire::Retries=5 install -y --no-install-recommends postgresql-client-18 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt backend/requirements.txt
