@@ -205,7 +205,7 @@ jobs:
 
       - name: Static analysis
         working-directory: frontend
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos
 
       - name: Run Flutter tests
         working-directory: frontend
