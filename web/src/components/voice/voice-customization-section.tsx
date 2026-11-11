@@ -573,7 +573,7 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
               <span>Comment votre entreprise doit-elle être prononcée par l&apos;agent vocal ?</span>
             </label>
             <p className="text-[11px] text-slate-600 dark:text-slate-400">
-              Sépare l&apos;identifiant technique ou le slug (ex: <code>produits_ero</code>) du nom prononcé à voix haute par la synthèse vocale (ex: <strong>Produits Éro</strong>). Élimine les « tiret bas » et prononciations robotiques.
+              Sépare l&apos;identifiant technique ou le slug (ex: <code>produits_ero</code>) du nom prononcé à voix haute par la synthèse vocale (ex: <strong>Produits Ero</strong>). Élimine les « tiret bas » et prononciations robotiques.
             </p>
           </div>
           <button
@@ -595,7 +595,7 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
             type="text"
             value={voiceDisplayName}
             onChange={(e) => setVoiceDisplayName(e.target.value)}
-            placeholder="Ex: Produits Éro"
+            placeholder="Ex: Produits Ero"
             className="w-full rounded-xl border border-slate-200 bg-white p-2.5 text-xs font-medium text-slate-900 shadow-2xs outline-none focus:border-[#0076FF] dark:border-white/10 dark:bg-[#111D3D] dark:text-white"
           />
         </div>
