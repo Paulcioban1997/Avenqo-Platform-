@@ -32,11 +32,21 @@ PUBLIC_VOICE_CRM_TOOLS: frozenset[str] = frozenset({
 # Public retail catalog tools - real-time lookup when tenant has Retail module active
 PUBLIC_VOICE_RETAIL_TOOLS: frozenset[str] = frozenset({
     "get_product_detail",
+    "reserve_product",
+})
+
+# Public document & knowledge tools - tenant policy & FAQ search
+PUBLIC_VOICE_DOCUMENT_TOOLS: frozenset[str] = frozenset({
+    "search_documents",
+    "get_document_detail",
 })
 
 # Union of all possible public tools for backward compatibility
 PUBLIC_VOICE_TOOLS: frozenset[str] = (
-    PUBLIC_VOICE_BASE_TOOLS | PUBLIC_VOICE_CRM_TOOLS | PUBLIC_VOICE_RETAIL_TOOLS
+    PUBLIC_VOICE_BASE_TOOLS
+    | PUBLIC_VOICE_CRM_TOOLS
+    | PUBLIC_VOICE_RETAIL_TOOLS
+    | PUBLIC_VOICE_DOCUMENT_TOOLS
 )
 
 # Permissions granted to an unauthenticated caller. The public marker is what
@@ -45,6 +55,7 @@ PUBLIC_VOICE_CALLER_PERMISSIONS: frozenset[str] = frozenset({
     "ai:use",
     "crm:appointments:read",
     "crm:appointments:write",
+    "data:read",
     PUBLIC_VOICE_CALLER_PERMISSION,
 })
 
@@ -58,6 +69,7 @@ def public_voice_tool_allowed(
     *,
     has_crm_booking: bool = True,
     has_retail_commerce: bool = False,
+    has_documents: bool = False,
 ) -> bool:
     if tool_name in PUBLIC_VOICE_BASE_TOOLS:
         return True
@@ -65,6 +77,8 @@ def public_voice_tool_allowed(
         return has_crm_booking
     if tool_name in PUBLIC_VOICE_RETAIL_TOOLS:
         return has_retail_commerce
+    if tool_name in PUBLIC_VOICE_DOCUMENT_TOOLS:
+        return has_documents
     return False
 
 
@@ -73,6 +87,7 @@ __all__ = [
     "PUBLIC_VOICE_CALLER_PERMISSION",
     "PUBLIC_VOICE_CALLER_PERMISSIONS",
     "PUBLIC_VOICE_CRM_TOOLS",
+    "PUBLIC_VOICE_DOCUMENT_TOOLS",
     "PUBLIC_VOICE_RETAIL_TOOLS",
     "PUBLIC_VOICE_TOOLS",
     "is_public_voice_caller",

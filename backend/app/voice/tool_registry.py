@@ -56,7 +56,10 @@ class VoiceToolRegistryService:
                 write_allowed = "crm:appointments:write" in permissions_for(membership.role)
 
         from backend.app.services.company_intelligence_service import CompanyIntelligenceService, BOOKING_TOOLS
-        has_crm_booking = CompanyIntelligenceService(self._session).get_profile(tenant.company_id).has_crm_booking
+        intel_profile = CompanyIntelligenceService(self._session).get_profile(tenant.company_id)
+        has_crm_booking = intel_profile.has_crm_booking
+        has_retail_commerce = intel_profile.has_retail_commerce
+        has_documents = bool(getattr(intel_profile, "has_public_documents", False))
         from backend.app.services.voice_onboarding_service import stored_business_profile
         business = stored_business_profile(self._session, tenant.company_id)
 
@@ -80,6 +83,8 @@ class VoiceToolRegistryService:
                 if public_caller and not public_voice_tool_allowed(
                     tool_name,
                     has_crm_booking=has_crm_booking,
+                    has_retail_commerce=has_retail_commerce,
+                    has_documents=has_documents,
                 ):
                     continue
                 mapping = action_for_tool(tool_name)

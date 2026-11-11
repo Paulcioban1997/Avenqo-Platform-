@@ -67,7 +67,11 @@ from backend.app.ai.tools.business.crm_tools import (
     UpdateAppointmentTool,
 )
 from backend.app.ai.tools.business.customer_tools import GetCustomerSegmentsTool, GetCustomerSummaryTool
-from backend.app.ai.tools.business.commerce_tools import GetInventorySummaryTool, GetProductDetailTool
+from backend.app.ai.tools.business.commerce_tools import (
+    GetInventorySummaryTool,
+    GetProductDetailTool,
+    ReserveProductTool,
+)
 from backend.app.ai.tools.business.predictive_tools import (
     GetAnomaliesTool,
     GetChurnRiskTool,
@@ -108,6 +112,7 @@ def build_business_tool_registry(
     registry.register(GetCustomerSummaryTool(session, ingestion))
     registry.register(GetCustomerSegmentsTool(session, prediction_service))
     registry.register(GetProductDetailTool(session, ingestion))
+    registry.register(ReserveProductTool(session, ingestion))
     registry.register(GetInventorySummaryTool(session, ingestion))
     # Phase 31 — Avenqo Predictive Intelligence : réutilise EXACTEMENT le
     # même Model Registry/PredictionService, jamais un second moteur.

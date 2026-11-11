@@ -29,14 +29,23 @@ class ToolAuthorizationPolicy:
         # for transport purposes only: never let that grant private tools.
         if is_public_voice_caller(context.permissions):
             has_crm_booking = True
+            has_retail_commerce = False
+            has_documents = False
             try:
                 from backend.app.services.company_intelligence_service import CompanyIntelligenceService
-                has_crm_booking = CompanyIntelligenceService(self._db).get_profile(context.tenant.company_id).has_crm_booking
+                prof = CompanyIntelligenceService(self._db).get_profile(context.tenant.company_id)
+                has_crm_booking = prof.has_crm_booking
+                has_retail_commerce = prof.has_retail_commerce
+                has_documents = bool(getattr(prof, "has_public_documents", False))
             except Exception:
                 has_crm_booking = False
+                has_retail_commerce = False
+                has_documents = False
             if not public_voice_tool_allowed(
                 tool.name,
                 has_crm_booking=has_crm_booking,
+                has_retail_commerce=has_retail_commerce,
+                has_documents=has_documents,
             ):
                 raise ToolAuthorizationError("Caller authentication is required for this tool.")
         if context.voice_path or is_public_voice_caller(context.permissions):

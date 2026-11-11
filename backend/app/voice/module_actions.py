@@ -21,6 +21,7 @@ class VoiceModuleAction(StrEnum):
     CRM_READ_CRM_METRICS = "crm:read_crm_metrics"
     RETAIL_READ_SALES_SUMMARY = "retail:read_sales_summary"
     RETAIL_READ_PRODUCTS = "retail:read_products"
+    RETAIL_RESERVE_PRODUCT = "retail:reserve_product"
     RETAIL_READ_INVENTORY = "retail:read_inventory"
     ACCOUNTING_READ_UNPAID_INVOICES = "accounting:read_unpaid_invoices"
     ACCOUNTING_READ_CASHFLOW = "accounting:read_cashflow"
@@ -52,6 +53,7 @@ VOICE_WRITE_TOOLS: frozenset[str] = frozenset({
     "cancel_appointment",
     "book_appointment",
     "reschedule_appointment",
+    "reserve_product",
 })
 
 # Orchestrator aliases used by Retell, mapped onto the same CRM actions.
@@ -101,6 +103,7 @@ VOICE_ACTION_TOOLS: dict[str, dict[str, frozenset[str]]] = {
             "get_prediction_summary",
         }),
         "read_products": frozenset({"get_top_products", "get_product_detail"}),
+        "reserve_product": frozenset({"reserve_product"}),
         "read_inventory": frozenset({"get_inventory_summary"}),
     },
     "accounting": {
@@ -113,7 +116,7 @@ VOICE_ACTION_TOOLS: dict[str, dict[str, frozenset[str]]] = {
             "get_expense_anomalies",
         }),
     },
-    "ocr": {"read_documents": frozenset()},
+    "ocr": {"read_documents": frozenset({"search_documents", "get_document_detail"})},
     "marketing": {"read": frozenset()},
     "appointments": {"read": frozenset()},
     "hr": {"read": frozenset()},

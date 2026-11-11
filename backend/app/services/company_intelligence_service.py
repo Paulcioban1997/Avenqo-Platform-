@@ -39,6 +39,10 @@ class CompanyIntelligenceProfile:
     context_version: str
     calendar_resources: tuple[dict, ...]
     public_products: tuple[dict, ...] = ()
+    public_documents: tuple[dict, ...] = ()
+    has_public_documents: bool = False
+    source_capabilities: tuple[str, ...] = ()
+    has_inventory_reservation_support: bool = False
     phone: str | None = None
     website: str | None = None
     voice_display_name: str | None = None
@@ -185,13 +189,46 @@ class CompanyIntelligenceService:
             "La commande en ligne est en cours de configuration. Pour le moment, les clients sont invités à nous contacter directement ou à se rendre en boutique."
         )
 
+        public_docs: list[dict[str, str]] = []
+        try:
+            from backend.app.models.workspace import TenantDocument
+            docs = self._session.scalars(
+                select(TenantDocument).where(
+                    TenantDocument.company_id == company_id,
+                ).limit(20)
+            ).all()
+            for d in docs:
+                analysis = {}
+                if d.analysis_json:
+                    try:
+                        analysis = json.loads(d.analysis_json)
+                    except Exception:
+                        pass
+                summary = str(analysis.get("summary") or (d.extracted_text[:200] if d.extracted_text else "")).strip()
+                public_docs.append({
+                    "id": str(d.id),
+                    "filename": str(d.filename or ""),
+                    "kind": str(d.kind or ""),
+                    "summary": summary,
+                })
+        except Exception:
+            public_docs = []
+
+        source_caps: list[str] = ["business.profile.read"]
+        if "retail" in active:
+            source_caps.extend(["catalog.search", "inventory.read", "orders.read", "reservations.in_store_pickup"])
+        if "crm" in active and offerings:
+            source_caps.extend(["appointments.availability", "appointments.create"])
+        if public_docs:
+            source_caps.append("documents.search")
+
         signature = {"business": business, "services": offerings, "modules": active,
                      "name": company.name, "industry": company.industry, "timezone": company.timezone,
                      "hours": company.business_hours, "voice_services": config.services if config else [],
                      "datasets": [(str(d.id), str(d.status)) for d in datasets], "calendar": connected_calendar,
                      "products": products_list, "phone": company.phone, "website": company.website,
                      "voice_display_name": voice_spoken_name, "voice_pronunciation": voice_pronun,
-                     "online_store_url": store_url}
+                     "online_store_url": store_url, "documents": [d["id"] for d in public_docs]}
         signature["resources"] = [(str(r.id), r.name, r.working_hours) for r in resources]
         version = hashlib.sha256(json.dumps(signature, sort_keys=True, default=str).encode()).hexdigest()[:24]
         return CompanyIntelligenceProfile(
@@ -209,6 +246,10 @@ class CompanyIntelligenceService:
             context_version=version,
             calendar_resources=tuple({"id": str(r.id), "name": r.name, "working_hours": r.working_hours} for r in resources),
             public_products=tuple(products_list),
+            public_documents=tuple(public_docs),
+            has_public_documents=bool(public_docs),
+            source_capabilities=tuple(source_caps),
+            has_inventory_reservation_support=False,
             phone=company.phone or (config.transfer_phone if config else None),
             website=company.website,
             voice_display_name=voice_spoken_name,

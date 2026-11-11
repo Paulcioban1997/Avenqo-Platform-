@@ -79,16 +79,29 @@ class VoiceToolGuard:
         if public_caller:
             has_crm_booking = True
             has_retail_commerce = False
+            has_documents = False
             try:
                 prof = CompanyIntelligenceService(self._session).get_profile(tenant.company_id)
                 has_crm_booking = prof.has_crm_booking
                 has_retail_commerce = prof.has_retail_commerce
+                has_documents = bool(getattr(prof, "has_public_documents", False))
             except Exception:
                 has_crm_booking = False
                 has_retail_commerce = False
+                has_documents = False
             if not (
-                public_voice_tool_allowed(tool_name, has_crm_booking=has_crm_booking, has_retail_commerce=has_retail_commerce)
-                or public_voice_tool_allowed(canonical, has_crm_booking=has_crm_booking, has_retail_commerce=has_retail_commerce)
+                public_voice_tool_allowed(
+                    tool_name,
+                    has_crm_booking=has_crm_booking,
+                    has_retail_commerce=has_retail_commerce,
+                    has_documents=has_documents,
+                )
+                or public_voice_tool_allowed(
+                    canonical,
+                    has_crm_booking=has_crm_booking,
+                    has_retail_commerce=has_retail_commerce,
+                    has_documents=has_documents,
+                )
             ):
                 raise VoiceToolDenied("Caller authentication is required for this tool.")
         mapping = action_for_tool(tool_name)
