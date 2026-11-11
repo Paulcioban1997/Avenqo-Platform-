@@ -49,6 +49,12 @@ class ToolAuthorizationPolicy:
             ):
                 raise ToolAuthorizationError("Caller authentication is required for this tool.")
         if context.voice_path or is_public_voice_caller(context.permissions):
+            # Strict business policy: In-store product reservations are NOT permitted over phone calls
+            if tool.name == "reserve_product":
+                raise ToolAuthorizationError(
+                    "Product reservations ('reserve_product') are strictly disallowed over telephone calls. "
+                    "Customers may inquire about availability and pricing, but reservations must be made online or in-store."
+                )
             VoiceToolGuard(self._db).assert_policy(
                 context.tenant,
                 tool.name,

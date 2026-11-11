@@ -146,16 +146,22 @@ def _create_test_db(tmp_path):
     config_a = VoiceBusinessConfig(
         id=uuid4(),
         company_id=company_a.id,
-        business_name="Produits Éro",
-        voice_display_name="Produits Éro",
-        custom_pronunciation="Produits Éro",
+        business_name="Produits Ero",
+        voice_display_name="Produits Ero",
+        custom_pronunciation="Produits Ero",
         timezone_name="America/Toronto",
         opening_hours={"monday": [{"start": "09:00", "end": "18:00"}]},
         preferred_language="fr",
-        greeting_message="Bonjour, bienvenue chez Produits Éro.",
+        greeting_message="Bonjour, bienvenue chez Produits Ero.",
         voice_api_key_hash="hash_a_12345678901234567890123456789012",
         voice_api_key_last4="keya",
         enabled=True,
+        personality_preset="professional_premium_warm",
+        professionalism_level=100,
+        warmth_level=85,
+        humor_level=40,
+        formality_level=65,
+        allow_natural_interruptions=True,
         services=[
             {"name": "Cueillette en magasin", "duration_minutes": 15, "price": 0.0},
             {"name": "Conseil Snowboard en boutique", "duration_minutes": 30, "price": 0.0},
@@ -617,7 +623,8 @@ def test_public_voice_caller_security_boundary(tmp_path):
     assert public_voice_tool_allowed("check_availability", has_crm_booking=True, has_retail_commerce=True) is True
     assert public_voice_tool_allowed("create_appointment", has_crm_booking=True, has_retail_commerce=True) is True
     assert public_voice_tool_allowed("get_product_detail", has_crm_booking=True, has_retail_commerce=True) is True
-    assert public_voice_tool_allowed("reserve_product", has_crm_booking=True, has_retail_commerce=True) is True
+    # Règle commerciale stricte : la réservation de produit par téléphone est INTERDITE
+    assert public_voice_tool_allowed("reserve_product", has_crm_booking=True, has_retail_commerce=True) is False
     # Outils privés jamais autorisés en public
     assert public_voice_tool_allowed("get_sales_summary", has_crm_booking=True, has_retail_commerce=True) is False
     assert public_voice_tool_allowed("get_unpaid_invoices", has_crm_booking=True, has_retail_commerce=True) is False
@@ -634,7 +641,7 @@ def test_public_voice_caller_security_boundary(tmp_path):
 
 
 def test_tool_authorization_policy_enforcement(tmp_path):
-    """Vérifie le rejet de frontière par ToolAuthorizationPolicy pour un appelant public."""
+    """Vérifie le rejet de frontière par ToolAuthorizationPolicy pour un appelant public et le blocage de réservation vocale."""
     session, company_a, user_a, _, _, _, company_b, user_b, _ = _create_test_db(tmp_path)
     policy = ToolAuthorizationPolicy(session, AssistantRegistry())
 
@@ -652,16 +659,28 @@ def test_tool_authorization_policy_enforcement(tmp_path):
     sales_tool = GetSalesSummaryTool(session, None)
 
     # 1. Tentative d'utiliser ReserveProductTool sur Tenant B (non-retail) -> Doit lever ToolAuthorizationError
-    with pytest.raises(ToolAuthorizationError, match="Caller authentication is required"):
+    with pytest.raises(ToolAuthorizationError, match="strictly disallowed over telephone calls|Caller authentication is required"):
         policy.authorize(reserve_tool, public_ctx_b)
 
     # 2. Tentative d'utiliser GetSalesSummaryTool (données financières privées) -> Doit lever ToolAuthorizationError
     with pytest.raises(ToolAuthorizationError, match="Caller authentication is required"):
         policy.authorize(sales_tool, public_ctx_b)
 
+    # 3. Tenant A (Retail actif) : Même pour un utilisateur avec rôle sur le canal Voice, reserve_product est strictement bloqué par téléphone
+    tenant_a = TenantContext(company_id=company_a.id, user_id=user_a.id)
+    voice_ctx_a = ToolExecutionContext(
+        tenant=tenant_a,
+        user_id=user_a.id,
+        permissions=frozenset({"ai:use", "data:read"}),
+        request_id="req-test-auth-voice-a",
+        voice_path=True,
+    )
+    with pytest.raises(ToolAuthorizationError, match="strictly disallowed over telephone calls"):
+        policy.authorize(reserve_tool, voice_ctx_a)
+
 
 def test_chat_service_universal_system_instruction_neutrality():
-    """Vérifie que les instructions système sont universelles et ne présument d'aucun domaine spécifique."""
+    """Vérifie que les instructions système sont universelles et respectent la personnalité premium."""
     prompt = _localized_system_instruction(
         SYSTEM_INSTRUCTION,
         user_language="fr-CA",
@@ -669,21 +688,33 @@ def test_chat_service_universal_system_instruction_neutrality():
         company_currency="CAD",
         company_timezone="America/Toronto",
         is_voice_call=True,
+        personality_preset="professional_premium_warm",
+        professionalism_level=100,
+        warmth_level=85,
+        humor_level=40,
+        formality_level=65,
+        allow_natural_interruptions=True,
     )
 
-    # 1. Vérification de la classification stricte des intentions
-    assert "FOUR-WAY INTENTION CLASSIFICATION" in prompt
+    # 1. Vérification de la personnalité premium
+    assert "Professional Premium & Warm Persona" in prompt
+    assert "100%" in prompt
+    assert "85%" in prompt
+    assert "40%" in prompt
+    assert "Natural voice interruptions (barge-in) are enabled" in prompt
+
+    # 2. Vérification de l'interdiction de réservation de produit par téléphone
+    assert "NO PRODUCT RESERVATIONS OVER THE PHONE" in prompt
+    assert "THREE-WAY VOICE INTENTION CLASSIFICATION" in prompt
     assert "Appointment / Service Booking" in prompt
-    assert "In-Store Product Reservation" in prompt
-    assert "reserve_product" in prompt
-    assert "Commercial Order" in prompt
+    assert "Commercial Order or Hold" in prompt
     assert "Informational Inquiry" in prompt
 
-    # 2. Vérification des questions ouvertes
+    # 3. Vérification des questions ouvertes
     assert "Quel est votre produit le moins cher ?" in prompt
     assert "Peux-tu comparer le produit A et le produit B ?" in prompt
 
-    # 3. Vérification des dates relatives et politiques
+    # 4. Vérification des dates relatives et politiques
     assert "Resolve relative dates ('lundi prochain', 'mercredi matin', 'demain')" in prompt
     assert "Business Policies, Delivery Delays & Document Knowledge" in prompt
     assert "Current date and time:" in prompt
@@ -748,5 +779,64 @@ def test_retail_reservation_router_endpoints(tmp_path):
             db=session,
         )
     assert exc_info.value.status_code == 400
+
+
+def test_voice_realtime_provider_and_barge_in(tmp_path):
+    """Vérifie l'abstraction VoiceRealtimeProvider, la bascule de provider et le gestionnaire de barge-in."""
+    from backend.app.config.settings import Settings
+    from backend.app.voice.realtime_provider import (
+        NaturalInterruptionManager,
+        RealtimeProviderType,
+        VoiceRealtimeRouter,
+    )
+
+    session, company_a, _, _, _, _, _, _, _ = _create_test_db(tmp_path)
+    config = session.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_a.id))
+    assert config is not None
+
+    # 1. Vérification de la configuration de personnalité et barge-in
+    assert config.personality_preset == "professional_premium_warm"
+    assert config.professionalism_level == 100
+    assert config.warmth_level == 85
+    assert config.humor_level == 40
+    assert config.allow_natural_interruptions is True
+
+    # 2. Vérification du nom d'entreprise strict sans accent
+    assert config.business_name == "Produits Ero"
+    assert config.voice_display_name == "Produits Ero"
+    assert config.effective_voice_name == "Produits Ero"
+
+    # 3. Router VoiceRealtime : résolution avec fallback
+    settings = Settings()
+    router = VoiceRealtimeRouter(settings)
+    provider = router.resolve_provider(config)
+    assert provider is not None
+    assert provider.provider_type in (RealtimeProviderType.RETELL, RealtimeProviderType.TELNYX, RealtimeProviderType.GEMINI_LIVE)
+
+    # 4. Gestionnaire d'interruption naturelle (Barge-In)
+    mgr = NaturalInterruptionManager()
+    session_id = "sess-call-123"
+    turn_id = "turn-001"
+    mgr.register_playback(session_id, turn_id)
+
+    # Scénario A : Client interrompt pendant la lecture -> Doit couper l'audio
+    should_interrupt = mgr.on_caller_speech_detected(
+        session_id,
+        is_dtmf_pin_entry=False,
+        allow_interruptions=True,
+    )
+    assert should_interrupt is True
+    assert mgr.is_turn_cancelled(turn_id) is True
+
+    # Scénario B : Client saisit son NIP DTMF -> Jamais d'interruption audio DTMF
+    mgr.register_playback(session_id, "turn-002")
+    dtmf_interrupt = mgr.on_caller_speech_detected(
+        session_id,
+        is_dtmf_pin_entry=True,
+        allow_interruptions=True,
+    )
+    assert dtmf_interrupt is False
+    assert mgr.is_turn_cancelled("turn-002") is False
+
 
 

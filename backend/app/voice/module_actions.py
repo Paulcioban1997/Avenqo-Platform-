@@ -53,7 +53,6 @@ VOICE_WRITE_TOOLS: frozenset[str] = frozenset({
     "cancel_appointment",
     "book_appointment",
     "reschedule_appointment",
-    "reserve_product",
 })
 
 # Orchestrator aliases used by Retell, mapped onto the same CRM actions.
@@ -103,7 +102,7 @@ VOICE_ACTION_TOOLS: dict[str, dict[str, frozenset[str]]] = {
             "get_prediction_summary",
         }),
         "read_products": frozenset({"get_top_products", "get_product_detail"}),
-        "reserve_product": frozenset({"reserve_product"}),
+        "reserve_product": frozenset(),
         "read_inventory": frozenset({"get_inventory_summary"}),
     },
     "accounting": {

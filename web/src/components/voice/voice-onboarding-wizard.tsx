@@ -503,6 +503,15 @@ export function VoiceOnboardingWizard({
       });
       return;
     }
+    if (!employeePhone.trim() && !pinStatus?.phone_number) {
+      setEmployeePinFeedback({
+        type: "error",
+        message: fr
+          ? "Un numéro de téléphone portable est obligatoire pour identifier votre ligne appelante."
+          : "A mobile phone number is required to identify your calling line.",
+      });
+      return;
+    }
 
     setEmployeePinSaving(true);
     setEmployeePinFeedback(null);
@@ -1524,7 +1533,7 @@ export function VoiceOnboardingWizard({
 
                   <div>
                     <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
-                      {fr ? "Numéro de téléphone employé autorisé" : "Authorized Staff Phone Number"}
+                      {fr ? "Numéro de téléphone employé autorisé *" : "Authorized Staff Phone Number *"}
                     </label>
                     <input
                       type="tel"

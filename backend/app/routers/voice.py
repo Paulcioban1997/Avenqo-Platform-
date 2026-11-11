@@ -288,6 +288,13 @@ def set_user_voice_pin(
     if confirm_pin_str and pin_str != confirm_pin_str:
         raise HTTPException(status_code=422, detail="Voice PIN and confirmation PIN do not match")
 
+    phone_to_use = request.phone_number or identity.user.phone
+    if not phone_to_use and not existing_cred:
+        raise HTTPException(
+            status_code=400,
+            detail="Un numéro de téléphone mobile autorisé est requis pour associer le NIP personnel à votre ligne.",
+        )
+
     try:
         VoiceCallerAuth(db, settings).set_pin(
             TenantContext(identity.user.company_id, identity.user.id),
@@ -1642,6 +1649,11 @@ def set_voice_auth_pin(
     auth_controller = VoiceCallerAuth(db, settings)
     tenant = TenantContext(company_id=identity.user.company_id, user_id=identity.user.id)
     phone_to_use = payload.phone_number or identity.user.phone
+    if not phone_to_use:
+        raise HTTPException(
+            status_code=400,
+            detail="Un numéro de téléphone mobile autorisé est requis pour associer le NIP personnel à votre ligne.",
+        )
     try:
         credential = auth_controller.set_pin(
             tenant=tenant,
