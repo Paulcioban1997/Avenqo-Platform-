@@ -646,6 +646,8 @@ class ChatService:
         authorized_tool_agents: dict[str, str] | None = None,
         retrieve_tenant_data: bool = True,
         trusted_context: str = "",
+        client_context: str = "",
+        voice_path: bool = False,
     ) -> AsyncIterator[ChatStreamEvent]:
         """Flux SSE sûr : `status` (générique) -> `delta`(s) -> `sources` -> `done`.
 
