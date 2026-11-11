@@ -2,8 +2,18 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import logging
+from typing import TypedDict
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
+
+
+class VoicePersonalityKwargs(TypedDict, total=False):
+    personality_preset: str
+    professionalism_level: int
+    warmth_level: int
+    humor_level: int
+    formality_level: int
+    allow_natural_interruptions: bool
 
 from backend.app.ai.request_timeout import bounded_ai_request
 from backend.app.ai.chat.conversation_service import ConversationService
@@ -373,7 +383,7 @@ class ChatService:
             return "DEV: requete_provider_invalide"
         return "DEV: provider_indisponible"
 
-    def _voice_personality_kwargs(self, tenant_id: UUID, is_voice_call: bool) -> dict[str, object]:
+    def _voice_personality_kwargs(self, tenant_id: UUID, is_voice_call: bool) -> VoicePersonalityKwargs:
         if not is_voice_call:
             return {}
         db = getattr(self._conversations, "_db", None)
