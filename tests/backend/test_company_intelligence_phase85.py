@@ -67,7 +67,9 @@ def test_real_clinic_and_mixed_services_have_scoped_ids(tmp_path, modules):
             service.require_service(company.id, service_name="unsupported physiotherapy")
 
 
-@pytest.mark.parametrize("tool", ["get_sales_summary", "get_top_products", "get_product_detail", "get_inventory_summary", "get_customer_summary"])
+# Product catalog details are explicitly public for a Retail-enabled tenant; financial
+# reports, inventory summaries and customer analytics remain private to staff.
+@pytest.mark.parametrize("tool", ["get_sales_summary", "get_top_products", "get_inventory_summary", "get_customer_summary"])
 def test_routing_scope_cannot_access_retail_even_with_owner_transport(tmp_path, tool):
     with Session(_engine(tmp_path, "private.db")) as db:
         company, owner = _company(db, "private"); tenant = _activate(db, company, "voice", "retail")

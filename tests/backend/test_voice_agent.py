@@ -476,7 +476,12 @@ def test_pin_setup_http_endpoint_is_self_scoped_strict_and_secret_free(tmp_path)
         secret = "908172"
         with TestClient(app) as client:
             response = client.put("/api/v1/voice/auth/pin", json={"pin": secret, "current_password": "pin-http-test-password"})
-            assert response.status_code == 200 and response.json() == {"status": "CONFIGURED"}
+            assert response.status_code == 200
+            payload = response.json()
+            assert payload["status"] == "CONFIGURED"
+            assert payload["configured"] is True and payload["enabled"] is True
+            assert payload["phone_number"] == "+15145550123"
+            assert payload["failed_attempts"] == 0 and payload["locked_until"] is None
             assert secret not in response.text
             malformed = client.put("/api/v1/voice/auth/pin", json={"pin": secret, "current_password": "pin-http-test-password", "company_id": str(uuid4())})
             assert malformed.status_code == 422 and secret not in malformed.text

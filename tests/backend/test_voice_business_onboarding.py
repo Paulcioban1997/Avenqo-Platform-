@@ -64,7 +64,10 @@ def test_selected_actions_only_restrict_existing_grants_and_public_stays_denied(
         guard=VoiceToolGuard(db)
         guard.authorize(tenant,"get_product_detail",{"ai:use","data:read"},user_id=owner.id)
         with pytest.raises(VoiceToolDenied): guard.authorize(tenant,"get_sales_summary",{"ai:use","data:read"},user_id=owner.id)
-        with pytest.raises(VoiceToolDenied): guard.authorize(tenant,"get_product_detail",PUBLIC_VOICE_CALLER_PERMISSIONS,user_id=owner.id)
+        # Published product details are intentionally public when Retail is active
+        # and the owner has granted the read_products action. Internal sales remain private.
+        guard.authorize(tenant,"get_product_detail",PUBLIC_VOICE_CALLER_PERMISSIONS,user_id=owner.id)
+        with pytest.raises(VoiceToolDenied): guard.authorize(tenant,"get_sales_summary",PUBLIC_VOICE_CALLER_PERMISSIONS,user_id=owner.id)
 
 
 def test_persistent_receipt_survives_session_close_and_settles_once(tmp_path):
