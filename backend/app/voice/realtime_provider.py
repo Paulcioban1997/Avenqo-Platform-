@@ -644,161 +644,175 @@ class GeminiLiveRealtimeAudioAdapter:
 
     async def _receive_loop(self) -> None:
         try:
-            async for message in self._session.receive():
-                if self._closed:
-                    break
-                server_content = getattr(message, "server_content", None)
-                if server_content is None and isinstance(message, dict):
-                    server_content = message.get("server_content")
+            # google-genai AsyncSession.receive() yields ONE model turn and
+            # returns after turn_complete. Re-enter it for the next turn or
+            # Telnyx goes silent immediately after the initial greeting.
+            while not self._closed:
+                received_any = False
+                async for message in self._session.receive():
+                    received_any = True
+                    if self._closed:
+                        break
+                    server_content = getattr(message, "server_content", None)
+                    if server_content is None and isinstance(message, dict):
+                        server_content = message.get("server_content")
 
-                if server_content is not None:
-                    interrupted = getattr(server_content, "interrupted", False) or (
-                        server_content.get("interrupted", False) if isinstance(server_content, dict) else False
-                    )
-                    if interrupted and self._allow_natural_interruptions:
-                        if self._current_response_id is not None:
-                            await self.interrupt()
-                        if not self._speech_active:
-                            self._speech_active = True
-                            self._current_item_id = f"gemini-item-{uuid4().hex[:12]}"
-                            await self._event_queue.put(
-                                SimpleNamespace(
-                                    type="input_audio_buffer.speech_started",
-                                    item_id=self._current_item_id,
-                                )
-                            )
-
-                    # Transcription entrante de l'appelant
-                    in_trans = getattr(server_content, "input_transcription", None) or (
-                        server_content.get("input_transcription") if isinstance(server_content, dict) else None
-                    )
-                    if in_trans is not None:
-                        text_val = getattr(in_trans, "text", None) or (
-                            in_trans.get("text") if isinstance(in_trans, dict) else None
+                    if server_content is not None:
+                        interrupted = getattr(server_content, "interrupted", False) or (
+                            server_content.get("interrupted", False) if isinstance(server_content, dict) else False
                         )
-                        finished = getattr(in_trans, "finished", None)
-                        if finished is None and isinstance(in_trans, dict):
-                            finished = in_trans.get("finished")
-                        if isinstance(text_val, str) and text_val.strip():
-                            self._transcript_parts.append(text_val.strip())
-                            if finished is not False or not self._speech_active:
-                                if self._speech_active:
-                                    self._speech_active = False
-                                    await self._event_queue.put(
-                                        SimpleNamespace(
-                                            type="input_audio_buffer.speech_stopped",
-                                            item_id=self._current_item_id or f"gemini-item-{uuid4().hex[:12]}",
-                                        )
-                                    )
-                                await self._flush_transcript()
-
-                    # Audio sortant du modèle Gemini Live
-                    model_turn = getattr(server_content, "model_turn", None) or (
-                        server_content.get("model_turn") if isinstance(server_content, dict) else None
-                    )
-                    if model_turn is not None:
-                        parts = getattr(model_turn, "parts", None) or (
-                            model_turn.get("parts") if isinstance(model_turn, dict) else ()
-                        ) or ()
-                        for part in parts:
-                            inline = getattr(part, "inline_data", None) or (
-                                part.get("inline_data") if isinstance(part, dict) else None
-                            )
-                            if inline is None:
-                                continue
-                            raw_audio = getattr(inline, "data", None) or (
-                                inline.get("data") if isinstance(inline, dict) else None
-                            )
-                            mime_type = str(
-                                getattr(inline, "mime_type", None)
-                                or (inline.get("mime_type") if isinstance(inline, dict) else "audio/pcm;rate=24000")
-                                or "audio/pcm;rate=24000"
-                            )
-                            if isinstance(raw_audio, str):
-                                raw_audio = base64.b64decode(raw_audio)
-                            if not isinstance(raw_audio, (bytes, bytearray)) or not raw_audio:
-                                continue
-                            raw_bytes = bytes(raw_audio)
-                            if len(raw_bytes) % 2 != 0:
-                                raw_bytes = raw_bytes[:-1]
-                            if not raw_bytes:
-                                continue
-
-                            # Si pas de response_id ouvert, en ouvrir un automatiquement
-                            if self._current_response_id is None:
-                                auto_id = f"gemini-resp-{uuid4().hex[:12]}"
-                                self._current_response_id = auto_id
+                        if interrupted and self._allow_natural_interruptions:
+                            if self._current_response_id is not None:
+                                await self.interrupt()
+                            if not self._speech_active:
+                                self._speech_active = True
+                                self._current_item_id = f"gemini-item-{uuid4().hex[:12]}"
                                 await self._event_queue.put(
                                     SimpleNamespace(
-                                        type="response.created",
-                                        response=SimpleNamespace(id=auto_id),
+                                        type="input_audio_buffer.speech_started",
+                                        item_id=self._current_item_id,
                                     )
                                 )
 
-                            if self._current_response_id in self._interrupted_responses:
-                                continue
+                        # Transcription entrante de l'appelant
+                        in_trans = getattr(server_content, "input_transcription", None) or (
+                            server_content.get("input_transcription") if isinstance(server_content, dict) else None
+                        )
+                        if in_trans is not None:
+                            text_val = getattr(in_trans, "text", None) or (
+                                in_trans.get("text") if isinstance(in_trans, dict) else None
+                            )
+                            finished = getattr(in_trans, "finished", None)
+                            if finished is None and isinstance(in_trans, dict):
+                                finished = in_trans.get("finished")
+                            if isinstance(text_val, str) and text_val.strip():
+                                self._transcript_parts.append(text_val.strip())
+                                if finished is not False or not self._speech_active:
+                                    if self._speech_active:
+                                        self._speech_active = False
+                                        await self._event_queue.put(
+                                            SimpleNamespace(
+                                                type="input_audio_buffer.speech_stopped",
+                                                item_id=self._current_item_id or f"gemini-item-{uuid4().hex[:12]}",
+                                            )
+                                        )
+                                    await self._flush_transcript()
 
-                            # Normalisation en 24kHz PCM16 pour TelnyxAudioCodec.outbound_pcm
-                            if "16000" in mime_type:
-                                pcm_24k, self._out_rate_state = audioop.ratecv(
-                                    raw_bytes, 2, 1, 16000, 24000, self._out_rate_state
+                        # Audio sortant du modèle Gemini Live
+                        model_turn = getattr(server_content, "model_turn", None) or (
+                            server_content.get("model_turn") if isinstance(server_content, dict) else None
+                        )
+                        if model_turn is not None:
+                            parts = getattr(model_turn, "parts", None) or (
+                                model_turn.get("parts") if isinstance(model_turn, dict) else ()
+                            ) or ()
+                            for part in parts:
+                                inline = getattr(part, "inline_data", None) or (
+                                    part.get("inline_data") if isinstance(part, dict) else None
                                 )
-                            elif "8000" in mime_type:
-                                pcm_24k, self._out_rate_state = audioop.ratecv(
-                                    raw_bytes, 2, 1, 8000, 24000, self._out_rate_state
+                                if inline is None:
+                                    continue
+                                raw_audio = getattr(inline, "data", None) or (
+                                    inline.get("data") if isinstance(inline, dict) else None
                                 )
-                            else:
-                                pcm_24k = raw_bytes
+                                mime_type = str(
+                                    getattr(inline, "mime_type", None)
+                                    or (inline.get("mime_type") if isinstance(inline, dict) else "audio/pcm;rate=24000")
+                                    or "audio/pcm;rate=24000"
+                                )
+                                if isinstance(raw_audio, str):
+                                    raw_audio = base64.b64decode(raw_audio)
+                                if not isinstance(raw_audio, (bytes, bytearray)) or not raw_audio:
+                                    continue
+                                raw_bytes = bytes(raw_audio)
+                                if len(raw_bytes) % 2 != 0:
+                                    raw_bytes = raw_bytes[:-1]
+                                if not raw_bytes:
+                                    continue
 
-                            b64_delta = base64.b64encode(pcm_24k).decode("ascii")
+                                # Si pas de response_id ouvert, en ouvrir un automatiquement
+                                if self._current_response_id is None:
+                                    auto_id = f"gemini-resp-{uuid4().hex[:12]}"
+                                    self._current_response_id = auto_id
+                                    await self._event_queue.put(
+                                        SimpleNamespace(
+                                            type="response.created",
+                                            response=SimpleNamespace(id=auto_id),
+                                        )
+                                    )
+
+                                if self._current_response_id in self._interrupted_responses:
+                                    continue
+
+                                # Normalisation en 24kHz PCM16 pour TelnyxAudioCodec.outbound_pcm
+                                if "16000" in mime_type:
+                                    pcm_24k, self._out_rate_state = audioop.ratecv(
+                                        raw_bytes, 2, 1, 16000, 24000, self._out_rate_state
+                                    )
+                                elif "8000" in mime_type:
+                                    pcm_24k, self._out_rate_state = audioop.ratecv(
+                                        raw_bytes, 2, 1, 8000, 24000, self._out_rate_state
+                                    )
+                                else:
+                                    pcm_24k = raw_bytes
+
+                                b64_delta = base64.b64encode(pcm_24k).decode("ascii")
+                                await self._event_queue.put(
+                                    SimpleNamespace(
+                                        type="response.output_audio.delta",
+                                        response_id=self._current_response_id,
+                                        delta=b64_delta,
+                                    )
+                                )
+
+                        turn_complete = getattr(server_content, "turn_complete", False) or (
+                            server_content.get("turn_complete", False) if isinstance(server_content, dict) else False
+                        )
+                        waiting_for_input = getattr(server_content, "waiting_for_input", False) or (
+                            server_content.get("waiting_for_input", False) if isinstance(server_content, dict) else False
+                        )
+                        if (turn_complete or waiting_for_input) and self._transcript_parts:
+                            await self._flush_transcript()
+
+                        if turn_complete and self._current_response_id is not None:
+                            done_id = self._current_response_id
+                            self._current_response_id = None
+                            usage_meta = getattr(message, "usage_metadata", None) or (
+                                message.get("usage_metadata") if isinstance(message, dict) else None
+                            )
+                            in_tok = int(getattr(usage_meta, "prompt_token_count", 0) or 10) if usage_meta else 10
+                            out_tok = int(getattr(usage_meta, "response_token_count", 0) or 20) if usage_meta else 20
                             await self._event_queue.put(
                                 SimpleNamespace(
-                                    type="response.output_audio.delta",
-                                    response_id=self._current_response_id,
-                                    delta=b64_delta,
+                                    type="response.done",
+                                    response=SimpleNamespace(
+                                        id=done_id,
+                                        status="completed",
+                                        usage={
+                                            "input_tokens": in_tok,
+                                            "output_tokens": out_tok,
+                                            "input_token_details": {
+                                                "audio_tokens": in_tok,
+                                                "text_tokens": 0,
+                                                "cached_tokens": 0,
+                                                "cached_tokens_details": {"audio_tokens": 0, "text_tokens": 0},
+                                            },
+                                            "output_token_details": {
+                                                "audio_tokens": out_tok,
+                                                "text_tokens": 0,
+                                            },
+                                        },
+                                    ),
                                 )
                             )
 
-                    turn_complete = getattr(server_content, "turn_complete", False) or (
-                        server_content.get("turn_complete", False) if isinstance(server_content, dict) else False
+                if not received_any:
+                    # EOF without a turn is not a normal pause. Fail closed
+                    # rather than spin a CPU-burning empty receive loop.
+                    raise ExternalVoiceConfigurationRequired(
+                        "Gemini Live receive iterator ended without a turn"
                     )
-                    waiting_for_input = getattr(server_content, "waiting_for_input", False) or (
-                        server_content.get("waiting_for_input", False) if isinstance(server_content, dict) else False
-                    )
-                    if (turn_complete or waiting_for_input) and self._transcript_parts:
-                        await self._flush_transcript()
-
-                    if turn_complete and self._current_response_id is not None:
-                        done_id = self._current_response_id
-                        self._current_response_id = None
-                        usage_meta = getattr(message, "usage_metadata", None) or (
-                            message.get("usage_metadata") if isinstance(message, dict) else None
-                        )
-                        in_tok = int(getattr(usage_meta, "prompt_token_count", 0) or 10) if usage_meta else 10
-                        out_tok = int(getattr(usage_meta, "response_token_count", 0) or 20) if usage_meta else 20
-                        await self._event_queue.put(
-                            SimpleNamespace(
-                                type="response.done",
-                                response=SimpleNamespace(
-                                    id=done_id,
-                                    status="completed",
-                                    usage={
-                                        "input_tokens": in_tok,
-                                        "output_tokens": out_tok,
-                                        "input_token_details": {
-                                            "audio_tokens": in_tok,
-                                            "text_tokens": 0,
-                                            "cached_tokens": 0,
-                                            "cached_tokens_details": {"audio_tokens": 0, "text_tokens": 0},
-                                        },
-                                        "output_token_details": {
-                                            "audio_tokens": out_tok,
-                                            "text_tokens": 0,
-                                        },
-                                    },
-                                ),
-                            )
-                        )
+                await asyncio.sleep(0)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
