@@ -143,3 +143,33 @@ def voice_ivr_spoken_name(config) -> str:
         if 0 < len(alias) <= 255 and all(ord(ch) >= 32 for ch in alias):
             return alias
     return display
+
+
+def voice_ivr_greeting(config) -> str:
+    """Render a tenant-specific IVR announcement, using literal placeholders.
+
+    No company names are hardcoded. Legacy greetings and IVR digit routing
+    remain unchanged. An owner may set a separate phonetic voice alias.
+    """
+    name = voice_ivr_spoken_name(config)
+    policy = getattr(config, "call_policy", None) or {}
+    raw = policy.get("ivr_greeting")
+    fr = str(getattr(config, "preferred_language", "fr") or "fr").startswith("fr")
+    if not isinstance(raw, str) or not raw.strip():
+        return (
+            f"Bienvenue chez {name}. Pour les employés, composez le 1. "
+            "Pour le service clientèle, composez le 2."
+            if fr else
+            f"Welcome to {name}. For employees, press 1. "
+            "For customer service, press 2."
+        )
+    rendered = raw
+    for token in ("{company}", "{entreprise}", "{business_name}"):
+        rendered = rendered.replace(token, name)
+    for displayed in (
+        getattr(config, "business_name", None),
+        getattr(config, "voice_display_name", None),
+    ):
+        if isinstance(displayed, str) and displayed.strip():
+            rendered = rendered.replace(displayed.strip().replace("_", " "), name)
+    return rendered.replace("_", " ").strip()
