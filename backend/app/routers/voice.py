@@ -1373,7 +1373,7 @@ def get_voice_customization(
             pronunciation_dict = _json.loads(config.custom_pronunciation) if config.custom_pronunciation.startswith("{") else {"term": config.custom_pronunciation}
         except Exception:
             pronunciation_dict = {}
-    spoken_name = getattr(config, "voice_display_name", None) or getattr(config, "effective_voice_name", config.business_name)
+    spoken_name = getattr(config, "voice_display_name", None) or (config.business_name or "Avenqo").replace("_", " ")
     spoken_pronun = config.custom_pronunciation if (config.custom_pronunciation and not config.custom_pronunciation.startswith("{")) else (pronunciation_dict.get("term") or pronunciation_dict.get("company"))
     return VoiceCustomizationResponse(
         voice_id=getattr(config, "voice_id", "alloy") or "alloy",
@@ -1464,7 +1464,7 @@ def update_voice_customization(
         except Exception:
             pronunciation_dict = {}
 
-    spoken_name = getattr(config, "voice_display_name", None) or getattr(config, "effective_voice_name", config.business_name)
+    spoken_name = getattr(config, "voice_display_name", None) or (config.business_name or "Avenqo").replace("_", " ")
     spoken_pronun = config.custom_pronunciation if (config.custom_pronunciation and not config.custom_pronunciation.startswith("{")) else (pronunciation_dict.get("term") or pronunciation_dict.get("company"))
     return VoiceCustomizationResponse(
         voice_id=config.voice_id,
