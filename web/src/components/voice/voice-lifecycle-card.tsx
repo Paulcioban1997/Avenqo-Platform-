@@ -38,9 +38,9 @@ interface LifecycleStatus {
   can_activate: boolean;
   checklist: Checklist;
   phone_number: string | null;
-  call_policy: {
-    ivr_enabled: boolean;
-    ivr_greeting: string | null;
+  ivr: {
+    enabled: boolean;
+    greeting: string | null;
   };
   version: number;
   last_audit_action: string | null;
@@ -92,9 +92,9 @@ export function VoiceLifecycleCard({
       if (res.ok) {
         const data = (await res.json()) as LifecycleStatus;
         setLifecycle(data);
-        setIvrEnabled(Boolean(data.call_policy?.ivr_enabled));
+        setIvrEnabled(Boolean(data.ivr?.enabled));
         setIvrGreeting(
-          data.call_policy?.ivr_greeting ||
+          data.ivr?.greeting ||
             `Bienvenue chez ${businessName}. Pour les employés, composez le 1. Pour le service clientèle, composez le 2.`
         );
       }
@@ -531,7 +531,21 @@ export function VoiceLifecycleCard({
           </div>
         </div>
 
-        {/* IVR GREETING TEXT INPUT */}
+        {/* Per-tenant greeting template: no hardcoded business names or company-specific code. */}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50/30 p-3 dark:border-blue-900/40 dark:bg-blue-950/20">
+          <p className="text-[11px] text-slate-600 dark:text-slate-400">
+            {fr ? "Accueil propre à votre entreprise. {company} insère automatiquement son nom vocal. Les horaires et départements doivent être configurés avec des renseignements réels." :
+              "Business-owned greeting. {company} inserts your spoken company name. Use verified details for hours and departments."}
+          </p>
+          <button type="button" disabled={!canManage} onClick={() => setIvrGreeting(
+            fr
+              ? "Bonjour et bienvenue chez {company}. Cet appel est pris en charge par un assistant vocal automatisé. Pour les employés, composez le 1. Pour le service clientèle, composez le 2."
+              : "Hello and welcome to {company}. This call is handled by an automated voice assistant. For employees, press 1. For customer service, press 2."
+          )} className="rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-semibold text-[#0076FF] hover:bg-blue-50 dark:border-blue-800 dark:hover:bg-blue-950">
+            {fr ? "Générer un accueil professionnel" : "Use a professional welcome"}
+          </button>
+        </div>
+        {/* IVR GREETING TEXT INPUT */
         <div className="space-y-2 pt-2">
           <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
             <span>{fr ? "Message vocal d'accueil du standard :" : "IVR Welcome Spoken Greeting:"}</span>
