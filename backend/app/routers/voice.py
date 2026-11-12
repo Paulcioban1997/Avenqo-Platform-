@@ -2748,10 +2748,24 @@ async def telnyx_webhook(
                 from backend.app.voice.messages import voice_ivr_spoken_name
                 spoken_name = voice_ivr_spoken_name(config)
                 raw_greeting = (config.call_policy or {}).get("ivr_greeting")
+                french = (config.preferred_language or "fr").startswith("fr")
                 if not raw_greeting:
-                    greeting = f"Bienvenue chez {spoken_name}. Pour les employés, composez le 1. Pour le service clientèle, composez le 2."
+                    greeting = (
+                        f"Bienvenue chez {spoken_name}. Pour les employés, composez le 1. "
+                        "Pour le service clientèle, composez le 2."
+                        if french else
+                        f"Welcome to {spoken_name}. For employees, press 1. "
+                        "For customer service, press 2."
+                    )
                 else:
-                    greeting = str(raw_greeting).replace("Produits_Ero", spoken_name).replace("Produits Ero", spoken_name).replace("Produits Éro", spoken_name).replace("_", " ")
+                    greeting = str(raw_greeting)
+                    # Render a tenant's own name without code-level brand exceptions.
+                    for token in ("{company}", "{entreprise}", "{business_name}"):
+                        greeting = greeting.replace(token, spoken_name)
+                    for owner_name in (config.business_name, getattr(config, "voice_display_name", None)):
+                        if isinstance(owner_name, str) and owner_name.strip():
+                            greeting = greeting.replace(owner_name.strip().replace("_", " "), spoken_name)
+                    greeting = greeting.replace("_", " ")
                 command_id = str(UUID(hashlib.sha256(f"ivr-greeting:{call.id}".encode()).hexdigest()[:32]))
                 auth_controller = VoiceCallerAuth(db, settings)
                 client_state = auth_controller.challenge(call)
