@@ -738,6 +738,7 @@ class TelnyxMediaBridge:
         self.central_ai_missing_answers = 0
         self.central_ai_replies_queued = 0
         self.central_ai_discarded_epochs = 0
+        self._executing_turn = False
         self.tts_failures = 0
         self.tts_timeout = 10.0
         self.central_ai_timeout = 15.0
@@ -829,6 +830,7 @@ class TelnyxMediaBridge:
                 return
             await self.authorize()
             self.telemetry["central_ai_called"] = True
+            self._executing_turn = True
             try:
                 result = await asyncio.wait_for(
                     self.execute_turn(item_id, redact_voice_secrets(transcript)),
@@ -910,8 +912,19 @@ class TelnyxMediaBridge:
                     requested_audio = False
                     if self._pending_speech and self._pending_speech[-1][0] == item_id:
                         self._pending_speech.pop()
-                    if turn_ledger is not None:
-                        turn_ledger.settle(item_id)
+                    recovery = (
+                        "Je n'arrive pas à lire la réponse pour le moment. Pouvez-vous répéter votre question ?"
+                        if resolve_locale(self.locale).startswith("fr")
+                        else "I can't play the answer right now. Could you repeat your question?"
+                    )
+                    try:
+                        await asyncio.wait_for(self.adapter.speak(recovery), timeout=self.tts_timeout)
+                        self.central_ai_replies_queued += 1
+                        requested_audio = True
+                    except Exception:
+                        logger.warning("Voice recovery TTS also failed")
+                        if turn_ledger is not None:
+                            turn_ledger.settle(item_id)
                 if result.get("hangup"):
                     drained = 0
                     while not self._output.empty() and drained < 40:
@@ -923,6 +936,7 @@ class TelnyxMediaBridge:
                             await self.hangup_call()
                     self._stop_event.set()
         finally:
+            self._executing_turn = False
             if turn_ledger is not None and not requested_audio:
                 turn_ledger.settle(item_id)
 
@@ -1016,7 +1030,9 @@ class TelnyxMediaBridge:
                     or self.pending_epoch is not None
                     or not self._output.empty()
                 )
-                if self.allow_natural_interruptions or not active_playback:
+                # Voice activity alone is not a new question. Cancelling here
+                # drops the Central AI answer while the caller is still waiting.
+                if active_playback and self.allow_natural_interruptions:
                     await self.interrupt()
                 item_id = getattr(event, "item_id", "")
                 if self.usage is not None and isinstance(item_id, str) and item_id:
@@ -1043,6 +1059,12 @@ class TelnyxMediaBridge:
                     if not self.usage.reserve(item_id):
                         raise PermissionError("Voice usage quota unavailable")
                     self.usage.record_transcription(item_id, event, model=self.stt_model)
+                if self._executing_turn:
+                    self.epoch += 1
+                    logger.info(
+                        "Voice in-flight answer superseded by a newer caller question; epoch=%s",
+                        self.epoch,
+                    )
                 try:
                     self._turns.put_nowait((item_id, transcript, self.epoch))
                 except asyncio.QueueFull:

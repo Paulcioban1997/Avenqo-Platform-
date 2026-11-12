@@ -79,19 +79,35 @@ async def test_central_ai_non_success_status_is_explained_not_silent():
 
 @pytest.mark.asyncio
 async def test_vad_during_central_thinking_does_not_discard_valid_answer():
-    async def quick(_item, _text):
+    started = asyncio.Event()
+
+    async def slow(_item, _text):
+        started.set()
+        await asyncio.sleep(0.05)
         return {"status": "success", "answer": "Voici votre réponse."}
 
-    bridge, adapter = make_bridge(quick)
+    bridge, adapter = make_bridge(slow)
     assert bridge.pending_epoch is None
     assert bridge.response_id is None
     assert bridge._output.empty()
+    task = asyncio.create_task(bridge._execute("turn-1", "question", bridge.epoch))
+    await started.wait()
     await bridge._provider_events()
-    assert bridge.epoch == 1  # Existing safe supersession behavior remains.
-    assert not adapter.was_interrupted  # No response was playing.
-    await bridge._execute("turn-1", "question", bridge.epoch)
+    assert bridge.epoch == 0
+    assert not adapter.was_interrupted
+    await task
     assert adapter.spoken == ["Voici votre réponse."]
     assert bridge.central_ai_replies_queued == 1
+
+
+@pytest.mark.asyncio
+async def test_playback_barge_in_still_interrupts_active_audio():
+    bridge, adapter = make_bridge(noop)
+    bridge.pending_epoch = bridge.epoch
+    bridge.response_id = "playing"
+    await bridge._provider_events()
+    assert bridge.epoch == 1
+    assert adapter.was_interrupted
 
 
 @pytest.mark.asyncio
