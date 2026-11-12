@@ -702,14 +702,16 @@ async def test_barge_in_discards_stale_speech_without_cancelling_business_execut
     await adapter.incoming.put(SimpleNamespace(type="conversation.item.input_audio_transcription.completed", item_id="slow-turn", transcript="Old answer"))
     await asyncio.wait_for(entered.wait(), timeout=2)
     await adapter.incoming.put(SimpleNamespace(type="input_audio_buffer.speech_started"))
-    await until(lambda: bridge.epoch == 1)
+    await asyncio.sleep(0.05)
+    assert bridge.epoch == 0
     await adapter.incoming.put(SimpleNamespace(type="conversation.item.input_audio_transcription.completed", item_id="new-turn", transcript="New answer"))
+    await until(lambda: bridge.epoch == 1)
     release.set()
     await until(lambda: bool(adapter.spoken))
     assert completed == ["slow-turn", "new-turn"]
     assert adapter.spoken == ["New answer"]
     assert adapter.interruptions == 0
-    assert socket.sent == [{"event": "clear"}]
+    assert not any(event.get("event") == "clear" for event in socket.sent)
     await socket.incoming.put({"event": "stop", "stream_id": "stream-test"})
     await running
 
@@ -732,7 +734,8 @@ async def test_initial_vad_never_cancels_a_nonexistent_provider_response():
     running = asyncio.create_task(bridge.run())
     await until(lambda: adapter.opened)
     await adapter.incoming.put(SimpleNamespace(type="input_audio_buffer.speech_started"))
-    await until(lambda: bridge.epoch == 1)
+    await asyncio.sleep(0.05)
+    assert bridge.epoch == 0
     assert adapter.interruptions == 0
     await adapter.incoming.put(SimpleNamespace(type="conversation.item.input_audio_transcription.completed", item_id="first-turn", transcript="Hello"))
     await until(lambda: bool(adapter.spoken))
@@ -1017,7 +1020,9 @@ async def test_central_ai_timeout_handled_gracefully():
     bridge.central_ai_timeout = 0.01
     await bridge._execute("slow-turn", "Transcript", 0)
     assert bridge.central_ai_timeouts == 1
-    assert "slow-turn" in ledger.settled
+    assert bridge.central_ai_replies_queued == 1
+    # The turn is settled after response.done, not before its spoken fallback.
+    assert "slow-turn" not in ledger.settled
 
 
 @pytest.mark.asyncio
