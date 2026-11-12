@@ -1366,17 +1366,49 @@ def media_audio_available(settings: Settings, locale: str, config: VoiceBusiness
     return openai_ok or gemini_ok
 
 
+def resolve_media_socket_context(db: Session, settings: Settings, call_id: UUID) -> tuple:
+    """Resolve media scope from server-owned IVR state, not the global public-media flag.
+
+    Telnyx IVR staff calls issue a private media ticket after successful PIN
+    verification. With TELNYX_MEDIA_INBOUND_ENABLED=True, always selecting
+    public_mode=True instead expects the literal "public" auth epoch and
+    rejects the valid staff ticket as a scope mismatch (WebSocket 4403).
+    """
+    if not settings.telnyx_media_inbound_enabled:
+        call, config, company, _user, _permissions, _auth = media_call_context(db, settings, call_id)
+        return False, call, config, company
+
+    call, config, company = media_transport_context(db, settings, call_id)
+    if (call.source_context or {}).get("ivr_stage") == "staff_authenticated":
+        # Caller type, PIN verification, membership, permissions and session
+        # expiry must all be revalidated before a private audio stream.
+        call, config, company, _user, _permissions, _auth = media_call_context(db, settings, call_id)
+        return False, call, config, company
+    return True, call, config, company
+
+
+def media_session_opening_line(
+    *,
+    public_mode: bool,
+    public_greeting: str | None,
+    locale: str,
+    confirm_authentication: bool,
+) -> str | None:
+    """Customer calls keep their greeting. Only a verified staff IVR hears the success line."""
+    if public_mode:
+        return public_greeting
+    if confirm_authentication:
+        return voice_auth_message(locale, 1)
+    return None
+
+
 async def telnyx_media_socket(
     websocket: WebSocket, call_id: UUID, db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings), service=Depends(get_central_ai_service),
     prediction_service=Depends(get_prediction_service),
 ) -> None:
-    public_mode = settings.telnyx_media_inbound_enabled
     try:
-        if public_mode:
-            call, config, company = media_transport_context(db, settings, call_id)
-        else:
-            call, config, company, _user, _permissions, _auth = media_call_context(db, settings, call_id)
+        public_mode, call, config, company = resolve_media_socket_context(db, settings, call_id)
         call_lang_session = company_call_language_session(db, config, call)
         locale = resolve_locale(call_lang_session.active_locale)
         if not media_audio_available(settings, locale, config) or service.usage_service is None:
@@ -1732,7 +1764,12 @@ async def telnyx_media_socket(
     bridge = TelnyxMediaBridge(BoundedMediaSocket(websocket), adapter, locale=locale,
         validate_start=validate_start, authorize=authorize, execute_turn=execute_turn,
         stt_model=settings.voice_stt_model, realtime_model=active_realtime_model,
-        initial_answer=public_conversation.greeting() if public_conversation is not None else None,
+        initial_answer=media_session_opening_line(
+            public_mode=public_mode,
+            public_greeting=public_conversation.greeting() if public_conversation is not None else None,
+            locale=locale,
+            confirm_authentication=(call.source_context or {}).get("ivr_stage") == "staff_authenticated",
+        ),
         begin_pin=begin_pin if public_mode else None, poll_pin=poll_pin if public_mode else None,
         consume_pending_query=consume_pending_query if public_mode else None,
         hangup_call=hangup_call,
