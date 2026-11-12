@@ -545,7 +545,7 @@ export function VoiceLifecycleCard({
             {fr ? "Générer un accueil professionnel" : "Use a professional welcome"}
           </button>
         </div>
-        {/* IVR GREETING TEXT INPUT */
+        {/* IVR GREETING TEXT INPUT */}
         <div className="space-y-2 pt-2">
           <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
             <span>{fr ? "Message vocal d'accueil du standard :" : "IVR Welcome Spoken Greeting:"}</span>
