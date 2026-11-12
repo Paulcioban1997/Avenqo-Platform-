@@ -1749,7 +1749,7 @@ async def telnyx_media_socket(
     bridge = TelnyxMediaBridge(BoundedMediaSocket(websocket), adapter, locale=locale,
         validate_start=validate_start, authorize=authorize, execute_turn=execute_turn,
         stt_model=settings.voice_stt_model, realtime_model=active_realtime_model,
-        initial_answer=public_conversation.greeting() if public_conversation is not None else None,
+        # Staff media is started only after a verified PIN. Confirm successful\n        # authentication audibly so a valid employee does not hear dead air.\n        initial_answer=public_conversation.greeting() if public_conversation is not None\n            else voice_auth_message(locale, 1),
         begin_pin=begin_pin if public_mode else None, poll_pin=poll_pin if public_mode else None,
         consume_pending_query=consume_pending_query if public_mode else None,
         hangup_call=hangup_call,
