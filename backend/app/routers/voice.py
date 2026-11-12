@@ -1373,7 +1373,7 @@ def get_voice_customization(
             pronunciation_dict = _json.loads(config.custom_pronunciation) if config.custom_pronunciation.startswith("{") else {"term": config.custom_pronunciation}
         except Exception:
             pronunciation_dict = {}
-    spoken_name = getattr(config, "voice_display_name", None) or getattr(config, "effective_voice_name", config.business_name)
+    spoken_name = getattr(config, "voice_display_name", None) or (config.business_name or "Avenqo").replace("_", " ")
     spoken_pronun = config.custom_pronunciation if (config.custom_pronunciation and not config.custom_pronunciation.startswith("{")) else (pronunciation_dict.get("term") or pronunciation_dict.get("company"))
     return VoiceCustomizationResponse(
         voice_id=getattr(config, "voice_id", "alloy") or "alloy",
@@ -1464,7 +1464,7 @@ def update_voice_customization(
         except Exception:
             pronunciation_dict = {}
 
-    spoken_name = getattr(config, "voice_display_name", None) or getattr(config, "effective_voice_name", config.business_name)
+    spoken_name = getattr(config, "voice_display_name", None) or (config.business_name or "Avenqo").replace("_", " ")
     spoken_pronun = config.custom_pronunciation if (config.custom_pronunciation and not config.custom_pronunciation.startswith("{")) else (pronunciation_dict.get("term") or pronunciation_dict.get("company"))
     return VoiceCustomizationResponse(
         voice_id=config.voice_id,
@@ -2745,13 +2745,8 @@ async def telnyx_webhook(
             current_stage = (call.source_context or {}).get("ivr_stage")
             # If IVR enabled and call has not yet completed menu selection, prompt IVR greeting
             if ivr_enabled and current_stage not in {"customer_public", "staff_authenticated"}:
-                from backend.app.voice.messages import voice_ivr_spoken_name
-                spoken_name = voice_ivr_spoken_name(config)
-                raw_greeting = (config.call_policy or {}).get("ivr_greeting")
-                if not raw_greeting:
-                    greeting = f"Bienvenue chez {spoken_name}. Pour les employés, composez le 1. Pour le service clientèle, composez le 2."
-                else:
-                    greeting = str(raw_greeting).replace("Produits_Ero", spoken_name).replace("Produits Ero", spoken_name).replace("Produits Éro", spoken_name).replace("_", " ")
+                from backend.app.voice.messages import voice_ivr_greeting
+                greeting = voice_ivr_greeting(config)
                 command_id = str(UUID(hashlib.sha256(f"ivr-greeting:{call.id}".encode()).hexdigest()[:32]))
                 auth_controller = VoiceCallerAuth(db, settings)
                 client_state = auth_controller.challenge(call)

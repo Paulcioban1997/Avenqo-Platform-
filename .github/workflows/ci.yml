@@ -153,6 +153,7 @@ jobs:
           tests/backend/test_telnyx_media.py
           tests/backend/test_voice_ivr_staff_media_scope.py
           tests/backend/test_gemini_live_multi_turn_receive.py
+          tests/backend/test_voice_ivr_spoken_name.py
           tests/backend/test_voice_no_silent_central_turns.py
           tests/backend/test_voice_inbound_e2e.py
           tests/backend/test_pr33_pr37_integration.py

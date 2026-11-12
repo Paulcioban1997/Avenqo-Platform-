@@ -73,6 +73,7 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
   const [speechSpeed, setSpeechSpeed] = useState<number>(1.0);
   const [personalityTone, setPersonalityTone] = useState<string>("professionnel");
   const [voiceDisplayName, setVoiceDisplayName] = useState<string>("");
+  const [voicePronunciation, setVoicePronunciation] = useState<string>("");
   const [greetingMessage, setGreetingMessage] = useState<string>("");
   const [farewellMessage, setFarewellMessage] = useState<string>("");
   const [pronunciations, setPronunciations] = useState<{ term: string; replaceWith: string }[]>([]);
@@ -93,10 +94,13 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
     setSelectedVoiceId(config.voice_id);
     setSpeechSpeed(config.speech_speed);
     setPersonalityTone(config.personality_tone);
-    setVoiceDisplayName(config.voice_display_name || config.voice_pronunciation || "");
+    setVoiceDisplayName(config.voice_display_name || "");
+    setVoicePronunciation(config.voice_pronunciation || "");
     setGreetingMessage(config.greeting_message ?? "");
     setFarewellMessage(config.farewell_message ?? "");
-    setPronunciations(Object.entries(config.custom_pronunciation ?? {}).map(([term, replaceWith]) => ({ term, replaceWith: String(replaceWith) })));
+    setPronunciations(Object.entries(config.custom_pronunciation ?? {})
+      .filter(([term]) => term !== "company" && term !== "term")
+      .map(([term, replaceWith]) => ({ term, replaceWith: String(replaceWith) })));
   };
 
   useEffect(() => {
@@ -198,8 +202,9 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
     setPronunciationLoading(true);
     setErrorMessage(null);
 
-    const testText = voiceDisplayName.trim()
-      ? `Bienvenue chez ${voiceDisplayName.trim()}. Comment puis-je vous aider aujourd'hui ?`
+    const spokenName = voicePronunciation.trim() || voiceDisplayName.trim();
+    const testText = spokenName
+      ? `Bienvenue chez ${spokenName}. Comment puis-je vous aider aujourd'hui ?`
       : "Bonjour et bienvenue. Comment puis-je vous renseigner aujourd'hui ?";
 
     try {
@@ -262,6 +267,9 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
     for (const item of pronunciations) {
       customPronunciationRecord[item.term] = item.replaceWith;
     }
+    if (voicePronunciation.trim()) {
+      customPronunciationRecord.company = voicePronunciation.trim();
+    }
 
     try {
       const payload = {
@@ -270,7 +278,7 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
         speech_speed: speechSpeed,
         personality_tone: personalityTone,
         voice_display_name: voiceDisplayName.trim() || undefined,
-        voice_pronunciation: voiceDisplayName.trim() || undefined,
+        voice_pronunciation: voicePronunciation.trim() || undefined,
         greeting_message: greetingMessage,
         farewell_message: farewellMessage,
         custom_pronunciation: customPronunciationRecord,
@@ -570,10 +578,10 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
           <div className="space-y-1">
             <label className="flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-white">
               <Volume2 size={14} className="text-[#0076FF]" />
-              <span>Comment votre entreprise doit-elle être prononcée par l&apos;agent vocal ?</span>
+              <span>Nom commercial affiché et prononciation vocale</span>
             </label>
             <p className="text-[11px] text-slate-600 dark:text-slate-400">
-              Sépare l&apos;identifiant technique ou le slug (ex: <code>produits_ero</code>) du nom prononcé à voix haute par la synthèse vocale (ex: <strong>Produits Ero</strong>). Élimine les « tiret bas » et prononciations robotiques.
+              Conservez votre véritable nom commercial. Le champ phonétique séparé permet de corriger les liaisons incorrectes prononcées par les voix IA.
             </p>
           </div>
           <button
@@ -595,9 +603,19 @@ export function VoiceCustomizationSection({ tenantId }: VoiceCustomizationSectio
             type="text"
             value={voiceDisplayName}
             onChange={(e) => setVoiceDisplayName(e.target.value)}
-            placeholder="Ex: Produits Ero"
+            placeholder="Nom commercial affiché : Produits Ero"
             className="w-full rounded-xl border border-slate-200 bg-white p-2.5 text-xs font-medium text-slate-900 shadow-2xs outline-none focus:border-[#0076FF] dark:border-white/10 dark:bg-[#111D3D] dark:text-white"
           />
+          <label className="mt-3 block text-xs font-semibold text-slate-700 dark:text-slate-300">
+            Prononciation vocale (sans modifier le nom commercial)
+            <input type="text" maxLength={255} value={voicePronunciation}
+              onChange={(e) => setVoicePronunciation(e.target.value)}
+              placeholder="Ex : Produits, Éro"
+              className="mt-1 w-full rounded-xl border border-slate-200 bg-white p-2.5 text-xs font-medium text-slate-900 shadow-2xs outline-none focus:border-[#0076FF] dark:border-white/10 dark:bg-[#111D3D] dark:text-white" />
+          </label>
+          <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+            L'aperçu est indicatif ; testez aussi l'accueil sur la véritable voix Telnyx et sur Gemini Live.
+          </p>
         </div>
       </div>
 
