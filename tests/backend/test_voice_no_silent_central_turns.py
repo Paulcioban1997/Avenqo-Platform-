@@ -79,9 +79,9 @@ async def test_vad_during_central_thinking_does_not_discard_valid_answer():
     assert bridge.response_id is None
     assert bridge._output.empty()
     await bridge._provider_events()
-    assert bridge.epoch == 0
-    assert not adapter.was_interrupted
-    await bridge._execute("turn-1", "question", 0)
+    assert bridge.epoch == 1  # Existing safe supersession behavior remains.
+    assert adapter.was_interrupted
+    await bridge._execute("turn-1", "question", bridge.epoch)
     assert adapter.spoken == ["Voici votre réponse."]
     assert bridge.central_ai_replies_queued == 1
 

@@ -1017,7 +1017,9 @@ async def test_central_ai_timeout_handled_gracefully():
     bridge.central_ai_timeout = 0.01
     await bridge._execute("slow-turn", "Transcript", 0)
     assert bridge.central_ai_timeouts == 1
-    assert "slow-turn" in ledger.settled
+    assert bridge.central_ai_replies_queued == 1
+    # The turn is settled after response.done, not before its spoken fallback.
+    assert "slow-turn" not in ledger.settled
 
 
 @pytest.mark.asyncio

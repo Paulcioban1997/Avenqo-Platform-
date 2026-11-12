@@ -1016,11 +1016,7 @@ class TelnyxMediaBridge:
                     or self.pending_epoch is not None
                     or not self._output.empty()
                 )
-                # New speech while Central AI is THINKING is not a barge-in.
-                # With no outgoing playback to interrupt, incrementing epoch
-                # silently invalidates the pending answer. Interrupt only
-                # actual playback (or a queued audio response).
-                if active_playback and self.allow_natural_interruptions:
+                if self.allow_natural_interruptions or not active_playback:
                     await self.interrupt()
                 item_id = getattr(event, "item_id", "")
                 if self.usage is not None and isinstance(item_id, str) and item_id:
