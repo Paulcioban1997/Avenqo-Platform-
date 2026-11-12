@@ -39,12 +39,80 @@ logger = logging.getLogger("avenqo.voice.realtime")
 
 _QUEUE_EOF = object()
 
-# Modèles Gemini Live officiellement pris en charge (ordre de préférence)
+# Modèles Gemini Live officiellement pris en charge (recommandé en tête).
 SUPPORTED_GEMINI_LIVE_MODELS: tuple[str, ...] = (
-    "gemini-2.0-flash-live-001",
-    "gemini-2.5-flash-native-audio-preview-12-2025",
-    "gemini-2.0-flash-exp",
+    "gemini-3.8-live",
+    "gemini-3.8-live-extended-thinking",
 )
+
+# Anciens identifiants retirés — ne jamais les substituer silencieusement.
+RETIRED_GEMINI_LIVE_MODELS: frozenset[str] = frozenset(
+    {
+        "gemini-2.0-flash-live-001",
+        "gemini-2.5-flash-native-audio-preview-12-2025",
+        "gemini-2.0-flash-exp",
+        "gemini-live-2.5-flash-preview",
+        "gemini-2.5-flash-native-audio-preview-09-2025",
+    }
+)
+
+DEFAULT_GEMINI_LIVE_MODEL = "gemini-3.8-live"
+
+
+class UnsupportedGeminiLiveModelError(ValueError):
+    """Raised when a configured/requested Gemini Live model is unknown or retired."""
+
+
+def resolve_gemini_live_model(requested: str | None) -> str:
+    """Return a supported Gemini Live model or raise — never silently remap."""
+    model = (requested or DEFAULT_GEMINI_LIVE_MODEL).strip()
+    if model in SUPPORTED_GEMINI_LIVE_MODELS:
+        return model
+    if model in RETIRED_GEMINI_LIVE_MODELS:
+        logger.error(
+            "gemini_live_model_retired requested=%s supported=%s",
+            model,
+            ",".join(SUPPORTED_GEMINI_LIVE_MODELS),
+        )
+        raise UnsupportedGeminiLiveModelError(
+            f"Gemini Live model '{model}' is retired. "
+            f"Use one of: {', '.join(SUPPORTED_GEMINI_LIVE_MODELS)}"
+        )
+    logger.error(
+        "gemini_live_model_unsupported requested=%s supported=%s",
+        model,
+        ",".join(SUPPORTED_GEMINI_LIVE_MODELS),
+    )
+    raise UnsupportedGeminiLiveModelError(
+        f"Gemini Live model '{model}' is not supported. "
+        f"Use one of: {', '.join(SUPPORTED_GEMINI_LIVE_MODELS)}"
+    )
+
+
+@dataclass(frozen=True)
+class VoiceRealtimeSessionDiagnostics:
+    """Safe per-call diagnostics — never includes PIN, secrets, or spoken content."""
+
+    provider: str
+    model: str
+    voice: str | None = None
+    locale: str | None = None
+    company_id: str | None = None
+    fallback_reason: str | None = None
+    error_code: str | None = None
+    session_id: str | None = None
+
+    def to_log_dict(self) -> dict[str, str | None]:
+        return {
+            "provider": self.provider,
+            "model": self.model,
+            "voice": self.voice,
+            "locale": self.locale,
+            "company_id": self.company_id,
+            "fallback_reason": self.fallback_reason,
+            "error_code": self.error_code,
+            "session_id": self.session_id,
+        }
 
 # Correspondance entre les identifiants de voix Avenqo/OpenAI et les voix natives Gemini Live
 GEMINI_VOICE_MAP: dict[str, str] = {
@@ -325,8 +393,8 @@ class GeminiLiveRealtimeAudioAdapter:
             or getattr(settings, "google_ai_studio_api_key", None)
             or getattr(settings, "gemini_api_key", None)
         )
-        configured_model = model or getattr(settings, "gemini_live_model", None) or "gemini-2.0-flash-live-001"
-        self._model = configured_model if configured_model in SUPPORTED_GEMINI_LIVE_MODELS else SUPPORTED_GEMINI_LIVE_MODELS[0]
+        configured_model = model or getattr(settings, "gemini_live_model", None) or DEFAULT_GEMINI_LIVE_MODEL
+        self._model = resolve_gemini_live_model(configured_model)
         raw_voice = (
             voice_name
             or (getattr(config, "voice_id", None) if config is not None else None)
@@ -337,14 +405,19 @@ class GeminiLiveRealtimeAudioAdapter:
         self._client_factory = client_factory
         self._vad_rms_threshold = vad_rms_threshold
         self._silence_frames_threshold = max(2, silence_frames_threshold)
+        self._diagnostics: VoiceRealtimeSessionDiagnostics | None = None
 
-        self._company_name = (
+        resolved_company = (
             company_name
             or (getattr(config, "effective_voice_name", None) if config is not None else None)
             or (getattr(config, "voice_display_name", None) if config is not None else None)
             or (getattr(config, "business_name", None) if config is not None else None)
-            or "Produits Ero"
         )
+        if not resolved_company or not str(resolved_company).strip():
+            raise ExternalVoiceConfigurationRequired(
+                "Gemini Live requires an authorized company voice name; no tenant brand fallback is allowed"
+            )
+        self._company_name = str(resolved_company).strip().replace("_", " ")
         self._personality_preset = getattr(config, "personality_preset", "professional_premium_warm") if config is not None else "professional_premium_warm"
         self._professionalism_level = int(getattr(config, "professionalism_level", 100) if config is not None else 100)
         self._warmth_level = int(getattr(config, "warmth_level", 85) if config is not None else 85)
@@ -385,7 +458,7 @@ class GeminiLiveRealtimeAudioAdapter:
         return genai.Client(
             vertexai=False,
             api_key=self._api_key,
-            http_options=types.HttpOptions(api_version="v1alpha"),
+            http_options=types.HttpOptions(api_version="v1beta"),
         )
 
     def _build_live_config(self, locale: str) -> Any:
@@ -777,6 +850,7 @@ class FallbackRealtimeAudioAdapter:
         self._fallback_factory = fallback_factory
         self._active: RealtimeAudioAdapter | None = None
         self.used_fallback: bool = False
+        self.last_diagnostics: VoiceRealtimeSessionDiagnostics | None = None
 
     @property
     def provider_id(self) -> str:
@@ -790,6 +864,12 @@ class FallbackRealtimeAudioAdapter:
 
     async def open(self, *, locale: str = "fr-CA") -> None:
         primary = self._primary_factory()
+        primary_model = str(getattr(primary, "_model", "") or getattr(primary, "model_name", "") or "unknown")
+        primary_voice = str(getattr(primary, "_voice_name", "") or "") or None
+        company_id = None
+        config = getattr(primary, "_config", None)
+        if config is not None and getattr(config, "company_id", None) is not None:
+            company_id = str(config.company_id)
         try:
             try:
                 await primary.open(locale=locale)
@@ -797,11 +877,21 @@ class FallbackRealtimeAudioAdapter:
                 await primary.open()  # type: ignore[call-arg]
             self._active = primary
             self.used_fallback = False
+            self.last_diagnostics = VoiceRealtimeSessionDiagnostics(
+                provider=str(getattr(primary, "provider_id", "gemini_live")),
+                model=primary_model,
+                voice=primary_voice,
+                locale=locale,
+                company_id=company_id,
+            )
+            logger.info("voice_realtime_session %s", self.last_diagnostics.to_log_dict())
         except Exception as exc:
+            error_code = type(exc).__name__
             logger.warning(
-                "realtime_adapter_primary_failed provider=%s reason=%s falling_back=True",
+                "realtime_adapter_primary_failed provider=%s model=%s error_code=%s falling_back=True",
                 getattr(primary, "provider_id", "primary"),
-                exc,
+                primary_model,
+                error_code,
             )
             with suppress(Exception):
                 await primary.close()
@@ -812,6 +902,16 @@ class FallbackRealtimeAudioAdapter:
                 await fallback.open()  # type: ignore[call-arg]
             self._active = fallback
             self.used_fallback = True
+            self.last_diagnostics = VoiceRealtimeSessionDiagnostics(
+                provider=str(getattr(fallback, "provider_id", "fallback")),
+                model=str(getattr(fallback, "_model", "") or "fallback"),
+                voice=primary_voice,
+                locale=locale,
+                company_id=company_id,
+                fallback_reason="primary_open_failed",
+                error_code=error_code,
+            )
+            logger.info("voice_realtime_session %s", self.last_diagnostics.to_log_dict())
 
     async def send_audio(self, audio: bytes) -> None:
         if self._active is None:
@@ -1049,14 +1149,15 @@ class GoogleGeminiLiveRealtimeProvider:
             or getattr(settings, "google_ai_studio_api_key", None)
             or getattr(settings, "gemini_api_key", None)
         )
-        configured_model = model or getattr(settings, "gemini_live_model", None) or "gemini-2.0-flash-live-001"
-        self._model = configured_model if configured_model in SUPPORTED_GEMINI_LIVE_MODELS else SUPPORTED_GEMINI_LIVE_MODELS[0]
+        configured_model = model or getattr(settings, "gemini_live_model", None) or DEFAULT_GEMINI_LIVE_MODEL
+        self._model = resolve_gemini_live_model(configured_model)
         self._voice_name = resolve_gemini_voice(voice_name or getattr(settings, "gemini_live_voice", "Aoede"))
         self._client_factory = client_factory
         self._default_tool_executor = tool_executor
         self._vad_rms_threshold = vad_rms_threshold
         self._cancelled_turns: set[tuple[str, str]] = set()
         self._active_sessions: dict[str, Any] = {}
+        self._last_diagnostics: VoiceRealtimeSessionDiagnostics | None = None
 
     @property
     def provider_type(self) -> RealtimeProviderType:
@@ -1095,7 +1196,7 @@ class GoogleGeminiLiveRealtimeProvider:
         return genai.Client(
             vertexai=False,
             api_key=self._api_key,
-            http_options=types.HttpOptions(api_version="v1alpha"),
+            http_options=types.HttpOptions(api_version="v1beta"),
         )
 
     @staticmethod
@@ -1116,8 +1217,13 @@ class GoogleGeminiLiveRealtimeProvider:
         context: VoiceTurnContext,
         authorized_tools: list[dict[str, Any]] | None = None,
     ) -> Any:
+        company_name = (context.company_name or "").strip()
+        if not company_name:
+            raise ExternalVoiceConfigurationRequired(
+                "Gemini Live session requires context.company_name from the authorized tenant"
+            )
         system_prompt = build_personality_system_prompt(
-            company_name=context.company_name or "Produits Ero",
+            company_name=company_name,
             locale=context.language or "fr-CA",
             personality_preset=context.personality_preset,
             professionalism_level=context.professionalism_level,
@@ -1567,12 +1673,27 @@ class VoiceRealtimeRouter:
         gemini_enabled = bool(getattr(config, "gemini_live_enabled", False)) if config is not None else False
 
         if (gemini_enabled or requested == RealtimeProviderType.GEMINI_LIVE) and self._gemini.is_available():
+            logger.info(
+                "voice_realtime_route provider=gemini_live model=%s company_id=%s",
+                self._gemini.model_name,
+                getattr(config, "company_id", None),
+            )
             return FallbackRealtimeAudioAdapter(
                 primary_factory=lambda: self._gemini.create_audio_adapter(config, audio_config),
                 fallback_factory=fallback_factory,
             )
+        logger.info(
+            "voice_realtime_route provider=fallback_pipeline requested=%s gemini_enabled=%s company_id=%s",
+            requested,
+            gemini_enabled,
+            getattr(config, "company_id", None),
+        )
         return fallback_factory()
 
     @property
     def interruptions(self) -> NaturalInterruptionManager:
         return self._interruptions
+
+    @property
+    def gemini_model_name(self) -> str:
+        return self._gemini.model_name

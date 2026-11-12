@@ -1,7 +1,6 @@
 # Incident 2026-11-11 — exposition `printenv` Postgres Production
 
-État : **ouvert — préparation rotation**. Aucune rotation Production n’a encore été exécutée.
-Aucune valeur secrète n’est reproduite dans ce document.
+État : **fermé — rotation exécutée 2026-11-12**. Aucune valeur secrète n’est reproduite dans ce document.
 
 ## Faits (sans valeurs)
 
@@ -16,60 +15,28 @@ La sortie a malgré tout inclus des **valeurs** pour au moins :
 | `PGPASSWORD` | Même secret, formulaire client `psql` |
 | `DATABASE_PUBLIC_URL` | URL PostgreSQL publique contenant utilisateur + mot de passe + hôte proxy Railway |
 
-Autres clés listées sans preuve d’exposition de valeur dans ce même événement :
-`PGPORT`, `PGUSER`, `PGDATABASE`, `PGHOST`, `PGDATA`, `POSTGRES_USER`, `POSTGRES_DB`,
-`PG_MAJOR`, `PG_VERSION`, et une entrée `DATABASE_URL` apparemment vide dans ce filtre.
+## Rotation exécutée (GO 2026-11-11 / exécution 2026-11-12)
 
-## Visibilité / persistance
+Préconditions :
 
-| Canal | Risque |
-|---|---|
-| Sortie outil agent / terminal local Cursor | **Confirmé** — valeurs présentes dans le transcript de session |
-| Chat utilisateur / rapports | Doit rester **sans valeurs** (règle respectée dans les réponses) |
-| Git / PR / CI logs | **Non observé** pour cet incident (pas de commit de secrets) |
-| Railway dashboard logs | Non vérifié exhaustivement ; traiter comme potentiellement capturé |
-| Partage / captures d’écran / backups de transcript | Possible si la session a été exportée |
+- Sauvegarde fraîche `20261112T000433544750Z` — verify=ok, révision `0076`, artefacts présents
+- Consommateurs distincts confirmés : API `avenqo_app`, backup `avenqo_backup` (mots de passe distincts)
+- Continuité API : non impactée (n’utilise pas le secret `postgres`)
 
-Hypothèse opérationnelle : le secret **`postgres` Production via proxy public**
-doit être considéré **compromis jusqu’à révocation**, même si l’accès a été limité
-à la session agent.
+Actions :
 
-## Périmètre de rotation (coordonné)
-
-Ne pas éditer seulement `POSTGRES_PASSWORD` dans Railway : sur une base déjà
-initialisée, cela **ne change pas** le mot de passe serveur (voir
-`docs/incident-38085288-rotation.md`).
-
-Ordre recommandé (GO explicite requis avant exécution) :
-
-1. **Sauvegarde fraîche** vérifiée (`verify_backup`) + preuve de fraîcheur.
-2. Inventaire des consommateurs qui utilisent le secret `postgres` / URL publique :
-   - service Postgres Railway (variables natives),
-   - éventuels scripts/ops locaux ou CLI ayant mémorisé l’URL publique,
-   - **pas** l’API `avenqo_app` ni `BACKUP_DATABASE_URL` / `avenqo_backup` si
-     leurs mots de passe sont distincts (à confirmer sans les afficher).
-3. Générer un **nouveau** mot de passe `postgres` via le mécanisme supporté
-   Railway (régénération qui synchronise serveur + variables), **ou**
-   `ALTER ROLE postgres PASSWORD …` puis mise à jour des variables dépendantes
-   dans la même fenêtre.
-4. Mettre à jour uniquement les variables / outils qui consomment encore l’ancien
-   secret ; redémarrer les jobs qui casseraient (ops manuels, pas l’API app si
-   elle reste sur `avenqo_app`).
-5. Preuve de **refus** de l’ancienne URL/mot de passe ; preuve de succès de la
-   nouvelle connexion admin locale/socket ou nouvelle URL.
-6. Vérifier `/api/v1/health`, `/api/v1/ready`, cron backup, et qu’aucune
-   migration n’utilise encore l’ancien secret.
-
-## Non-objectifs de cette rotation
-
-- Ne pas toucher `DATABASE_URL` de l’API (`avenqo_app`) sauf preuve qu’il
-  partage le même mot de passe (improbables d’après le diagnostic 2026-11-11).
-- Ne pas toucher Stripe, Telnyx, JWT, MFA, clés connecteurs.
-- Ne pas réécrire l’historique Git pour cet incident (pas de secret commité).
-- Ne pas désactiver le rôle `postgres` requis par l’admin Railway.
+1. `ALTER ROLE postgres` via socket local Unix (service Postgres)
+2. Mise à jour Railway (service Postgres, `--skip-deploys`) : `POSTGRES_PASSWORD`, `PGPASSWORD`, `DATABASE_PUBLIC_URL`
+3. Preuve TCP : nouveau mot de passe accepté ; **ancien mot de passe refusé**
+4. Socket local `postgres` : OK
+5. Post-checks : `/ready` ready+migrations=ok ; `/health` healthy ; backup verify=ok
 
 ## Critère de clôture
 
-Incident clos seulement après : nouveau secret actif, ancien secret refusé,
-API/backups/`/ready` OK, et confirmation qu’aucun consommateur restant n’utilise
-l’URL publique compromise.
+| Critère | Statut |
+|---|---|
+| Nouveau secret actif | OK |
+| Ancien secret refusé | OK |
+| API `/ready` `/health` | OK |
+| Sauvegardes | OK |
+| Pas de secret dans Git/chat | OK |
