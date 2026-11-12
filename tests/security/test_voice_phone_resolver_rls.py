@@ -97,8 +97,13 @@ def test_phone_resolver_sees_binding_when_table_owner_cannot_bypass_force_rls():
         connection.execute(text("RESET ROLE"))
         assert hidden is None
 
-        import importlib
-        migration = importlib.import_module("alembic.versions.0077_voice_resolver_bypass_rls")
+        import importlib.util
+        from pathlib import Path
+
+        revision = Path(__file__).resolve().parents[2] / "alembic" / "versions" / "0077_voice_resolver_bypass_rls.py"
+        spec = importlib.util.spec_from_file_location("rev0077_voice_resolver", revision)
+        migration = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(migration)
         connection.execute(text(migration.PHONE_RESOLVER_SQL))
         connection.execute(text(
             "ALTER FUNCTION public.resolve_voice_phone_number_tenant(text) OWNER TO avenqo_voice_resolver"
