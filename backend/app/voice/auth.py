@@ -318,7 +318,7 @@ class VoiceCallerAuth:
             return failed
 
         pin_clean = pin.strip().rstrip("#") if isinstance(pin, str) else ""
-        valid_format = isinstance(pin, str) and bool(re.fullmatch(r"[0-9]{4,12}", pin_clean))
+        valid_format = isinstance(pin, str) and bool(re.fullmatch(r"[0-9]{6,12}", pin_clean))
         if not valid_format:
             if pin_clean:
                 call.verification_attempts += 1
