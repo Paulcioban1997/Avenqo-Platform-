@@ -89,8 +89,15 @@ def test_forged_staff_ivr_stage_without_valid_session_fails_closed(authorized_me
 
 
 def test_staff_opening_line_confirms_authentication_and_public_greeting_stays():
-    assert media_session_opening_line(public_mode=False, public_greeting=None, locale="fr") == "Authentification réussie."
-    assert media_session_opening_line(public_mode=True, public_greeting="Bonjour.", locale="fr") == "Bonjour."
+    assert media_session_opening_line(
+        public_mode=False, public_greeting=None, locale="fr", confirm_authentication=True,
+    ) == "Authentification réussie."
+    assert media_session_opening_line(
+        public_mode=True, public_greeting="Bonjour.", locale="fr", confirm_authentication=False,
+    ) == "Bonjour."
+    assert media_session_opening_line(
+        public_mode=False, public_greeting=None, locale="fr", confirm_authentication=False,
+    ) is None
 
 
 def test_explicit_private_only_media_remains_private(authorized_media_call):

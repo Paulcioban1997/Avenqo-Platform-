@@ -1387,11 +1387,19 @@ def resolve_media_socket_context(db: Session, settings: Settings, call_id: UUID)
     return True, call, config, company
 
 
-def media_session_opening_line(*, public_mode: bool, public_greeting: str | None, locale: str) -> str | None:
-    """Customer calls keep their greeting. A verified employee hears the success line."""
+def media_session_opening_line(
+    *,
+    public_mode: bool,
+    public_greeting: str | None,
+    locale: str,
+    confirm_authentication: bool,
+) -> str | None:
+    """Customer calls keep their greeting. Only a verified staff IVR hears the success line."""
     if public_mode:
         return public_greeting
-    return voice_auth_message(locale, 1)
+    if confirm_authentication:
+        return voice_auth_message(locale, 1)
+    return None
 
 
 async def telnyx_media_socket(
@@ -1760,6 +1768,7 @@ async def telnyx_media_socket(
             public_mode=public_mode,
             public_greeting=public_conversation.greeting() if public_conversation is not None else None,
             locale=locale,
+            confirm_authentication=(call.source_context or {}).get("ivr_stage") == "staff_authenticated",
         ),
         begin_pin=begin_pin if public_mode else None, poll_pin=poll_pin if public_mode else None,
         consume_pending_query=consume_pending_query if public_mode else None,
