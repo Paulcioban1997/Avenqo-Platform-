@@ -30,11 +30,15 @@ class CentralAIIntentRouter:
         page_context: str | None = None,
     ) -> AssistantDefinition | None:
         words = self._words(query)
+        from backend.app.voice.direct_answers import is_module_access_question
+
         definitions = tuple(
             definition for definition in self._registry.list_all()
             if "business" in definition.entrypoints
         )
         capability_agent = next((item for item in definitions if item.slug == "tenant_capabilities"), None)
+        if capability_agent is not None and is_module_access_question(query):
+            return capability_agent
         if capability_agent is not None and words.intersection(capability_agent.intent_keywords):
             explicit_subscription = words.intersection(capability_agent.intent_keywords - {"plan"})
             other_domain = any(words.intersection(item.intent_keywords) for item in definitions if item is not capability_agent)

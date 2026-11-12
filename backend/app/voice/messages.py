@@ -1,6 +1,7 @@
 from functools import lru_cache
 import json
 from pathlib import Path
+import re
 
 from backend.app.core.locale_catalog import resolve_locale
 
@@ -145,13 +146,77 @@ def voice_ivr_spoken_name(config) -> str:
     return display
 
 
+_FR_SHORT_PARTICLES = frozenset({
+    "et", "de", "du", "la", "le", "les", "des", "un", "une", "au", "aux", "en", "sur", "par", "ou",
+})
+
+
+def voice_speech_name(config) -> str:
+    """Name sent to TTS. The stored brand is never rewritten.
+
+    A saved pronunciation alias wins. Otherwise a French pause is inserted
+    before a very short final token so engines do not read it as a number
+    or as an English common noun. The rule is generic for every tenant.
+    """
+    spoken = voice_ivr_spoken_name(config)
+    raw = getattr(config, "custom_pronunciation", None)
+    if isinstance(raw, str) and raw.strip():
+        return spoken
+    locale = str(getattr(config, "preferred_language", "fr") or "fr")
+    if not locale.startswith("fr"):
+        return spoken
+    parts = spoken.split()
+    if len(parts) < 2:
+        return spoken
+    last = parts[-1].strip(",.")
+    if not last.isalpha() or not (2 <= len(last) <= 3) or last.casefold() in _FR_SHORT_PARTICLES:
+        return spoken
+    return f"{' '.join(parts[:-1])}, {last}"
+
+
+def pronunciation_preview(config) -> dict[str, str]:
+    """What each voice provider will say. Display fields stay unchanged."""
+    stored = str(
+        getattr(config, "voice_display_name", None)
+        or getattr(config, "business_name", None)
+        or ""
+    ).replace("_", " ").strip()
+    spoken = voice_speech_name(config)
+    return {
+        "stored_name": stored,
+        "spoken_name": spoken,
+        "telnyx_ivr": spoken,
+        "gemini_live": spoken,
+        "welcome": spoken,
+    }
+
+
+def apply_spoken_pronunciation(text: str, config) -> str:
+    """Replace displayed brand spellings in text that is about to be spoken."""
+    if not text:
+        return ""
+    spoken = voice_speech_name(config)
+    if not spoken:
+        return text
+    rendered = text
+    names = []
+    for attr in ("business_name", "voice_display_name"):
+        raw = getattr(config, attr, None)
+        if isinstance(raw, str) and raw.strip():
+            names.append(raw.strip().replace("_", " "))
+    for name in sorted(set(names), key=len, reverse=True):
+        if name.casefold() != spoken.casefold():
+            rendered = re.sub(re.escape(name), spoken, rendered, flags=re.IGNORECASE)
+    return rendered
+
+
 def voice_ivr_greeting(config) -> str:
     """Render a tenant-specific IVR announcement, using literal placeholders.
 
     No company names are hardcoded. Legacy greetings and IVR digit routing
     remain unchanged. An owner may set a separate phonetic voice alias.
     """
-    name = voice_ivr_spoken_name(config)
+    name = voice_speech_name(config)
     policy = getattr(config, "call_policy", None) or {}
     raw = policy.get("ivr_greeting")
     fr = str(getattr(config, "preferred_language", "fr") or "fr").startswith("fr")
