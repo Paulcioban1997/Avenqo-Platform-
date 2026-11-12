@@ -11,6 +11,7 @@ import pytest
 from backend.app.voice.telnyx_media import (
     claim_media_start,
     issue_media_client_state,
+    media_session_opening_line,
     release_media_session,
     resolve_media_socket_context,
 )
@@ -85,6 +86,11 @@ def test_forged_staff_ivr_stage_without_valid_session_fails_closed(authorized_me
 
     with pytest.raises(PermissionError, match="Verified staff call required"):
         resolve_media_socket_context(env.db, env.settings, env.call.id)
+
+
+def test_staff_opening_line_confirms_authentication_and_public_greeting_stays():
+    assert media_session_opening_line(public_mode=False, public_greeting=None, locale="fr") == "Authentification réussie."
+    assert media_session_opening_line(public_mode=True, public_greeting="Bonjour.", locale="fr") == "Bonjour."
 
 
 def test_explicit_private_only_media_remains_private(authorized_media_call):
