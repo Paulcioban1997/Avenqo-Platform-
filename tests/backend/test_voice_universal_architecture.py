@@ -949,7 +949,7 @@ def test_gemini_live_realtime_audio_adapter_telnyx_bridge_end_to_end_and_barge_i
         adapter = GeminiLiveRealtimeAudioAdapter(
             audio_cfg,
             api_key="gemini-test-key",
-            model="gemini-2.0-flash-live-001",
+            model="gemini-3.8-live",
             voice_name="Aoede",
             company_name="Produits Ero",
             client_factory=lambda _key: fake_client,

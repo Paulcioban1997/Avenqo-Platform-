@@ -274,10 +274,7 @@ def clean_voice_text(text: str) -> str:
     cleaned = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", cleaned)
     cleaned = re.sub(r"^\s*\d+[\.\)]\s*", "", cleaned, flags=re.MULTILINE)
     cleaned = re.sub(r"^\s*[\-\*•]\s*", "", cleaned, flags=re.MULTILINE)
-    # Commercial brand is exactly "Produits Ero" (no accent). Normalize slug/ASR variants.
-    cleaned = re.sub(r"\bProduits?[_\s-]Éro\b", "Produits Ero", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\bProduits?[_\s-]Ero\b", "Produits Ero", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\bProduits?[_\s-]Zero\b", "Produits Ero", cleaned, flags=re.IGNORECASE)
+    # Do not hardcode any tenant brand here — spoken company names come from authorized config.
     lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
     cleaned = " ".join(lines)
     return re.sub(r"\s+", " ", cleaned).strip()

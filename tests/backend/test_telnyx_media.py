@@ -2161,10 +2161,9 @@ def test_clean_voice_text_strips_markdown_lists_and_formatting():
     assert not re.search(r"^\s*-\s+", cleaned_complex)
     assert "Bonjour ! Option A : Consultation Option B : Suivi" == cleaned_complex
 
-    # Commercial brand must stay "Produits Ero" (no accent), including slug/ASR variants.
-    assert clean_voice_text("Bienvenue chez Produits_Ero") == "Bienvenue chez Produits Ero"
-    assert clean_voice_text("Bienvenue chez Produits Éro") == "Bienvenue chez Produits Ero"
-    assert clean_voice_text("Bienvenue chez Produits-Zero") == "Bienvenue chez Produits Ero"
+    # Global TTS cleanup must not rewrite tenant brands — only strip markdown/artifacts.
+    assert "Produits_Ero" in clean_voice_text("Bienvenue chez **Produits_Ero**")
+    assert clean_voice_text("Bienvenue chez Produits Éro") == "Bienvenue chez Produits Éro"
 
 
 @pytest.mark.asyncio
