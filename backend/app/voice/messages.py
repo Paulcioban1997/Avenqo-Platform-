@@ -114,3 +114,32 @@ def voice_natural_greeting(locale: str, business_name: str) -> str:
     lang = resolve_locale(locale).split("-", 1)[0]
     template = _VOICE_NATURAL_GREETINGS.get(lang) or _VOICE_NATURAL_GREETINGS.get(resolve_locale(locale), _VOICE_NATURAL_GREETINGS["en"])
     return template.format(name=business_name.strip())
+
+
+def voice_ivr_spoken_name(config) -> str:
+    """Use a tenant-specific TTS name or pronunciation, never global brand rewrites.
+
+    An owner can set a spoken pronunciation with a pause to avoid an
+    unintended liaison while preserving the exact displayed brand name.
+    """
+    display = (
+        getattr(config, "effective_voice_name", None)
+        or getattr(config, "voice_display_name", None)
+        or getattr(config, "business_name", None)
+        or "Avenqo"
+    )
+    display = str(display).replace("_", " ").strip()
+    raw = getattr(config, "custom_pronunciation", None)
+    if not isinstance(raw, str) or not raw.strip():
+        return display
+    if raw.strip().startswith("{"):
+        try:
+            data = json.loads(raw)
+            raw = (data.get("company") or data.get("term")) if isinstance(data, dict) else None
+        except (ValueError, TypeError):
+            raw = None
+    if isinstance(raw, str):
+        alias = raw.strip()
+        if 0 < len(alias) <= 255 and all(ord(ch) >= 32 for ch in alias):
+            return alias
+    return display

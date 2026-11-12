@@ -2435,7 +2435,7 @@ async def telnyx_webhook(
                     command_id=command_id,
                     client_state=client_state,
                     language="fr-CA" if (config.preferred_language or "fr").startswith("fr") else "en-US",
-                    minimum_digits=4,
+                    minimum_digits=6,
                     maximum_digits=12,
                     valid_digits="0123456789#",
                     terminating_digit="#",
@@ -2515,7 +2515,7 @@ async def telnyx_webhook(
                     return {"received": True, "routed": False, "status": "MEDIA_STREAM_START_FAILED"}
 
         if ivr_stage == "employee_pin":
-            if not digits_str or len(digits_str) < 4:
+            if not digits_str or len(digits_str) < 6:
                 prompt_count = int((call.source_context or {}).get("pin_empty_prompts", 0)) + 1
                 call.source_context = {
                     **(call.source_context or {}),
@@ -2555,7 +2555,7 @@ async def telnyx_webhook(
                     command_id=command_id,
                     client_state=client_state,
                     language="fr-CA" if (config.preferred_language or "fr").startswith("fr") else "en-US",
-                    minimum_digits=4,
+                    minimum_digits=6,
                     maximum_digits=12,
                     valid_digits="0123456789#",
                     terminating_digit="#",
@@ -2630,7 +2630,7 @@ async def telnyx_webhook(
                         command_id=command_id,
                         client_state=client_state,
                         language="fr-CA" if (config.preferred_language or "fr").startswith("fr") else "en-US",
-                        minimum_digits=4,
+                        minimum_digits=6,
                         maximum_digits=12,
                         valid_digits="0123456789#",
                         terminating_digit="#",
@@ -2745,9 +2745,8 @@ async def telnyx_webhook(
             current_stage = (call.source_context or {}).get("ivr_stage")
             # If IVR enabled and call has not yet completed menu selection, prompt IVR greeting
             if ivr_enabled and current_stage not in {"customer_public", "staff_authenticated"}:
-                spoken_name = getattr(config, "effective_voice_name", None) or (config.business_name or "Avenqo").replace("_", " ")
-                if spoken_name in {"Produits_Ero", "Produits Ero", "Produits Éro"}:
-                    spoken_name = "Produit Éro"
+                from backend.app.voice.messages import voice_ivr_spoken_name
+                spoken_name = voice_ivr_spoken_name(config)
                 raw_greeting = (config.call_policy or {}).get("ivr_greeting")
                 if not raw_greeting:
                     greeting = f"Bienvenue chez {spoken_name}. Pour les employés, composez le 1. Pour le service clientèle, composez le 2."
