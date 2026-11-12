@@ -1366,17 +1366,34 @@ def media_audio_available(settings: Settings, locale: str, config: VoiceBusiness
     return openai_ok or gemini_ok
 
 
+def resolve_media_socket_context(db: Session, settings: Settings, call_id: UUID) -> tuple:
+    """Resolve media scope from server-owned IVR state, not the global public-media flag.
+
+    Telnyx IVR staff calls issue a private media ticket after successful PIN
+    verification. With TELNYX_MEDIA_INBOUND_ENABLED=True, always selecting
+    public_mode=True instead expects the literal "public" auth epoch and
+    rejects the valid staff ticket as a scope mismatch (WebSocket 4403).
+    """
+    if not settings.telnyx_media_inbound_enabled:
+        call, config, company, _user, _permissions, _auth = media_call_context(db, settings, call_id)
+        return False, call, config, company
+
+    call, config, company = media_transport_context(db, settings, call_id)
+    if (call.source_context or {}).get("ivr_stage") == "staff_authenticated":
+        # Caller type, PIN verification, membership, permissions and session
+        # expiry must all be revalidated before a private audio stream.
+        call, config, company, _user, _permissions, _auth = media_call_context(db, settings, call_id)
+        return False, call, config, company
+    return True, call, config, company
+
+
 async def telnyx_media_socket(
     websocket: WebSocket, call_id: UUID, db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings), service=Depends(get_central_ai_service),
     prediction_service=Depends(get_prediction_service),
 ) -> None:
-    public_mode = settings.telnyx_media_inbound_enabled
     try:
-        if public_mode:
-            call, config, company = media_transport_context(db, settings, call_id)
-        else:
-            call, config, company, _user, _permissions, _auth = media_call_context(db, settings, call_id)
+        public_mode, call, config, company = resolve_media_socket_context(db, settings, call_id)
         call_lang_session = company_call_language_session(db, config, call)
         locale = resolve_locale(call_lang_session.active_locale)
         if not media_audio_available(settings, locale, config) or service.usage_service is None:
