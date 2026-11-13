@@ -159,8 +159,15 @@ def voice_speech_name(config) -> str:
     or as an English common noun. The rule is generic for every tenant.
     """
     spoken = voice_ivr_spoken_name(config)
-    raw = getattr(config, "custom_pronunciation", None)
-    if isinstance(raw, str) and raw.strip():
+    display = (
+        getattr(config, "voice_display_name", None)
+        or getattr(config, "business_name", None)
+        or getattr(config, "effective_voice_name", None)
+        or "Avenqo"
+    )
+    display = str(display).replace("_", " ").strip()
+    # An empty or unusable alias, including "{}", must not block the pause.
+    if spoken.casefold() != display.casefold():
         return spoken
     locale = str(getattr(config, "preferred_language", "fr") or "fr")
     if not locale.startswith("fr"):

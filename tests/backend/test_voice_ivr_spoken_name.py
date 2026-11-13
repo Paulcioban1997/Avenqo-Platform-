@@ -21,6 +21,23 @@ def test_ivr_json_pronunciation_is_scoped_per_tenant():
     assert voice_ivr_spoken_name(b) == "Garage Nord"
 
 
+def test_empty_pronunciation_object_reaches_telnyx_with_a_pause():
+    from backend.app.voice.messages import voice_ivr_greeting, voice_speech_name
+
+    cfg = SimpleNamespace(
+        business_name="Produits Ero",
+        voice_display_name="Produits Ero",
+        effective_voice_name="Produits Ero",
+        custom_pronunciation="{}",
+        preferred_language="fr",
+        call_policy={},
+    )
+    assert voice_speech_name(cfg) == "Produits, Ero"
+    greeting = voice_ivr_greeting(cfg)
+    assert "Bienvenue chez Produits, Ero." in greeting
+    assert "Produits Ero" not in greeting
+
+
 def test_ivr_invalid_pronunciation_falls_back_to_display_name():
     cfg = SimpleNamespace(effective_voice_name="Cabinet Exemple", custom_pronunciation="{invalid")
     assert voice_ivr_spoken_name(cfg) == "Cabinet Exemple"
