@@ -75,6 +75,7 @@ class LoggingAccountNotifier:
     """Adaptateur local lorsque la livraison d'email n'est pas configurée."""
 
     email_delivery_configured = False
+    delivers_to_mailbox = False
 
     def send_email_verification(self, email: str, token: str) -> None:
         logger.info("Email de vérification demandé")
@@ -96,6 +97,7 @@ class AccountNotificationService:
     """Construit les notifications de compte indépendamment du transport."""
 
     email_delivery_configured = True
+    delivers_to_mailbox = True
 
     def __init__(self, settings: Settings, transport: EmailTransport) -> None:
         self._settings = settings
@@ -376,6 +378,50 @@ class CapturedEmail:
     company_id: str | None = None
 
 
+def missing_mailbox_settings(settings: Settings) -> list[str]:
+    """Names of Sandbox mail settings that are absent. Values are never included."""
+    missing: list[str] = []
+    environment = settings.environment.lower()
+    if environment in {"sandbox", "staging"} and not settings.sandbox_allow_external_email:
+        missing.append("SANDBOX_ALLOW_EXTERNAL_EMAIL")
+    if settings.email_provider == "https_api":
+        if not settings.email_api_key:
+            missing.append("EMAIL_API_KEY")
+        if not settings.email_from_email:
+            missing.append("EMAIL_FROM_EMAIL")
+        return missing
+    if not settings.smtp_host:
+        missing.append("SMTP_HOST")
+    if not settings.smtp_username:
+        missing.append("SMTP_USERNAME")
+    if not settings.smtp_password:
+        missing.append("SMTP_PASSWORD")
+    if not settings.smtp_from_email:
+        missing.append("SMTP_FROM_EMAIL")
+    return missing
+
+
+def mailbox_delivery(notifier: object, settings: Settings) -> tuple[bool, list[str]]:
+    """True only when a message can leave this process for the recipient's mailbox.
+
+    A fake or capture transport used by tests is explicit. Sandbox capture and the
+    logging adapter never count as delivery to the client.
+    """
+    missing = missing_mailbox_settings(settings)
+    configured = bool(getattr(notifier, "email_delivery_configured", False))
+    delivers = bool(getattr(notifier, "delivers_to_mailbox", False))
+    if not configured or not delivers:
+        return False, missing
+    environment = settings.environment.lower()
+    if (
+        environment in {"sandbox", "staging"}
+        and not settings.is_external_email_allowed
+        and not getattr(notifier, "test_transport", False)
+    ):
+        return False, missing
+    return True, []
+
+
 class SandboxCaptureAccountNotifier:
     """Safe Sandbox/Test email notifier that captures all outbound emails locally.
 
@@ -387,6 +433,7 @@ class SandboxCaptureAccountNotifier:
     """
 
     email_delivery_configured = True
+    delivers_to_mailbox = False
 
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings

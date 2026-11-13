@@ -74,6 +74,15 @@ export function AppShell({ children }: AppShellProps) {
 
   const [activeModuleKeys, setActiveModuleKeys] = useState<string[] | null>(null);
   const [entitlementsStatus, setEntitlementsStatus] = useState<"loading" | "success" | "error">("loading");
+  const [tenantBrand, setTenantBrand] = useState<{
+    company_logo_url?: string;
+    company_emblem_url?: string;
+    logo_placement?: string;
+    primary_color?: string;
+    secondary_color?: string;
+    accent_color?: string;
+    mode?: string;
+  } | null>(null);
 
   const loadModuleEntitlements = useCallback(async () => {
     setEntitlementsStatus("loading");
@@ -92,6 +101,50 @@ export function AppShell({ children }: AppShellProps) {
       setEntitlementsStatus("error");
     }
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const apply = (data: typeof tenantBrand) => {
+      if (!cancelled && data) setTenantBrand(data);
+    };
+    const onBrand = (event: Event) => apply((event as CustomEvent).detail);
+    window.addEventListener("avenqo-branding", onBrand);
+    void apiFetch("/api/v1/onboarding/branding")
+      .then(async (response) => {
+        if (response.ok) apply(await response.json());
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("avenqo-branding", onBrand);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!tenantBrand) return;
+    const hex = (value: string | undefined, fallback: string) =>
+      value && /^#[0-9a-fA-F]{3,8}$/.test(value) ? value : fallback;
+    const primary = hex(tenantBrand?.primary_color, "#0076FF");
+    const secondary = hex(tenantBrand?.secondary_color, "#0B132B");
+    const accent = hex(tenantBrand?.accent_color, "#00D4FF");
+    const mode = tenantBrand?.mode === "light" ? "light" : "dark";
+    document.documentElement.dataset.tenantTheme = mode;
+    document.documentElement.classList.toggle("dark", mode === "dark");
+    let style = document.getElementById("tenant-brand-style");
+    if (!style) {
+      style = document.createElement("style");
+      style.id = "tenant-brand-style";
+      document.head.appendChild(style);
+    }
+    style.textContent = `
+      html[data-tenant-theme] { --tenant-primary: ${primary}; --tenant-secondary: ${secondary}; --tenant-accent: ${accent}; }
+      html[data-tenant-theme="dark"] .min-h-screen { background-color: ${secondary}; }
+      html[data-tenant-theme="light"] .min-h-screen { background-color: #f8fafc; }
+      html[data-tenant-theme] .bg-\\[\\#0076FF\\] { background-color: ${primary} !important; }
+      html[data-tenant-theme] .text-\\[\\#0076FF\\] { color: ${primary} !important; }
+      html[data-tenant-theme] .text-\\[\\#00D4FF\\] { color: ${accent} !important; }
+    `;
+  }, [tenantBrand]);
 
   useEffect(() => {
     void loadModuleEntitlements();
@@ -198,6 +251,13 @@ export function AppShell({ children }: AppShellProps) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  const placement = tenantBrand?.logo_placement === "header" || tenantBrand?.logo_placement === "sidebar"
+    ? tenantBrand.logo_placement
+    : "both";
+  const brandMark = tenantBrand?.company_logo_url || tenantBrand?.company_emblem_url || "";
+  const showHeaderLogo = Boolean(brandMark) && (placement === "header" || placement === "both");
+  const showSidebarLogo = Boolean(brandMark) && (placement === "sidebar" || placement === "both");
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#060B13] text-slate-900 dark:text-[#F4F7FB] flex flex-col font-sans transition-colors duration-200">
       {/* Universal Topbar */}
@@ -214,9 +274,9 @@ export function AppShell({ children }: AppShellProps) {
 
           {/* Official Avenqo brand logo or custom tenant logo for mobile/topbar */}
           <Link href="/dashboard" className="flex items-center gap-2.5 group">
-            {session.identity?.company?.logo_url ? (
+            {showHeaderLogo ? (
               <img
-                src={session.identity.company.logo_url}
+                src={brandMark}
                 alt={activeTenant || t.brand.name}
                 className="w-8 h-8 rounded-xl object-contain border border-slate-200/80 dark:border-white/10 group-hover:scale-105 transition-transform"
               />
@@ -230,7 +290,7 @@ export function AppShell({ children }: AppShellProps) {
               />
             )}
             <span className="font-extrabold tracking-tight text-slate-900 dark:text-[#F4F7FB] text-base hidden sm:inline-block">
-              {session.identity?.company?.logo_url ? activeTenant : t.brand.name}
+              {showHeaderLogo ? activeTenant : t.brand.name}
             </span>
           </Link>
 
@@ -388,15 +448,15 @@ export function AppShell({ children }: AppShellProps) {
           }`}
         >
           {/* Top of Sidebar: Brand + Tagline (Mobile drawer only) */}
-          <div className="p-5 border-b border-slate-200/80 dark:border-white/[0.08] lg:hidden">
+          <div className={`p-5 border-b border-slate-200/80 dark:border-white/[0.08] ${showSidebarLogo ? "" : "lg:hidden"}`}>
             <Link
               href="/dashboard"
               onClick={() => setIsSidebarOpen(false)}
               className="flex items-center gap-3 group"
             >
-              {session.identity?.company?.logo_url ? (
+              {showSidebarLogo ? (
                 <img
-                  src={session.identity.company.logo_url}
+                  src={brandMark}
                   alt={activeTenant || t.brand.name}
                   className="w-9 h-9 rounded-xl object-contain border border-slate-200/80 dark:border-white/10 group-hover:scale-105 transition-transform"
                 />
@@ -411,10 +471,10 @@ export function AppShell({ children }: AppShellProps) {
               )}
               <div>
                 <div className="font-extrabold tracking-tight text-slate-900 dark:text-[#F4F7FB] text-base leading-none truncate max-w-[150px]">
-                  {session.identity?.company?.logo_url ? activeTenant : t.brand.name}
+                  {showSidebarLogo ? activeTenant : t.brand.name}
                 </div>
                 <div className="text-[9px] font-bold text-slate-400 dark:text-[#94A3B8] tracking-widest uppercase mt-1">
-                  {session.identity?.company?.logo_url ? "White-Label Workspace" : t.brand.tagline}
+                  {showSidebarLogo ? "White-Label Workspace" : t.brand.tagline}
                 </div>
               </div>
             </Link>

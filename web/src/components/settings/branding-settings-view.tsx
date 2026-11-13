@@ -49,6 +49,7 @@ export function BrandingSettingsView() {
     background_style: DEFAULT_THEME.background_style,
     company_logo_url: "",
     company_emblem_url: "",
+    logo_placement: "both" as "header" | "sidebar" | "both",
     display_name: "",
   });
 
@@ -67,8 +68,10 @@ export function BrandingSettingsView() {
           background_style: data.background_style || DEFAULT_THEME.background_style,
           company_logo_url: data.company_logo_url || "",
           company_emblem_url: data.company_emblem_url || "",
+          logo_placement: data.logo_placement === "header" || data.logo_placement === "sidebar" ? data.logo_placement : "both",
           display_name: data.display_name || "",
         });
+        window.dispatchEvent(new CustomEvent("avenqo-branding", { detail: data }));
       }
     } catch (err) {
       console.error("Erreur de chargement de la marque:", err);
@@ -81,16 +84,39 @@ export function BrandingSettingsView() {
     void fetchBranding();
   }, []);
 
+  const persistDesign = async (next: typeof designState) => {
+    setIsSaving(true);
+    setErrorMessage(null);
+    try {
+      const res = await apiFetch("/api/v1/onboarding/branding", {
+        method: "PUT",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(next),
+      });
+      if (!res.ok) throw new Error("Erreur lors de l'enregistrement de l'apparence.");
+      const saved = await res.json();
+      window.dispatchEvent(new CustomEvent("avenqo-branding", { detail: saved }));
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err: any) {
+      setErrorMessage(err.message || "Erreur d'enregistrement.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleSelectTheme = (theme: ThemeDefinition) => {
-    setDesignState((prev) => ({
-      ...prev,
+    const next = {
+      ...designState,
       theme_id: theme.id,
       primary_color: theme.primary_color,
       secondary_color: theme.secondary_color,
       accent_color: theme.accent_color,
       mode: theme.mode,
       background_style: theme.background_style,
-    }));
+    };
+    setDesignState(next);
+    void persistDesign(next);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, field: "company_logo_url" | "company_emblem_url") => {
@@ -121,10 +147,9 @@ export function BrandingSettingsView() {
       }
 
       const resData = await res.json();
-      setDesignState((prev) => ({
-        ...prev,
-        [field]: resData.asset_url,
-      }));
+      const next = { ...designState, [field]: resData.asset_url };
+      setDesignState(next);
+      await persistDesign(next);
     } catch (err: any) {
       setErrorMessage(err.message || "Erreur de téléversement");
     }
@@ -142,6 +167,8 @@ export function BrandingSettingsView() {
         body: JSON.stringify(designState),
       });
       if (res.ok) {
+        const saved = await res.json();
+        window.dispatchEvent(new CustomEvent("avenqo-branding", { detail: saved }));
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 3000);
       } else {
@@ -478,6 +505,27 @@ export function BrandingSettingsView() {
               />
             </div>
           </div>
+        </div>
+
+        <div className="pt-4 border-t border-slate-200 dark:border-white/[0.08]">
+          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5" htmlFor="logo-placement">
+            Emplacement du logo
+          </label>
+          <select
+            id="logo-placement"
+            value={designState.logo_placement}
+            onChange={(event) => {
+              const logo_placement: "header" | "sidebar" | "both" = event.target.value === "header" || event.target.value === "sidebar" ? event.target.value : "both";
+              const next = { ...designState, logo_placement };
+              setDesignState(next);
+              void persistDesign(next);
+            }}
+            className="w-full max-w-xs px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.04] text-xs"
+          >
+            <option value="both">En-tête et barre latérale</option>
+            <option value="header">En-tête seulement</option>
+            <option value="sidebar">Barre latérale seulement</option>
+          </select>
         </div>
 
         {/* Logo and Emblem upload */}

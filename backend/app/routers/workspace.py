@@ -23,7 +23,7 @@ from backend.app.services.retail_source_service import (
     RetailSourceNotFound,
     RetailSourceService,
 )
-from backend.app.services.workspace_service import WorkspaceError, WorkspaceService
+from backend.app.services.workspace_service import MailNotConfigured, WorkspaceError, WorkspaceService
 from shared.ai_engine.contracts import TenantContext
 
 router = APIRouter(prefix="/workspace", tags=["workspace"])
@@ -178,6 +178,8 @@ def invite(
 ) -> dict:
     try:
         row = service.invite(identity.user, str(payload.email), payload.role, payload.job_title, payload.department)
+    except MailNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except WorkspaceError as exc:
         raise HTTPException(400, str(exc)) from exc
     except PlanLimitReached as exc:
@@ -185,9 +187,8 @@ def invite(
     return {
         "id": str(row.id),
         "email": row.email,
-        "token": getattr(row, "_raw_token", None),
-        "invitation_code": getattr(row, "_raw_code", None),
         "expires_at": row.expires_at.isoformat(),
+        "delivery": "email",
     }
 
 
@@ -205,6 +206,8 @@ def invite_bulk(
             payload.job_title,
             payload.department,
         )
+    except MailNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except WorkspaceError as exc:
         raise HTTPException(400, str(exc)) from exc
     except PlanLimitReached as exc:
@@ -214,9 +217,8 @@ def invite_bulk(
             {
                 "id": str(r.id),
                 "email": r.email,
-                "token": getattr(r, "_raw_token", None),
-                "invitation_code": getattr(r, "_raw_code", None),
                 "expires_at": r.expires_at.isoformat(),
+                "delivery": "email",
             }
             for r in rows
         ],

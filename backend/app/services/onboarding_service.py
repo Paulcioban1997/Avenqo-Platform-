@@ -590,6 +590,7 @@ class OnboardingService:
             "background_style": stored_design.get("background_style") or default_theme.background_style,
             "company_logo_url": stored_design.get("company_logo_url") or draft.get("company_logo_url") or "",
             "company_emblem_url": stored_design.get("company_emblem_url") or "",
+            "logo_placement": stored_design.get("logo_placement") or "both",
             "display_name": stored_design.get("display_name") or (company.name if company else ""),
             "candidate_themes": get_all_candidate_themes(),
         }
@@ -611,10 +612,13 @@ class OnboardingService:
                 "background_style": default_theme.background_style,
                 "company_logo_url": "",
                 "company_emblem_url": "",
+                "logo_placement": "both",
                 "display_name": company.name if company else "",
             }
         else:
             current_design = draft.get("design", {})
+            requested_placement = data.get("logo_placement") or current_design.get("logo_placement") or "both"
+            logo_placement = requested_placement if requested_placement in {"header", "sidebar", "both"} else "both"
             design_data = {
                 "theme_id": data.get("theme_id") or current_design.get("theme_id") or DEFAULT_THEME_ID,
                 "primary_color": data.get("primary_color") or current_design.get("primary_color") or "#0076FF",
@@ -624,6 +628,7 @@ class OnboardingService:
                 "background_style": data.get("background_style") or current_design.get("background_style") or "mesh_dark",
                 "company_logo_url": data.get("company_logo_url", current_design.get("company_logo_url")),
                 "company_emblem_url": data.get("company_emblem_url", current_design.get("company_emblem_url")),
+                "logo_placement": logo_placement,
                 "display_name": data.get("display_name", current_design.get("display_name")),
             }
 
