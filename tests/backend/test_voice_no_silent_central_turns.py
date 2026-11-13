@@ -101,10 +101,31 @@ async def test_vad_during_central_thinking_does_not_discard_valid_answer():
 
 
 @pytest.mark.asyncio
-async def test_playback_barge_in_still_interrupts_active_audio():
+async def test_vad_during_playback_does_not_cancel_audio():
     bridge, adapter = make_bridge(noop)
     bridge.pending_epoch = bridge.epoch
     bridge.response_id = "playing"
+    bridge.phase = "PLAYING"
+    await bridge._provider_events()
+    assert bridge.epoch == 0
+    assert not adapter.was_interrupted
+
+
+@pytest.mark.asyncio
+async def test_confirmed_transcript_can_barge_in_during_playback():
+    class SpeakingAdapter(FakeAdapter):
+        async def events(self):
+            yield SimpleNamespace(
+                type="conversation.item.input_audio_transcription.completed",
+                item_id="barge-turn",
+                transcript="Je voudrais poser une autre question maintenant",
+            )
+
+    bridge, adapter = make_bridge(noop, SpeakingAdapter())
+    bridge.pending_epoch = bridge.epoch
+    bridge.response_id = "playing"
+    bridge.phase = "PLAYING"
+    bridge._last_spoken = "Voici la reponse en cours de lecture pour le client."
     await bridge._provider_events()
     assert bridge.epoch == 1
     assert adapter.was_interrupted

@@ -63,6 +63,7 @@ export function TeamWorkspace() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [successNotice, setSuccessNotice] = useState("");
+  const [sandboxMail, setSandboxMail] = useState<Array<{ id: string; recipient: string; subject: string; body: string; created_at: string }>>([]);
 
   // MODALS
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
@@ -71,10 +72,6 @@ export function TeamWorkspace() {
   const [inviteJobTitle, setInviteJobTitle] = useState("Employé");
   const [inviteDepartment, setInviteDepartment] = useState("");
   const [inviting, setInviting] = useState(false);
-  const [inviteSuccessToken, setInviteSuccessToken] = useState<string | null>(null);
-  const [generatedInvitations, setGeneratedInvitations] = useState<Array<{ email: string; invitation_code?: string; token?: string }>>([]);
-  const [copiedCodeIndex, setCopiedCodeIndex] = useState<number | null>(null);
-
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [taskTitle, setTaskTitle] = useState("");
   const [taskAssigneeId, setTaskAssigneeId] = useState("");
@@ -92,6 +89,11 @@ export function TeamWorkspace() {
       if (teamRes.ok) setTeam(await teamRes.json());
       if (taskRes.ok) setTasks(await taskRes.json());
       if (guideRes.ok) setBriefing(await guideRes.json());
+      const mailRes = await apiFetch("/api/v1/workspace/sandbox-mailbox");
+      if (mailRes.ok) {
+        const mail = await mailRes.json();
+        setSandboxMail(Array.isArray(mail?.messages) ? mail.messages : []);
+      }
       setError("");
     } catch {
       setError(fr ? "Impossible de charger l'espace équipe." : "Unable to load the team workspace.");
@@ -110,8 +112,6 @@ export function TeamWorkspace() {
     setInviting(true);
     setError("");
     setSuccessNotice("");
-    setInviteSuccessToken(null);
-    setGeneratedInvitations([]);
 
     try {
       const rawList = inviteEmail.split(/[\s,;]+/).map((s) => s.trim()).filter((s) => s.includes("@"));
@@ -135,14 +135,16 @@ export function TeamWorkspace() {
         });
         if (response.ok) {
           payload = await response.json();
+          const delivered = Array.isArray(payload?.invitations) && payload.invitations.every((item: { delivery?: string }) => item.delivery === "email" || item.delivery === "sandbox_mailbox");
           setSuccessNotice(
-            fr
-              ? `${rawList.length} invitations créées avec succès.`
-              : `${rawList.length} invitations created successfully.`
+            delivered
+              ? (fr
+                ? `${rawList.length} invitations sont dans la boîte Sandbox. Aucun courriel n'a quitté Sandbox et aucun code n'est affiché ici.`
+                : `${rawList.length} invitations are in the Sandbox mailbox. No email left Sandbox and no code is shown here.`)
+              : (fr
+                ? "L'invitation n'a pas été transmise."
+                : "The invitation was not sent.")
           );
-          if (Array.isArray(payload?.invitations)) {
-            setGeneratedInvitations(payload.invitations);
-          }
           setInviteEmail("");
           setInviteDepartment("");
           await load();
@@ -162,20 +164,14 @@ export function TeamWorkspace() {
         if (response.ok) {
           payload = await response.json();
           setSuccessNotice(
-            fr
-              ? `Invitation créée avec succès pour ${rawList[0]}`
-              : `Invitation created successfully for ${rawList[0]}`
+            payload?.delivery === "email" || payload?.delivery === "sandbox_mailbox"
+              ? (fr
+                ? `Invitation placée dans la boîte Sandbox pour ${rawList[0]}. Aucun courriel n'a quitté Sandbox.`
+                : `Invitation placed in the Sandbox mailbox for ${rawList[0]}. No email left Sandbox.`)
+              : (fr
+                ? "L'invitation n'a pas été transmise."
+                : "The invitation was not sent.")
           );
-          setGeneratedInvitations([
-            {
-              email: rawList[0],
-              invitation_code: payload.invitation_code,
-              token: payload.token,
-            },
-          ]);
-          if (payload?.token) {
-            setInviteSuccessToken(payload.token);
-          }
           setInviteEmail("");
           setInviteDepartment("");
           await load();
@@ -304,6 +300,28 @@ export function TeamWorkspace() {
           <AlertCircle className="w-4 h-4 shrink-0" />
           <span>{error}</span>
         </div>
+      )}
+
+      {sandboxMail.length > 0 && (
+        <section className="rounded-3xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/20 p-5 space-y-3">
+          <h2 className="text-sm font-bold text-amber-950 dark:text-amber-100">
+            {fr ? "Boîte Sandbox" : "Sandbox mailbox"}
+          </h2>
+          <p className="text-xs text-amber-900 dark:text-amber-200">
+            {fr
+              ? "Ces messages restent dans cette entreprise. Aucun courriel n'est envoyé à l'extérieur."
+              : "These messages stay inside this company. No email is sent outside Sandbox."}
+          </p>
+          <ul className="space-y-3">
+            {sandboxMail.map((message) => (
+              <li key={message.id} className="rounded-2xl border border-amber-200/80 dark:border-amber-900 bg-white/80 dark:bg-[#0B132B] p-3">
+                <p className="text-xs font-bold text-slate-900 dark:text-white">{message.subject}</p>
+                <p className="text-[11px] text-slate-500">{message.recipient}</p>
+                <pre className="mt-2 whitespace-pre-wrap text-xs text-slate-700 dark:text-slate-200">{message.body}</pre>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {successNotice && (
@@ -512,51 +530,6 @@ export function TeamWorkspace() {
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
                 />
               </div>
-
-              {generatedInvitations.length > 0 && (
-                <div className="p-4 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-xs space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-blue-900 dark:text-blue-200">
-                      {fr ? "Codes d'invitation sécurisés (8 chiffres) :" : "Secure Invitation Codes (8-digit CSPRNG):"}
-                    </span>
-                    <span className="px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900 text-[10px] font-bold text-[#0076FF] dark:text-[#00D4FF]">
-                      {fr ? "Valable 24h · Usage unique" : "Valid 24h · Single Use"}
-                    </span>
-                  </div>
-                  <div className="space-y-2">
-                    {generatedInvitations.map((inv, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between p-2.5 rounded-xl bg-white dark:bg-[#0B132B] border border-blue-100 dark:border-white/[0.08]"
-                      >
-                        <div className="min-w-0 pr-2">
-                          <div className="text-[11px] font-medium text-slate-600 dark:text-slate-300 truncate">
-                            {inv.email}
-                          </div>
-                          {inv.invitation_code && (
-                            <div className="font-mono font-extrabold text-base tracking-widest text-[#0076FF] dark:text-[#00D4FF] mt-0.5">
-                              {inv.invitation_code}
-                            </div>
-                          )}
-                        </div>
-                        {inv.invitation_code && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              void navigator.clipboard?.writeText(inv.invitation_code || "");
-                              setCopiedCodeIndex(idx);
-                              setTimeout(() => setCopiedCodeIndex(null), 2500);
-                            }}
-                            className="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 dark:bg-white/[0.06] dark:hover:bg-white/[0.1] text-xs font-semibold text-[#0076FF] dark:text-[#00D4FF] transition-colors cursor-pointer shrink-0"
-                          >
-                            {copiedCodeIndex === idx ? (fr ? "Copié !" : "Copied!") : (fr ? "Copier code" : "Copy code")}
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               <div className="flex justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button

@@ -37,6 +37,8 @@ export interface CommandPaletteProps {
   onClose: () => void;
   t: AppTranslations;
   onTriggerAction?: (actionId: string) => void;
+  /** Null until the entitlement API answers. Unlisted modules stay hidden. */
+  authorizedModuleKeys?: string[] | null;
 }
 
 export function CommandPalette({
@@ -44,6 +46,7 @@ export function CommandPalette({
   onClose,
   t,
   onTriggerAction,
+  authorizedModuleKeys = null,
 }: CommandPaletteProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -207,6 +210,7 @@ export function CommandPalette({
       },
       {
         id: "page-retail",
+        moduleKey: "retail",
         title: t.navigation.retailAi,
         group: t.commandPalette.pagesGroup,
         icon: <ShoppingBag className="w-4 h-4 text-[#00D4FF]" />,
@@ -217,6 +221,7 @@ export function CommandPalette({
       },
       {
         id: "page-crm",
+        moduleKey: "crm",
         title: t.navigation.crmAi,
         group: t.commandPalette.pagesGroup,
         icon: <Network className="w-4 h-4 text-violet-400" />,
@@ -227,6 +232,7 @@ export function CommandPalette({
       },
       {
         id: "page-accounting",
+        moduleKey: "accounting",
         title: t.navigation.accountingAi,
         group: t.commandPalette.pagesGroup,
         icon: <ReceiptText className="w-4 h-4 text-emerald-400" />,
@@ -267,6 +273,13 @@ export function CommandPalette({
       },
     ];
 
+    const visiblePages = pages.filter((page) => {
+      const moduleKey = "moduleKey" in page ? page.moduleKey : undefined;
+      if (!moduleKey) return true;
+      return authorizedModuleKeys?.includes(moduleKey) ?? false;
+    });
+    const retailAuthorized = authorizedModuleKeys?.includes("retail") ?? false;
+
     const actions = [
       {
         id: "action-sync",
@@ -278,7 +291,8 @@ export function CommandPalette({
           onTriggerAction?.("sync");
         },
       },
-      {
+      ...(retailAuthorized
+        ? [{
         id: "action-clean-data",
         title: t.commandPalette.actionCleanData,
         group: t.commandPalette.actionsGroup,
@@ -288,7 +302,8 @@ export function CommandPalette({
           onClose();
           onTriggerAction?.("clean-data");
         },
-      },
+      }]
+        : []),
       {
         id: "action-generate-report",
         title: t.commandPalette.actionGenerateReport,
@@ -344,7 +359,7 @@ export function CommandPalette({
       },
     ];
 
-    const all = [...pages, ...actions, ...integrations];
+    const all = [...visiblePages, ...actions, ...integrations];
 
     if (!query.trim()) return all;
     const lower = query.toLowerCase();
@@ -354,7 +369,7 @@ export function CommandPalette({
         item.group.toLowerCase().includes(lower)
     );
     return [...crmResults, ...filtered];
-  }, [query, router, onClose, onTriggerAction, t, crmResults]);
+  }, [query, router, onClose, onTriggerAction, t, crmResults, authorizedModuleKeys]);
 
   useEffect(() => {
     setSelectedIndex(0);

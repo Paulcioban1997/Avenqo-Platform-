@@ -27,6 +27,7 @@ import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
 import { apiFetch, ApiRequestError } from "@/lib/api-request";
 import { useSession } from "@/lib/session-context";
 import { RequestFailure } from "@/components/ui/request-failure";
+import { HorizontalScroller } from "@/components/shell/horizontal-scroller";
 import { getAuthHeaders } from "@/lib/api-headers";
 
 export interface DashboardViewProps {
@@ -236,7 +237,8 @@ export function DashboardView({
 
         {/* Date Range Picker Controls */}
         <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-xl p-1 bg-slate-100 dark:bg-[#111D3D] border border-slate-200/80 dark:border-white/[0.08] text-xs">
+        <HorizontalScroller>
+          <div className="inline-flex w-max rounded-xl p-1 bg-slate-100 dark:bg-[#111D3D] border border-slate-200/80 dark:border-white/[0.08] text-xs">
             <button
               onClick={() => setDateRange("all")}
               className={`px-3 py-1.5 rounded-lg font-semibold transition-colors ${
@@ -278,6 +280,7 @@ export function DashboardView({
               {t.dashboard.dateRangeQuarter}
             </button>
           </div>
+        </HorizontalScroller>
 
           <button
             onClick={fetchDashboardData}
@@ -320,7 +323,8 @@ export function DashboardView({
       )}
 
       {/* KPI Grid (5 Metrics) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <HorizontalScroller>
+      <div className="flex w-max gap-4 [&>*]:w-[220px] [&>*]:shrink-0">
         {isLoading ? (
           <>
             <KPISkeleton />
@@ -421,6 +425,7 @@ export function DashboardView({
           </>
         )}
       </div>
+      </HorizontalScroller>
 
       {!isLoading && dateRange !== "all" && (kpis.orders?.value ?? 0) === 0 && (
         <div role="status" className="border-l-4 border-amber-500 bg-amber-50 dark:bg-amber-950/20 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
@@ -458,8 +463,8 @@ export function DashboardView({
             {isLoading ? (
               <ChartSkeleton height={240} />
             ) : hasData && trendPoints.length > 0 ? (
-              <div className="relative pt-4 overflow-x-auto">
-                <div className="h-60 flex items-end gap-3 pt-4" style={{ minWidth: `${Math.max(trendPoints.length * 28, 100)}%` }}>
+              <HorizontalScroller>
+                <div className="h-60 flex items-end gap-3 pt-4" style={{ minWidth: `${Math.max(trendPoints.length * 48, 320)}px` }}>
                   {trendPoints.map((point, idx) => {
                     const maxRevenue = Math.max(...trendPoints.map((item) => item.revenue), 1);
                     const maxOrders = Math.max(...trendPoints.map((item) => item.orders), 1);
@@ -494,7 +499,7 @@ export function DashboardView({
                     );
                   })}
                 </div>
-              </div>
+              </HorizontalScroller>
             ) : (
               <EmptyState
                 title={t.dashboard.noTransactionsForPeriod.replace("{period}", periodLabel)}

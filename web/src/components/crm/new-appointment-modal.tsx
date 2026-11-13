@@ -603,7 +603,7 @@ export function NewAppointmentModal({
                         >
                           {s.name} ({metricText(s.duration_minutes, locale, t.common.insufficientData)} min — {metricText(s.price, locale, t.common.insufficientData, 2)} $)
                           {!isApproved
-                            ? (locale.startsWith("fr") ? " [Non approuvé — Réservation bloquée]" : " [Unapproved — Booking Blocked]")
+                            ? (locale.startsWith("fr") ? " [non publié — approbation requise]" : " [unpublished — approval required]")
                             : ""}
                         </option>
                       );

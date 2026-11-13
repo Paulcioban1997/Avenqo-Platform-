@@ -59,6 +59,22 @@ RETIRED_GEMINI_LIVE_MODELS: frozenset[str] = frozenset(
 DEFAULT_GEMINI_LIVE_MODEL = "gemini-3.8-live"
 
 
+def _gemini_realtime_input_config(types: Any) -> Any:
+    """Ask Gemini not to treat line echo as a barge-in.
+
+    Telnyx still delivers caller audio. Authorized speech is requested only
+    through speak(), so a model-side interruption must not cancel it.
+    """
+    handling = getattr(types, "ActivityHandling", None)
+    config_type = getattr(types, "RealtimeInputConfig", None)
+    if handling is None or config_type is None:
+        return {"activity_handling": "NO_INTERRUPTION"}
+    no_interruption = getattr(handling, "NO_INTERRUPTION", None)
+    if no_interruption is None:
+        return {"activity_handling": "NO_INTERRUPTION"}
+    return config_type(activity_handling=no_interruption)
+
+
 class UnsupportedGeminiLiveModelError(ValueError):
     """Raised when a configured/requested Gemini Live model is unknown or retired."""
 
@@ -185,6 +201,8 @@ def build_personality_system_prompt(
     prompt = (
         f"You represent the company '{company_name}'. "
         f"Always pronounce and refer to the company strictly as '{company_name}'. "
+        "Treat that spelling as a proper name in the caller's language. "
+        "Do not read it as a number and do not replace it with an English common noun. "
         f"{persona_desc} "
         f"Start in {lang_name} and follow the caller's language if they switch languages. "
         f"Personality profile: preset={personality_preset}, professionalism={professionalism_level}%, "
@@ -407,7 +425,9 @@ class GeminiLiveRealtimeAudioAdapter:
         self._silence_frames_threshold = max(2, silence_frames_threshold)
         self._diagnostics: VoiceRealtimeSessionDiagnostics | None = None
 
-        resolved_company = (
+        from backend.app.voice.messages import voice_speech_name
+        resolved_company = voice_speech_name(config) if config is not None else None
+        resolved_company = resolved_company or (
             company_name
             or (getattr(config, "effective_voice_name", None) if config is not None else None)
             or (getattr(config, "voice_display_name", None) if config is not None else None)
@@ -444,6 +464,9 @@ class GeminiLiveRealtimeAudioAdapter:
         self._transcript_parts: list[str] = []
         self._emitted_items: set[str] = set()
         self._closed: bool = False
+        self._tts_active = False
+        self._tts_response_id: str | None = None
+        self._tts_audio_chunks = 0
 
     def _build_genai_client(self) -> Any:
         if not self._api_key:
@@ -474,7 +497,7 @@ class GeminiLiveRealtimeAudioAdapter:
         )
         try:
             from google.genai import types
-            return types.LiveConnectConfig(
+            config = types.LiveConnectConfig(
                 response_modalities=[types.Modality.AUDIO],
                 system_instruction=types.Content(
                     parts=[types.Part.from_text(text=system_prompt)]
@@ -489,6 +512,25 @@ class GeminiLiveRealtimeAudioAdapter:
                 input_audio_transcription=types.AudioTranscriptionConfig(),
                 output_audio_transcription=types.AudioTranscriptionConfig(),
             )
+            try:
+                return types.LiveConnectConfig(
+                    response_modalities=[types.Modality.AUDIO],
+                    system_instruction=types.Content(
+                        parts=[types.Part.from_text(text=system_prompt)]
+                    ),
+                    speech_config=types.SpeechConfig(
+                        voice_config=types.VoiceConfig(
+                            prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                voice_name=self._voice_name,
+                            )
+                        )
+                    ),
+                    input_audio_transcription=types.AudioTranscriptionConfig(),
+                    output_audio_transcription=types.AudioTranscriptionConfig(),
+                    realtime_input_config=_gemini_realtime_input_config(types),
+                )
+            except TypeError:
+                return config
         except Exception:
             return {
                 "response_modalities": ["AUDIO"],
@@ -565,7 +607,13 @@ class GeminiLiveRealtimeAudioAdapter:
         cleaned = (text or "").strip()
         if not cleaned:
             return
+        if self._config is not None:
+            from backend.app.voice.messages import apply_spoken_pronunciation
+            cleaned = apply_spoken_pronunciation(cleaned, self._config)
         resp_id = f"gemini-resp-{uuid4().hex[:12]}"
+        self._tts_response_id = resp_id
+        self._tts_active = True
+        self._tts_audio_chunks = 0
         self._current_response_id = resp_id
         await self._event_queue.put(
             SimpleNamespace(
@@ -589,6 +637,11 @@ class GeminiLiveRealtimeAudioAdapter:
         await self._session.send_client_content(turns=turns, turn_complete=True)
 
     async def interrupt(self) -> None:
+        if self._tts_response_id is not None:
+            self._interrupted_responses.add(self._tts_response_id)
+        self._tts_active = False
+        self._tts_response_id = None
+        self._tts_audio_chunks = 0
         if self._current_response_id is not None:
             interrupted_id = self._current_response_id
             self._interrupted_responses.add(interrupted_id)
@@ -661,18 +714,12 @@ class GeminiLiveRealtimeAudioAdapter:
                         interrupted = getattr(server_content, "interrupted", False) or (
                             server_content.get("interrupted", False) if isinstance(server_content, dict) else False
                         )
-                        if interrupted and self._allow_natural_interruptions:
-                            if self._current_response_id is not None:
-                                await self.interrupt()
-                            if not self._speech_active:
-                                self._speech_active = True
-                                self._current_item_id = f"gemini-item-{uuid4().hex[:12]}"
-                                await self._event_queue.put(
-                                    SimpleNamespace(
-                                        type="input_audio_buffer.speech_started",
-                                        item_id=self._current_item_id,
-                                    )
-                                )
+                        if interrupted:
+                            logger.info(
+                                "gemini_live_interrupted_ignored tts_active=%s chunks=%s",
+                                self._tts_active,
+                                self._tts_audio_chunks,
+                            )
 
                         # Transcription entrante de l'appelant
                         in_trans = getattr(server_content, "input_transcription", None) or (
@@ -730,19 +777,13 @@ class GeminiLiveRealtimeAudioAdapter:
                                 if not raw_bytes:
                                     continue
 
-                                # Si pas de response_id ouvert, en ouvrir un automatiquement
-                                if self._current_response_id is None:
-                                    auto_id = f"gemini-resp-{uuid4().hex[:12]}"
-                                    self._current_response_id = auto_id
-                                    await self._event_queue.put(
-                                        SimpleNamespace(
-                                            type="response.created",
-                                            response=SimpleNamespace(id=auto_id),
-                                        )
-                                    )
-
-                                if self._current_response_id in self._interrupted_responses:
+                                # Spontaneous model audio is not an authorized Central AI answer.
+                                # Forward PCM only for the speak() response that is still open.
+                                if not self._tts_active or self._tts_response_id is None:
                                     continue
+                                if self._tts_response_id in self._interrupted_responses:
+                                    continue
+                                self._tts_audio_chunks += 1
 
                                 # Normalisation en 24kHz PCM16 pour TelnyxAudioCodec.outbound_pcm
                                 if "16000" in mime_type:
@@ -760,7 +801,7 @@ class GeminiLiveRealtimeAudioAdapter:
                                 await self._event_queue.put(
                                     SimpleNamespace(
                                         type="response.output_audio.delta",
-                                        response_id=self._current_response_id,
+                                        response_id=self._tts_response_id,
                                         delta=b64_delta,
                                     )
                                 )
@@ -774,9 +815,16 @@ class GeminiLiveRealtimeAudioAdapter:
                         if (turn_complete or waiting_for_input) and self._transcript_parts:
                             await self._flush_transcript()
 
-                        if turn_complete and self._current_response_id is not None:
-                            done_id = self._current_response_id
+                        if turn_complete and self._tts_active and self._tts_audio_chunks <= 0:
+                            # This completion belongs to a model turn that started
+                            # before speak(). Closing it would drop the answer.
+                            continue
+                        if turn_complete and self._tts_active and self._tts_response_id is not None:
+                            done_id = self._tts_response_id
                             self._current_response_id = None
+                            self._tts_active = False
+                            self._tts_response_id = None
+                            self._tts_audio_chunks = 0
                             usage_meta = getattr(message, "usage_metadata", None) or (
                                 message.get("usage_metadata") if isinstance(message, dict) else None
                             )

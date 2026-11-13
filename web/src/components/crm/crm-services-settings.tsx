@@ -267,7 +267,7 @@ export function CRMServicesSettings() {
                         </span>
                       ) : (
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-800/60">
-                          {locale.startsWith("fr") ? "Non approuvé — Réservation bloquée" : "Unapproved — Booking Blocked"}
+                          {locale.startsWith("fr") ? "Non publié — réservation inactive jusqu’à votre approbation" : "Unpublished — bookings stay off until you approve"}
                         </span>
                       )}
                     </div>

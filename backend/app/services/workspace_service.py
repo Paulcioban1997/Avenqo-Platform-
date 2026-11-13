@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.core.permissions import permissions_for
 from backend.app.core.security import generate_token, hash_password, hash_token
+from backend.app.models.company_module import company_module_is_active
 from backend.app.models import (
     Company,
     CompanyModule,
@@ -22,13 +23,20 @@ from backend.app.models import (
     User,
     UserRole,
 )
-from backend.app.models.base import CompanyModuleStatus
-from backend.app.services.account_notifications import AccountNotifier
+from backend.app.config.settings import get_settings
+from backend.app.services.account_notifications import AccountNotifier, mailbox_delivery
 from backend.app.services.plan_limits_service import PlanLimitsService
 
 
 class WorkspaceError(ValueError):
     pass
+
+
+class MailNotConfigured(WorkspaceError):
+    def __init__(self, missing: list[str]) -> None:
+        self.missing = missing
+        names = ", ".join(missing) or "SMTP_HOST"
+        super().__init__(f"Livraison email impossible. Réglages manquants : {names}")
 
 
 class WorkspaceService:
@@ -161,6 +169,9 @@ class WorkspaceService:
         if role == UserRole.OWNER:
             raise WorkspaceError("Le rôle propriétaire ne peut pas être attribué")
         PlanLimitsService(self._session).ensure_user_capacity(actor.company_id)
+        ready, missing = mailbox_delivery(self._notifier, get_settings())
+        if not ready or self._notifier is None or not hasattr(self._notifier, "send_transactional"):
+            raise MailNotConfigured(missing)
         normalized = email.strip().lower()
         if self._session.scalar(select(User.id).where(User.email == normalized)):
             raise WorkspaceError("Un compte utilise déjà cet email")
@@ -193,11 +204,33 @@ class WorkspaceService:
             expires_at=now + timedelta(hours=24),
         )
         self._session.add(invitation)
+        self._session.flush()
+        origin = get_settings().public_frontend_origin()
+        from backend.app.services.account_notifications import sandbox_mail_company_id, sandbox_mail_session
+
+        company_token = sandbox_mail_company_id.set(str(actor.company_id))
+        session_token = sandbox_mail_session.set(self._session)
+        try:
+            self._notifier.send_transactional(  # type: ignore[union-attr]
+                normalized,
+                "Invitation Avenqo",
+                "\n".join(
+                    (
+                        "Vous êtes invité à rejoindre un espace Avenqo.",
+                        "Ce message contient un code à usage unique, valable 24 heures.",
+                        f"Code: {code}",
+                        f"invitation-token:{raw}",
+                        f"Ouvrir: {origin}/employees",
+                    )
+                ),
+            )
+        except Exception:
+            self._session.rollback()
+            raise MailNotConfigured(missing) from None
+        finally:
+            sandbox_mail_company_id.reset(company_token)
+            sandbox_mail_session.reset(session_token)
         self._session.commit()
-        if self._notifier is not None and getattr(self._notifier, "email_delivery_configured", False):
-            send = getattr(self._notifier, "send_email_verification", None)
-            if send:
-                send(normalized, raw)
         invitation._raw_token = raw  # type: ignore[attr-defined]
         invitation._raw_code = code  # type: ignore[attr-defined]
         return invitation
@@ -301,7 +334,7 @@ class WorkspaceService:
                 .join(CompanyModule, CompanyModule.module_id == Module.id)
                 .where(
                     CompanyModule.company_id == actor.company_id,
-                    CompanyModule.status == CompanyModuleStatus.ACTIVE,
+                    company_module_is_active(),
                 )
             )
         )

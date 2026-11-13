@@ -64,7 +64,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     docLink: "https://shopify.dev/docs/apps",
     setupInstructions: [
       "Créer une application dans l'espace Partenaire ou Paramètres > Applications personnalisées de Shopify",
-      "Configurer les URLs de redirection vers https://app.avenqo.ca/api/v1/connectors/shopify/callback",
+      "Configurer les URLs de redirection vers {origin}/api/v1/connectors/shopify/callback",
       "Accorder les permissions read_products, read_orders, read_customers, write_inventory",
     ],
   },
@@ -526,6 +526,10 @@ export function ConnectionsView() {
   const [selectedConnectorDetails, setSelectedConnectorDetails] = useState<CanonicalConnector | null>(null);
   const [connectorSearchQuery, setConnectorSearchQuery] = useState("");
   const [connectorCategoryFilter, setConnectorCategoryFilter] = useState<string>("all");
+  const [platformCredentials, setPlatformCredentials] = useState<Record<string, { oauth_ready?: boolean; missing?: string[] }>>({});
+  const [apiAccount, setApiAccount] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [apiSecret, setApiSecret] = useState("");
   const [isWooModalOpen, setIsWooModalOpen] = useState(false);
   const [wooStoreUrl, setWooStoreUrl] = useState("");
   const [wooKey, setWooKey] = useState("");
@@ -537,11 +541,12 @@ export function ConnectionsView() {
     setLoadError(null);
     try {
       const headers = getAuthHeaders();
-      const [dsRes, connRes, syncRes, sourceRes] = await Promise.all([
+      const [dsRes, connRes, syncRes, sourceRes, platformRes] = await Promise.all([
         apiFetch("/api/v1/datasets", { headers }),
         apiFetch("/api/v1/connectors/connections", { headers }),
         apiFetch("/api/v1/connectors/sync/history?limit=10", { headers }),
         apiFetch("/api/v1/retail/sources", { headers }),
+        apiFetch("/api/v1/connectors/platform-credentials", { headers }).catch(() => null),
       ]);
       if (revision !== loadRevision.current) return;
 
@@ -579,6 +584,11 @@ export function ConnectionsView() {
         const sourceData = await sourceRes.json();
         if (revision !== loadRevision.current) return;
         if (Array.isArray(sourceData)) setRetailSources(sourceData);
+      }
+      if (platformRes && platformRes.ok) {
+        const platformData = await platformRes.json();
+        if (revision !== loadRevision.current) return;
+        if (platformData && typeof platformData === "object") setPlatformCredentials(platformData);
       }
     } catch (error) {
       if (revision === loadRevision.current) setLoadError(error instanceof ApiRequestError ? error : new ApiRequestError("backend_error"));
@@ -1167,7 +1177,11 @@ export function ConnectionsView() {
             const state = conn?.status?.toUpperCase();
             const isSyncing = state === "SYNCING" || state === "PROCESSING";
             const isError = conn && (state === "ERROR" || state === "FAILED" || state === "REAUTH_REQUIRED");
-            const isConnected = conn?.connection_status === "CONNECTED" || conn?.is_active;
+            const isConnected = conn?.connection_status === "CONNECTED";
+            const missingSandbox = platformCredentials[item.key]?.missing?.length
+              ? platformCredentials[item.key].missing
+              : item.envVars;
+            const tenantKeyProvider = ["adobe_commerce", "squarespace_commerce", "prestashop", "shipstation"].includes(item.key);
 
             return (
               <div
@@ -1318,10 +1332,19 @@ export function ConnectionsView() {
                     </Link>
                   ) : (
                     <button
-                      onClick={() => setSelectedConnectorDetails(item)}
+                      onClick={() => {
+                        setApiAccount("");
+                        setApiKey("");
+                        setApiSecret("");
+                        setSelectedConnectorDetails(item);
+                      }}
                       className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-white/[0.1] hover:bg-slate-100 dark:hover:bg-white/[0.04] text-slate-700 dark:text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
                     >
-                      Détails & API
+                      {tenantKeyProvider
+                        ? "Enregistrer la clé"
+                        : missingSandbox && missingSandbox.length > 0
+                          ? `Sandbox : ${missingSandbox[0]}`
+                          : "Détails & API"}
                     </button>
                   )}
                 </div>
@@ -1895,7 +1918,7 @@ export function ConnectionsView() {
                 <div className="p-3 rounded-xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/40 space-y-1.5">
                   <div className="font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
                     <AlertCircle size={14} className="text-amber-600" />
-                    <span>Variables d'environnement requises (Railway / Prod)</span>
+                    <span>Identifiants Sandbox manquants — aucun état Connecté</span>
                   </div>
                   <ul className="list-disc list-inside text-amber-800 dark:text-amber-300 font-mono text-[11px] space-y-0.5">
                     {selectedConnectorDetails.envVars.map((v) => (
@@ -1912,11 +1935,52 @@ export function ConnectionsView() {
                   </div>
                   <ol className="list-decimal list-inside space-y-1 text-slate-600 dark:text-slate-400 pl-1 leading-relaxed">
                     {selectedConnectorDetails.setupInstructions.map((step, idx) => (
-                      <li key={idx}>{step}</li>
+                      <li key={idx}>{step.replaceAll("{origin}", typeof window === "undefined" ? "" : window.location.origin)}</li>
                     ))}
                   </ol>
                 </div>
               )}
+              {["adobe_commerce", "squarespace_commerce", "prestashop", "shipstation"].includes(selectedConnectorDetails.key) ? (
+                <form
+                  className="space-y-2"
+                  onSubmit={async (event) => {
+                    event.preventDefault();
+                    setActionLoading(true);
+                    setAlertError(null);
+                    try {
+                      await apiFetch("/api/v1/connectors/tenant-api-credentials", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+                        body: JSON.stringify({
+                          provider: selectedConnectorDetails.key,
+                          account_id: apiAccount,
+                          api_key: apiKey,
+                          api_secret: apiSecret || undefined,
+                        }),
+                      });
+                      setApiKey("");
+                      setApiSecret("");
+                      setAlertSuccess("Clé enregistrée pour cette entreprise. Le connecteur n'est pas marqué Connecté.");
+                      setSelectedConnectorDetails(null);
+                      await loadData();
+                    } catch (error: any) {
+                      setAlertError(error?.publicMessage || "Enregistrement impossible.");
+                    } finally {
+                      setActionLoading(false);
+                    }
+                  }}
+                >
+                  <p className="text-xs text-slate-500">La clé reste liée à cette entreprise et n'affiche pas Connecté tant qu'elle n'est pas vérifiée.</p>
+                  <input value={apiAccount} onChange={(event) => setApiAccount(event.target.value)} required minLength={3} placeholder="Identifiant de la boutique sandbox" className="w-full rounded-xl border border-slate-200 dark:border-white/10 bg-transparent px-3 py-2 text-xs" />
+                  <input value={apiKey} onChange={(event) => setApiKey(event.target.value)} required type="password" autoComplete="off" placeholder="Clé API" className="w-full rounded-xl border border-slate-200 dark:border-white/10 bg-transparent px-3 py-2 text-xs" />
+                  <input value={apiSecret} onChange={(event) => setApiSecret(event.target.value)} type="password" autoComplete="off" placeholder="Secret API, si le fournisseur en exige un" className="w-full rounded-xl border border-slate-200 dark:border-white/10 bg-transparent px-3 py-2 text-xs" />
+                  <button type="submit" disabled={actionLoading} className="px-3 py-2 rounded-xl bg-[#0076FF] text-white text-xs font-semibold disabled:opacity-50">Enregistrer pour cette entreprise</button>
+                </form>
+              ) : selectedConnectorDetails.envVars && selectedConnectorDetails.envVars.length > 0 ? (
+                <p className="text-xs text-amber-800 dark:text-amber-200">
+                  OAuth ne démarre pas : l'application Sandbox n'est pas configurée. Le connecteur n'est pas marqué Connecté.
+                </p>
+              ) : null}
             </div>
 
             <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-white/[0.06]">

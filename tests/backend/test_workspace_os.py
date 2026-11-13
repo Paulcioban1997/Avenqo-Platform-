@@ -94,11 +94,16 @@ def test_invitation_respects_user_quota(auth_environment, non_sensitive_test_pas
         headers=headers(owner),
         json={"email": "one@example.ca", "job_title": "Reception"},
     )
-    assert first.status_code == 201 and first.json()["token"]
+    assert first.status_code == 201
+    assert first.json()["delivery"] == "email"
+    assert "token" not in first.json()
+    assert "invitation_code" not in first.json()
+    sent = notifier.sent[-1][2]
+    token = sent.split("invitation-token:", 1)[1].splitlines()[0]
     accepted = client.post(
         "/api/v1/workspace/invitations/accept",
         json={
-            "token": first.json()["token"],
+            "token": token,
             "first_name": "Sam",
             "last_name": "Lee",
             "password": non_sensitive_test_password,
