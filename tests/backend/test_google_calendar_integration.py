@@ -556,6 +556,77 @@ def test_sandbox_calendar_redirect_stays_off_production_api():
     assert _google_redirect_uri(production) == "https://api.avenqo.ca/api/v1/crm/calendar/google/callback"
 
 
+def test_sandbox_callback_hands_the_browser_to_render_before_token_exchange(monkeypatch):
+    from urllib.parse import parse_qs, urlsplit
+
+    render = "https://avenqo-sandbox-web.onrender.com"
+    railway_callback = "https://avenqo-platform-sandbox.up.railway.app/api/v1/crm/calendar/google/callback"
+    settings = SimpleNamespace(
+        environment="sandbox",
+        auth_jwt_secret="explicit-test-fixture",
+        frontend_url="https://old.example.test",
+        cors_origins=[],
+        google_calendar_return_origins="",
+        google_calendar_redirect_uri=railway_callback,
+        google_calendar_client_id="fixture-client",
+        google_calendar_client_secret="fixture-secret",
+    )
+    monkeypatch.setattr("backend.app.routers.crm.get_settings", lambda: settings)
+    monkeypatch.setattr(
+        "backend.app.routers.crm.GoogleCalendarProvider",
+        lambda **kwargs: pytest.fail("must not exchange on the API host return"),
+    )
+    state = _google_oauth_state(
+        UUID("00000000-0000-0000-0000-000000000010"),
+        UUID("00000000-0000-0000-0000-000000000011"),
+        settings.auth_jwt_secret,
+        return_origin=render,
+        redirect_uri=railway_callback,
+    )
+    request = Request({
+        "type": "http",
+        "method": "GET",
+        "path": "/api/v1/crm/calendar/google/callback",
+        "headers": [(b"cookie", b"avenqo_oauth_bind=" + b"ab" * 32)],
+        "query_string": b"",
+    })
+    response = asyncio.run(google_calendar_callback(
+        request=request,
+        code="fixture-code",
+        state=state,
+        db=SimpleNamespace(scalar=lambda query: pytest.fail("must not touch the token row before the handoff")),
+    ))
+    assert response.status_code == 303
+    target = urlsplit(response.headers["location"])
+    assert f"{target.scheme}://{target.netloc}" == render
+    assert target.path == "/api/v1/crm/calendar/google/relay"
+    assert parse_qs(target.query)["state"] == [state]
+    assert "avenqo.ca" not in response.headers["location"]
+    assert "application/json" not in response.headers.get("content-type", "")
+
+
+def test_sandbox_invalid_calendar_state_redirects_to_render_without_json(monkeypatch):
+    settings = SimpleNamespace(
+        environment="sandbox",
+        auth_jwt_secret="explicit-test-fixture",
+        frontend_url="https://avenqo.ca",
+        cors_origins=[],
+        google_calendar_return_origins="",
+        google_calendar_redirect_uri="https://api.avenqo.ca/api/v1/crm/calendar/google/callback",
+    )
+    monkeypatch.setattr("backend.app.routers.crm.get_settings", lambda: settings)
+    response = asyncio.run(google_calendar_callback(
+        request=_callback_request("unused", bind=False),
+        code="fixture-code",
+        state="not-a-signed-state",
+        db=SimpleNamespace(),
+    ))
+    assert response.status_code == 303
+    assert response.headers["location"] == "https://avenqo-sandbox-web.onrender.com/crm?tab=connections&calendar_oauth=failed"
+    assert "code=" not in response.headers["location"]
+    assert "avenqo.ca" not in response.headers["location"]
+
+
 def test_google_oauth_configuration_error_is_not_misreported_as_revoked_token(monkeypatch):
     from io import BytesIO
     from urllib.error import HTTPError

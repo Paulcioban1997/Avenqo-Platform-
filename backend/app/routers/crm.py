@@ -321,6 +321,26 @@ def _require_oauth_bind(request: Request, state: str) -> None:
         )
 
 
+def _sandbox_calendar_redirect(settings, origin: str | None, *, ok: bool) -> RedirectResponse:
+    """Browser destination after Sandbox Calendar OAuth. Never the production site."""
+    target = _SANDBOX_RENDER_ORIGIN
+    if origin:
+        try:
+            target = _calendar_return_origin(settings, origin)
+        except HTTPException:
+            target = _SANDBOX_RENDER_ORIGIN
+    parsed = urlsplit(target)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or host == "avenqo.ca" or host.endswith(".avenqo.ca"):
+        target = _SANDBOX_RENDER_ORIGIN
+    flag = "connected" if ok else "failed"
+    return RedirectResponse(
+        url=f"{target}/crm?tab=connections&calendar_oauth={flag}",
+        status_code=303,
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+    )
+
+
 def _outlook_redirect_uri(settings) -> str:
     return settings.microsoft_calendar_redirect_uri or (
         "https://api.avenqo.ca/api/v1/crm/calendar/outlook/callback"
@@ -1131,10 +1151,41 @@ async def google_calendar_callback(
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
     settings = get_settings()
-    state_data = _verify_google_oauth_state(state, settings.auth_jwt_secret)
+    sandbox = _is_sandbox(settings)
+    try:
+        state_data = _verify_google_oauth_state(state, settings.auth_jwt_secret)
+    except HTTPException:
+        if sandbox:
+            logging.getLogger("avenqo.calendar").warning(
+                "sandbox calendar callback rejected state request_id=%s",
+                getattr(request.state, "request_id", None),
+            )
+            return _sandbox_calendar_redirect(settings, None, ok=False)
+        raise
     tenant_id = UUID(state_data["tenant_id"])
     user_id = UUID(state_data["user_id"])
     now = datetime.now(timezone.utc)
+    raw_origin = state_data.get("return_origin")
+    return_origin = None
+    if raw_origin:
+        try:
+            return_origin = _calendar_return_origin(settings, raw_origin)
+        except HTTPException:
+            if sandbox:
+                return _sandbox_calendar_redirect(settings, None, ok=False)
+            raise
+    if sandbox and not return_origin:
+        return_origin = _SANDBOX_RENDER_ORIGIN
+    # Google returns the browser to the API host. The binding cookie was set on
+    # the web origin, so a cookie on this host must not block the handoff.
+    if return_origin and request.headers.get("x-avenqo-calendar-relay") != "1" and (
+        sandbox or not request.cookies.get(_OAUTH_BIND_COOKIE)
+    ):
+        return RedirectResponse(
+            url=f"{return_origin}/api/v1/crm/calendar/google/relay?{urlencode({'code': code, 'state': state})}",
+            status_code=303,
+            headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+        )
     apply_tenant_rls(db, tenant_id)
     oauth_state = db.scalar(
         select(CommerceOAuthState)
@@ -1152,20 +1203,7 @@ async def google_calendar_callback(
         or oauth_state.actor_user_id != user_id
     ):
         raise HTTPException(status_code=400, detail="État OAuth Google invalide ou déjà utilisé.")
-    # Google returns to the stable API domain. The HttpOnly binding cookie
-    # belongs to the initiating web origin. Relay the short-lived code there;
-    # only its server route can forward the browser cookie for finalization.
-    # Never exchange/persist credentials before the browser binding is checked.
-    return_origin = state_data.get("return_origin")
-    if return_origin:
-        return_origin = _calendar_return_origin(settings, return_origin)
-    if not request.cookies.get(_OAUTH_BIND_COOKIE) and return_origin and request.headers.get("x-avenqo-calendar-relay") != "1":
-        redirect = RedirectResponse(
-            url=f"{return_origin}/api/v1/crm/calendar/google/relay?{urlencode({'code': code, 'state': state})}",
-            status_code=303,
-            headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
-        )
-        return redirect
+    # The browser binding cookie is checked only on the web-origin relay hop.
     _require_oauth_bind(request, state)
     apply_tenant_rls(db, tenant_id)
     oauth_state.consumed_at = now
@@ -1223,12 +1261,14 @@ async def google_calendar_callback(
         db.add(conn)
 
     db.commit()
-    redirect = RedirectResponse(
-        url=f"{return_origin or settings.frontend_url.rstrip('/')}/crm?tab=connections&integration=google_calendar",
-        status_code=303,
-    )
-    redirect.headers["Cache-Control"] = "no-store"
-    redirect.headers["Referrer-Policy"] = "no-referrer"
+    if sandbox:
+        redirect = _sandbox_calendar_redirect(settings, return_origin, ok=True)
+    else:
+        redirect = RedirectResponse(
+            url=f"{return_origin or settings.frontend_url.rstrip('/')}/crm?tab=connections&integration=google_calendar",
+            status_code=303,
+            headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+        )
     redirect.delete_cookie(_OAUTH_BIND_COOKIE, path=_OAUTH_BIND_PATH)
     return redirect
 
