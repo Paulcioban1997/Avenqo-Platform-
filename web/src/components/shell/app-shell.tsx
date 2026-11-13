@@ -512,12 +512,12 @@ export function AppShell({ children }: AppShellProps) {
                       }}
                       className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${
                         isActive
-                          ? "bg-blue-50 text-[#0076FF] dark:bg-[#172652] dark:text-[#00D4FF] shadow-2xs"
+                          ? "bg-blue-50 text-blue-600 dark:bg-[#172652] dark:text-white shadow-2xs"
                           : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-[#94A3B8] dark:hover:text-[#F4F7FB] dark:hover:bg-[#111D3D]"
                       }`}
                     >
                       <div className="flex items-center gap-2.5">
-                        <Icon className={`w-4 h-4 ${isActive ? "text-[#0076FF] dark:text-[#00D4FF]" : "text-slate-400 dark:text-slate-500"}`} />
+                        <Icon className={`w-4 h-4 ${isActive ? "text-blue-600 dark:text-white" : "text-slate-400 dark:text-slate-500"}`} />
                         <span>{item.label}</span>
                       </div>
                     </Link>
@@ -542,7 +542,7 @@ export function AppShell({ children }: AppShellProps) {
                       onClick={() => setIsSidebarOpen(false)}
                       className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${
                         isActive
-                          ? "bg-blue-50 text-[#0076FF] dark:bg-[#172652] dark:text-[#00D4FF]"
+                          ? "bg-blue-50 text-blue-600 dark:bg-[#172652] dark:text-white"
                           : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-[#94A3B8] dark:hover:text-[#F4F7FB] dark:hover:bg-[#111D3D]"
                       }`}
                     >
@@ -577,7 +577,7 @@ export function AppShell({ children }: AppShellProps) {
                       onClick={() => setIsSidebarOpen(false)}
                       className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${
                         isActive
-                          ? "bg-blue-50 text-[#0076FF] dark:bg-[#172652] dark:text-[#00D4FF]"
+                          ? "bg-blue-50 text-blue-600 dark:bg-[#172652] dark:text-white"
                           : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-[#94A3B8] dark:hover:text-[#F4F7FB] dark:hover:bg-[#111D3D]"
                       }`}
                     >
