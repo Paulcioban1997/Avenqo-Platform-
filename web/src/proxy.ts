@@ -87,14 +87,18 @@ export async function proxy(request: NextRequest) {
   const refreshToken = request.cookies.get("avenqo_refresh_token")?.value;
 
   let refreshedTokens: { accessToken: string; refreshToken?: string } | null = null;
-  if ((!token || tokenExpiresSoon(token)) && refreshToken && pathname !== "/api/auth/refresh") {
+  // /api/v1 is rewritten to the backend. A Set-Cookie on that middleware
+  // response does not reach the browser, so rotating there invalidates the
+  // refresh token the browser still holds. Refresh only on responses we own.
+  const canPersistRefresh = !pathname.startsWith("/api/v1/");
+  if ((!token || tokenExpiresSoon(token)) && refreshToken && pathname !== "/api/auth/refresh" && canPersistRefresh) {
     const refreshed = await refreshAccessToken(refreshToken);
     if (refreshed === "unavailable") {
       return NextResponse.json({ error: { code: "AUTH_SERVICE_UNAVAILABLE" } }, { status: 503, headers: { "Retry-After": "15" } });
     }
     refreshedTokens = refreshed;
     token = refreshedTokens?.accessToken;
-  } else if (token && tokenExpiresSoon(token)) {
+  } else if (token && tokenExpiresSoon(token) && !refreshToken) {
     token = undefined;
   }
 

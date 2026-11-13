@@ -7,8 +7,11 @@ import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
 export function RequestFailure({ error, retry }: { error: ApiRequestError; retry: () => void }) {
   const { locale } = useLocale();
   const catalog = getApplicationCatalog(locale);
+  const sessionMessage = locale.startsWith("fr")
+    ? "Authentification requise. Veuillez vous reconnecter."
+    : "Authentication is required. Please sign in again.";
   return <div role="alert" data-error-category={error.category} className="rounded-xl border border-red-300 p-4 space-x-3">
-    <span>{error.publicMessage ?? catalog.auth.genericError}</span>
+    <span>{error.publicMessage ?? (error.category === "session_expired" ? sessionMessage : catalog.auth.genericError)}</span>
     {error.category === "session_expired"
       ? <Link href="/login?session_expired=1">{catalog.auth.backToLogin}</Link>
       : <button type="button" onClick={retry}>{catalog.assistant.retry}</button>}

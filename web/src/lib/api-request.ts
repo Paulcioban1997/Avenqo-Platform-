@@ -8,7 +8,24 @@ export class ApiRequestError extends Error {
   }
 }
 
-export async function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
+let refreshInFlight: Promise<boolean> | null = null;
+
+function refreshBrowserSession(): Promise<boolean> {
+  if (typeof window === "undefined") return Promise.resolve(false);
+  if (!refreshInFlight) {
+    refreshInFlight = fetch("/api/auth/refresh", {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+      headers: { "X-Requested-With": "avenqo-web" },
+    }).then((response) => response.ok).catch(() => false).finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+export async function apiFetch(input: string, init: RequestInit = {}, allowRefresh = true): Promise<Response> {
   const headers = new Headers(getAuthHeaders());
   new Headers(init.headers).forEach((value, key) => headers.set(key, value));
   const deadline = AbortSignal.timeout(input.includes("/ai/") ? 100_000 : 30_000);
@@ -18,6 +35,15 @@ export async function apiFetch(input: string, init: RequestInit = {}): Promise<R
       signal: init.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
     });
     if (!response.ok) {
+      if (
+        response.status === 401
+        && allowRefresh
+        && typeof window !== "undefined"
+        && !input.includes("/auth/refresh")
+      ) {
+        const recovered = await refreshBrowserSession();
+        if (recovered) return apiFetch(input, init, false);
+      }
       const category: ApiFailure = response.status === 401 ? "session_expired"
         : response.status === 403 ? "unauthorized"
         : response.status === 402 ? "subscription_error"
