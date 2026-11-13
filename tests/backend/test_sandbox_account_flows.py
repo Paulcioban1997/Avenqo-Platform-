@@ -2,19 +2,28 @@
 
 from __future__ import annotations
 
+import re
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
 from cryptography.fernet import Fernet
-from sqlalchemy import create_engine
+from fastapi import HTTPException
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.models.base import Base
 from backend.app.models.company import Company
+from backend.app.models.contract_signing_challenge import ContractSigningChallenge
+from backend.app.models.user import User, UserRole
+from backend.app.models.workspace import EmployeeInvitation
 from backend.app.routers.commerce import platform_credentials
+from backend.app.routers.contracts import create_signing_challenge
 from backend.app.services.account_notifications import LoggingAccountNotifier, mailbox_delivery, missing_mailbox_settings
 from backend.app.services.commerce_connection_service import CommerceConnectionService
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
+from backend.app.services.onboarding_service import OnboardingService
+from backend.app.services.workspace_service import MailNotConfigured, WorkspaceService
 from shared.ai_engine.contracts import TenantContext
 
 
@@ -86,4 +95,104 @@ def test_tenant_api_key_stays_unverified():
     assert connection.status == "CONNECTING"
     assert connection.company_id == company.id
     assert "tenant-key" not in (connection.encrypted_credentials or "")
+    session.close()
+
+
+def _company(session: Session, slug: str) -> tuple[Company, User]:
+    company = Company(
+        id=uuid4(),
+        name=slug,
+        slug=slug,
+        email=f"{slug}@example.test",
+        country="Canada",
+        timezone="America/Toronto",
+        industry="Retail",
+        subscription_plan="professional",
+        preferred_language="fr",
+    )
+    owner = User(
+        id=uuid4(),
+        company_id=company.id,
+        email=f"owner-{slug}@example.test",
+        password_hash="not-a-secret",
+        first_name="Ada",
+        last_name="Owner",
+        role=UserRole.OWNER,
+        is_active=True,
+    )
+    session.add(company)
+    session.add(owner)
+    session.commit()
+    return company, owner
+
+
+def _session() -> Session:
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    return sessionmaker(bind=engine)()
+
+
+class _RaisingMail:
+    email_delivery_configured = True
+    delivers_to_mailbox = True
+    test_transport = True
+
+    def send_transactional(self, recipient: str, subject: str, body: str) -> None:
+        raise RuntimeError("sandbox transport refused the message")
+
+
+def test_failed_mail_does_not_keep_an_invitation_or_challenge():
+    session = _session()
+    company, owner = _company(session, "produits-ero-mail")
+    service = WorkspaceService(session, LoggingAccountNotifier())
+    with pytest.raises(MailNotConfigured) as blocked:
+        service.invite(owner, "invitee@example.test", UserRole.USER, "Analyst", None)
+    assert not re.search(r"\b\d{8}\b", str(blocked.value))
+    assert session.scalar(select(func.count()).select_from(EmployeeInvitation)) == 0
+
+    raising = WorkspaceService(session, _RaisingMail())
+    with pytest.raises(MailNotConfigured):
+        raising.invite(owner, "invitee@example.test", UserRole.USER, "Analyst", None)
+    assert session.scalar(select(func.count()).select_from(EmployeeInvitation)) == 0
+
+    with pytest.raises(HTTPException) as challenge_error:
+        create_signing_challenge(
+            "SAAS_SUBSCRIPTION",
+            tenant=TenantContext(company_id=company.id),
+            identity=SimpleNamespace(),
+            db=session,
+            notifier=LoggingAccountNotifier(),
+            service=object(),
+        )
+    assert challenge_error.value.status_code == 503
+    assert not re.search(r"\b\d{8}\b", str(challenge_error.value.detail))
+    assert session.scalar(select(func.count()).select_from(ContractSigningChallenge)) == 0
+    session.close()
+
+
+def test_theme_and_logo_persist_for_one_tenant_only():
+    session = _session()
+    company_a, _owner_a = _company(session, "tenant-a")
+    company_b, _owner_b = _company(session, "tenant-b")
+    service = OnboardingService(session)
+    tenant_a = TenantContext(company_id=company_a.id)
+    service.update_tenant_branding(
+        tenant_a,
+        {
+            "theme_id": "emerald_enterprise",
+            "primary_color": "#00AA88",
+            "secondary_color": "#06281F",
+            "accent_color": "#B6F2D8",
+            "mode": "dark",
+            "company_logo_url": "data:image/png;base64,AAAA",
+            "logo_placement": "sidebar",
+        },
+    )
+    reread = OnboardingService(session).get_tenant_branding(tenant_a)
+    other = OnboardingService(session).get_tenant_branding(TenantContext(company_id=company_b.id))
+    assert reread["theme_id"] == "emerald_enterprise"
+    assert reread["logo_placement"] == "sidebar"
+    assert reread["company_logo_url"] == "data:image/png;base64,AAAA"
+    assert other["company_logo_url"] in ("", None)
+    assert other["theme_id"] != "emerald_enterprise"
     session.close()
