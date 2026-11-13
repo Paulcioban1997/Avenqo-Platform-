@@ -63,6 +63,7 @@ export function TeamWorkspace() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [successNotice, setSuccessNotice] = useState("");
+  const [sandboxMail, setSandboxMail] = useState<Array<{ id: string; recipient: string; subject: string; body: string; created_at: string }>>([]);
 
   // MODALS
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
@@ -88,6 +89,11 @@ export function TeamWorkspace() {
       if (teamRes.ok) setTeam(await teamRes.json());
       if (taskRes.ok) setTasks(await taskRes.json());
       if (guideRes.ok) setBriefing(await guideRes.json());
+      const mailRes = await apiFetch("/api/v1/workspace/sandbox-mailbox");
+      if (mailRes.ok) {
+        const mail = await mailRes.json();
+        setSandboxMail(Array.isArray(mail?.messages) ? mail.messages : []);
+      }
       setError("");
     } catch {
       setError(fr ? "Impossible de charger l'espace équipe." : "Unable to load the team workspace.");
@@ -129,12 +135,12 @@ export function TeamWorkspace() {
         });
         if (response.ok) {
           payload = await response.json();
-          const delivered = Array.isArray(payload?.invitations) && payload.invitations.every((item: { delivery?: string }) => item.delivery === "email");
+          const delivered = Array.isArray(payload?.invitations) && payload.invitations.every((item: { delivery?: string }) => item.delivery === "email" || item.delivery === "sandbox_mailbox");
           setSuccessNotice(
             delivered
               ? (fr
-                ? `${rawList.length} invitations transmises par email. Aucun code n'est affiché ici.`
-                : `${rawList.length} invitations were handed to email. No code is shown here.`)
+                ? `${rawList.length} invitations sont dans la boîte Sandbox. Aucun courriel n'a quitté Sandbox et aucun code n'est affiché ici.`
+                : `${rawList.length} invitations are in the Sandbox mailbox. No email left Sandbox and no code is shown here.`)
               : (fr
                 ? "L'invitation n'a pas été transmise."
                 : "The invitation was not sent.")
@@ -158,10 +164,10 @@ export function TeamWorkspace() {
         if (response.ok) {
           payload = await response.json();
           setSuccessNotice(
-            payload?.delivery === "email"
+            payload?.delivery === "email" || payload?.delivery === "sandbox_mailbox"
               ? (fr
-                ? `Invitation transmise par email à ${rawList[0]}. Aucun code n'est affiché ici.`
-                : `Invitation handed to email for ${rawList[0]}. No code is shown here.`)
+                ? `Invitation placée dans la boîte Sandbox pour ${rawList[0]}. Aucun courriel n'a quitté Sandbox.`
+                : `Invitation placed in the Sandbox mailbox for ${rawList[0]}. No email left Sandbox.`)
               : (fr
                 ? "L'invitation n'a pas été transmise."
                 : "The invitation was not sent.")
@@ -294,6 +300,28 @@ export function TeamWorkspace() {
           <AlertCircle className="w-4 h-4 shrink-0" />
           <span>{error}</span>
         </div>
+      )}
+
+      {sandboxMail.length > 0 && (
+        <section className="rounded-3xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/20 p-5 space-y-3">
+          <h2 className="text-sm font-bold text-amber-950 dark:text-amber-100">
+            {fr ? "Boîte Sandbox" : "Sandbox mailbox"}
+          </h2>
+          <p className="text-xs text-amber-900 dark:text-amber-200">
+            {fr
+              ? "Ces messages restent dans cette entreprise. Aucun courriel n'est envoyé à l'extérieur."
+              : "These messages stay inside this company. No email is sent outside Sandbox."}
+          </p>
+          <ul className="space-y-3">
+            {sandboxMail.map((message) => (
+              <li key={message.id} className="rounded-2xl border border-amber-200/80 dark:border-amber-900 bg-white/80 dark:bg-[#0B132B] p-3">
+                <p className="text-xs font-bold text-slate-900 dark:text-white">{message.subject}</p>
+                <p className="text-[11px] text-slate-500">{message.recipient}</p>
+                <pre className="mt-2 whitespace-pre-wrap text-xs text-slate-700 dark:text-slate-200">{message.body}</pre>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {successNotice && (

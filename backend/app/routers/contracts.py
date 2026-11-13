@@ -344,12 +344,20 @@ def create_signing_challenge(
             content_hash=service.compute_sha256(contract.content_text),
             commercial_hash=SigningChallengeService.snapshot_hash(schedule.to_dict()),
         )
-        notifier.send_transactional(
-            recipient,
-            "Code de signature Avenqo",
-            f"Votre code de confirmation de signature est {code}. Il expire dans 15 minutes.",
-        )
-        db.commit()
+        from backend.app.services.account_notifications import sandbox_mail_company_id, sandbox_mail_session
+
+        company_token = sandbox_mail_company_id.set(str(company.id))
+        session_token = sandbox_mail_session.set(db)
+        try:
+            notifier.send_transactional(
+                recipient,
+                "Code de signature Avenqo",
+                f"Votre code de confirmation de signature est {code}. Il expire dans 15 minutes.",
+            )
+            db.commit()
+        finally:
+            sandbox_mail_company_id.reset(company_token)
+            sandbox_mail_session.reset(session_token)
     except (ContractAuthorityError, CommercialConfigMismatchError) as exc:
         db.rollback()
         raise HTTPException(status_code=403, detail=str(exc)) from exc
@@ -360,7 +368,7 @@ def create_signing_challenge(
         "challenge_id": str(challenge.id),
         "contract_type": contract_type,
         "expires_at": challenge.expires_at.isoformat(),
-        "delivery": "email",
+        "delivery": "sandbox_mailbox" if type(notifier).__name__ == "SandboxCaptureAccountNotifier" else "email",
     }
 
 

@@ -235,7 +235,7 @@ export function ContractsView() {
         headers,
       });
       const ch = await res.json();
-      if (ch.delivery !== "email" || !ch.challenge_id) {
+      if ((ch.delivery !== "email" && ch.delivery !== "sandbox_mailbox") || !ch.challenge_id) {
         setAlertError(isFrench
           ? "Le code n'a pas été transmis. La signature reste désactivée."
           : "The code was not sent. Signing stays disabled.");
@@ -1042,7 +1042,7 @@ export function ContractsView() {
               ) : (
                 <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 text-xs text-emerald-900 dark:text-emerald-200 flex items-center justify-between">
                   <div>
-                    <b>Code transmis à l'adresse enregistrée de l'entreprise. Il n'est pas affiché ici.</b>
+                    <b>Code placé dans la boîte Sandbox de l'entreprise. Aucun courriel n'a quitté Sandbox. Ouvrez Équipe pour le lire, puis saisissez-le ici.</b>
                   </div>
                   <span className="text-[10px] text-slate-400">Usage unique • 15 min</span>
                 </div>

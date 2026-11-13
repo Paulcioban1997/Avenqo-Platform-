@@ -1,7 +1,9 @@
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import re
 import threading
+from uuid import UUID
 """Frontière d'envoi des emails liés au compte."""
 
 from email.message import EmailMessage
@@ -422,6 +424,10 @@ def mailbox_delivery(notifier: object, settings: Settings) -> tuple[bool, list[s
     return True, []
 
 
+sandbox_mail_company_id: ContextVar[str | None] = ContextVar("sandbox_mail_company_id", default=None)
+sandbox_mail_session: ContextVar[object | None] = ContextVar("sandbox_mail_session", default=None)
+
+
 class SandboxCaptureAccountNotifier:
     """Safe Sandbox/Test email notifier that captures all outbound emails locally.
 
@@ -433,7 +439,8 @@ class SandboxCaptureAccountNotifier:
     """
 
     email_delivery_configured = True
-    delivers_to_mailbox = False
+    delivers_to_mailbox = True
+    test_transport = True
 
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings
@@ -471,6 +478,22 @@ class SandboxCaptureAccountNotifier:
         with self._lock:
             self._captured.append(item)
         logger.info("Sandbox captured email recipient=%s subject=%s code_present=%s", recipient, subject, bool(code))
+        session = sandbox_mail_session.get()
+        company = sandbox_mail_company_id.get()
+        if session is None or not company:
+            return
+        from backend.app.models.workspace import SandboxMailboxMessage
+
+        session.add(  # type: ignore[attr-defined]
+            SandboxMailboxMessage(
+                company_id=UUID(company),
+                recipient=recipient[:320],
+                subject=subject[:200],
+                body=text_body,
+                created_at=item.timestamp,
+            )
+        )
+        session.flush()  # type: ignore[attr-defined]
 
     def get_captured_emails(self, recipient: str | None = None, company_id: str | None = None) -> list[CapturedEmail]:
         with self._lock:

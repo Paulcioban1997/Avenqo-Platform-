@@ -206,6 +206,10 @@ class WorkspaceService:
         self._session.add(invitation)
         self._session.flush()
         origin = get_settings().public_frontend_origin()
+        from backend.app.services.account_notifications import sandbox_mail_company_id, sandbox_mail_session
+
+        company_token = sandbox_mail_company_id.set(str(actor.company_id))
+        session_token = sandbox_mail_session.set(self._session)
         try:
             self._notifier.send_transactional(  # type: ignore[union-attr]
                 normalized,
@@ -223,6 +227,9 @@ class WorkspaceService:
         except Exception:
             self._session.rollback()
             raise MailNotConfigured(missing) from None
+        finally:
+            sandbox_mail_company_id.reset(company_token)
+            sandbox_mail_session.reset(session_token)
         self._session.commit()
         invitation._raw_token = raw  # type: ignore[attr-defined]
         invitation._raw_code = code  # type: ignore[attr-defined]

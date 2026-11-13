@@ -16,10 +16,15 @@ from backend.app.models.base import Base
 from backend.app.models.company import Company
 from backend.app.models.contract_signing_challenge import ContractSigningChallenge
 from backend.app.models.user import User, UserRole
-from backend.app.models.workspace import EmployeeInvitation
+from backend.app.models.workspace import EmployeeInvitation, SandboxMailboxMessage
 from backend.app.routers.commerce import platform_credentials
 from backend.app.routers.contracts import create_signing_challenge
-from backend.app.services.account_notifications import LoggingAccountNotifier, mailbox_delivery, missing_mailbox_settings
+from backend.app.services.account_notifications import (
+    LoggingAccountNotifier,
+    SandboxCaptureAccountNotifier,
+    mailbox_delivery,
+    missing_mailbox_settings,
+)
 from backend.app.services.commerce_connection_service import CommerceConnectionService
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
 from backend.app.services.onboarding_service import OnboardingService
@@ -167,6 +172,31 @@ def test_failed_mail_does_not_keep_an_invitation_or_challenge():
     assert challenge_error.value.status_code == 503
     assert not re.search(r"\b\d{8}\b", str(challenge_error.value.detail))
     assert session.scalar(select(func.count()).select_from(ContractSigningChallenge)) == 0
+    session.close()
+
+
+def test_sandbox_mailbox_stores_the_code_for_one_company_only():
+    session = _session()
+    company, owner = _company(session, "mailbox-tenant")
+    other, _other_owner = _company(session, "mailbox-other")
+    notifier = SandboxCaptureAccountNotifier()
+    ready, _missing = mailbox_delivery(notifier, _sandbox_settings())
+    assert ready is True
+    row = WorkspaceService(session, notifier).invite(
+        owner, "invitee@example.test", UserRole.USER, "Analyst", None
+    )
+    public = {"id": str(row.id), "email": row.email, "delivery": "sandbox_mailbox"}
+    stored = session.scalars(
+        select(SandboxMailboxMessage).where(SandboxMailboxMessage.company_id == company.id)
+    ).all()
+    assert len(stored) == 1
+    assert re.search(r"\b\d{8}\b", stored[0].body)
+    assert not re.search(r"\b\d{8}\b", str(public))
+    assert "invitation-token:" not in str(public)
+    hidden = session.scalars(
+        select(SandboxMailboxMessage).where(SandboxMailboxMessage.company_id == other.id)
+    ).all()
+    assert hidden == []
     session.close()
 
 
