@@ -21,6 +21,7 @@ import type { AppTranslations } from "@/lib/i18n/app-dictionary";
 import { getAuthHeaders } from "@/lib/api-headers";
 import { apiFetch } from "@/lib/api-request";
 import { useLocale } from "@/lib/i18n/locale-context";
+import { attendanceLabel } from "./crm-format";
 
 interface Message {
   id: string;
@@ -68,6 +69,7 @@ interface CRMCopilotPanelProps {
   t: AppTranslations;
   userName?: string;
   onAppointmentCreated?: () => void;
+  onOpenAppointment?: () => void;
   onSelectAction?: (action: string) => void;
   onClose?: () => void;
   isFloating?: boolean;
@@ -77,6 +79,7 @@ export function CRMCopilotPanel({
   t,
   userName = "Utilisateur",
   onAppointmentCreated,
+  onOpenAppointment,
   onClose,
   isFloating = false,
 }: CRMCopilotPanelProps) {
@@ -190,41 +193,41 @@ export function CRMCopilotPanel({
     }
   };
 
-  const suggestedActions = isSpanish
+  const suggestedActions: Array<{ label: string; kind: "create" | "slots" | "clients" | "reminders" | "today" | "report"; icon: typeof Calendar }> = isSpanish
     ? [
-        { label: "Crear una cita", query: "Crea una cita para mañana a las 14:30", icon: Calendar },
-        { label: "Encontrar una franja libre", query: "Encuentra una franja libre hoy", icon: Clock },
-        { label: "Buscar un cliente", query: "Buscar un cliente", icon: Search },
-        { label: "Enviar recordatorios", query: "Enviar recordatorios de citas", icon: Bell },
-        { label: "Ver mis citas de hoy", query: "Ver mis citas de hoy", icon: Calendar },
-        { label: "Generar un informe", query: "Generar un informe de rendimiento CRM", icon: BarChart3 },
+        { label: "Crear una cita", kind: "create", icon: Calendar },
+        { label: "Encontrar una franja libre", kind: "slots", icon: Clock },
+        { label: "Buscar un cliente", kind: "clients", icon: Search },
+        { label: "Enviar recordatorios", kind: "reminders", icon: Bell },
+        { label: "Ver mis citas de hoy", kind: "today", icon: Calendar },
+        { label: "Generar un informe", kind: "report", icon: BarChart3 },
       ]
     : isRomanian
       ? [
-          { label: "Creează o programare", query: "Creează o programare mâine la 14:30", icon: Calendar },
-          { label: "Găsește un interval liber", query: "Găsește un interval liber astăzi", icon: Clock },
-          { label: "Caută un client", query: "Caută un client", icon: Search },
-          { label: "Trimite mementouri", query: "Trimite mementouri pentru programări", icon: Bell },
-          { label: "Programările de astăzi", query: "Arată programările mele de astăzi", icon: Calendar },
-          { label: "Generează un raport", query: "Generează un raport de performanță CRM", icon: BarChart3 },
+          { label: "Creează o programare", kind: "create", icon: Calendar },
+          { label: "Găsește un interval liber", kind: "slots", icon: Clock },
+          { label: "Caută un client", kind: "clients", icon: Search },
+          { label: "Trimite mementouri", kind: "reminders", icon: Bell },
+          { label: "Programările de astăzi", kind: "today", icon: Calendar },
+          { label: "Generează un raport", kind: "report", icon: BarChart3 },
         ]
       : isEnglish
       ? [
-          { label: "Create an appointment", query: "Create an appointment tomorrow at 2:30 PM", icon: Calendar },
-          { label: "Find an available slot", query: "Find an available slot today", icon: Clock },
-          { label: "Search for a customer", query: "Search for a customer", icon: Search },
-          { label: "Send reminders", query: "Send appointment reminders", icon: Bell },
-          { label: "View today's appointments", query: "View my appointments today", icon: Calendar },
-          { label: "Generate a report", query: "Generate a CRM performance report", icon: BarChart3 },
+          { label: "Create an appointment", kind: "create", icon: Calendar },
+          { label: "Find an available slot", kind: "slots", icon: Clock },
+          { label: "Search for a customer", kind: "clients", icon: Search },
+          { label: "Send reminders", kind: "reminders", icon: Bell },
+          { label: "View today's appointments", kind: "today", icon: Calendar },
+          { label: "Generate a report", kind: "report", icon: BarChart3 },
         ]
       : [
-          { label: "Créer un rendez-vous", query: "Crée un rendez-vous aujourd'hui à 14h30 d'une durée de 30 minutes.", icon: Calendar },
-          { label: "Trouver un créneau libre", query: "Trouve-moi un créneau libre aujourd'hui", icon: Clock },
-          { label: "Rechercher un client", query: "Rechercher un client", icon: Search },
-          { label: "Envoyer des rappels", query: "Envoyer des rappels de rendez-vous", icon: Bell },
-          { label: "Voir mes rendez-vous aujourd'hui", query: "Voir mes rendez-vous aujourd'hui", icon: Calendar },
-          { label: "Générer un rapport", query: "Générer un rapport de performance CRM", icon: BarChart3 },
-          ];
+          { label: "Créer un rendez-vous", kind: "create", icon: Calendar },
+          { label: "Trouver un créneau libre", kind: "slots", icon: Clock },
+          { label: "Rechercher un client", kind: "clients", icon: Search },
+          { label: "Envoyer des rappels", kind: "reminders", icon: Bell },
+          { label: "Voir mes rendez-vous aujourd'hui", kind: "today", icon: Calendar },
+          { label: "Générer un rapport", kind: "report", icon: BarChart3 },
+        ];
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -247,6 +250,79 @@ export function CRMCopilotPanel({
       requestControllerRef.current?.abort();
     };
   }, []);
+
+  const appendMessage = (sender: "user" | "copilot", content: string) => {
+    setMessages((prev) => [...prev, { id: messageId(sender), sender, content, timestamp: messageTimestamp() }]);
+  };
+
+  const handleQuickAction = async (action: { label: string; kind: "create" | "slots" | "clients" | "reminders" | "today" | "report" }) => {
+    if (sendLockRef.current) return;
+    sendLockRef.current = true;
+    const french = locale.startsWith("fr");
+    appendMessage("user", action.label);
+    if (action.kind === "create") {
+      onOpenAppointment?.();
+      appendMessage("copilot", french
+        ? "Le formulaire de rendez-vous est ouvert. Aucun rendez-vous n’est créé tant que vous ne l’enregistrez pas."
+        : "The appointment form is open. Nothing is booked until you save it.");
+      sendLockRef.current = false;
+      return;
+    }
+    setIsThinking(true);
+    try {
+      const headers = getAuthHeaders();
+      let content = french ? "La demande n’a pas abouti." : "The request did not complete.";
+      if (action.kind === "today") {
+        const start = new Date();
+        start.setHours(0, 0, 0, 0);
+        const end = new Date();
+        end.setHours(23, 59, 59, 999);
+        const response = await apiFetch(`/api/v1/crm/appointments?start_date=${encodeURIComponent(start.toISOString())}&end_date=${encodeURIComponent(end.toISOString())}`, { headers });
+        const rows = await response.json();
+        const count = Array.isArray(rows) ? rows.length : 0;
+        content = french ? `${count} rendez-vous aujourd’hui dans le CRM de cette entreprise.` : `${count} appointments today in this company’s CRM.`;
+      } else if (action.kind === "slots") {
+        const day = new Date();
+        const target = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+        const response = await apiFetch(`/api/v1/crm/availability/slots?target_date=${target}`, { headers });
+        const payload = await response.json() as { count?: number; state?: string; available?: boolean };
+        if (payload.state === "UNCONFIGURED") {
+          content = french ? "Les horaires de cette entreprise ne sont pas configurés. Aucun créneau n’est proposé." : "This company’s business hours are not configured. No slot is offered.";
+        } else {
+          const count = typeof payload.count === "number" ? payload.count : 0;
+          content = french ? `${count} créneau(x) libre(s) le ${target} pour cette entreprise.` : `${count} open slot(s) on ${target} for this company.`;
+        }
+      } else if (action.kind === "clients") {
+        const response = await apiFetch("/api/v1/crm/clients?limit=20", { headers });
+        const rows = await response.json();
+        const names = Array.isArray(rows) ? rows.map((row) => (typeof row?.full_name === "string" ? row.full_name : "")).filter(Boolean).slice(0, 5) : [];
+        const count = Array.isArray(rows) ? rows.length : 0;
+        content = french
+          ? `Le CRM de cette entreprise retourne ${count} client(s)${names.length ? ` : ${names.join(", ")}` : ""}.`
+          : `This company’s CRM returns ${count} client(s)${names.length ? `: ${names.join(", ")}` : ""}.`;
+      } else if (action.kind === "reminders") {
+        const response = await apiFetch("/api/v1/crm/automations", { headers });
+        const rows = await response.json();
+        const count = Array.isArray(rows) ? rows.length : 0;
+        const active = Array.isArray(rows) ? rows.filter((row) => row?.is_active).length : 0;
+        content = french
+          ? `Aucun rappel n’a été envoyé. Cette entreprise a ${count} automatisation(s), dont ${active} active(s).`
+          : `No reminder was sent. This company has ${count} automation(s), ${active} active.`;
+      } else {
+        const response = await apiFetch("/api/v1/crm/kpis", { headers });
+        const kpis = await response.json() as { active_clients?: number; appointments_this_month?: number; total_revenue_generated?: number; currency?: string };
+        content = french
+          ? `Indicateurs CRM de cette entreprise : ${kpis.active_clients ?? 0} clients actifs, ${kpis.appointments_this_month ?? 0} rendez-vous ce mois, ${attendanceLabel(kpis, locale)} Revenus : ${kpis.total_revenue_generated ?? 0} ${kpis.currency || "CAD"}.`
+          : `This company’s CRM figures: ${kpis.active_clients ?? 0} active clients, ${kpis.appointments_this_month ?? 0} appointments this month, ${attendanceLabel(kpis, locale)} Revenue: ${kpis.total_revenue_generated ?? 0} ${kpis.currency || "CAD"}.`;
+      }
+      appendMessage("copilot", content);
+    } catch {
+      appendMessage("copilot", errorPrompt);
+    } finally {
+      if (mountedRef.current) setIsThinking(false);
+      sendLockRef.current = false;
+    }
+  };
 
   const handleSendMessage = async (textToSend?: string) => {
     const query = (textToSend || input).trim();
@@ -415,7 +491,7 @@ export function CRMCopilotPanel({
               return (
                 <button
                   key={idx}
-                  onClick={() => handleSendMessage(act.query)}
+                  onClick={() => void handleQuickAction(act)}
                   className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-100/80 dark:bg-white/[0.04] hover:bg-blue-50 dark:hover:bg-blue-950/40 text-slate-700 dark:text-[#94A3B8] hover:text-[#0076FF] dark:hover:text-[#00D4FF] border border-slate-200/50 dark:border-white/[0.04] transition group text-left"
                 >
                   <div className="flex items-center gap-2 truncate">

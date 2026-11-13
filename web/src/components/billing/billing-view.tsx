@@ -818,7 +818,8 @@ export function BillingView() {
               </p>
             </div>
             <button
-              onClick={() => setIsEnterpriseModalOpen(true)}
+              type="button"
+              onClick={() => document.getElementById("tenant-invoices")?.scrollIntoView({ behavior: "smooth", block: "start" })}
               className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold shrink-0 transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
             >
               <span>{companyTranslations.billingInvoicesTitle}</span>
@@ -1137,7 +1138,7 @@ export function BillingView() {
       </div>
 
       {/* 6. FACTURES (Invoices Table & Real PDF Download) */}
-      <div className="space-y-3 pt-4">
+      <div id="tenant-invoices" className="space-y-3 pt-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h2 className="text-base font-extrabold text-slate-900 dark:text-[#F4F7FB]">
@@ -1154,7 +1155,6 @@ export function BillingView() {
                 "{count}",
                 invoices.length.toLocaleString(locale),
               )}
-              {testDocuments.length > 0 && ` · ${testDocuments.length} ${locale.startsWith("fr") ? "facture(s) de test" : "test invoice(s)"}`}
             </span>
           </div>
         </div>

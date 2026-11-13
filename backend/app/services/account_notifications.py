@@ -1,7 +1,9 @@
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import re
 import threading
+from uuid import UUID
 """Frontière d'envoi des emails liés au compte."""
 
 from email.message import EmailMessage
@@ -75,6 +77,7 @@ class LoggingAccountNotifier:
     """Adaptateur local lorsque la livraison d'email n'est pas configurée."""
 
     email_delivery_configured = False
+    delivers_to_mailbox = False
 
     def send_email_verification(self, email: str, token: str) -> None:
         logger.info("Email de vérification demandé")
@@ -96,6 +99,7 @@ class AccountNotificationService:
     """Construit les notifications de compte indépendamment du transport."""
 
     email_delivery_configured = True
+    delivers_to_mailbox = True
 
     def __init__(self, settings: Settings, transport: EmailTransport) -> None:
         self._settings = settings
@@ -376,6 +380,54 @@ class CapturedEmail:
     company_id: str | None = None
 
 
+def missing_mailbox_settings(settings: Settings) -> list[str]:
+    """Names of Sandbox mail settings that are absent. Values are never included."""
+    missing: list[str] = []
+    environment = settings.environment.lower()
+    if environment in {"sandbox", "staging"} and not settings.sandbox_allow_external_email:
+        missing.append("SANDBOX_ALLOW_EXTERNAL_EMAIL")
+    if settings.email_provider == "https_api":
+        if not settings.email_api_key:
+            missing.append("EMAIL_API_KEY")
+        if not settings.email_from_email:
+            missing.append("EMAIL_FROM_EMAIL")
+        return missing
+    if not settings.smtp_host:
+        missing.append("SMTP_HOST")
+    if not settings.smtp_username:
+        missing.append("SMTP_USERNAME")
+    if not settings.smtp_password:
+        missing.append("SMTP_PASSWORD")
+    if not settings.smtp_from_email:
+        missing.append("SMTP_FROM_EMAIL")
+    return missing
+
+
+def mailbox_delivery(notifier: object, settings: Settings) -> tuple[bool, list[str]]:
+    """True only when a message can leave this process for the recipient's mailbox.
+
+    A fake or capture transport used by tests is explicit. Sandbox capture and the
+    logging adapter never count as delivery to the client.
+    """
+    missing = missing_mailbox_settings(settings)
+    configured = bool(getattr(notifier, "email_delivery_configured", False))
+    delivers = bool(getattr(notifier, "delivers_to_mailbox", False))
+    if not configured or not delivers:
+        return False, missing
+    environment = settings.environment.lower()
+    if (
+        environment in {"sandbox", "staging"}
+        and not settings.is_external_email_allowed
+        and not getattr(notifier, "test_transport", False)
+    ):
+        return False, missing
+    return True, []
+
+
+sandbox_mail_company_id: ContextVar[str | None] = ContextVar("sandbox_mail_company_id", default=None)
+sandbox_mail_session: ContextVar[object | None] = ContextVar("sandbox_mail_session", default=None)
+
+
 class SandboxCaptureAccountNotifier:
     """Safe Sandbox/Test email notifier that captures all outbound emails locally.
 
@@ -387,6 +439,8 @@ class SandboxCaptureAccountNotifier:
     """
 
     email_delivery_configured = True
+    delivers_to_mailbox = True
+    test_transport = True
 
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings
@@ -424,6 +478,22 @@ class SandboxCaptureAccountNotifier:
         with self._lock:
             self._captured.append(item)
         logger.info("Sandbox captured email recipient=%s subject=%s code_present=%s", recipient, subject, bool(code))
+        session = sandbox_mail_session.get()
+        company = sandbox_mail_company_id.get()
+        if session is None or not company:
+            return
+        from backend.app.models.workspace import SandboxMailboxMessage
+
+        session.add(  # type: ignore[attr-defined]
+            SandboxMailboxMessage(
+                company_id=UUID(company),
+                recipient=recipient[:320],
+                subject=subject[:200],
+                body=text_body,
+                created_at=item.timestamp,
+            )
+        )
+        session.flush()  # type: ignore[attr-defined]
 
     def get_captured_emails(self, recipient: str | None = None, company_id: str | None = None) -> list[CapturedEmail]:
         with self._lock:

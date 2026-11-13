@@ -12,8 +12,6 @@ import {
   AlertTriangle,
   Lightbulb,
   ArrowRight,
-  ChevronLeft,
-  ChevronRight,
   CheckCircle2,
   AlertCircle,
   Database,
@@ -37,6 +35,7 @@ import { SOURCE_SELECTOR_COPY } from "@/lib/i18n/source-selector-copy";
 import { RETAIL_ANOMALY_COPY } from "@/lib/i18n/retail-anomaly-copy";
 import { getAuthHeaders } from "@/lib/api-headers";
 import { apiFetch, ApiRequestError } from "@/lib/api-request";
+import { HorizontalScroller } from "@/components/shell/horizontal-scroller";
 
 export type RetailSubTab =
   | "overview"
@@ -183,7 +182,6 @@ export function RetailIntelligenceView({
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<ApiRequestError | null>(null);
   const loadRevision = useRef(0);
-  const tabScrollRef = useRef<HTMLDivElement>(null);
 
   // Live retail data
   const [retailStatus, setRetailStatus] = useState<RetailStatus | null>(null);
@@ -472,6 +470,10 @@ export function RetailIntelligenceView({
           : retailStatus?.source_context?.provider === "woocommerce" ? "WooCommerce" : null,
         retailStatus?.source_context?.name,
       ].filter(Boolean).join(" · ");
+  const sourceFileName = (retailStatus?.source_context?.name || "").toLowerCase();
+  const historicalFile = retailStatus?.source_context?.selection === "dataset"
+    || sourceFileName.endsWith(".csv")
+    || sourceFileName.includes("superstore");
   const formatStock = (value: number) =>
     new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value);
   const formatAnomalyValue = (value: number | null | undefined, metric?: string) => {
@@ -542,7 +544,15 @@ export function RetailIntelligenceView({
           {/* 5-State Clear Data Freshness & Connection Status Indicator */}
           {(() => {
             const freshnessStatus = retailStatus?.data_freshness?.freshness_status?.toUpperCase() || (retailStatus?.is_connected ? "LIVE" : "DISCONNECTED");
-            const isHistoricalDataset = retailStatus?.source_context?.name?.toLowerCase().includes("superstore") || retailStatus?.source_context?.selection === "dataset";
+
+            if (historicalFile) {
+              return (
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-900/60">
+                  <Database size={13} className="text-amber-600" />
+                  <span>{locale.startsWith("fr") ? `Fichier historique : ${selectedSourceName || "CSV sélectionné"}` : `Historical file: ${selectedSourceName || "selected CSV"}`}</span>
+                </div>
+              );
+            }
 
             if (freshnessStatus === "ERROR" || freshnessStatus === "FAILED") {
               return (
@@ -562,7 +572,7 @@ export function RetailIntelligenceView({
               );
             }
 
-            if (freshnessStatus === "STALE" || isHistoricalDataset) {
+            if (freshnessStatus === "STALE") {
               return (
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-900/60">
@@ -630,31 +640,8 @@ export function RetailIntelligenceView({
       </div>
 
       {/* 8-Tab Subnavigation Bar */}
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          aria-label={locale.startsWith("fr") ? "Onglets précédents" : "Previous tabs"}
-          onClick={() => tabScrollRef.current?.scrollBy({ left: -180, behavior: "smooth" })}
-          className="hidden sm:inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#0B132B] text-slate-600 dark:text-slate-300"
-        >
-          <ChevronLeft size={16} />
-        </button>
-      <div
-        ref={tabScrollRef}
-        className="overflow-x-auto pb-1 flex-1"
-        onKeyDown={(event) => {
-          const index = navTabs.findIndex((tab) => tab.id === activeTab);
-          if (event.key === "ArrowRight" && index < navTabs.length - 1) {
-            event.preventDefault();
-            setActiveTab(navTabs[index + 1].id as RetailSubTab);
-          }
-          if (event.key === "ArrowLeft" && index > 0) {
-            event.preventDefault();
-            setActiveTab(navTabs[index - 1].id as RetailSubTab);
-          }
-        }}
-      >
-        <nav className="flex items-center gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] min-w-max">
+      <HorizontalScroller>
+        <nav className="flex w-max items-center gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08]">
           {navTabs.map((tab) => {
             const isActive = activeTab === tab.id;
             const Icon = tab.icon;
@@ -662,7 +649,7 @@ export function RetailIntelligenceView({
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as RetailSubTab)}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                className={`flex items-center gap-2 whitespace-nowrap px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   isActive
                     ? "bg-white dark:bg-[#172652] text-[#0076FF] dark:text-[#00D4FF] shadow-xs"
                     : "text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-[#F4F7FB] hover:bg-white/50 dark:hover:bg-white/[0.04]"
@@ -678,16 +665,7 @@ export function RetailIntelligenceView({
             );
           })}
         </nav>
-      </div>
-        <button
-          type="button"
-          aria-label={locale.startsWith("fr") ? "Onglets suivants" : "Next tabs"}
-          onClick={() => tabScrollRef.current?.scrollBy({ left: 180, behavior: "smooth" })}
-          className="hidden sm:inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#0B132B] text-slate-600 dark:text-slate-300"
-        >
-          <ChevronRight size={16} />
-        </button>
-      </div>
+      </HorizontalScroller>
 
       {/* Tab 1: Overview backed by tenant source data */}
       {activeTab === "overview" && (
@@ -701,7 +679,11 @@ export function RetailIntelligenceView({
                 <p className="mt-1 text-xs text-slate-500 dark:text-[#94A3B8]">
                   {isLoading
                     ? "—"
-                    : retailStatus?.is_connected
+                    : historicalFile
+                      ? (locale.startsWith("fr")
+                        ? `${(retailStatus?.records_count ?? 0).toLocaleString(locale)} enregistrements du fichier ${selectedSourceName || "sélectionné"}. Ce n’est pas une boutique en direct.`
+                        : `${(retailStatus?.records_count ?? 0).toLocaleString(locale)} records from ${selectedSourceName || "the selected file"}. This is not a live store.`)
+                      : retailStatus?.is_connected
                       ? `${(retailStatus.records_count ?? 0).toLocaleString(locale)} ${connector.records}`
                       : t.common.insufficientData}
                 </p>

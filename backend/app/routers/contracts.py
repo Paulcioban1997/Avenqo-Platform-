@@ -24,7 +24,8 @@ from backend.app.models.company_contract import (
     ContractLifecycleStatus,
 )
 from backend.app.models.company_legal_profile import CompanyLegalProfile
-from backend.app.services.account_notifications import AccountNotifier
+from backend.app.config.settings import get_settings
+from backend.app.services.account_notifications import AccountNotifier, mailbox_delivery
 from backend.app.services.audit_log_service import AuditLogService
 from backend.app.services.commercial_reconciler import CommercialReconciler
 from backend.app.services.company_legal_profile_service import (
@@ -314,12 +315,20 @@ def create_signing_challenge(
     notifier: AccountNotifier = Depends(get_account_notifier),
     service: ContractSignatureService = Depends(_get_service),
 ) -> dict[str, Any]:
-    """Envoie un code à l'adresse vérifiée du signataire sans l'exposer au navigateur."""
-    if not notifier.email_delivery_configured:
-        raise HTTPException(status_code=503, detail="Livraison sécurisée du code indisponible.")
+    """Envoie un code à l'adresse enregistrée de l'entreprise sans l'exposer au navigateur."""
+    ready, missing = mailbox_delivery(notifier, get_settings())
+    if not ready:
+        names = ", ".join(missing) or "SMTP_HOST"
+        raise HTTPException(
+            status_code=503,
+            detail=f"Livraison du code impossible. Réglages Sandbox manquants : {names}",
+        )
     company = db.get(Company, tenant.company_id)
     if company is None:
         raise HTTPException(status_code=404, detail="Entreprise introuvable")
+    recipient = (company.email or identity.user.email or "").strip()
+    if "@" not in recipient:
+        raise HTTPException(status_code=422, detail="Aucune adresse email d'entreprise n'est enregistrée.")
     try:
         service.require_legal_release()
         service.verify_signatory_authority(identity.user, company.id, declared_authority=True)
@@ -335,12 +344,20 @@ def create_signing_challenge(
             content_hash=service.compute_sha256(contract.content_text),
             commercial_hash=SigningChallengeService.snapshot_hash(schedule.to_dict()),
         )
-        notifier.send_transactional(
-            identity.user.email,
-            "Code de signature Avenqo",
-            f"Votre code de confirmation de signature est {code}. Il expire dans 15 minutes.",
-        )
-        db.commit()
+        from backend.app.services.account_notifications import sandbox_mail_company_id, sandbox_mail_session
+
+        company_token = sandbox_mail_company_id.set(str(company.id))
+        session_token = sandbox_mail_session.set(db)
+        try:
+            notifier.send_transactional(
+                recipient,
+                "Code de signature Avenqo",
+                f"Votre code de confirmation de signature est {code}. Il expire dans 15 minutes.",
+            )
+            db.commit()
+        finally:
+            sandbox_mail_company_id.reset(company_token)
+            sandbox_mail_session.reset(session_token)
     except (ContractAuthorityError, CommercialConfigMismatchError) as exc:
         db.rollback()
         raise HTTPException(status_code=403, detail=str(exc)) from exc
@@ -351,7 +368,7 @@ def create_signing_challenge(
         "challenge_id": str(challenge.id),
         "contract_type": contract_type,
         "expires_at": challenge.expires_at.isoformat(),
-        "delivery": "email",
+        "delivery": "sandbox_mailbox" if type(notifier).__name__ == "SandboxCaptureAccountNotifier" else "email",
     }
 
 

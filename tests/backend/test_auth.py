@@ -30,14 +30,20 @@ class RecordingNotifier:
     def __init__(self) -> None:
         self.verification_tokens: dict[str, str] = {}
         self.reset_tokens: dict[str, str] = {}
+        self.sent: list[tuple[str, str, str]] = []
 
     email_delivery_configured = True
+    delivers_to_mailbox = True
+    test_transport = True
 
     def send_email_verification(self, email: str, token: str) -> None:
         self.verification_tokens[email] = token
 
     def send_password_reset(self, email: str, token: str) -> None:
         self.reset_tokens[email] = token
+
+    def send_transactional(self, recipient: str, subject: str, body: str) -> None:
+        self.sent.append((recipient, subject, body))
 
 
 @pytest.fixture

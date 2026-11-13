@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 from uuid import UUID, uuid4
+
+from pydantic import BaseModel, Field, SecretStr
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
@@ -20,7 +23,7 @@ from backend.app.dependencies.commerce import (
     get_commerce_sync_service,
     get_connector_secret_cipher,
 )
-from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
+from backend.app.services.connector_secret_cipher import ConnectorSecretCipher, ConnectorSecretError
 from backend.app.dependencies.subscription import require_active_subscription
 from backend.app.models import CommerceConnection, CommerceConnectionStatus
 from backend.app.database import get_db
@@ -289,6 +292,71 @@ def list_connections(
         )
         for item in service.list_connections(_tenant(identity))
     ]
+
+
+_PLATFORM_CREDENTIALS: dict[str, tuple[str, ...]] = {
+    "bigcommerce": ("BIGCOMMERCE_CLIENT_ID", "BIGCOMMERCE_CLIENT_SECRET"),
+    "wix_ecommerce": ("WIX_APP_ID", "WIX_APP_SECRET"),
+    "amazon_sp_api": ("AMAZON_SP_API_CLIENT_ID", "AMAZON_SP_API_CLIENT_SECRET", "AMAZON_AWS_ROLE_ARN"),
+    "ebay": ("EBAY_CLIENT_ID", "EBAY_CLIENT_SECRET"),
+    "etsy": ("ETSY_API_KEY", "ETSY_SHARED_SECRET"),
+    "walmart_marketplace": ("WALMART_CLIENT_ID", "WALMART_CLIENT_SECRET"),
+    "tiktok_shop": ("TIKTOK_SHOP_APP_KEY", "TIKTOK_SHOP_APP_SECRET"),
+    "square_pos": ("SQUARE_APPLICATION_ID", "SQUARE_APPLICATION_SECRET"),
+    "clover_pos": ("CLOVER_APP_ID", "CLOVER_APP_SECRET"),
+    "lightspeed_retail": ("LIGHTSPEED_CLIENT_ID", "LIGHTSPEED_CLIENT_SECRET"),
+    "google_ads": ("GOOGLE_ADS_DEVELOPER_TOKEN", "GOOGLE_ADS_CLIENT_ID", "GOOGLE_ADS_CLIENT_SECRET"),
+    "meta_ads": ("META_APP_ID", "META_APP_SECRET"),
+}
+
+
+class TenantApiCredentialRequest(BaseModel):
+    provider: str = Field(min_length=2, max_length=64)
+    account_id: str = Field(min_length=3, max_length=255)
+    api_key: SecretStr
+    api_secret: SecretStr | None = None
+
+
+@router.get("/platform-credentials")
+def platform_credentials(
+    _: CurrentIdentity = Depends(require_connector_read),
+) -> dict[str, dict[str, object]]:
+    """Report which Sandbox app credentials are absent. Values are never returned."""
+    report: dict[str, dict[str, object]] = {}
+    for provider, names in _PLATFORM_CREDENTIALS.items():
+        missing = [name for name in names if not os.environ.get(name)]
+        report[provider] = {"oauth_ready": not missing, "missing": missing}
+    return report
+
+
+@router.post("/tenant-api-credentials", status_code=status.HTTP_201_CREATED)
+def store_tenant_api_credentials(
+    request: TenantApiCredentialRequest,
+    identity: CurrentIdentity = Depends(manage_connectors),
+    _: TenantContext = Depends(require_active_subscription),
+    service: CommerceConnectionService = Depends(get_commerce_connection_service),
+) -> dict[str, object]:
+    try:
+        connection = service.store_unverified_api_credentials(
+            _tenant(identity),
+            provider=request.provider.strip().lower(),
+            account_id=request.account_id,
+            api_key=request.api_key.get_secret_value(),
+            api_secret=request.api_secret.get_secret_value() if request.api_secret else None,
+        )
+    except CommerceAuthorizationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ConnectorSecretError:
+        raise HTTPException(
+            status_code=503,
+            detail="Chiffrement des connecteurs indisponible : CONNECTOR_ENCRYPTION_KEYS",
+        ) from None
+    return {
+        "id": str(connection.id),
+        "provider": connection.provider,
+        "connection_status": "CONNECTING",
+        "verified": False,
+    }
 
 
 @router.get(

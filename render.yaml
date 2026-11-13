@@ -6,7 +6,7 @@ services:
     name: avenqo-sandbox-web
     runtime: node
     plan: free
-    branch: fix/voice-audible-answers-sandbox-20261112
+    branch: fix/sandbox-crm-accounting-labels-20261112
     rootDir: web
     buildCommand: npm ci && npm run build
     startCommand: npm run start -- --hostname 0.0.0.0 --port $PORT

@@ -78,7 +78,7 @@ def test_employee_and_customer_questions_produce_spoken_answers():
 def test_render_blueprint_stays_on_the_sandbox_branch_and_api():
     text = Path("render.yaml").read_text(encoding="utf-8")
     assert "plan: free" in text
-    assert "branch: fix/voice-audible-answers-sandbox-20261112" in text
+    assert "branch: fix/sandbox-crm-accounting-labels-20261112" in text
     assert "branch: main" not in text
     assert "rootDir: web" in text
     assert "value: sandbox" in text
