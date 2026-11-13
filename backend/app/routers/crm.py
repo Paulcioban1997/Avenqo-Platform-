@@ -155,7 +155,13 @@ def save_business_hours(payload: BusinessHoursRequest, tenant: TenantContext = D
     return get_business_hours(tenant, db)
 
 
-def _google_oauth_state(tenant_id: UUID, user_id: UUID, secret: str, return_origin: str | None = None) -> str:
+def _google_oauth_state(
+    tenant_id: UUID,
+    user_id: UUID,
+    secret: str,
+    return_origin: str | None = None,
+    redirect_uri: str | None = None,
+) -> str:
     payload = {
         "tenant_id": str(tenant_id),
         "user_id": str(user_id),
@@ -165,6 +171,8 @@ def _google_oauth_state(tenant_id: UUID, user_id: UUID, secret: str, return_orig
     }
     if return_origin:
         payload["return_origin"] = return_origin
+    if redirect_uri:
+        payload["redirect_uri"] = redirect_uri
     encoded = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).decode().rstrip("=")
     signature = hmac.new(secret.encode(), encoded.encode(), hashlib.sha256).hexdigest()
     return f"{encoded}.{signature}"
@@ -188,20 +196,54 @@ def _verify_google_oauth_state(state: str, secret: str) -> dict[str, str]:
         raise HTTPException(status_code=400, detail="État OAuth Google invalide ou expiré.") from exc
 
 
+_SANDBOX_RENDER_ORIGIN = "https://avenqo-sandbox-web.onrender.com"
+_GOOGLE_RELAY_PATH = "/api/v1/crm/calendar/google/relay"
+
+
+def _is_sandbox(settings) -> bool:
+    return str(getattr(settings, "environment", "")).lower() == "sandbox"
+
+
+def _allowed_calendar_origins(settings) -> set[str]:
+    allowed = {str(settings.frontend_url).rstrip("/"), *getattr(settings, "cors_origins", [])}
+    allowed.update(
+        item.strip().rstrip("/")
+        for item in str(getattr(settings, "google_calendar_return_origins", "")).split(",")
+        if item.strip()
+    )
+    if _is_sandbox(settings):
+        allowed.add(_SANDBOX_RENDER_ORIGIN)
+    return {item for item in allowed if item}
+
+
 def _calendar_return_origin(settings, origin: str) -> str:
     """Exact operator-managed allowlist; never trust arbitrary forwarded hosts."""
     origin = origin.rstrip("/")
     parsed = urlsplit(origin)
-    allowed = {settings.frontend_url.rstrip("/"), *getattr(settings, "cors_origins", [])}
-    allowed.update(item.strip().rstrip("/") for item in getattr(settings, "google_calendar_return_origins", "").split(",") if item.strip())
+    allowed = _allowed_calendar_origins(settings)
     if origin not in allowed or parsed.scheme != "https" or parsed.netloc != parsed.hostname or parsed.path or parsed.query or parsed.fragment:
+        raise HTTPException(status_code=400, detail="Origine de retour Calendar non autorisée.")
+    if _is_sandbox(settings) and (parsed.hostname or "").endswith("avenqo.ca"):
         raise HTTPException(status_code=400, detail="Origine de retour Calendar non autorisée.")
     return origin
 
 
-def _google_redirect_uri(settings, request: Request | None = None) -> str:
-    if settings.google_calendar_redirect_uri:
-        return settings.google_calendar_redirect_uri
+def _google_redirect_uri(settings, request: Request | None = None, return_origin: str | None = None) -> str:
+    """OAuth redirect. Sandbox uses the allowlisted web origin and never api.avenqo.ca."""
+    configured = str(settings.google_calendar_redirect_uri or "").strip()
+    if _is_sandbox(settings) and "api.avenqo.ca" in configured:
+        configured = ""
+    if return_origin:
+        origin = _calendar_return_origin(settings, return_origin)
+        return f"{origin}{_GOOGLE_RELAY_PATH}"
+    if configured:
+        return configured
+    if _is_sandbox(settings):
+        frontend = str(settings.frontend_url or "").rstrip("/")
+        host = urlsplit(frontend).hostname or ""
+        if frontend.startswith("https://") and host and not host.endswith("avenqo.ca"):
+            return f"{frontend}{_GOOGLE_RELAY_PATH}"
+        return f"{_SANDBOX_RENDER_ORIGIN}{_GOOGLE_RELAY_PATH}"
     if request:
         base = str(request.base_url).rstrip("/")
         return f"{base}/api/v1/crm/calendar/google/callback"
@@ -1024,7 +1066,10 @@ def get_google_calendar_auth_url(
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
     settings = get_settings()
-    redirect_uri = _google_redirect_uri(settings, request)
+    return_origin = _calendar_return_origin(settings, request.headers.get("x-avenqo-calendar-return-origin") or settings.frontend_url)
+    redirect_uri = _google_redirect_uri(
+        settings, request, return_origin=return_origin if _is_sandbox(settings) else None,
+    )
     if not (settings.google_calendar_client_id and settings.google_calendar_client_secret):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -1035,12 +1080,12 @@ def get_google_calendar_auth_url(
         client_secret=settings.google_calendar_client_secret,
         redirect_uri=redirect_uri,
     )
-    return_origin = _calendar_return_origin(settings, request.headers.get("x-avenqo-calendar-return-origin") or settings.frontend_url)
     state = _google_oauth_state(
         tenant.company_id,
         identity.user.id,
         settings.auth_jwt_secret,
         return_origin=return_origin,
+        redirect_uri=redirect_uri,
     )
     now = datetime.now(timezone.utc)
     previous_states = db.scalars(
@@ -1122,7 +1167,7 @@ async def google_calendar_callback(
     provider = GoogleCalendarProvider(
         client_id=settings.google_calendar_client_id,
         client_secret=settings.google_calendar_client_secret,
-        redirect_uri=_google_redirect_uri(settings, request),
+        redirect_uri=state_data.get("redirect_uri") or _google_redirect_uri(settings, request),
     )
     tokens = await provider.exchange_code(code)
     # Verify real Calendar access before recording CONNECTED; no event writes.

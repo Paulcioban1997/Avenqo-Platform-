@@ -515,6 +515,32 @@ def test_cross_domain_callback_relays_without_exchanging_tokens(monkeypatch):
     with pytest.raises(Exception, match='invalide'):
         asyncio.run(google_calendar_callback(request=_callback_request(state, bind=False), code='fixture-code', state=state + 'tampered', db=db))
 
+def test_sandbox_calendar_redirect_stays_off_production_api():
+    from fastapi import HTTPException
+    from backend.app.routers.crm import _google_redirect_uri
+
+    sandbox = SimpleNamespace(
+        environment="sandbox",
+        frontend_url="http://localhost:3000",
+        cors_origins=[],
+        google_calendar_return_origins="",
+        google_calendar_redirect_uri="https://api.avenqo.ca/api/v1/crm/calendar/google/callback",
+    )
+    relay = _google_redirect_uri(sandbox, return_origin="https://avenqo-sandbox-web.onrender.com")
+    assert relay == "https://avenqo-sandbox-web.onrender.com/api/v1/crm/calendar/google/relay"
+    assert "api.avenqo.ca" not in _google_redirect_uri(sandbox)
+    with pytest.raises(HTTPException):
+        _google_redirect_uri(sandbox, return_origin="https://avenqo.ca")
+    production = SimpleNamespace(
+        environment="production",
+        frontend_url="https://avenqo.ca",
+        cors_origins=[],
+        google_calendar_return_origins="",
+        google_calendar_redirect_uri="https://api.avenqo.ca/api/v1/crm/calendar/google/callback",
+    )
+    assert _google_redirect_uri(production) == "https://api.avenqo.ca/api/v1/crm/calendar/google/callback"
+
+
 def test_google_oauth_configuration_error_is_not_misreported_as_revoked_token(monkeypatch):
     from io import BytesIO
     from urllib.error import HTTPError
