@@ -84,13 +84,15 @@ export function BrandingSettingsView() {
     void fetchBranding();
   }, []);
 
+  const brandingHeaders = () => ({ "Content-Type": "application/json", ...getAuthHeaders() });
+
   const persistDesign = async (next: typeof designState) => {
     setIsSaving(true);
     setErrorMessage(null);
     try {
       const res = await apiFetch("/api/v1/onboarding/branding", {
         method: "PUT",
-        headers: getAuthHeaders(),
+        headers: brandingHeaders(),
         body: JSON.stringify(next),
       });
       if (!res.ok) throw new Error("Erreur lors de l'enregistrement de l'apparence.");
@@ -116,6 +118,7 @@ export function BrandingSettingsView() {
       background_style: theme.background_style,
     };
     setDesignState(next);
+    window.dispatchEvent(new CustomEvent("avenqo-branding", { detail: next }));
     void persistDesign(next);
   };
 
@@ -160,10 +163,9 @@ export function BrandingSettingsView() {
     setSaveSuccess(false);
     setErrorMessage(null);
     try {
-      const headers = getAuthHeaders();
       const res = await apiFetch("/api/v1/onboarding/branding", {
         method: "PUT",
-        headers,
+        headers: brandingHeaders(),
         body: JSON.stringify(designState),
       });
       if (res.ok) {
@@ -185,10 +187,9 @@ export function BrandingSettingsView() {
     setIsSaving(true);
     setErrorMessage(null);
     try {
-      const headers = getAuthHeaders();
       const res = await apiFetch("/api/v1/onboarding/branding", {
         method: "PUT",
-        headers,
+        headers: brandingHeaders(),
         body: JSON.stringify({ reset: true }),
       });
       if (res.ok) {

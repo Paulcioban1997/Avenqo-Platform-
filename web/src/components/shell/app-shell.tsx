@@ -138,10 +138,13 @@ export function AppShell({ children }: AppShellProps) {
     }
     style.textContent = `
       html[data-tenant-theme] { --tenant-primary: ${primary}; --tenant-secondary: ${secondary}; --tenant-accent: ${accent}; }
-      html[data-tenant-theme="dark"] .min-h-screen { background-color: ${secondary}; }
-      html[data-tenant-theme="light"] .min-h-screen { background-color: #f8fafc; }
+      html[data-tenant-theme] .min-h-screen,
+      html[data-tenant-theme] header,
+      html[data-tenant-theme] aside { background-color: ${secondary} !important; }
       html[data-tenant-theme] .bg-\\[\\#0076FF\\] { background-color: ${primary} !important; }
-      html[data-tenant-theme] .text-\\[\\#0076FF\\] { color: ${primary} !important; }
+      html[data-tenant-theme] .text-\\[\\#0076FF\\],
+      html[data-tenant-theme] .border-\\[\\#0076FF\\] { color: ${primary} !important; border-color: ${primary} !important; }
+      html[data-tenant-theme] .ring-\\[\\#0076FF\\] { --tw-ring-color: ${primary} !important; }
       html[data-tenant-theme] .text-\\[\\#00D4FF\\] { color: ${accent} !important; }
     `;
   }, [tenantBrand]);
