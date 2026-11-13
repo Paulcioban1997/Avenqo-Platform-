@@ -44,6 +44,18 @@ interface TransactionItem {
   currency: string;
   status: string;
   reference_id?: string;
+  extra_data?: Record<string, unknown>;
+}
+
+const EXTERNAL_SOURCE_KEYS = ["source", "connector", "provider", "import_source", "bank", "origin"];
+
+function externalSource(extra: Record<string, unknown> | undefined): string | null {
+  if (!extra) return null;
+  for (const key of EXTERNAL_SOURCE_KEYS) {
+    const value = extra[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
 }
 
 export function AccountingView() {
@@ -73,7 +85,11 @@ export function AccountingView() {
       if (txRes && txRes.ok) {
         const txData = await txRes.json();
         if (Array.isArray(txData)) {
-          setTransactions(txData);
+          setTransactions(txData.map((row: TransactionItem & { date?: string }) => ({
+            ...row,
+            transaction_date: row.transaction_date || row.date || "",
+            extra_data: row.extra_data && typeof row.extra_data === "object" ? row.extra_data : {},
+          })));
         }
       }
     } catch {
@@ -103,6 +119,8 @@ export function AccountingView() {
   const expenses = overview?.total_expenses || 0;
   const netProfit = overview?.net_profit || revenue - expenses;
   const margin = overview?.profit_margin ?? (revenue > 0 ? ((netProfit / revenue) * 100).toFixed(1) : 0);
+  const unreconciled = transactions.length > 0 && transactions.every((tx) => !externalSource(tx.extra_data));
+  const recordedCaption = isFr ? "Somme des écritures, source non indiquée" : "Sum of entries, source not indicated";
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
@@ -118,9 +136,13 @@ export function AccountingView() {
                 {t.navigation.accountingAi || (isFr ? "Comptabilité IA" : "Accounting AI")}
               </h1>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-[#94A3B8]">
-                {isFr
-                  ? "Grand livre, suivi des flux de trésorerie, factures et performance financière en temps réel."
-                  : "General ledger, cash flow tracking, invoices, and real-time financial performance."}
+                {unreconciled
+                  ? (isFr
+                    ? "Totaux calculés sur les écritures de cette entreprise. Aucune source externe n’est jointe."
+                    : "Totals are calculated from this company’s entries. No external source is attached.")
+                  : (isFr
+                    ? "Grand livre, suivi des flux de trésorerie, factures et performance financière en temps réel."
+                    : "General ledger, cash flow tracking, invoices, and real-time financial performance.")}
               </p>
             </div>
           </div>
@@ -160,7 +182,7 @@ export function AccountingView() {
             ${revenue.toLocaleString(isFr ? "fr-CA" : "en-US", { minimumFractionDigits: 2 })} {currency}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            {isFr ? "Flux entrants confirmés" : "Confirmed incoming revenue"}
+            {unreconciled ? recordedCaption : (isFr ? "Flux entrants confirmés" : "Confirmed incoming revenue")}
           </div>
         </div>
 
@@ -176,7 +198,7 @@ export function AccountingView() {
             ${expenses.toLocaleString(isFr ? "fr-CA" : "en-US", { minimumFractionDigits: 2 })} {currency}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            {isFr ? "Flux sortants opérationnels" : "Operational expenses"}
+            {unreconciled ? recordedCaption : (isFr ? "Flux sortants opérationnels" : "Operational expenses")}
           </div>
         </div>
 
@@ -192,7 +214,7 @@ export function AccountingView() {
             ${netProfit.toLocaleString(isFr ? "fr-CA" : "en-US", { minimumFractionDigits: 2 })} {currency}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            {isFr ? "Marge nette opérationnelle" : "Net operational margin"}
+            {unreconciled ? recordedCaption : (isFr ? "Marge nette opérationnelle" : "Net operational margin")}
           </div>
         </div>
 
@@ -222,8 +244,8 @@ export function AccountingView() {
             </h2>
             <p className="text-xs text-slate-500 dark:text-[#94A3B8]">
               {isFr
-                ? "Historique détaillé des transactions financières synchronisées et saisies."
-                : "Detailed history of synchronized and registered financial transactions."}
+                ? "Écritures enregistrées pour cette entreprise. La source externe est indiquée seulement lorsqu’elle existe."
+                : "Entries recorded for this company. An external source is shown only when one exists."}
             </p>
           </div>
 
@@ -260,6 +282,14 @@ export function AccountingView() {
             </button>
           </div>
         </div>
+
+        {transactions.length > 0 && transactions.every((tx) => !externalSource(tx.extra_data)) && (
+          <p role="status" className="text-xs text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 rounded-xl px-3 py-2">
+            {isFr
+              ? "Aucune source bancaire ou connecteur n’est indiqué sur ces écritures. Elles restent dans le journal de cette entreprise et ne constituent pas un état financier rapproché."
+              : "No bank or connector source is recorded on these entries. They stay in this company’s journal and are not a reconciled financial statement."}
+          </p>
+        )}
 
         {filteredTransactions.length === 0 ? (
           <div className="p-12 text-center rounded-2xl bg-slate-50/50 dark:bg-[#060B13]/30 border border-dashed border-slate-200 dark:border-white/[0.06] space-y-3">
@@ -302,12 +332,14 @@ export function AccountingView() {
                 {filteredTransactions.map((tx) => {
                   const isRevenue = tx.transaction_type === "revenue";
                   const dateStr = tx.transaction_date ? tx.transaction_date.slice(0, 10) : "—";
-                  const statusLabel =
-                    tx.status === "confirmed"
-                      ? (isFr ? "Confirmé" : "Confirmed")
+                  const source = externalSource(tx.extra_data);
+                  const statusLabel = source
+                    ? (tx.status === "confirmed" ? (isFr ? `Confirmé · ${source}` : `Confirmed · ${source}`) : `${tx.status} · ${source}`)
+                    : tx.status === "confirmed"
+                      ? (isFr ? "Enregistré — source non indiquée" : "Recorded — source not indicated")
                       : tx.status === "pending"
-                      ? (isFr ? "En attente" : "Pending")
-                      : tx.status;
+                        ? (isFr ? "En attente" : "Pending")
+                        : tx.status;
 
                   return (
                     <tr key={tx.id} className="hover:bg-slate-50/80 dark:hover:bg-white/[0.02] transition-colors">

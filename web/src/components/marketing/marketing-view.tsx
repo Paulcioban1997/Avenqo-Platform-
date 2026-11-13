@@ -286,6 +286,13 @@ export function MarketingView() {
       <p role="status" className="text-xs text-slate-500">{data ? (data.available
         ? `${data.source_context?.name || (locale.startsWith("fr") ? "Source sélectionnée" : "Selected source")} · ${locale.startsWith("fr") ? "Données de la période sélectionnée" : "Selected period data"}`
         : company.analyticsUnavailable) : (analysisError || (locale.startsWith("fr") ? "Chargement de l’analyse…" : "Loading analysis…"))}</p>
+      {data?.available && (
+        <p className="rounded-xl border border-purple-200 bg-purple-50 px-3 py-2 text-xs text-purple-900 dark:border-purple-900 dark:bg-purple-950/40 dark:text-purple-100">
+          {locale.startsWith("fr")
+            ? `Ces chiffres viennent du fichier « ${data.source_context?.name || "source sélectionnée"} ». Ils ne sont pas les clients du CRM.`
+            : `These figures come from “${data.source_context?.name || "the selected source"}”. They are not the CRM clients.`}
+        </p>
+      )}
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-5 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
@@ -297,7 +304,7 @@ export function MarketingView() {
             {number(data?.summary?.total_customers)}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            {data?.available ? (locale.startsWith("fr") ? "Calculé sur la source sélectionnée" : "Calculated from selected source") : company.analyticsUnavailable}
+            {data?.available ? (locale.startsWith("fr") ? `Fichier « ${data.source_context?.name || "source sélectionnée"} », pas les clients du CRM` : `File “${data.source_context?.name || "selected source"}”, not the CRM clients`) : company.analyticsUnavailable}
           </div>
         </div>
 
@@ -310,7 +317,7 @@ export function MarketingView() {
             {number(data?.summary?.new_customers)}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            {data?.available ? (locale.startsWith("fr") ? "Calculé sur la source sélectionnée" : "Calculated from selected source") : company.analyticsUnavailable}
+            {data?.available ? (locale.startsWith("fr") ? `Fichier « ${data.source_context?.name || "source sélectionnée"} », pas les clients du CRM` : `File “${data.source_context?.name || "selected source"}”, not the CRM clients`) : company.analyticsUnavailable}
           </div>
         </div>
 
@@ -323,7 +330,7 @@ export function MarketingView() {
             {number(data?.summary?.purchase_frequency)}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            {data?.available ? (locale.startsWith("fr") ? "Calculé sur la source sélectionnée" : "Calculated from selected source") : company.analyticsUnavailable}
+            {data?.available ? (locale.startsWith("fr") ? `Fichier « ${data.source_context?.name || "source sélectionnée"} », pas les clients du CRM` : `File “${data.source_context?.name || "selected source"}”, not the CRM clients`) : company.analyticsUnavailable}
           </div>
         </div>
 
@@ -336,7 +343,7 @@ export function MarketingView() {
             {number(data?.summary?.average_customer_value)} {data?.summary?.average_customer_value != null ? data.currency : ""}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            {data?.available ? (locale.startsWith("fr") ? "Calculé sur la source sélectionnée" : "Calculated from selected source") : company.analyticsUnavailable}
+            {data?.available ? (locale.startsWith("fr") ? `Fichier « ${data.source_context?.name || "source sélectionnée"} », pas les clients du CRM` : `File “${data.source_context?.name || "selected source"}”, not the CRM clients`) : company.analyticsUnavailable}
           </div>
         </div>
       </div>
@@ -401,7 +408,7 @@ export function MarketingView() {
         <h2 className="text-base font-extrabold text-slate-900 dark:text-[#F4F7FB]">
           {company.customersSegment}
         </h2>
-        <p className="text-xs text-slate-500">{locale.startsWith("fr") ? "Segments calculés sur tout l’historique de la source sélectionnée." : "Segments calculated from the selected source’s full history."}</p>
+        <p className="text-xs text-slate-500">{locale.startsWith("fr") ? `Segments du fichier « ${data?.source_context?.name || "source sélectionnée"} », pas des clients du CRM.` : `Segments from “${data?.source_context?.name || "the selected source"}”, not the CRM clients.`}</p>
         <label className="text-sm">{locale.startsWith("fr") ? "Afficher un segment" : "Show a segment"}
           <select aria-label="Afficher un segment" value={segmentFilter} onChange={e => setSegmentFilter(e.target.value)} className="ml-2 rounded-lg border bg-white p-2 text-slate-900 dark:bg-slate-900 dark:text-white">
             <option value="">{locale.startsWith("fr") ? "Tous les segments" : "All segments"}</option>

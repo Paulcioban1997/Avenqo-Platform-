@@ -184,7 +184,7 @@ export function CRMPipelinesView({ t }: CRMPipelinesViewProps) {
         </div>
       ) : !activePipeline || !activePipeline.stages || activePipeline.stages.length === 0 ? (
         <div className="p-8 text-center bg-white dark:bg-[#0B0F19] rounded-2xl border border-slate-200 dark:border-slate-800">
-          <p className="text-xs text-slate-400">{t.crm.calendar.noAppointments}</p>
+          <p className="text-xs text-slate-400">{locale.startsWith("fr") ? "Aucun pipeline configuré." : "No pipeline is configured."}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 overflow-x-auto pb-4">
@@ -215,7 +215,7 @@ export function CRMPipelinesView({ t }: CRMPipelinesViewProps) {
                 <div className="flex-1 space-y-2.5 overflow-y-auto">
                   {opps.length === 0 ? (
                     <div className="py-8 text-center text-[11px] text-slate-400 italic">
-                      {t.crm.calendar.noAppointments}
+                      {locale.startsWith("fr") ? "Aucune affaire dans cette étape" : "No deals in this stage"}
                     </div>
                   ) : (
                     opps.map((opp) => (

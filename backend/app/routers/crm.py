@@ -1919,16 +1919,26 @@ async def crm_copilot_chat(
             "kpis": kpis,
         }
 
-    # 6. Send Reminders Intent
+    # 6. Reminders are not sent from chat. Report the tenant's automations only.
     if any(k in msg for k in ["rappels", "envoyer des rappels", "relance", "reminders", "send reminders"]):
-        msg_reply = (
-            "24-hour automated reminders and confirmations are active and operational. Notifications trigger automatically based on your configured workflows."
-            if is_en
-            else "Les rappels automatiques 24h et les confirmations sont actifs et prêts. Les notifications sont envoyées dès que les déclencheurs d'automatisation sont atteints."
-        )
+        autos = service.list_automations(tenant.company_id)
+        active = sum(1 for item in autos if item.is_active)
+        if is_en:
+            msg_reply = (
+                f"No reminder was sent. This company has {len(autos)} automation(s), {active} active. "
+                "Reminders leave only through an enabled automation."
+            )
+        else:
+            msg_reply = (
+                f"Aucun rappel n'a été envoyé. Cette entreprise a {len(autos)} automatisation(s), dont {active} active(s). "
+                "Les rappels partent seulement par une automatisation activée."
+            )
         return {
             "reply": msg_reply,
             "status": "success",
+            "reminders_sent": 0,
+            "automations": len(autos),
+            "active_automations": active,
         }
 
     # General Contextual Help Response

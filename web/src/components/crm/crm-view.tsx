@@ -487,6 +487,10 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
           onAppointmentCreated={() => {
             loadCRMData();
           }}
+          onOpenAppointment={() => {
+            setCurrentTab("appointments");
+            setIsModalOpen(true);
+          }}
         />
       </div>
 
@@ -499,6 +503,10 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
           onClose={() => setIsMobileCopilotOpen(false)}
           onAppointmentCreated={() => {
             loadCRMData();
+          }}
+          onOpenAppointment={() => {
+            setCurrentTab("appointments");
+            setIsModalOpen(true);
           }}
         />
       )}
