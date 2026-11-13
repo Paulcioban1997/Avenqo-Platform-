@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.core.permissions import permissions_for
 from backend.app.core.security import generate_token, hash_password, hash_token
+from backend.app.models.company_module import company_module_is_active
 from backend.app.models import (
     Company,
     CompanyModule,
@@ -22,7 +23,6 @@ from backend.app.models import (
     User,
     UserRole,
 )
-from backend.app.models.base import CompanyModuleStatus
 from backend.app.services.account_notifications import AccountNotifier
 from backend.app.services.plan_limits_service import PlanLimitsService
 
@@ -301,7 +301,7 @@ class WorkspaceService:
                 .join(CompanyModule, CompanyModule.module_id == Module.id)
                 .where(
                     CompanyModule.company_id == actor.company_id,
-                    CompanyModule.status == CompanyModuleStatus.ACTIVE,
+                    company_module_is_active(),
                 )
             )
         )

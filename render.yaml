@@ -1,0 +1,24 @@
+# Free temporary Avenqo frontend. It talks only to the Railway Sandbox API.
+# Applying this file creates a Render service and requires a Render account login.
+# Keep the plan on free. Do not point this service at avenqo.ca or api.avenqo.ca.
+services:
+  - type: web
+    name: avenqo-sandbox-web
+    runtime: node
+    plan: free
+    branch: fix/voice-audible-answers-sandbox-20261112
+    rootDir: web
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start -- --hostname 0.0.0.0 --port $PORT
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: AVENQO_ENVIRONMENT
+        value: sandbox
+      - key: NEXT_PUBLIC_AVENQO_ENVIRONMENT
+        value: sandbox
+      - key: BACKEND_API_URL
+        value: https://avenqo-platform-sandbox.up.railway.app
+      - key: AVENQO_API_BASE_URL
+        value: https://avenqo-platform-sandbox.up.railway.app

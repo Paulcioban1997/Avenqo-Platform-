@@ -1,4 +1,5 @@
 import { SessionProvider } from "@/lib/session-context";
+import { isSandboxFrontend, resolvePublicSiteUrl } from "@/lib/public-site";
 import type { Metadata } from "next";
 import { Geist, Manrope } from "next/font/google";
 import { LocaleProvider } from "@/lib/i18n/locale-context";
@@ -15,8 +16,11 @@ const manrope = Manrope({
   subsets: ["latin"],
 });
 
+const siteUrl = resolvePublicSiteUrl();
+const sandboxSite = isSandboxFrontend();
+
 export const metadata: Metadata = {
-  metadataBase: new URL("https://avenqo.ca"),
+  metadataBase: new URL(siteUrl),
   title: {
     default: "Avenqo — AI Business Operating System",
     template: "%s | Avenqo",
@@ -32,7 +36,7 @@ export const metadata: Metadata = {
     "Commerce connecté",
     "Automatisation PME",
   ],
-  authors: [{ name: "PMC Solutions AI", url: "https://avenqo.ca" }],
+  authors: [{ name: "PMC Solutions AI", url: sandboxSite ? siteUrl : "https://avenqo.ca" }],
   creator: "PMC Solutions AI",
   publisher: "PMC Solutions AI",
   formatDetection: {
@@ -60,7 +64,7 @@ export const metadata: Metadata = {
     title: "Avenqo — AI Business Operating System",
     description:
       "Plateforme IA modulaire pour les entreprises et PME : Retail Intelligence, connecteurs commerce et décisions unifiées.",
-    url: "https://avenqo.ca",
+    url: siteUrl,
     siteName: "Avenqo",
     locale: "fr_CA",
     type: "website",
@@ -81,17 +85,19 @@ export const metadata: Metadata = {
     images: ["/brand/avenqo-card.png"],
     creator: "@avenqo",
   },
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: {
-      index: true,
-      follow: true,
-      "max-video-preview": -1,
-      "max-image-preview": "large",
-      "max-snippet": -1,
-    },
-  },
+  robots: sandboxSite
+    ? { index: false, follow: false }
+    : {
+        index: true,
+        follow: true,
+        googleBot: {
+          index: true,
+          follow: true,
+          "max-video-preview": -1,
+          "max-image-preview": "large",
+          "max-snippet": -1,
+        },
+      },
 };
 
 export default function RootLayout({
@@ -105,7 +111,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${manrope.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <StructuredData />
+        {sandboxSite ? null : <StructuredData />}
         <LocaleProvider><SessionProvider>{children}</SessionProvider></LocaleProvider>
       </body>
     </html>

@@ -64,7 +64,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     docLink: "https://shopify.dev/docs/apps",
     setupInstructions: [
       "Créer une application dans l'espace Partenaire ou Paramètres > Applications personnalisées de Shopify",
-      "Configurer les URLs de redirection vers https://app.avenqo.ca/api/v1/connectors/shopify/callback",
+      "Configurer les URLs de redirection vers {origin}/api/v1/connectors/shopify/callback",
       "Accorder les permissions read_products, read_orders, read_customers, write_inventory",
     ],
   },
@@ -1912,7 +1912,7 @@ export function ConnectionsView() {
                   </div>
                   <ol className="list-decimal list-inside space-y-1 text-slate-600 dark:text-slate-400 pl-1 leading-relaxed">
                     {selectedConnectorDetails.setupInstructions.map((step, idx) => (
-                      <li key={idx}>{step}</li>
+                      <li key={idx}>{step.replaceAll("{origin}", typeof window === "undefined" ? "" : window.location.origin)}</li>
                     ))}
                   </ol>
                 </div>

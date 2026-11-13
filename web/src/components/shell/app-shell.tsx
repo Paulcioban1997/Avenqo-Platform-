@@ -611,6 +611,7 @@ export function AppShell({ children }: AppShellProps) {
           <LayoutDashboard size={18} />
           <span>{t.navigation.dashboard}</span>
         </Link>
+        {entitlementsStatus === "success" && activeModuleKeys?.includes("retail") ? (
         <Link
           href="/retail"
           className={`flex flex-col items-center gap-0.5 text-[10px] font-semibold ${
@@ -620,6 +621,7 @@ export function AppShell({ children }: AppShellProps) {
           <ShoppingBag size={18} />
           <span>{t.navigation.retailAi}</span>
         </Link>
+        ) : null}
         <button
           onClick={() => setIsCopilotOpen(true)}
           className="flex flex-col items-center gap-0.5 text-[10px] font-semibold text-[#0076FF] dark:text-[#00D4FF]"
@@ -651,6 +653,7 @@ export function AppShell({ children }: AppShellProps) {
       <CommandPalette
         isOpen={isCommandPaletteOpen}
         onClose={() => setIsCommandPaletteOpen(false)}
+        authorizedModuleKeys={entitlementsStatus === "success" ? activeModuleKeys : null}
         t={t}
         onTriggerAction={(actionId) => {
           if (actionId === "open-copilot") setIsCopilotOpen(true);

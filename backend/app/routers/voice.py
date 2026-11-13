@@ -1375,6 +1375,8 @@ def get_voice_customization(
             pronunciation_dict = {}
     spoken_name = getattr(config, "voice_display_name", None) or (config.business_name or "Avenqo").replace("_", " ")
     spoken_pronun = config.custom_pronunciation if (config.custom_pronunciation and not config.custom_pronunciation.startswith("{")) else (pronunciation_dict.get("term") or pronunciation_dict.get("company"))
+    from backend.app.voice.messages import voice_speech_name
+    speech_preview = voice_speech_name(config)
     return VoiceCustomizationResponse(
         voice_id=getattr(config, "voice_id", "alloy") or "alloy",
         voice_provider=getattr(config, "voice_provider", "openai") or "openai",
@@ -1395,6 +1397,7 @@ def get_voice_customization(
         preferred_accent=getattr(config, "preferred_accent", None),
         realtime_provider=getattr(config, "realtime_provider", "retell") or "retell",
         gemini_live_enabled=bool(getattr(config, "gemini_live_enabled", False)),
+        spoken_name_preview=speech_preview,
     )
 
 
@@ -1466,6 +1469,8 @@ def update_voice_customization(
 
     spoken_name = getattr(config, "voice_display_name", None) or (config.business_name or "Avenqo").replace("_", " ")
     spoken_pronun = config.custom_pronunciation if (config.custom_pronunciation and not config.custom_pronunciation.startswith("{")) else (pronunciation_dict.get("term") or pronunciation_dict.get("company"))
+    from backend.app.voice.messages import voice_speech_name
+    speech_preview = voice_speech_name(config)
     return VoiceCustomizationResponse(
         voice_id=config.voice_id,
         voice_provider=config.voice_provider,
@@ -1486,6 +1491,7 @@ def update_voice_customization(
         preferred_accent=getattr(config, "preferred_accent", None),
         realtime_provider=getattr(config, "realtime_provider", "retell") or "retell",
         gemini_live_enabled=bool(getattr(config, "gemini_live_enabled", False)),
+        spoken_name_preview=speech_preview,
     )
 
 
