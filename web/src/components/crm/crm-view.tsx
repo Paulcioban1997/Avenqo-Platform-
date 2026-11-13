@@ -38,6 +38,7 @@ import { CRMServicesSettings } from "./crm-services-settings";
 import { finiteMetric, validDate } from "./crm-format";
 import { CRMCampaignsView } from "./crm-campaigns-view";
 import { CRMReportsView } from "./crm-reports-view";
+import { HorizontalScroller } from "@/components/shell/horizontal-scroller";
 import { CRMCopilotPanel } from "./crm-copilot-panel";
 import { AppointmentDetailsDrawer, type AppointmentItem } from "./appointment-details-drawer";
 import { NewAppointmentModal } from "./new-appointment-modal";
@@ -405,7 +406,8 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
         )}
 
         {/* CRM SUB-NAVIGATION TABS (Item 4) */}
-        <div className="flex items-center gap-1.5 border-b border-slate-200 dark:border-slate-800 pb-2 overflow-x-auto scrollbar-none">
+        <HorizontalScroller className="border-b border-slate-200 pb-2 dark:border-slate-800">
+          <div className="flex w-max items-center gap-1.5">
           {navTabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = currentTab === tab.id;
@@ -413,7 +415,7 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
               <button
                 key={tab.id}
                 onClick={() => setCurrentTab(tab.id as CRMSubTab)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
+                className={`flex items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-xs font-semibold transition ${
                   isActive
                     ? "bg-[#0076FF]/10 text-[#0076FF] dark:text-[#00D4FF] dark:bg-blue-950/50 border border-blue-200/50 dark:border-blue-800/40"
                     : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60"
@@ -424,7 +426,8 @@ export function CRMView({ t: propT, activeSubTab = "overview" }: CRMViewProps) {
               </button>
             );
           })}
-        </div>
+          </div>
+        </HorizontalScroller>
 
         {/* REAL DATA KPI CARDS (Item 6) */}
         <CRMKpiCards kpis={kpis} t={t} isLoading={isLoading} />

@@ -25,7 +25,7 @@ export function attendanceLabel(
     attendance_tracked_count?: number | null;
   },
   locale: string,
-): string {
+): string | null {
   const appointments = finiteMetric(kpis.appointments_this_month);
   const tracked = finiteMetric(kpis.attendance_tracked_count);
   const rate = finiteMetric(kpis.attendance_rate_percent);
@@ -33,7 +33,8 @@ export function attendanceLabel(
   if (appointments === 0) {
     return french ? "Aucun rendez-vous ce mois-ci." : "No appointments this month.";
   }
-  if (rate === null || tracked === 0) {
+  if (appointments === null || rate === null) return null;
+  if (tracked === 0) {
     return french ? "Aucune présence n’est encore enregistrée." : "No attendance has been recorded yet.";
   }
   return `${new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(rate)}%`;
@@ -42,5 +43,6 @@ export function attendanceLabel(
 export function currencyText(value: unknown, currency: unknown, locale: string, unavailable: string): string {
   const number = finiteMetric(value);
   if (number === null || typeof currency !== "string" || !/^[A-Z]{3}$/.test(currency)) return unavailable;
-  return new Intl.NumberFormat(locale, { style: "currency", currency }).format(number);
+  const amount = new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(number);
+  return `${amount} ${currency}`;
 }

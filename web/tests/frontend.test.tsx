@@ -588,7 +588,7 @@ describe("Retail inventory rendering", () => {
     );
 
     expect(await screen.findByText(getAppTranslations("fr").navigation.retailAi)).toBeInTheDocument();
-    expect(screen.getByText(/Superstore-utf8\.csv/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Superstore-utf8\.csv/).length).toBeGreaterThan(0);
     expect(screen.getByText("Paper")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });

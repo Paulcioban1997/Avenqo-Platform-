@@ -20,6 +20,7 @@ import {
   Clock,
 } from "lucide-react";
 import { getAuthHeaders } from "@/lib/api-headers";
+import { HorizontalScroller } from "@/components/shell/horizontal-scroller";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 
@@ -249,7 +250,8 @@ export function AccountingView() {
             </p>
           </div>
 
-          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-[#111D3D] text-xs font-medium">
+          <HorizontalScroller>
+          <div className="flex w-max items-center gap-1.5 rounded-xl bg-slate-100 p-1 text-xs font-medium dark:bg-[#111D3D]">
             <button
               onClick={() => setActiveFilter("all")}
               className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
@@ -281,6 +283,7 @@ export function AccountingView() {
               {isFr ? "Dépenses" : "Expenses"}
             </button>
           </div>
+          </HorizontalScroller>
         </div>
 
         {transactions.length > 0 && transactions.every((tx) => !externalSource(tx.extra_data)) && (
@@ -315,8 +318,8 @@ export function AccountingView() {
             </Link>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
+          <HorizontalScroller>
+            <table className="w-max min-w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="border-b border-slate-200/80 dark:border-white/[0.08] bg-slate-50/70 dark:bg-[#060B13]/40 text-slate-500 dark:text-slate-400 font-semibold">
                   <th className="py-3 px-4">{isFr ? "Date" : "Date"}</th>
@@ -378,7 +381,7 @@ export function AccountingView() {
                 })}
               </tbody>
             </table>
-          </div>
+          </HorizontalScroller>
         )}
       </div>
     </div>
