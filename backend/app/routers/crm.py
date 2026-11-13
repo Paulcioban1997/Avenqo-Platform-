@@ -197,7 +197,6 @@ def _verify_google_oauth_state(state: str, secret: str) -> dict[str, str]:
 
 
 _SANDBOX_RENDER_ORIGIN = "https://avenqo-sandbox-web.onrender.com"
-_GOOGLE_RELAY_PATH = "/api/v1/crm/calendar/google/relay"
 
 
 def _is_sandbox(settings) -> bool:
@@ -228,22 +227,34 @@ def _calendar_return_origin(settings, origin: str) -> str:
     return origin
 
 
+def _sandbox_registered_redirect(configured: str) -> str | None:
+    """Sandbox Google client callback. Production hosts are never acceptable."""
+    parsed = urlsplit(configured)
+    host = (parsed.hostname or "").lower()
+    if (
+        parsed.scheme == "https"
+        and host
+        and host != "avenqo.ca"
+        and not host.endswith(".avenqo.ca")
+        and parsed.path
+        and not parsed.query
+        and not parsed.fragment
+    ):
+        return configured
+    return None
+
+
 def _google_redirect_uri(settings, request: Request | None = None, return_origin: str | None = None) -> str:
-    """OAuth redirect. Sandbox uses the allowlisted web origin and never api.avenqo.ca."""
-    configured = str(settings.google_calendar_redirect_uri or "").strip()
-    if _is_sandbox(settings) and "api.avenqo.ca" in configured:
-        configured = ""
-    if return_origin:
-        origin = _calendar_return_origin(settings, return_origin)
-        return f"{origin}{_GOOGLE_RELAY_PATH}"
+    """OAuth redirect sent to Google. Sandbox uses its registered API callback, never the web relay."""
+    del return_origin  # Browser return origin is stored separately and is not the Google redirect.
+    configured = str(getattr(settings, "google_calendar_redirect_uri", "") or "").strip()
+    if _is_sandbox(settings):
+        registered = _sandbox_registered_redirect(configured)
+        if registered is None:
+            raise HTTPException(status_code=503, detail="URI de redirection Google Sandbox absente ou non autorisée.")
+        return registered
     if configured:
         return configured
-    if _is_sandbox(settings):
-        frontend = str(settings.frontend_url or "").rstrip("/")
-        host = urlsplit(frontend).hostname or ""
-        if frontend.startswith("https://") and host and not host.endswith("avenqo.ca"):
-            return f"{frontend}{_GOOGLE_RELAY_PATH}"
-        return f"{_SANDBOX_RENDER_ORIGIN}{_GOOGLE_RELAY_PATH}"
     if request:
         base = str(request.base_url).rstrip("/")
         return f"{base}/api/v1/crm/calendar/google/callback"
@@ -1067,9 +1078,7 @@ def get_google_calendar_auth_url(
 ) -> dict[str, str]:
     settings = get_settings()
     return_origin = _calendar_return_origin(settings, request.headers.get("x-avenqo-calendar-return-origin") or settings.frontend_url)
-    redirect_uri = _google_redirect_uri(
-        settings, request, return_origin=return_origin if _is_sandbox(settings) else None,
-    )
+    redirect_uri = _google_redirect_uri(settings, request)
     if not (settings.google_calendar_client_id and settings.google_calendar_client_secret):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

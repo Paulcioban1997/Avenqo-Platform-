@@ -516,21 +516,36 @@ def test_cross_domain_callback_relays_without_exchanging_tokens(monkeypatch):
         asyncio.run(google_calendar_callback(request=_callback_request(state, bind=False), code='fixture-code', state=state + 'tampered', db=db))
 
 def test_sandbox_calendar_redirect_stays_off_production_api():
+    from urllib.parse import parse_qs, urlsplit
     from fastapi import HTTPException
-    from backend.app.routers.crm import _google_redirect_uri
+    from backend.app.routers.crm import _google_oauth_state, _google_redirect_uri, _verify_google_oauth_state
 
+    railway_callback = "https://avenqo-platform-sandbox.up.railway.app/api/v1/crm/calendar/google/callback"
     sandbox = SimpleNamespace(
         environment="sandbox",
         frontend_url="http://localhost:3000",
         cors_origins=[],
         google_calendar_return_origins="",
         google_calendar_redirect_uri="https://api.avenqo.ca/api/v1/crm/calendar/google/callback",
+        auth_jwt_secret="explicit-test-fixture",
     )
-    relay = _google_redirect_uri(sandbox, return_origin="https://avenqo-sandbox-web.onrender.com")
-    assert relay == "https://avenqo-sandbox-web.onrender.com/api/v1/crm/calendar/google/relay"
-    assert "api.avenqo.ca" not in _google_redirect_uri(sandbox)
     with pytest.raises(HTTPException):
-        _google_redirect_uri(sandbox, return_origin="https://avenqo.ca")
+        _google_redirect_uri(sandbox, return_origin="https://avenqo-sandbox-web.onrender.com")
+    sandbox.google_calendar_redirect_uri = railway_callback
+    redirect_uri = _google_redirect_uri(sandbox, return_origin="https://avenqo-sandbox-web.onrender.com")
+    assert redirect_uri == railway_callback
+    assert "avenqo.ca" not in redirect_uri
+    assert "onrender.com" not in redirect_uri
+    state = _google_oauth_state(
+        UUID("00000000-0000-0000-0000-000000000010"),
+        UUID("00000000-0000-0000-0000-000000000011"),
+        sandbox.auth_jwt_secret,
+        return_origin="https://avenqo-sandbox-web.onrender.com",
+        redirect_uri=redirect_uri,
+    )
+    stored = _verify_google_oauth_state(state, sandbox.auth_jwt_secret)["redirect_uri"]
+    sent = parse_qs(urlsplit(GoogleCalendarProvider("fixture-client", "fixture-secret", redirect_uri).get_auth_url(state)).query)["redirect_uri"][0]
+    assert sent == stored == railway_callback
     production = SimpleNamespace(
         environment="production",
         frontend_url="https://avenqo.ca",
