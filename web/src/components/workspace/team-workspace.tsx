@@ -142,15 +142,18 @@ export function TeamWorkspace() {
         });
         if (response.ok) {
           payload = await response.json();
-          const delivered = Array.isArray(payload?.invitations) && payload.invitations.every((item: { delivery?: string }) => item.delivery === "email" || item.delivery === "sandbox_mailbox");
+          const deliveries = Array.isArray(payload?.invitations)
+            ? payload.invitations.map((item: { delivery?: string }) => item.delivery)
+            : [];
+          const emailed = deliveries.length > 0 && deliveries.every((item: string | undefined) => item === "email");
           setSuccessNotice(
-            delivered
+            emailed
               ? (fr
-                ? `${rawList.length} invitations sont dans la boîte Sandbox. Aucun courriel n'a quitté Sandbox et aucun code n'est affiché ici.`
-                : `${rawList.length} invitations are in the Sandbox mailbox. No email left Sandbox and no code is shown here.`)
+                ? `${rawList.length} invitations ont été envoyées par courriel.`
+                : `${rawList.length} invitations were sent by email.`)
               : (fr
-                ? "L'invitation n'a pas été transmise."
-                : "The invitation was not sent.")
+                ? "L'invitation n'a pas été envoyée au destinataire."
+                : "The invitation was not emailed to the recipient.")
           );
           setInviteEmail("");
           setInviteResponsibilityId(DEFAULT_RESPONSIBILITY_ID);
@@ -171,13 +174,13 @@ export function TeamWorkspace() {
         if (response.ok) {
           payload = await response.json();
           setSuccessNotice(
-            payload?.delivery === "email" || payload?.delivery === "sandbox_mailbox"
+            payload?.delivery === "email"
               ? (fr
-                ? `Invitation placée dans la boîte Sandbox pour ${rawList[0]}. Aucun courriel n'a quitté Sandbox.`
-                : `Invitation placed in the Sandbox mailbox for ${rawList[0]}. No email left Sandbox.`)
+                ? `Invitation envoyée à ${rawList[0]}.`
+                : `Invitation emailed to ${rawList[0]}.`)
               : (fr
-                ? "L'invitation n'a pas été transmise."
-                : "The invitation was not sent.")
+                ? "L'invitation n'a pas été envoyée au destinataire."
+                : "The invitation was not emailed to the recipient.")
           );
           setInviteEmail("");
           setInviteResponsibilityId(DEFAULT_RESPONSIBILITY_ID);
@@ -316,15 +319,14 @@ export function TeamWorkspace() {
           </h2>
           <p className="text-xs text-amber-900 dark:text-amber-200">
             {fr
-              ? "Ces messages restent dans cette entreprise. Aucun courriel n'est envoyé à l'extérieur."
-              : "These messages stay inside this company. No email is sent outside Sandbox."}
+              ? "Anciennes copies. Une nouvelle invitation part au courriel du destinataire. Le code n'est pas affiché ici."
+              : "Older copies. A new invitation is emailed to the recipient. The code is not shown here."}
           </p>
           <ul className="space-y-3">
             {sandboxMail.map((message) => (
               <li key={message.id} className="rounded-2xl border border-amber-200/80 dark:border-amber-900 bg-white/80 dark:bg-[#0B132B] p-3">
                 <p className="text-xs font-bold text-slate-900 dark:text-white">{message.subject}</p>
                 <p className="text-[11px] text-slate-500">{message.recipient}</p>
-                <pre className="mt-2 whitespace-pre-wrap text-xs text-slate-700 dark:text-slate-200">{message.body}</pre>
               </li>
             ))}
           </ul>

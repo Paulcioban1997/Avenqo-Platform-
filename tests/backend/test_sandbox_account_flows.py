@@ -200,6 +200,26 @@ def test_sandbox_mailbox_stores_the_code_for_one_company_only():
     session.close()
 
 
+def test_pending_invitation_is_sent_again_with_a_new_link():
+    session = _session()
+    _company(session, "resend-tenant")
+    _, owner = _company(session, "resend-owner")
+    notifier = SandboxCaptureAccountNotifier()
+    service = WorkspaceService(session, notifier)
+    first = service.invite(owner, "invitee@example.test", UserRole.USER, "Analyst", None)
+    second = service.invite(owner, "Invitee@example.test", UserRole.MANAGER, "Chef comptable", "Finance")
+    assert first.id == second.id
+    assert second.job_title == "Chef comptable"
+    assert second.role == "manager"
+    sent = notifier.get_captured_emails("invitee@example.test")
+    assert len(sent) == 2
+    first_link = re.search(r"/join\?token=(\S+)", sent[0].text_body).group(1)
+    second_link = re.search(r"/join\?token=(\S+)", sent[1].text_body).group(1)
+    assert first_link != second_link
+    assert session.scalar(select(func.count()).select_from(EmployeeInvitation)) == 1
+    session.close()
+
+
 def test_theme_and_logo_persist_for_one_tenant_only():
     session = _session()
     company_a, _owner_a = _company(session, "tenant-a")

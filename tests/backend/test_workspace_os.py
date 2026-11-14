@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import secrets
 import pytest
 from uuid import UUID
@@ -99,7 +100,7 @@ def test_invitation_respects_user_quota(auth_environment, non_sensitive_test_pas
     assert "token" not in first.json()
     assert "invitation_code" not in first.json()
     sent = notifier.sent[-1][2]
-    token = sent.split("invitation-token:", 1)[1].splitlines()[0]
+    token = re.search(r"/join\?token=(\S+)", sent).group(1)
     accepted = client.post(
         "/api/v1/workspace/invitations/accept",
         json={

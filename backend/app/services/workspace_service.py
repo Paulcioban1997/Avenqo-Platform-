@@ -183,27 +183,37 @@ class WorkspaceService:
                 EmployeeInvitation.revoked_at.is_(None),
             )
         )
-        if existing is not None:
-            raise WorkspaceError("Une invitation est déjà en cours pour cet email")
         raw = generate_token()
         code = f"{secrets.randbelow(90000000) + 10000000}"
         salt = secrets.token_hex(16)
         code_h = hash_token(f"{code}:{salt}")
         now = datetime.now(timezone.utc)
-        invitation = EmployeeInvitation(
-            company_id=actor.company_id,
-            invited_by_user_id=actor.id,
-            email=normalized,
-            role=role.value,
-            job_title=job_title.strip() or "Employee",
-            department=department,
-            token_hash=hash_token(raw),
-            code_hash=code_h,
-            code_salt=salt,
-            failed_attempts=0,
-            expires_at=now + timedelta(hours=24),
-        )
-        self._session.add(invitation)
+        if existing is None:
+            invitation = EmployeeInvitation(
+                company_id=actor.company_id,
+                invited_by_user_id=actor.id,
+                email=normalized,
+                role=role.value,
+                job_title=job_title.strip() or "Employee",
+                department=department,
+                token_hash=hash_token(raw),
+                code_hash=code_h,
+                code_salt=salt,
+                failed_attempts=0,
+                expires_at=now + timedelta(hours=24),
+            )
+            self._session.add(invitation)
+        else:
+            invitation = existing
+            invitation.invited_by_user_id = actor.id
+            invitation.role = role.value
+            invitation.job_title = job_title.strip() or invitation.job_title
+            invitation.department = department
+            invitation.token_hash = hash_token(raw)
+            invitation.code_hash = code_h
+            invitation.code_salt = salt
+            invitation.failed_attempts = 0
+            invitation.expires_at = now + timedelta(hours=24)
         self._session.flush()
         origin = get_settings().public_frontend_origin()
         from backend.app.services.account_notifications import sandbox_mail_company_id, sandbox_mail_session
@@ -217,10 +227,10 @@ class WorkspaceService:
                 "\n".join(
                     (
                         "Vous êtes invité à rejoindre un espace Avenqo.",
-                        "Ce message contient un code à usage unique, valable 24 heures.",
+                        "Ouvrez ce lien pour créer votre accès. Il est valable 24 heures.",
+                        f"{origin}/join?token={raw}",
+                        "Si le lien ne s'ouvre pas, utilisez ce code avec la même adresse courriel.",
                         f"Code: {code}",
-                        f"invitation-token:{raw}",
-                        f"Ouvrir: {origin}/employees",
                     )
                 ),
             )
