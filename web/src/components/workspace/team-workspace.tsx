@@ -80,7 +80,6 @@ export function TeamWorkspace() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [successNotice, setSuccessNotice] = useState("");
-  const [sandboxMail, setSandboxMail] = useState<Array<{ id: string; recipient: string; subject: string; body: string; created_at: string }>>([]);
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
 
   // MODALS
@@ -109,11 +108,6 @@ export function TeamWorkspace() {
       if (inviteRes.ok) {
         const payload = await inviteRes.json();
         setPendingInvites(Array.isArray(payload?.invitations) ? payload.invitations : []);
-      }
-      const mailRes = await apiFetch("/api/v1/workspace/sandbox-mailbox");
-      if (mailRes.ok) {
-        const mail = await mailRes.json();
-        setSandboxMail(Array.isArray(mail?.messages) ? mail.messages : []);
       }
       setError("");
     } catch {
@@ -327,27 +321,6 @@ export function TeamWorkspace() {
           <AlertCircle className="w-4 h-4 shrink-0" />
           <span>{error}</span>
         </div>
-      )}
-
-      {sandboxMail.length > 0 && (
-        <section className="rounded-3xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/20 p-5 space-y-3">
-          <h2 className="text-sm font-bold text-amber-950 dark:text-amber-100">
-            {fr ? "Boîte Sandbox" : "Sandbox mailbox"}
-          </h2>
-          <p className="text-xs text-amber-900 dark:text-amber-200">
-            {fr
-              ? "Anciennes copies. Une nouvelle invitation part au courriel du destinataire. Le code n'est pas affiché ici."
-              : "Older copies. A new invitation is emailed to the recipient. The code is not shown here."}
-          </p>
-          <ul className="space-y-3">
-            {sandboxMail.map((message) => (
-              <li key={message.id} className="rounded-2xl border border-amber-200/80 dark:border-amber-900 bg-white/80 dark:bg-[#0B132B] p-3">
-                <p className="text-xs font-bold text-slate-900 dark:text-white">{message.subject}</p>
-                <p className="text-[11px] text-slate-500">{message.recipient}</p>
-              </li>
-            ))}
-          </ul>
-        </section>
       )}
 
       {successNotice && (
