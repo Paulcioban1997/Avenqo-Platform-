@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.config.settings import get_settings
 from backend.app.core.security import hash_token
+from backend.app.core.permission_grants import effective_permissions
 from backend.app.core.permissions import permissions_for
 from backend.app.models.base import UserRole
 from backend.app.database import get_db
@@ -55,7 +56,28 @@ from shared.ai_engine.contracts import TenantContext
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/crm", tags=["crm"])
+def guard_crm_access(
+    request: Request,
+    identity: CurrentIdentity = Depends(get_current_identity),
+) -> None:
+    """Sépare le dossier client des rendez-vous. Un titre ne suffit pas."""
+
+    path = request.url.path
+    writing = request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}
+    perms = set(effective_permissions(identity.user))
+    if any(bit in path for bit in ("/clients", "/search", "/kpis", "/summary", "/notes", "/pipelines", "/opportunities")):
+        needed = "crm:clients:write" if writing else "crm:clients:read"
+    elif "/custom-fields" in path or "/automations" in path or "/calendar" in path:
+        needed = "modules:manage"
+    elif "/business-hours" in path or "/services" in path:
+        needed = "modules:manage" if writing else "crm:appointments:read"
+    else:
+        needed = "crm:appointments:write" if writing else "crm:appointments:read"
+    if needed not in perms:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission insuffisante")
+
+
+router = APIRouter(prefix="/crm", tags=["crm"], dependencies=[Depends(guard_crm_access)])
 google_oauth_callback_router = APIRouter(prefix="/crm", tags=["crm-oauth"])
 
 
@@ -886,7 +908,7 @@ def create_service(
     identity: CurrentIdentity = Depends(get_current_identity),
     service: CRMService = Depends(_get_crm_service),
 ) -> dict[str, Any]:
-    perms = permissions_for(identity.user.role)
+    perms = set(effective_permissions(identity.user))
     if "company:manage" not in perms and "data:manage" not in perms:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -909,7 +931,7 @@ def toggle_service_approval(
     identity: CurrentIdentity = Depends(get_current_identity),
     service: CRMService = Depends(_get_crm_service),
 ) -> dict[str, Any]:
-    perms = permissions_for(identity.user.role)
+    perms = set(effective_permissions(identity.user))
     if "company:manage" not in perms and identity.user.role != UserRole.OWNER:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -1544,7 +1566,7 @@ async def crm_copilot_chat(
     db: Session = Depends(get_db),
     service: CRMService = Depends(_get_crm_service),
 ) -> dict[str, Any]:
-    permissions = frozenset(permissions_for(membership.role))
+    permissions = frozenset(effective_permissions(identity.user))
     if "ai:use" not in permissions or not ModuleEntitlementService(db).can_use_module(tenant, "crm"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
     msg = req.message.strip().lower()

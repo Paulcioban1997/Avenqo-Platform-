@@ -9,7 +9,6 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Respon
 from starlette.concurrency import run_in_threadpool
 
 from backend.app.config.settings import get_settings
-from backend.app.core.permissions import permissions_for
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
 from backend.app.dependencies.datasets import (
     get_capability_execution_gate,
@@ -69,7 +68,9 @@ router = APIRouter(prefix="/datasets", tags=["datasets"])
 def require_dataset_read(
     identity: CurrentIdentity = Depends(get_current_identity),
 ) -> CurrentIdentity:
-    if not {"data:read", "data:manage"}.intersection(permissions_for(identity.user.role)):
+    from backend.app.core.permission_grants import effective_permissions
+
+    if not {"data:read", "data:manage"}.intersection(effective_permissions(identity.user)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Permission insuffisante",

@@ -984,11 +984,22 @@ def http_error_message(
         return ERROR_MESSAGES[locale]["email_verification_required"]
     if "email ou mot de passe incorrect" in detail_text:
         return ERROR_MESSAGES[locale]["invalid_credentials"]
+    if "permission insuffisante" in detail_text or "permission refusée" in detail_text:
+        if locale.startswith("fr"):
+            return "Vous n'avez pas accès à cette partie de l'entreprise."
+        return "You do not have access to this part of the company."
     if "invitation invalide" in detail_text or "jeton ou code d'invitation" in detail_text:
         if locale.startswith("fr"):
             return "Ce lien d'invitation est incomplet ou expiré. Entrez le code qui se trouve dans le courriel."
         return "This invitation link is incomplete or expired. Enter the code from the email."
-    if "code d'invitation incorrect" in detail_text or "aucune invitation active" in detail_text:
+    if (
+        "code d'invitation incorrect" in detail_text
+        or "aucune invitation active" in detail_text
+        or "autre entreprise" in detail_text
+        or "mot de passe de ce compte" in detail_text
+        or "déjà utilisée" in detail_text
+        or "invitation introuvable" in detail_text
+    ):
         return str(detail)
     if "crm schedule" in detail_text:
         return "Les horaires de cette entreprise sont configurés dans le module CRM. Modifiez-les dans le CRM." if locale.startswith("fr") else "Edit CRM schedules and dated exceptions in the CRM workspace."

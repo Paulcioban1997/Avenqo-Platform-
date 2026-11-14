@@ -10,14 +10,14 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from backend.app.core.cache import tenant_cache
 from backend.app.database import get_db
-from backend.app.dependencies.auth import get_tenant_context
+from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
 from backend.app.models.accounting import AccountingInvoice, AccountingTransaction
 from backend.app.services.accounting_intelligence_service import AccountingIntelligenceService
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
@@ -25,9 +25,18 @@ from shared.ai_engine.contracts import TenantContext
 
 
 def require_accounting_module(
-    tenant: TenantContext = Depends(get_tenant_context),
+    request: Request,
+    identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
 ) -> None:
+    from backend.app.core.permission_grants import effective_permissions
+
+    held = set(effective_permissions(identity.user))
+    writing = request.method.upper() in {"POST", "PUT", "PATCH", "DELETE"}
+    needed = "accounting:write" if writing else "accounting:read"
+    if needed not in held:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission insuffisante")
+    tenant = TenantContext(company_id=identity.user.company_id, user_id=identity.user.id)
     if not ModuleEntitlementService(db).can_use_module(tenant, "accounting"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

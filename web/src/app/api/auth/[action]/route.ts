@@ -20,6 +20,7 @@ const ALLOWED_ACTIONS = new Set([
   "reset-password",
   "verify-email",
   "resend-verification",
+  "accept-invitation",
 ]);
 
 const ACTION_UPSTREAM_MAP: Record<string, string> = {
@@ -32,6 +33,7 @@ const ACTION_UPSTREAM_MAP: Record<string, string> = {
   "reset-password": "/auth/password/reset",
   "verify-email": "/auth/verify-email",
   "resend-verification": "/auth/resend-verification",
+  "accept-invitation": "/workspace/invitations/accept",
 };
 
 export async function POST(
@@ -103,7 +105,7 @@ export async function POST(
 
     // Défense en profondeur : si FastAPI a renvoyé les tokens en JSON, définir directement les cookies HttpOnly sur NextResponse
     const isSecure = process.env.NODE_ENV === "production" || process.env.ENVIRONMENT === "staging" || process.env.VERCEL_ENV !== "development";
-    if (upstream.status === 200 && (action === "login" || action === "refresh" || action === "verify-email")) {
+    if ((upstream.status === 200 || upstream.status === 201) && (action === "login" || action === "refresh" || action === "verify-email" || action === "accept-invitation")) {
       try {
         const parsed = JSON.parse(responseBody);
         if (parsed.access_token) {

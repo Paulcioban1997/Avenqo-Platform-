@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ApiRequestError, apiFetch } from "@/lib/api-request";
 import { useLocale } from "@/lib/i18n/locale-context";
@@ -18,16 +17,40 @@ export function JoinWorkspaceView() {
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [done, setDone] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [companyName, setCompanyName] = useState("");
+  const [responsibility, setResponsibility] = useState("");
+
+  useEffect(() => {
+    const query = token
+      ? `token=${encodeURIComponent(token)}`
+      : email.trim() && code.trim()
+        ? `email=${encodeURIComponent(email.trim())}&code=${encodeURIComponent(code.trim())}`
+        : "";
+    if (!query) return;
+    let cancelled = false;
+    void apiFetch(`/api/v1/workspace/invitations/preview?${query}`)
+      .then(async (response) => {
+        const payload = await response.json();
+        if (cancelled || !response.ok) return;
+        setCompanyName(String(payload.company_name || ""));
+        setResponsibility(String(payload.job_title || ""));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [token, email, code]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     setSubmitting(true);
     setError("");
     try {
-      const response = await apiFetch("/api/v1/workspace/invitations/accept", {
+      const response = await fetch("/api/auth/accept-invitation", {
         method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", Accept: "application/json", "X-Requested-With": "avenqo-web" },
         body: JSON.stringify(
           email.trim() && code.trim()
             ? {
@@ -45,8 +68,18 @@ export function JoinWorkspaceView() {
               },
         ),
       });
-      if (!response.ok) return;
-      setDone(true);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const detail = typeof payload?.detail === "string"
+          ? payload.detail
+          : typeof payload?.error?.message === "string"
+            ? payload.error.message
+            : typeof payload?.message === "string"
+              ? payload.message
+              : "";
+        throw new ApiRequestError("backend_error", response.status, detail);
+      }
+      window.location.assign(typeof payload.home === "string" ? payload.home : "/dashboard");
     } catch (err) {
       setError(
         err instanceof ApiRequestError && err.publicMessage
@@ -55,7 +88,6 @@ export function JoinWorkspaceView() {
             ? "Cette invitation ne peut pas être acceptée."
             : "This invitation cannot be accepted.",
       );
-    } finally {
       setSubmitting(false);
     }
   }
@@ -65,17 +97,15 @@ export function JoinWorkspaceView() {
       <form onSubmit={submit} className="w-full max-w-md rounded-3xl border border-slate-800 bg-[#0B132B] p-7 space-y-4">
         <h1 className="text-2xl font-extrabold">{fr ? "Rejoindre l'entreprise" : "Join the company"}</h1>
         <p className="text-sm text-slate-400">
-          {fr
-            ? "Créez votre accès avec le lien reçu par courriel."
-            : "Create your access with the link you received by email."}
+          {companyName
+            ? (fr
+              ? `${companyName}${responsibility ? ` · ${responsibility}` : ""}. Vous rejoignez cette entreprise, sans créer un nouvel abonnement.`
+              : `${companyName}${responsibility ? ` · ${responsibility}` : ""}. You are joining this company, without a new subscription.`)
+            : (fr
+              ? "Créez votre accès avec le lien reçu par courriel."
+              : "Create your access with the link you received by email.")}
         </p>
-        {done ? (
-          <p className="text-sm text-emerald-300">
-            {fr ? "Votre accès est créé. " : "Your access is ready. "}
-            <Link href="/login" className="underline">{fr ? "Se connecter" : "Sign in"}</Link>
-          </p>
-        ) : (
-          <>
+        <>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
               {fr ? "Prénom" : "First name"}
               <input required value={firstName} onChange={(event) => setFirstName(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm font-normal normal-case" />
@@ -105,10 +135,9 @@ export function JoinWorkspaceView() {
             </label>
             {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
             <button type="submit" disabled={submitting} className="w-full rounded-xl bg-[#0076FF] px-4 py-3 text-sm font-bold">
-              {submitting ? (fr ? "Création..." : "Creating...") : (fr ? "Créer mon accès" : "Create my access")}
+              {submitting ? (fr ? "Ouverture..." : "Opening...") : (fr ? "Rejoindre l'entreprise" : "Join the company")}
             </button>
-          </>
-        )}
+        </>
       </form>
     </main>
   );

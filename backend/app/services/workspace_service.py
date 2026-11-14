@@ -8,13 +8,20 @@ from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from backend.app.core.permissions import permissions_for
-from backend.app.core.security import generate_token, hash_password, hash_token
+from backend.app.core.permission_grants import (
+    cap_grants,
+    effective_permissions,
+    encode_grants,
+    grants_for_responsibility,
+)
+from backend.app.core.security import generate_token, hash_password, hash_token, verify_password
 from backend.app.models.company_module import company_module_is_active
 from backend.app.models import (
     Company,
+    CompanyMembership,
     CompanyModule,
     EmployeeInvitation,
     EmployeeResponsibility,
@@ -64,7 +71,7 @@ class WorkspaceService:
         by_user: dict[UUID, list[EmployeeResponsibility]] = {}
         for row in responsibilities:
             by_user.setdefault(row.user_id, []).append(row)
-        can_see_all = "users:manage" in permissions_for(actor.role)
+        can_see_all = "users:manage" in effective_permissions(actor)
         visible = users if can_see_all else [user for user in users if user.id == actor.id or user.role in {UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER}]
         return [self._team_card(user, by_user.get(user.id, [])) for user in visible]
 
@@ -83,7 +90,7 @@ class WorkspaceService:
         }
 
     def assign_profile(self, actor: User, employee_id: UUID, *, job_title: str | None, department: str | None) -> User:
-        if "users:manage" not in permissions_for(actor.role):
+        if "users:manage" not in effective_permissions(actor):
             raise WorkspaceError("Permission insuffisante")
         employee = self._user_in_company(actor.company_id, employee_id)
         if job_title is not None:
@@ -96,13 +103,13 @@ class WorkspaceService:
     def list_responsibilities(self, actor: User, user_id: UUID | None = None) -> list[EmployeeResponsibility]:
         query = select(EmployeeResponsibility).where(EmployeeResponsibility.company_id == actor.company_id)
         target = user_id or actor.id
-        if "users:manage" not in permissions_for(actor.role) and target != actor.id:
+        if "users:manage" not in effective_permissions(actor) and target != actor.id:
             raise WorkspaceError("Permission insuffisante")
         query = query.where(EmployeeResponsibility.user_id == target).order_by(EmployeeResponsibility.created_at.desc())
         return list(self._session.scalars(query))
 
     def add_responsibility(self, actor: User, user_id: UUID, title: str, description: str | None) -> EmployeeResponsibility:
-        if "users:manage" not in permissions_for(actor.role):
+        if "users:manage" not in effective_permissions(actor):
             raise WorkspaceError("Permission insuffisante")
         self._user_in_company(actor.company_id, user_id)
         row = EmployeeResponsibility(
@@ -118,7 +125,7 @@ class WorkspaceService:
 
     def list_tasks(self, actor: User, *, mine: bool = False) -> list[EmployeeTask]:
         query = select(EmployeeTask).where(EmployeeTask.company_id == actor.company_id)
-        if mine or "users:manage" not in permissions_for(actor.role) and actor.role not in {UserRole.MANAGER, UserRole.OWNER, UserRole.ADMIN}:
+        if mine or "users:manage" not in effective_permissions(actor) and actor.role not in {UserRole.MANAGER, UserRole.OWNER, UserRole.ADMIN}:
             query = query.where(EmployeeTask.assignee_user_id == actor.id)
         return list(self._session.scalars(query.order_by(EmployeeTask.due_at.is_(None), EmployeeTask.due_at, EmployeeTask.created_at)))
 
@@ -135,7 +142,7 @@ class WorkspaceService:
         if actor.role == UserRole.VIEWER:
             raise WorkspaceError("Permission insuffisante")
         self._user_in_company(actor.company_id, assignee_user_id)
-        if assignee_user_id != actor.id and "users:manage" not in permissions_for(actor.role) and actor.role != UserRole.MANAGER:
+        if assignee_user_id != actor.id and "users:manage" not in effective_permissions(actor) and actor.role != UserRole.MANAGER:
             raise WorkspaceError("Vous ne pouvez attribuer une tâche qu'à vous-même")
         row = EmployeeTask(
             company_id=actor.company_id,
@@ -156,7 +163,7 @@ class WorkspaceService:
         )
         if task is None:
             raise WorkspaceError("Tâche introuvable")
-        if task.assignee_user_id != actor.id and "users:manage" not in permissions_for(actor.role):
+        if task.assignee_user_id != actor.id and "users:manage" not in effective_permissions(actor):
             raise WorkspaceError("Permission insuffisante")
         task.status = "done"
         task.completed_at = datetime.now(timezone.utc)
@@ -164,7 +171,7 @@ class WorkspaceService:
         return task
 
     def invite(self, actor: User, email: str, role: UserRole, job_title: str, department: str | None) -> EmployeeInvitation:
-        if "users:manage" not in permissions_for(actor.role):
+        if "users:manage" not in effective_permissions(actor):
             raise WorkspaceError("Permission insuffisante")
         if role == UserRole.OWNER:
             raise WorkspaceError("Le rôle propriétaire ne peut pas être attribué")
@@ -173,8 +180,12 @@ class WorkspaceService:
         if not ready or self._notifier is None or not hasattr(self._notifier, "send_transactional"):
             raise MailNotConfigured(missing)
         normalized = email.strip().lower()
-        if self._session.scalar(select(User.id).where(User.email == normalized)):
-            raise WorkspaceError("Un compte utilise déjà cet email")
+        existing_user = self._session.scalar(select(User).where(User.email == normalized))
+        if existing_user is not None and existing_user.company_id != actor.company_id:
+            raise WorkspaceError("Cette adresse appartient déjà à une autre entreprise")
+        granted = encode_grants(
+            cap_grants(grants_for_responsibility(job_title, role), effective_permissions(actor))
+        )
         existing = self._session.scalar(
             select(EmployeeInvitation).where(
                 EmployeeInvitation.company_id == actor.company_id,
@@ -196,6 +207,7 @@ class WorkspaceService:
                 role=role.value,
                 job_title=job_title.strip() or "Employee",
                 department=department,
+                permission_grants=granted,
                 token_hash=hash_token(raw),
                 code_hash=code_h,
                 code_salt=salt,
@@ -209,6 +221,7 @@ class WorkspaceService:
             invitation.role = role.value
             invitation.job_title = job_title.strip() or invitation.job_title
             invitation.department = department
+            invitation.permission_grants = granted
             invitation.token_hash = hash_token(raw)
             invitation.code_hash = code_h
             invitation.code_salt = salt
@@ -217,9 +230,11 @@ class WorkspaceService:
         self._session.flush()
         origin = get_settings().public_frontend_origin()
         link = f"{origin}/join?token={raw}"
+        company_name = actor.company.name if actor.company is not None else "votre entreprise"
+        title = invitation.job_title
         text_body = "\n".join(
             (
-                "Vous êtes invité à rejoindre un espace Avenqo.",
+                f"Vous êtes invité à rejoindre {company_name} comme {title}.",
                 "Ouvrez ce lien pour créer votre accès. Il est valable 24 heures.",
                 link,
                 "Si le lien ne s'ouvre pas, utilisez ce code avec la même adresse courriel.",
@@ -227,7 +242,7 @@ class WorkspaceService:
             )
         )
         html_body = (
-            "<p>Vous êtes invité à rejoindre un espace Avenqo.</p>"
+            f"<p>Vous êtes invité à rejoindre {company_name} comme {title}.</p>"
             f'<p><a href="{link}">Créer mon accès</a></p>'
             "<p>Ce lien est valable 24 heures. S'il ne s'ouvre pas, "
             f"utilisez le code <strong>{code}</strong> avec la même adresse courriel.</p>"
@@ -272,6 +287,56 @@ class WorkspaceService:
             invitations.append(self.invite(actor, email.strip(), role, job_title, department))
         return invitations
 
+    def preview_invitation(
+        self,
+        token: str | None = None,
+        *,
+        code: str | None = None,
+        email: str | None = None,
+    ) -> dict[str, str]:
+        invitation = self._find_invitation(token, code=code, email=email, consume_failure=False)
+        self._assert_invitation_open(invitation)
+        company = self._session.get(Company, invitation.company_id)
+        return {
+            "company_name": company.name if company is not None else "",
+            "job_title": invitation.job_title,
+            "department": invitation.department or "",
+        }
+
+    def revoke_invitation(self, actor: User, invitation_id: UUID) -> EmployeeInvitation:
+        if "users:manage" not in effective_permissions(actor):
+            raise WorkspaceError("Permission insuffisante")
+        invitation = self._session.get(EmployeeInvitation, invitation_id)
+        if invitation is None or invitation.company_id != actor.company_id:
+            raise WorkspaceError("Invitation introuvable")
+        if invitation.accepted_at is not None:
+            raise WorkspaceError("Cette invitation est déjà utilisée")
+        invitation.revoked_at = datetime.now(timezone.utc)
+        self._session.commit()
+        return invitation
+
+    def pending_invitations(self, actor: User) -> list[EmployeeInvitation]:
+        if "users:manage" not in effective_permissions(actor):
+            return []
+        now = datetime.now(timezone.utc)
+        rows = list(
+            self._session.scalars(
+                select(EmployeeInvitation).where(
+                    EmployeeInvitation.company_id == actor.company_id,
+                    EmployeeInvitation.accepted_at.is_(None),
+                    EmployeeInvitation.revoked_at.is_(None),
+                )
+            )
+        )
+        open_rows = []
+        for row in rows:
+            expires = row.expires_at
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            if expires > now:
+                open_rows.append(row)
+        return open_rows
+
     def accept_invitation(
         self,
         token: str | None,
@@ -282,67 +347,135 @@ class WorkspaceService:
         code: str | None = None,
         email: str | None = None,
     ) -> User:
-        invitation = None
+        invitation = self._find_invitation(token, code=code, email=email, consume_failure=True)
+        self._assert_invitation_open(invitation)
+        try:
+            locked = self._session.get(EmployeeInvitation, invitation.id, with_for_update=True)
+        except Exception:
+            self._session.rollback()
+            invitation = self._find_invitation(token, code=code, email=email, consume_failure=False)
+            locked = self._session.get(EmployeeInvitation, invitation.id)
+        if locked is None:
+            raise WorkspaceError("Invitation invalide ou expirée")
+        self._assert_invitation_open(locked)
+        now = datetime.now(timezone.utc)
+        existing = self._session.scalar(select(User).where(User.email == locked.email))
+        if existing is not None and existing.company_id != locked.company_id:
+            raise WorkspaceError("Cette adresse appartient déjà à une autre entreprise")
+        if existing is None:
+            PlanLimitsService(self._session).ensure_user_capacity(locked.company_id, adding=0)
+            user = User(
+                company_id=locked.company_id,
+                first_name=first_name.strip(),
+                last_name=last_name.strip(),
+                email=locked.email,
+                password_hash=hash_password(password),
+                role=UserRole(locked.role),
+                job_title=locked.job_title,
+                department=locked.department,
+                permission_grants=locked.permission_grants
+                or encode_grants(grants_for_responsibility(locked.job_title, locked.role)),
+                is_active=True,
+                email_verified_at=now,
+            )
+            self._session.add(user)
+            self._session.flush()
+            self._session.add(
+                CompanyMembership(
+                    user_id=user.id,
+                    company_id=locked.company_id,
+                    role=user.role,
+                    is_active=True,
+                )
+            )
+        else:
+            if not verify_password(password, existing.password_hash):
+                raise WorkspaceError("Le mot de passe de ce compte est incorrect")
+            user = existing
+            if user.role != UserRole.OWNER:
+                user.role = UserRole(locked.role)
+                user.job_title = locked.job_title
+                user.department = locked.department
+                user.permission_grants = locked.permission_grants or encode_grants(
+                    grants_for_responsibility(locked.job_title, locked.role)
+                )
+                user.is_active = True
+            membership = self._session.scalar(
+                select(CompanyMembership).where(
+                    CompanyMembership.user_id == user.id,
+                    CompanyMembership.company_id == locked.company_id,
+                )
+            )
+            if membership is None:
+                self._session.add(
+                    CompanyMembership(
+                        user_id=user.id,
+                        company_id=locked.company_id,
+                        role=user.role,
+                        is_active=True,
+                    )
+                )
+            else:
+                membership.is_active = True
+                membership.role = user.role
+        locked.accepted_at = now
+        try:
+            self._session.commit()
+        except IntegrityError:
+            self._session.rollback()
+            raise WorkspaceError("Invitation invalide ou expirée") from None
+        return user
+
+    def _find_invitation(
+        self,
+        token: str | None,
+        *,
+        code: str | None,
+        email: str | None,
+        consume_failure: bool,
+    ) -> EmployeeInvitation:
         now = datetime.now(timezone.utc)
         if code and email:
             normalized_email = email.strip().lower()
             invitation = self._session.scalar(
-                select(EmployeeInvitation).where(
-                    EmployeeInvitation.email == normalized_email,
-                    EmployeeInvitation.accepted_at.is_(None),
-                    EmployeeInvitation.revoked_at.is_(None),
-                ).order_by(EmployeeInvitation.created_at.desc())
+                select(EmployeeInvitation)
+                .where(EmployeeInvitation.email == normalized_email)
+                .order_by(EmployeeInvitation.created_at.desc())
             )
-            if invitation is None:
+            if invitation is None or invitation.accepted_at is not None or invitation.revoked_at is not None:
                 raise WorkspaceError("Aucune invitation active trouvée pour cet email")
             if invitation.failed_attempts >= 5:
                 invitation.revoked_at = now
                 self._session.commit()
                 raise WorkspaceError("Nombre maximal de tentatives dépassé. Invitation révoquée par sécurité.")
-            
-            clean_code = code.strip()
-            expected_hash = hash_token(f"{clean_code}:{invitation.code_salt}")
+            expected_hash = hash_token(f"{code.strip()}:{invitation.code_salt}")
             if not secrets.compare_digest(invitation.code_hash or "", expected_hash):
-                invitation.failed_attempts += 1
-                if invitation.failed_attempts >= 5:
-                    invitation.revoked_at = now
-                self._session.commit()
-                remaining = max(0, 5 - invitation.failed_attempts)
-                raise WorkspaceError(f"Code d'invitation incorrect. {remaining} tentative(s) restante(s).")
-        elif token:
+                if consume_failure:
+                    invitation.failed_attempts += 1
+                    if invitation.failed_attempts >= 5:
+                        invitation.revoked_at = now
+                    self._session.commit()
+                    remaining = max(0, 5 - invitation.failed_attempts)
+                    raise WorkspaceError(f"Code d'invitation incorrect. {remaining} tentative(s) restante(s).")
+                raise WorkspaceError("Invitation invalide ou expirée")
+            return invitation
+        if token:
             invitation = self._session.scalar(
                 select(EmployeeInvitation).where(EmployeeInvitation.token_hash == hash_token(token))
             )
-        else:
-            raise WorkspaceError("Jeton ou code d'invitation requis")
+            if invitation is None:
+                raise WorkspaceError("Invitation invalide ou expirée")
+            return invitation
+        raise WorkspaceError("Jeton ou code d'invitation requis")
+
+    @staticmethod
+    def _assert_invitation_open(invitation: EmployeeInvitation) -> None:
         now = datetime.now(timezone.utc)
-        expires = invitation.expires_at if invitation is not None else now
+        expires = invitation.expires_at
         if expires.tzinfo is None:
             expires = expires.replace(tzinfo=timezone.utc)
-        if (
-            invitation is None
-            or invitation.accepted_at is not None
-            or invitation.revoked_at is not None
-            or expires <= now
-        ):
+        if invitation.accepted_at is not None or invitation.revoked_at is not None or expires <= now:
             raise WorkspaceError("Invitation invalide ou expirée")
-        PlanLimitsService(self._session).ensure_user_capacity(invitation.company_id, adding=0)
-        user = User(
-            company_id=invitation.company_id,
-            first_name=first_name.strip(),
-            last_name=last_name.strip(),
-            email=invitation.email,
-            password_hash=hash_password(password),
-            role=UserRole(invitation.role),
-            job_title=invitation.job_title,
-            department=invitation.department,
-            is_active=True,
-            email_verified_at=now,
-        )
-        self._session.add(user)
-        invitation.accepted_at = now
-        self._session.commit()
-        return user
 
     def personal_briefing(self, actor: User) -> dict:
         now = datetime.now(timezone.utc)
@@ -354,8 +487,9 @@ class WorkspaceService:
             for task in open_tasks
             if task.due_at is not None and task.due_at.date() == now.date()
         ]
-        modules = list(
-            self._session.scalars(
+        modules = [
+            code
+            for code in self._session.scalars(
                 select(Module.code)
                 .join(CompanyModule, CompanyModule.module_id == Module.id)
                 .where(
@@ -363,7 +497,8 @@ class WorkspaceService:
                     company_module_is_active(),
                 )
             )
-        )
+            if self._module_visible(actor, code)
+        ]
         responsibilities = self.list_responsibilities(actor, actor.id)
         recommendations = []
         if overdue:
@@ -381,7 +516,8 @@ class WorkspaceService:
             "job_title": actor.job_title,
             "department": actor.department,
             "role": actor.role.value,
-            "permissions": list(permissions_for(actor.role)),
+            "company_name": actor.company.name if actor.company is not None else "",
+            "permissions": list(effective_permissions(actor)),
             "modules": modules,
             "responsibilities": [
                 {"id": str(row.id), "title": row.title, "description": row.description} for row in responsibilities
@@ -463,6 +599,21 @@ class WorkspaceService:
             "data": {"permissions": briefing["permissions"], "modules": briefing["modules"]},
             "requires_confirmation": False,
         }
+
+    @staticmethod
+    def _module_visible(actor: User, code: str) -> bool:
+        held = set(effective_permissions(actor))
+        if code == "crm":
+            return bool({"crm:appointments:read", "crm:clients:read"} & held)
+        if code == "accounting":
+            return "accounting:read" in held
+        if code == "marketing":
+            return "marketing:read" in held
+        if code == "retail":
+            return "retail:read" in held
+        if code == "voice":
+            return "modules:manage" in held
+        return "modules:manage" in held or "ai:use" in held
 
     def _today_appointments(self, actor: User) -> list[dict]:
         from backend.app.models.crm import CRMAppointment

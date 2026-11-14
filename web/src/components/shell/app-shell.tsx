@@ -201,17 +201,19 @@ export function AppShell({ children }: AppShellProps) {
     icon: React.ComponentType<{ className?: string }>;
     moduleKey?: string;
     badge?: string;
+    permissions?: string[];
   };
+  const granted = currentUser?.permissions;
 
   const allMainModules: NavItem[] = [
-    { href: "/dashboard", label: t.navigation.dashboard, icon: LayoutDashboard },
-    { href: "/retail", label: t.navigation.retailAi, icon: ShoppingBag, moduleKey: "retail" },
-    { href: "/crm", label: t.navigation.crmAi, icon: Network, moduleKey: "crm" },
-    { href: "/accounting", label: t.navigation.accountingAi, icon: ReceiptText, moduleKey: "accounting" },
+    { href: "/dashboard", label: t.navigation.dashboard, icon: LayoutDashboard, permissions: ["data:read"] },
+    { href: "/retail", label: t.navigation.retailAi, icon: ShoppingBag, moduleKey: "retail", permissions: ["retail:read"] },
+    { href: "/crm", label: t.navigation.crmAi, icon: Network, moduleKey: "crm", permissions: ["crm:appointments:read", "crm:clients:read"] },
+    { href: "/accounting", label: t.navigation.accountingAi, icon: ReceiptText, moduleKey: "accounting", permissions: ["accounting:read"] },
   ];
 
   const filterByEntitlements = (item: NavItem) => {
-    // 1. Items without moduleKey (e.g. Dashboard, Agents) are always authorized and visible
+    if (granted && item.permissions && !item.permissions.some((permission) => granted.includes(permission))) return false;
     if (!item.moduleKey) return true;
     // 2. Strict backend authorization: only show if backend explicitly returned this module key
     if (entitlementsStatus === "success" && activeModuleKeys) {
@@ -224,27 +226,27 @@ export function AppShell({ children }: AppShellProps) {
   const mainModules = allMainModules.filter(filterByEntitlements);
 
   const allAiModules: NavItem[] = [
-    { href: "/marketing", label: t.navigation.marketingAi, icon: Megaphone, moduleKey: "marketing" },
-    { href: "/voice", label: t.navigation.voiceAi, icon: Mic2, moduleKey: "voice" },
-    { href: "/ocr", label: t.navigation.ocrAi, icon: FileScan, moduleKey: "ocr" },
-    { href: "/legal", label: locale.startsWith("fr") ? "Legal AI" : "Legal AI", icon: FileScan, moduleKey: "legal" },
-    { href: "/chatbots", label: t.navigation.chatbotsAi, icon: MessagesSquare, moduleKey: "chatbots" },
-    { href: "/automations", label: t.navigation.automations, icon: Zap, moduleKey: "workflow" },
-    { href: "/agents", label: t.navigation.agentsAi, icon: Bot },
+    { href: "/marketing", label: t.navigation.marketingAi, icon: Megaphone, moduleKey: "marketing", permissions: ["marketing:read"] },
+    { href: "/voice", label: t.navigation.voiceAi, icon: Mic2, moduleKey: "voice", permissions: ["modules:manage"] },
+    { href: "/ocr", label: t.navigation.ocrAi, icon: FileScan, moduleKey: "ocr", permissions: ["ai:use"] },
+    { href: "/legal", label: locale.startsWith("fr") ? "Legal AI" : "Legal AI", icon: FileScan, moduleKey: "legal", permissions: ["ai:use"] },
+    { href: "/chatbots", label: t.navigation.chatbotsAi, icon: MessagesSquare, moduleKey: "chatbots", permissions: ["ai:use"] },
+    { href: "/automations", label: t.navigation.automations, icon: Zap, moduleKey: "workflow", permissions: ["ai:use", "modules:manage"] },
+    { href: "/agents", label: t.navigation.agentsAi, icon: Bot, permissions: ["ai:use"] },
   ];
 
   const aiModules = allAiModules.filter(filterByEntitlements);
 
   const platformModules = [
-    { href: "/workspace/modules", label: locale.startsWith("fr") ? "Explorer les modules" : "Explore Modules", icon: Sparkles, badge: locale.startsWith("fr") ? "Catalogue" : "Catalog" },
-    { href: "/connections", label: t.navigation.connections, icon: Plug },
-    { href: "/data", label: t.navigation.dataHub, icon: Database },
+    { href: "/workspace/modules", label: locale.startsWith("fr") ? "Explorer les modules" : "Explore Modules", icon: Sparkles, badge: locale.startsWith("fr") ? "Catalogue" : "Catalog", permissions: ["modules:manage"] },
+    { href: "/connections", label: t.navigation.connections, icon: Plug, permissions: ["data:manage"] },
+    { href: "/data", label: t.navigation.dataHub, icon: Database, permissions: ["data:read"] },
     { href: "/employees", label: locale.startsWith("fr") ? "Équipe" : "Team", icon: Users },
-    { href: "/billing", label: t.navigation.billing, icon: CreditCard },
-    { href: "/settings/contracts", label: locale.startsWith("fr") ? "Mes contrats" : "Contracts", icon: FileScan },
-    { href: "/settings", label: t.navigation.settings, icon: Settings },
-    { href: "/security", label: locale.startsWith("fr") ? "Sécurité & Confiance" : "Security & Trust", icon: ShieldAlert },
-  ];
+    { href: "/billing", label: t.navigation.billing, icon: CreditCard, permissions: ["billing:manage"] },
+    { href: "/settings/contracts", label: locale.startsWith("fr") ? "Mes contrats" : "Contracts", icon: FileScan, permissions: ["billing:manage"] },
+    { href: "/settings", label: t.navigation.settings, icon: Settings, permissions: ["company:manage"] },
+    { href: "/security", label: locale.startsWith("fr") ? "Sécurité & Confiance" : "Security & Trust", icon: ShieldAlert, permissions: ["company:manage"] },
+  ].filter((item) => !granted || !item.permissions || item.permissions.some((permission) => granted.includes(permission)));
 
   // Global Ctrl+K / Cmd+K listener
   useEffect(() => {

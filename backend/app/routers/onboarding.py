@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from sqlalchemy.orm import Session
 
 from backend.app.database import get_db
-from backend.app.dependencies.auth import get_tenant_context
+from backend.app.dependencies.auth import get_tenant_context, require_permission
 from backend.app.schemas.onboarding import (
     FinalizeOnboardingResponse,
     MultiStepOnboardingStateResponse,
@@ -161,6 +161,7 @@ def get_branding(
 async def update_branding(
     request: Request,
     tenant: TenantContext = Depends(get_tenant_context),
+    _: object = Depends(require_permission("company:manage")),
     service: OnboardingService = Depends(get_onboarding_service),
 ) -> dict[str, Any]:
     """Met à jour le thème ou réinitialise le style pour l'entreprise connectée."""
@@ -172,6 +173,7 @@ async def update_branding(
 async def upload_asset(
     file: UploadFile = File(...),
     tenant: TenantContext = Depends(get_tenant_context),
+    _: object = Depends(require_permission("company:manage")),
 ) -> dict[str, str]:
     """Téléchargement sécurisé de logo ou emblème d'entreprise avec validation de type et taille."""
     allowed_content_types = {

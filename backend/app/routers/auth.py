@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.config.settings import get_settings
 from backend.app.core.error_localization import catalog_message, localized_api_message
-from backend.app.core.permissions import permissions_for
+from backend.app.core.permission_grants import effective_permissions
 from backend.app.core.rate_limit import rate_limit
 from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_account_notifier, get_auth_service, get_current_identity
@@ -53,7 +53,7 @@ def _user_response(user: User) -> UserResponse:
         job_title=getattr(user, "job_title", "Owner"),
         email=user.email,
         role=user.role,
-        permissions=permissions_for(user.role),
+        permissions=effective_permissions(user),
         is_active=user.is_active,
         is_platform_admin=user.is_platform_admin,
         email_verified_at=user.email_verified_at,

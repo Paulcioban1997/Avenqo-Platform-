@@ -40,7 +40,15 @@ type Member = {
   role: string;
   job_title: string;
   department: string | null;
+  is_active?: boolean;
   responsibilities: string[];
+};
+
+type PendingInvite = {
+  id: string;
+  email: string;
+  job_title: string;
+  expires_at: string;
 };
 
 type Task = {
@@ -64,6 +72,7 @@ export function TeamWorkspace() {
   const { locale } = useLocale();
   const fr = locale.startsWith("fr");
   const { identity } = useSession();
+  const canManage = Boolean(identity?.user.permissions?.includes("users:manage"));
 
   const [team, setTeam] = useState<Member[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -72,6 +81,7 @@ export function TeamWorkspace() {
   const [error, setError] = useState("");
   const [successNotice, setSuccessNotice] = useState("");
   const [sandboxMail, setSandboxMail] = useState<Array<{ id: string; recipient: string; subject: string; body: string; created_at: string }>>([]);
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
 
   // MODALS
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
@@ -95,6 +105,11 @@ export function TeamWorkspace() {
       if (teamRes.ok) setTeam(await teamRes.json());
       if (taskRes.ok) setTasks(await taskRes.json());
       if (guideRes.ok) setBriefing(await guideRes.json());
+      const inviteRes = await apiFetch("/api/v1/workspace/invitations");
+      if (inviteRes.ok) {
+        const payload = await inviteRes.json();
+        setPendingInvites(Array.isArray(payload?.invitations) ? payload.invitations : []);
+      }
       const mailRes = await apiFetch("/api/v1/workspace/sandbox-mailbox");
       if (mailRes.ok) {
         const mail = await mailRes.json();
@@ -272,9 +287,11 @@ export function TeamWorkspace() {
             {fr ? "Équipe & Responsabilités" : "Team & Responsibilities"}
           </h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            {fr
-              ? "Gestion des invitations, rôles, permissions et tâches assignées."
-              : "Employee invitations, roles, permissions, and assigned tasks."}
+            {identity?.company.name
+              ? `${identity.company.name}${identity.user.job_title ? ` · ${identity.user.job_title}` : ""}`
+              : (fr
+                ? "Gestion des invitations, rôles, permissions et tâches assignées."
+                : "Employee invitations, roles, permissions, and assigned tasks.")}
           </p>
         </div>
 
@@ -294,14 +311,14 @@ export function TeamWorkspace() {
             <Plus className="w-4 h-4" />
             <span>{fr ? "Nouvelle tâche" : "New Task"}</span>
           </button>
-          <button
+          {canManage && <button
             id="invite-member-button"
             onClick={() => setIsInviteModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl bg-gradient-to-r from-[#0076FF] to-[#00D4FF] text-white shadow-md hover:shadow-lg transition"
           >
             <UserPlus className="w-4 h-4" />
             <span>{fr ? "Inviter un collaborateur" : "Invite Employee"}</span>
-          </button>
+          </button>}
         </div>
       </header>
 
@@ -396,12 +413,44 @@ export function TeamWorkspace() {
 
                 <div className="shrink-0 flex items-center gap-2">
                   <span className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase">
-                    {member.role}
+                    {member.job_title || member.role}
                   </span>
+                  {canManage && member.role !== "owner" && member.id !== identity?.user.id && (
+                    <button
+                      type="button"
+                      className="text-[10px] font-bold uppercase text-rose-600"
+                      onClick={() => {
+                        void apiFetch(`/api/v1/employees/${member.id}`, {
+                          method: "PATCH",
+                          body: JSON.stringify({ is_active: member.is_active === false }),
+                        }).then(() => load());
+                      }}
+                    >
+                      {member.is_active === false ? (fr ? "Réactiver" : "Restore") : (fr ? "Retirer l'accès" : "Remove access")}
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
           </div>
+          {canManage && pendingInvites.length > 0 && (
+            <ul className="space-y-2 text-sm">
+              {pendingInvites.map((invite) => (
+                <li key={invite.id} className="flex items-center justify-between gap-3">
+                  <span className="truncate text-slate-600 dark:text-slate-300">{invite.job_title} · {invite.email}</span>
+                  <button
+                    type="button"
+                    className="text-[10px] font-bold uppercase text-rose-600 shrink-0"
+                    onClick={() => {
+                      void apiFetch(`/api/v1/workspace/invitations/${invite.id}/revoke`, { method: "POST" }).then(() => load());
+                    }}
+                  >
+                    {fr ? "Révoquer" : "Revoke"}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
 
         {/* TASKS LIST */}

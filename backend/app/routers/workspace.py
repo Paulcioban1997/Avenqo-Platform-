@@ -10,9 +10,9 @@ from sqlalchemy.orm import Session
 
 from backend.app.config.settings import get_settings
 from backend.app.database import get_db
-from backend.app.dependencies.auth import CurrentIdentity, get_account_notifier, get_current_identity
+from backend.app.core.permission_grants import effective_permissions
+from backend.app.dependencies.auth import CurrentIdentity, get_account_notifier, get_auth_service, get_current_identity
 from backend.app.models import SandboxMailboxMessage, UserRole
-from backend.app.core.permissions import permissions_for
 from backend.app.schemas.workspace_sources import (
     WorkspaceSourceSelectionRequest,
     WorkspaceSourceSelectionResponse,
@@ -25,6 +25,7 @@ from backend.app.services.retail_source_service import (
     RetailSourceNotFound,
     RetailSourceService,
 )
+from backend.app.services.auth_service import AuthService
 from backend.app.services.workspace_service import MailNotConfigured, WorkspaceError, WorkspaceService
 from shared.ai_engine.contracts import TenantContext
 
@@ -46,7 +47,7 @@ def sandbox_mailbox(
     """Messages captured for this company. Production has no such mailbox."""
     if get_settings().environment.lower() in {"production", "prod"}:
         raise HTTPException(status_code=404, detail="Introuvable")
-    if "users:manage" not in permissions_for(identity.user.role):
+    if "users:manage" not in effective_permissions(identity.user):
         raise HTTPException(status_code=403, detail="Permission insuffisante")
     rows = db.scalars(
         select(SandboxMailboxMessage)
@@ -266,8 +267,58 @@ def invite_bulk(
     }
 
 
+@router.get("/invitations/preview")
+def preview_invitation(
+    token: str | None = None,
+    code: str | None = None,
+    email: str | None = None,
+    service: WorkspaceService = Depends(_service),
+) -> dict:
+    try:
+        return service.preview_invitation(token, code=code, email=email)
+    except WorkspaceError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.get("/invitations")
+def list_invitations(
+    identity: CurrentIdentity = Depends(get_current_identity),
+    service: WorkspaceService = Depends(_service),
+) -> dict:
+    rows = service.pending_invitations(identity.user)
+    return {
+        "invitations": [
+            {
+                "id": str(row.id),
+                "email": row.email,
+                "job_title": row.job_title,
+                "department": row.department,
+                "expires_at": row.expires_at.isoformat(),
+            }
+            for row in rows
+        ]
+    }
+
+
+@router.post("/invitations/{invitation_id}/revoke")
+def revoke_invitation(
+    invitation_id: UUID,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    service: WorkspaceService = Depends(_service),
+) -> dict:
+    try:
+        row = service.revoke_invitation(identity.user, invitation_id)
+    except WorkspaceError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"id": str(row.id), "revoked": True}
+
+
 @router.post("/invitations/accept", status_code=201)
-def accept_invitation(payload: InvitationAccept, service: WorkspaceService = Depends(_service)) -> dict:
+def accept_invitation(
+    payload: InvitationAccept,
+    service: WorkspaceService = Depends(_service),
+    auth: AuthService = Depends(get_auth_service),
+) -> dict:
     try:
         user = service.accept_invitation(
             payload.token,
@@ -281,7 +332,19 @@ def accept_invitation(payload: InvitationAccept, service: WorkspaceService = Dep
         raise HTTPException(400, str(exc)) from exc
     except PlanLimitReached as exc:
         raise plan_limit_exception(exc) from exc
-    return {"id": str(user.id), "email": user.email, "company_id": str(user.company_id)}
+    result = auth.create_auth_session(user)
+    permissions = set(effective_permissions(user))
+    company = user.company
+    return {
+        "id": str(user.id),
+        "email": user.email,
+        "company_id": str(user.company_id),
+        "company_name": company.name if company is not None else "",
+        "job_title": user.job_title,
+        "home": "/dashboard" if "data:read" in permissions else "/employees",
+        "access_token": result.access_token,
+        "refresh_token": result.refresh_token,
+    }
 
 
 class GuidanceAsk(BaseModel):
@@ -312,7 +375,7 @@ def get_sources_selection(
     db: Session = Depends(get_db),
 ) -> WorkspaceSourceSelectionResponse:
     """Retourne la configuration multi-sources actuelle de l'entreprise."""
-    if "data:read" not in permissions_for(identity.user.role):
+    if "data:read" not in effective_permissions(identity.user):
         raise HTTPException(status_code=403, detail="Permission refusée: data:read requise")
     tenant = TenantContext(company_id=identity.company_id, user_id=identity.user_id)
     service = RetailSourceService(db)
@@ -327,7 +390,7 @@ def set_sources_selection(
     db: Session = Depends(get_db),
 ) -> WorkspaceSourceSelectionResponse:
     """Met à jour le mode et la sélection multi-sources pour l'entreprise."""
-    if "data:manage" not in permissions_for(identity.user.role):
+    if "data:manage" not in effective_permissions(identity.user):
         raise HTTPException(status_code=403, detail="Permission refusée: data:manage requise")
     tenant = TenantContext(company_id=identity.company_id, user_id=identity.user_id)
     service = RetailSourceService(db)
