@@ -62,7 +62,12 @@ export async function POST(
     if (secFetchSite) headers["Sec-Fetch-Site"] = secFetchSite;
     const csrfToken = request.headers.get("x-csrf-token");
     if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
-    const xRequestedWith = request.headers.get("x-requested-with");
+    const clientIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+      || request.headers.get("x-real-ip")?.trim()
+      || "";
+    if (clientIp && clientIp.length <= 64 && /^[0-9A-Fa-f:.]+$/.test(clientIp)) {
+      headers["X-Avenqo-Client-IP"] = clientIp;
+    }
     const token = request.cookies.get("avenqo_access_token")?.value;
     if (token && !headers["Authorization"]) {
       headers["Authorization"] = `Bearer ${token}`;

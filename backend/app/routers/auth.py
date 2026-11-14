@@ -131,7 +131,7 @@ def _clear_auth_cookies(response: Response) -> None:
     "/register",
     response_model=MessageResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(rate_limit("auth_register", "rate_limit_auth_per_minute"))],
+    dependencies=[Depends(rate_limit("auth_register", "rate_limit_auth_per_minute", by_email=True))],
 )
 def register(
     http_request: Request,
@@ -197,12 +197,12 @@ def verify_email(
 @router.post(
     "/resend-verification",
     response_model=MessageResponse,
-    dependencies=[Depends(rate_limit("auth_email_resend", "rate_limit_auth_per_minute"))],
+    dependencies=[Depends(rate_limit("auth_email_resend", "rate_limit_auth_per_minute", by_email=True))],
 )
 @router.post(
     "/email/resend",
     response_model=MessageResponse,
-    dependencies=[Depends(rate_limit("auth_email_resend", "rate_limit_auth_per_minute"))],
+    dependencies=[Depends(rate_limit("auth_email_resend", "rate_limit_auth_per_minute", by_email=True))],
 )
 def resend_verification(
     http_request: Request,
@@ -226,7 +226,7 @@ def resend_verification(
 @router.post(
     "/login",
     response_model=AuthResponse,
-    dependencies=[Depends(rate_limit("auth_login", "rate_limit_auth_per_minute"))],
+    dependencies=[Depends(rate_limit("auth_login", "rate_limit_auth_per_minute", by_email=True))],
 )
 def login(
     request: LoginRequest,
@@ -451,7 +451,7 @@ def logout(
 @router.post(
     "/password/forgot",
     response_model=MessageResponse,
-    dependencies=[Depends(rate_limit("auth_password_forgot", "rate_limit_auth_per_minute"))],
+    dependencies=[Depends(rate_limit("auth_password_forgot", "rate_limit_auth_per_minute", by_email=True))],
 )
 def forgot_password(
     http_request: Request,

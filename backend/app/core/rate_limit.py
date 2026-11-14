@@ -9,6 +9,7 @@ tard si un déploiement multi-instances l'exige.
 
 from __future__ import annotations
 
+import re
 import time
 from threading import Lock
 from typing import Protocol
@@ -79,25 +80,51 @@ def set_rate_limiter(limiter: RateLimiter) -> None:
     _limiter = limiter
 
 
+_CLIENT_IP = re.compile(r"^[0-9A-Fa-f:.]+$")
+
+
 def _client_key(request: Request) -> str:
+    hinted = (request.headers.get("x-avenqo-client-ip") or "").strip()
+    if hinted and len(hinted) <= 64 and _CLIENT_IP.fullmatch(hinted):
+        return hinted
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        return forwarded.split(",")[0].strip()
+        return forwarded.split(",")[0].strip()[:64]
     return request.client.host if request.client else "unknown"
 
 
-def rate_limit(bucket: str, limit_attr: str):
+async def _subject_key(request: Request, by_email: bool) -> str:
+    """Sépare les personnes qui arrivent par la même adresse de sortie."""
+
+    client = _client_key(request)
+    if not by_email:
+        return client
+    email = ""
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = None
+    if isinstance(payload, dict):
+        raw = payload.get("email")
+        if isinstance(raw, str):
+            email = raw.strip().lower()[:320]
+    return f"{client}:{email}" if email else client
+
+
+def rate_limit(bucket: str, limit_attr: str, *, by_email: bool = False):
     """Crée une dépendance FastAPI limitant les requêtes par IP pour `bucket`.
 
     `limit_attr` est le nom du champ `Settings` fournissant la limite par
     minute (configurable par déploiement, jamais codée en dur ici).
+    `by_email` ajoute l'adresse du corps JSON, pour qu'une sortie partagée
+    ne bloque pas les autres comptes.
     """
 
-    def dependency(request: Request, settings: Settings = Depends(get_settings)) -> None:
+    async def dependency(request: Request, settings: Settings = Depends(get_settings)) -> None:
         if not settings.rate_limit_enabled:
             return
         limit = getattr(settings, limit_attr)
-        if not allow_rate_limit(bucket, _client_key(request), limit):
+        if not allow_rate_limit(bucket, await _subject_key(request, by_email), limit):
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="Trop de requêtes, veuillez réessayer plus tard.",

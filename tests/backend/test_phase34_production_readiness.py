@@ -201,6 +201,23 @@ def test_login_endpoint_is_rate_limited(client: TestClient, monkeypatch: pytest.
     get_settings.cache_clear()
 
 
+def test_login_rate_limit_follows_the_person_not_the_shared_exit(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RATE_LIMIT_AUTH_PER_MINUTE", "2")
+    get_settings.cache_clear()
+    shared = {"X-Avenqo-Client-IP": "203.0.113.10"}
+    owner = {"email": "owner@example.com", "password": "wrong-password"}
+    other = {"email": "other@example.com", "password": "wrong-password"}
+    assert 429 not in [client.post("/api/v1/auth/login", json=owner, headers=shared).status_code for _ in range(2)]
+    assert client.post("/api/v1/auth/login", json=owner, headers=shared).status_code == 429
+    assert client.post("/api/v1/auth/login", json=other, headers=shared).status_code != 429
+    assert client.post(
+        "/api/v1/auth/login",
+        json=owner,
+        headers={"X-Avenqo-Client-IP": "203.0.113.11"},
+    ).status_code != 429
+    get_settings.cache_clear()
+
+
 def test_rate_limit_can_be_disabled(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("RATE_LIMIT_ENABLED", "false")
     monkeypatch.setenv("RATE_LIMIT_AUTH_PER_MINUTE", "1")
