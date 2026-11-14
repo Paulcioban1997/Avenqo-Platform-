@@ -8,7 +8,8 @@ import { useLocale } from "@/lib/i18n/locale-context";
 
 export function JoinWorkspaceView() {
   const params = useSearchParams();
-  const token = params.get("token")?.trim() || "";
+  const rawToken = params.get("token")?.trim() || "";
+  const token = rawToken.length >= 60 ? rawToken : "";
   const { locale } = useLocale();
   const fr = locale.startsWith("fr");
   const [firstName, setFirstName] = useState("");
@@ -27,14 +28,22 @@ export function JoinWorkspaceView() {
     try {
       const response = await apiFetch("/api/v1/workspace/invitations/accept", {
         method: "POST",
-        body: JSON.stringify({
-          token: token || undefined,
-          email: token ? undefined : email.trim(),
-          code: token ? undefined : code.trim(),
-          first_name: firstName.trim(),
-          last_name: lastName.trim(),
-          password,
-        }),
+        body: JSON.stringify(
+          email.trim() && code.trim()
+            ? {
+                email: email.trim(),
+                code: code.trim(),
+                first_name: firstName.trim(),
+                last_name: lastName.trim(),
+                password,
+              }
+            : {
+                token: token || undefined,
+                first_name: firstName.trim(),
+                last_name: lastName.trim(),
+                password,
+              },
+        ),
       });
       if (!response.ok) return;
       setDone(true);
@@ -75,17 +84,20 @@ export function JoinWorkspaceView() {
               {fr ? "Nom" : "Last name"}
               <input required value={lastName} onChange={(event) => setLastName(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm font-normal normal-case" />
             </label>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
+              {fr ? "Courriel" : "Email"}
+              <input required={!token} type="email" value={email} onChange={(event) => setEmail(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm font-normal normal-case" />
+            </label>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
+              {fr ? "Code du courriel" : "Code from the email"}
+              <input required={!token} inputMode="numeric" value={code} onChange={(event) => setCode(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm font-normal normal-case" />
+            </label>
             {!token && (
-              <>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
-                  {fr ? "Courriel" : "Email"}
-                  <input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm font-normal normal-case" />
-                </label>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
-                  {fr ? "Code reçu par courriel" : "Code from the email"}
-                  <input required inputMode="numeric" value={code} onChange={(event) => setCode(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm font-normal normal-case" />
-                </label>
-              </>
+              <p className="text-xs text-amber-200">
+                {fr
+                  ? "Le lien du courriel est coupé. Entrez le code affiché sous le lien."
+                  : "The email link was cut off. Enter the code shown under the link."}
+              </p>
             )}
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
               {fr ? "Mot de passe" : "Password"}

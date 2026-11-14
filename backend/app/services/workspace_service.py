@@ -216,24 +216,40 @@ class WorkspaceService:
             invitation.expires_at = now + timedelta(hours=24)
         self._session.flush()
         origin = get_settings().public_frontend_origin()
+        link = f"{origin}/join?token={raw}"
+        text_body = "\n".join(
+            (
+                "Vous êtes invité à rejoindre un espace Avenqo.",
+                "Ouvrez ce lien pour créer votre accès. Il est valable 24 heures.",
+                link,
+                "Si le lien ne s'ouvre pas, utilisez ce code avec la même adresse courriel.",
+                f"Code: {code}",
+            )
+        )
+        html_body = (
+            "<p>Vous êtes invité à rejoindre un espace Avenqo.</p>"
+            f'<p><a href="{link}">Créer mon accès</a></p>'
+            "<p>Ce lien est valable 24 heures. S'il ne s'ouvre pas, "
+            f"utilisez le code <strong>{code}</strong> avec la même adresse courriel.</p>"
+        )
         from backend.app.services.account_notifications import sandbox_mail_company_id, sandbox_mail_session
 
         company_token = sandbox_mail_company_id.set(str(actor.company_id))
         session_token = sandbox_mail_session.set(self._session)
         try:
-            self._notifier.send_transactional(  # type: ignore[union-attr]
-                normalized,
-                "Invitation Avenqo",
-                "\n".join(
-                    (
-                        "Vous êtes invité à rejoindre un espace Avenqo.",
-                        "Ouvrez ce lien pour créer votre accès. Il est valable 24 heures.",
-                        f"{origin}/join?token={raw}",
-                        "Si le lien ne s'ouvre pas, utilisez ce code avec la même adresse courriel.",
-                        f"Code: {code}",
-                    )
-                ),
-            )
+            try:
+                self._notifier.send_transactional(  # type: ignore[union-attr]
+                    normalized,
+                    "Invitation Avenqo",
+                    text_body,
+                    html_body,
+                )
+            except TypeError:
+                self._notifier.send_transactional(  # type: ignore[union-attr]
+                    normalized,
+                    "Invitation Avenqo",
+                    text_body,
+                )
         except Exception:
             self._session.rollback()
             raise MailNotConfigured(missing) from None

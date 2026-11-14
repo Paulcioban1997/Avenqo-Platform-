@@ -200,6 +200,15 @@ def test_sandbox_mailbox_stores_the_code_for_one_company_only():
     session.close()
 
 
+def test_broken_invitation_link_tells_the_person_to_use_the_code():
+    from backend.app.core.error_localization import http_error_message
+
+    message = http_error_message(400, "fr-CA", "Invitation invalide ou expirée")
+    assert "code" in message
+    assert "lien" in message
+    assert "n’a pas pu être traitée" not in message and "n'a pas pu être traitée" not in message
+
+
 def test_pending_invitation_is_sent_again_with_a_new_link():
     session = _session()
     _company(session, "resend-tenant")

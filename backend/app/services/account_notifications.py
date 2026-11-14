@@ -182,8 +182,8 @@ class AccountNotificationService:
             body,
         )
 
-    def send_transactional(self, recipient: str, subject: str, body: str) -> None:
-        self._send(recipient, subject, body)
+    def send_transactional(self, recipient: str, subject: str, body: str, html_body: str | None = None) -> None:
+        self._send(recipient, subject, body, html_body)
 
     @staticmethod
     def _invoice_labels(locale: str) -> dict[str, str]:
@@ -202,8 +202,9 @@ class AccountNotificationService:
         base_url = self._settings.public_frontend_origin()
         return f"{base_url}{path}?{urlencode(params)}"
 
-    def _send(self, recipient: str, subject: str, body: str) -> None:
-        html_body = "<p>" + escape(body).replace("\n\n", "</p><p>").replace("\n", "<br>") + "</p>"
+    def _send(self, recipient: str, subject: str, body: str, html_body: str | None = None) -> None:
+        if not html_body:
+            html_body = "<p>" + escape(body).replace("\n\n", "</p><p>").replace("\n", "<br>") + "</p>"
         self._transport.send(recipient, subject, body, html_body)
 
 
