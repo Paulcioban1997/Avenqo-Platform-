@@ -44,6 +44,7 @@ import { CreditMeter } from "./credit-meter";
 import { useSession, type OrganizationItem } from "@/lib/session-context";
 import { GlobalSourceSelector } from "./global-source-selector";
 import { apiFetch } from "@/lib/api-request";
+import { accessibleSurface, readableText } from "@/lib/themes/theme-contrast";
 import { RequestFailure } from "@/components/ui/request-failure";
 import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
 
@@ -127,7 +128,10 @@ export function AppShell({ children }: AppShellProps) {
     const primary = hex(tenantBrand?.primary_color, "#0076FF");
     const secondary = hex(tenantBrand?.secondary_color, "#0B132B");
     const accent = hex(tenantBrand?.accent_color, "#00D4FF");
-    const mode = tenantBrand?.mode === "light" ? "light" : "dark";
+    const onSecondary = readableText(secondary);
+    const buttonSurface = accessibleSurface(primary);
+    const onButton = readableText(buttonSurface);
+    const mode = onSecondary === "#F8FAFC" ? "dark" : "light";
     document.documentElement.dataset.tenantTheme = mode;
     document.documentElement.classList.toggle("dark", mode === "dark");
     let style = document.getElementById("tenant-brand-style");
@@ -137,13 +141,13 @@ export function AppShell({ children }: AppShellProps) {
       document.head.appendChild(style);
     }
     style.textContent = `
-      html[data-tenant-theme] { --tenant-primary: ${primary}; --tenant-secondary: ${secondary}; --tenant-accent: ${accent}; }
+      html[data-tenant-theme] { --tenant-primary: ${primary}; --tenant-secondary: ${secondary}; --tenant-accent: ${accent}; --tenant-on-secondary: ${onSecondary}; --tenant-on-primary: ${onButton}; }
       html[data-tenant-theme] .min-h-screen,
       html[data-tenant-theme] header,
-      html[data-tenant-theme] aside { background-color: ${secondary} !important; }
-      html[data-tenant-theme] .bg-\\[\\#0076FF\\] { background-color: ${primary} !important; }
-      html[data-tenant-theme] .text-\\[\\#0076FF\\],
-      html[data-tenant-theme] .border-\\[\\#0076FF\\] { color: ${primary} !important; border-color: ${primary} !important; }
+      html[data-tenant-theme] aside { background-color: ${secondary} !important; color: ${onSecondary}; }
+      html[data-tenant-theme] .bg-\\[\\#0076FF\\] { background-color: ${buttonSurface} !important; color: ${onButton} !important; }
+      html[data-tenant-theme] .text-\\[\\#0076FF\\] { color: ${primary} !important; }
+      html[data-tenant-theme] .border-\\[\\#0076FF\\] { border-color: ${primary} !important; }
       html[data-tenant-theme] .ring-\\[\\#0076FF\\] { --tw-ring-color: ${primary} !important; }
       html[data-tenant-theme] .text-\\[\\#00D4FF\\] { color: ${accent} !important; }
     `;

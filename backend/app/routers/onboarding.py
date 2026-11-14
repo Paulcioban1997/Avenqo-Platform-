@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import base64
+import json
+import re
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from sqlalchemy.orm import Session
 
 from backend.app.database import get_db
@@ -20,8 +22,48 @@ from backend.app.schemas.onboarding import (
 )
 from backend.app.services.onboarding_service import OnboardingService
 from shared.ai_engine.contracts import TenantContext
+from shared.themes.theme_catalog import THEMES_BY_ID
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
+
+_HEX_COLOR = re.compile(r"^#(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$")
+_BRANDING_COLOR_FIELDS = ("primary_color", "secondary_color", "accent_color")
+
+
+async def read_branding_payload(request: Request) -> dict[str, Any]:
+    """Lit le JSON de marque même si le navigateur l'envoie en text/plain.
+
+    FastAPI n'analyse un dict que pour ``application/json``. Un corps JSON
+    valide sans ce type devient une chaîne et répond ``dict_type``, affiché
+    « Cette valeur est invalide ».
+    """
+    raw = await request.body()
+    if len(raw) > 16_384:
+        raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="Corps de requête trop volumineux")
+    text = raw.decode("utf-8-sig").strip()
+    if not text:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Corps de requête vide")
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, str):
+            parsed = json.loads(parsed)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="JSON invalide") from exc
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Le corps doit être un objet JSON")
+    if parsed.get("reset") is True:
+        return parsed
+    theme_id = parsed.get("theme_id")
+    if theme_id not in (None, "") and theme_id not in THEMES_BY_ID:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Thème inconnu")
+    for field in _BRANDING_COLOR_FIELDS:
+        value = parsed.get(field)
+        if value not in (None, "") and not _HEX_COLOR.fullmatch(str(value)):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=f"{field} invalide")
+    mode = parsed.get("mode")
+    if mode not in (None, "", "dark", "light"):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Mode de thème invalide")
+    return parsed
 
 
 def get_onboarding_service(db: Session = Depends(get_db)) -> OnboardingService:
@@ -116,12 +158,13 @@ def get_branding(
 
 
 @router.put("/branding")
-def update_branding(
-    payload: dict[str, Any],
+async def update_branding(
+    request: Request,
     tenant: TenantContext = Depends(get_tenant_context),
     service: OnboardingService = Depends(get_onboarding_service),
 ) -> dict[str, Any]:
     """Met à jour le thème ou réinitialise le style pour l'entreprise connectée."""
+    payload = await read_branding_payload(request)
     return service.update_tenant_branding(tenant, payload)
 
 

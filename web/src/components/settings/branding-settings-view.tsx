@@ -162,6 +162,7 @@ export function BrandingSettingsView() {
     setIsSaving(true);
     setSaveSuccess(false);
     setErrorMessage(null);
+    window.dispatchEvent(new CustomEvent("avenqo-branding", { detail: designState }));
     try {
       const res = await apiFetch("/api/v1/onboarding/branding", {
         method: "PUT",

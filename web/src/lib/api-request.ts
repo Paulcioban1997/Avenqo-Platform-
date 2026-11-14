@@ -28,6 +28,9 @@ function refreshBrowserSession(): Promise<boolean> {
 export async function apiFetch(input: string, init: RequestInit = {}, allowRefresh = true): Promise<Response> {
   const headers = new Headers(getAuthHeaders());
   new Headers(init.headers).forEach((value, key) => headers.set(key, value));
+  if (typeof init.body === "string" && !headers.has("content-type")) {
+    headers.set("content-type", "application/json");
+  }
   const deadline = AbortSignal.timeout(input.includes("/ai/") ? 100_000 : 30_000);
   try {
     const response = await fetch(input, {
