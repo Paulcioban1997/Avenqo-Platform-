@@ -5,6 +5,14 @@ import { apiFetch, ApiRequestError } from "@/lib/api-request";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { useSession } from "@/lib/session-context";
 import {
+  ACCESS_SUMMARY,
+  COMPANY_RESPONSIBILITIES,
+  COMPANY_SIZES,
+  DEFAULT_RESPONSIBILITY_ID,
+  invitationFromResponsibility,
+  responsibilityById,
+} from "@/lib/workspace/company-responsibilities";
+import {
   Users,
   UserPlus,
   CheckCircle,
@@ -68,9 +76,7 @@ export function TeamWorkspace() {
   // MODALS
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState("user");
-  const [inviteJobTitle, setInviteJobTitle] = useState("Employé");
-  const [inviteDepartment, setInviteDepartment] = useState("");
+  const [inviteResponsibilityId, setInviteResponsibilityId] = useState(DEFAULT_RESPONSIBILITY_ID);
   const [inviting, setInviting] = useState(false);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [taskTitle, setTaskTitle] = useState("");
@@ -121,6 +127,7 @@ export function TeamWorkspace() {
         return;
       }
 
+      const invitation = invitationFromResponsibility(inviteResponsibilityId, locale);
       let payload: any = null;
       if (rawList.length > 1) {
         const response = await apiFetch("/api/v1/workspace/invitations/bulk", {
@@ -128,9 +135,9 @@ export function TeamWorkspace() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             emails: rawList,
-            role: inviteRole,
-            job_title: inviteJobTitle.trim() || "Collaborateur",
-            department: inviteDepartment.trim() || undefined,
+            role: invitation.role,
+            job_title: invitation.job_title,
+            department: invitation.department,
           }),
         });
         if (response.ok) {
@@ -146,7 +153,7 @@ export function TeamWorkspace() {
                 : "The invitation was not sent.")
           );
           setInviteEmail("");
-          setInviteDepartment("");
+          setInviteResponsibilityId(DEFAULT_RESPONSIBILITY_ID);
           await load();
         }
       } else {
@@ -155,9 +162,9 @@ export function TeamWorkspace() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             email: rawList[0],
-            role: inviteRole,
-            job_title: inviteJobTitle.trim() || "Collaborateur",
-            department: inviteDepartment.trim() || undefined,
+            role: invitation.role,
+            job_title: invitation.job_title,
+            department: invitation.department,
           }),
         });
 
@@ -173,7 +180,7 @@ export function TeamWorkspace() {
                 : "The invitation was not sent.")
           );
           setInviteEmail("");
-          setInviteDepartment("");
+          setInviteResponsibilityId(DEFAULT_RESPONSIBILITY_ID);
           await load();
         }
       }
@@ -489,46 +496,36 @@ export function TeamWorkspace() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                    {fr ? "Rôle" : "Role"}
-                  </label>
-                  <select
-                    value={inviteRole}
-                    onChange={(e) => setInviteRole(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
-                  >
-                    <option value="user">{fr ? "Employé standard" : "Standard User"}</option>
-                    <option value="manager">{fr ? "Manager" : "Manager"}</option>
-                    <option value="admin">{fr ? "Administrateur" : "Admin"}</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                    {fr ? "Titre de poste" : "Job Title"}
-                  </label>
-                  <input
-                    type="text"
-                    value={inviteJobTitle}
-                    onChange={(e) => setInviteJobTitle(e.target.value)}
-                    placeholder={fr ? "ex: Réceptionniste" : "e.g. Receptionist"}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
-                  />
-                </div>
-              </div>
-
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                  {fr ? "Département (optionnel)" : "Department (optional)"}
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5" htmlFor="invite-responsibility">
+                  {fr ? "Responsabilité" : "Responsibility"}
                 </label>
-                <input
-                  type="text"
-                  value={inviteDepartment}
-                  onChange={(e) => setInviteDepartment(e.target.value)}
-                  placeholder={fr ? "ex: Ventes, Clinique, Support" : "e.g. Sales, Clinic, Support"}
+                <select
+                  id="invite-responsibility"
+                  value={inviteResponsibilityId}
+                  onChange={(e) => setInviteResponsibilityId(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
-                />
+                >
+                  {COMPANY_SIZES.map((size) => (
+                    <optgroup key={size.id} label={fr ? size.fr : size.en}>
+                      {COMPANY_RESPONSIBILITIES.filter((item) => item.size === size.id).map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {fr ? item.title.fr : item.title.en}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                {(() => {
+                  const chosen = responsibilityById(inviteResponsibilityId);
+                  return (
+                    <p className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                      {fr
+                        ? `${chosen.department.fr}. ${ACCESS_SUMMARY[chosen.access].fr}. Le poste n'est saisi qu'une fois.`
+                        : `${chosen.department.en}. ${ACCESS_SUMMARY[chosen.access].en}. The position is entered once.`}
+                    </p>
+                  );
+                })()}
               </div>
 
               <div className="flex justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
