@@ -48,7 +48,9 @@ type PendingInvite = {
   id: string;
   email: string;
   job_title: string;
+  department?: string | null;
   expires_at: string;
+  member_name?: string;
 };
 
 type Task = {
@@ -405,25 +407,46 @@ export function TeamWorkspace() {
                 </div>
               </div>
             ))}
+            {canManage && pendingInvites.map((invite) => {
+              const initials = invite.job_title
+                .split(/\s+/)
+                .slice(0, 2)
+                .map((word) => word[0] || "")
+                .join("")
+                .toUpperCase() || "E";
+              return (
+                <div key={invite.id} className="py-3.5 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-100 to-cyan-100 dark:from-blue-950 dark:to-slate-800 text-[#0076FF] dark:text-[#00D4FF] font-bold text-xs flex items-center justify-center shrink-0">
+                      {initials}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-bold text-slate-900 dark:text-white text-sm truncate">{invite.job_title}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                        {invite.member_name
+                          ? (fr ? `Même accès que ${invite.member_name}` : `Same access as ${invite.member_name}`)
+                          : (invite.department || (fr ? "En attente" : "Pending"))}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="shrink-0 flex items-center gap-2">
+                    <span className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase">
+                      {invite.job_title}
+                    </span>
+                    <button
+                      type="button"
+                      className="text-[10px] font-bold uppercase text-rose-600"
+                      onClick={() => {
+                        void apiFetch(`/api/v1/workspace/invitations/${invite.id}/revoke`, { method: "POST" }).then(() => load());
+                      }}
+                    >
+                      {fr ? "Révoquer" : "Revoke"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          {canManage && pendingInvites.length > 0 && (
-            <ul className="space-y-2 text-sm">
-              {pendingInvites.map((invite) => (
-                <li key={invite.id} className="flex items-center justify-between gap-3">
-                  <span className="truncate text-slate-600 dark:text-slate-300">{invite.job_title} · {invite.email}</span>
-                  <button
-                    type="button"
-                    className="text-[10px] font-bold uppercase text-rose-600 shrink-0"
-                    onClick={() => {
-                      void apiFetch(`/api/v1/workspace/invitations/${invite.id}/revoke`, { method: "POST" }).then(() => load());
-                    }}
-                  >
-                    {fr ? "Révoquer" : "Revoke"}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
         </section>
 
         {/* TASKS LIST */}

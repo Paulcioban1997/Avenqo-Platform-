@@ -183,6 +183,11 @@ class WorkspaceService:
         existing_user = self._session.scalar(select(User).where(User.email == normalized))
         if existing_user is not None and existing_user.company_id != actor.company_id:
             raise WorkspaceError("Cette adresse appartient déjà à une autre entreprise")
+        if existing_user is not None and existing_user.role not in {UserRole.USER, UserRole.VIEWER, UserRole.ANALYST}:
+            raise WorkspaceError(
+                f"{existing_user.first_name} {existing_user.last_name} a déjà un accès avec cette adresse. "
+                "Utilisez un autre courriel pour ajouter une autre personne."
+            )
         granted = encode_grants(
             cap_grants(grants_for_responsibility(job_title, role), effective_permissions(actor))
         )
@@ -297,10 +302,15 @@ class WorkspaceService:
         invitation = self._find_invitation(token, code=code, email=email, consume_failure=False)
         self._assert_invitation_open(invitation)
         company = self._session.get(Company, invitation.company_id)
+        member = self._session.scalar(select(User).where(User.email == invitation.email))
+        same_company = member is not None and member.company_id == invitation.company_id
         return {
             "company_name": company.name if company is not None else "",
             "job_title": invitation.job_title,
             "department": invitation.department or "",
+            "already_member": "yes" if same_company else "",
+            "member_name": f"{member.first_name} {member.last_name}".strip() if same_company and member is not None else "",
+            "member_title": member.job_title if same_company and member is not None else "",
         }
 
     def revoke_invitation(self, actor: User, invitation_id: UUID) -> EmployeeInvitation:
@@ -389,17 +399,31 @@ class WorkspaceService:
                 )
             )
         else:
-            if not verify_password(password, existing.password_hash):
-                raise WorkspaceError("Le mot de passe de ce compte est incorrect")
-            user = existing
-            if user.role != UserRole.OWNER:
-                user.role = UserRole(locked.role)
-                user.job_title = locked.job_title
-                user.department = locked.department
-                user.permission_grants = locked.permission_grants or encode_grants(
+            unused_account = existing.last_login is None and existing.role in {
+                UserRole.USER,
+                UserRole.VIEWER,
+                UserRole.ANALYST,
+            }
+            if existing.role == UserRole.OWNER:
+                if not verify_password(password, existing.password_hash):
+                    raise WorkspaceError("Ce courriel a déjà un accès. Entrez le mot de passe actuel de ce compte.")
+            elif unused_account:
+                existing.password_hash = hash_password(password)
+                existing.first_name = first_name.strip() or existing.first_name
+                existing.last_name = last_name.strip() or existing.last_name
+                existing.role = UserRole(locked.role)
+                existing.job_title = locked.job_title
+                existing.department = locked.department
+                existing.permission_grants = locked.permission_grants or encode_grants(
                     grants_for_responsibility(locked.job_title, locked.role)
                 )
-                user.is_active = True
+                existing.is_active = True
+            elif existing.last_login is None:
+                existing.password_hash = hash_password(password)
+                existing.is_active = True
+            elif not verify_password(password, existing.password_hash):
+                raise WorkspaceError("Ce courriel a déjà un accès. Entrez le mot de passe actuel de ce compte.")
+            user = existing
             membership = self._session.scalar(
                 select(CompanyMembership).where(
                     CompanyMembership.user_id == user.id,

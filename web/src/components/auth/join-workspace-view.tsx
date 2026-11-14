@@ -20,6 +20,8 @@ export function JoinWorkspaceView() {
   const [submitting, setSubmitting] = useState(false);
   const [companyName, setCompanyName] = useState("");
   const [responsibility, setResponsibility] = useState("");
+  const [memberName, setMemberName] = useState("");
+  const [memberTitle, setMemberTitle] = useState("");
 
   useEffect(() => {
     const query = token
@@ -35,6 +37,8 @@ export function JoinWorkspaceView() {
         if (cancelled || !response.ok) return;
         setCompanyName(String(payload.company_name || ""));
         setResponsibility(String(payload.job_title || ""));
+        setMemberName(String(payload.member_name || ""));
+        setMemberTitle(String(payload.member_title || ""));
       })
       .catch(() => undefined);
     return () => {
@@ -105,6 +109,13 @@ export function JoinWorkspaceView() {
               ? "Créez votre accès avec le lien reçu par courriel."
               : "Create your access with the link you received by email.")}
         </p>
+        {memberName && (
+          <p className="text-sm text-amber-200">
+            {fr
+              ? `Ce courriel est déjà l'accès de ${memberName}${memberTitle ? `, ${memberTitle}` : ""}. Continuer ouvre cet accès avec le mot de passe choisi. Une autre personne a besoin de son propre courriel.`
+              : `This email is already ${memberName}${memberTitle ? `, ${memberTitle}` : ""}. Continuing opens that access with the password you choose. Another person needs their own email.`}
+          </p>
+        )}
         <>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
               {fr ? "Prénom" : "First name"}

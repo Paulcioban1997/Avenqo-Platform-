@@ -12,7 +12,7 @@ from backend.app.config.settings import get_settings
 from backend.app.database import get_db
 from backend.app.core.permission_grants import effective_permissions
 from backend.app.dependencies.auth import CurrentIdentity, get_account_notifier, get_auth_service, get_current_identity
-from backend.app.models import SandboxMailboxMessage, UserRole
+from backend.app.models import SandboxMailboxMessage, User, UserRole
 from backend.app.schemas.workspace_sources import (
     WorkspaceSourceSelectionRequest,
     WorkspaceSourceSelectionResponse,
@@ -286,6 +286,10 @@ def list_invitations(
     service: WorkspaceService = Depends(_service),
 ) -> dict:
     rows = service.pending_invitations(identity.user)
+    known = {
+        user.email: user
+        for user in service._session.scalars(select(User).where(User.company_id == identity.user.company_id))
+    }
     return {
         "invitations": [
             {
@@ -294,6 +298,11 @@ def list_invitations(
                 "job_title": row.job_title,
                 "department": row.department,
                 "expires_at": row.expires_at.isoformat(),
+                "member_name": (
+                    f"{known[row.email].first_name} {known[row.email].last_name}".strip()
+                    if row.email in known
+                    else ""
+                ),
             }
             for row in rows
         ]

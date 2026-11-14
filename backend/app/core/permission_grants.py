@@ -15,7 +15,33 @@ from backend.app.models.base import UserRole
 
 _OWNER_ONLY = frozenset({"company:manage", "billing:manage"})
 
+# Même écran que l'administrateur déjà en place : modules, clients, chiffres et équipe.
+# La facturation et les paramètres de l'entreprise restent au propriétaire.
+_SAME_WORKSPACE = (
+    "users:manage",
+    "modules:manage",
+    "data:manage",
+    "data:read",
+    "crm:appointments:write",
+    "crm:appointments:read",
+    "crm:clients:read",
+    "crm:clients:write",
+    "marketing:read",
+    "marketing:connect",
+    "marketing:disconnect",
+    "marketing:admin",
+    "accounting:read",
+    "accounting:write",
+    "retail:read",
+    "tasks:own",
+    "ai:use",
+)
+
 _BY_TITLE: dict[str, tuple[str, ...]] = {
+    "adjoint administratif": _SAME_WORKSPACE,
+    "administrative assistant": _SAME_WORKSPACE,
+    "adjoint de direction": _SAME_WORKSPACE,
+    "executive assistant": _SAME_WORKSPACE,
     "réceptionniste": ("crm:appointments:read", "crm:appointments:write", "tasks:own"),
     "receptionist": ("crm:appointments:read", "crm:appointments:write", "tasks:own"),
     "comptable": ("accounting:read", "accounting:write", "data:read", "tasks:own"),

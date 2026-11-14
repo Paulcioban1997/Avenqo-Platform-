@@ -11,8 +11,8 @@ from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import sessionmaker
 
 from backend.app.config.settings import get_settings
-from backend.app.core.permission_grants import decode_grants
-from backend.app.core.security import create_access_token, hash_password
+from backend.app.core.permission_grants import decode_grants, grants_for_responsibility
+from backend.app.core.security import create_access_token, generate_token, hash_password, hash_token, verify_password
 from backend.app.database import get_db
 from backend.app.dependencies.auth import get_account_notifier
 from backend.app.models import (
@@ -22,6 +22,7 @@ from backend.app.models import (
     Company,
     CompanyMembership,
     CompanyStatus,
+    EmployeeInvitation,
     User,
     UserRole,
 )
@@ -274,6 +275,47 @@ def test_expired_revoked_and_removed_access_stop_at_the_server(db_session, clien
     revoked, revoked_raw, _mail = _invite(
         db_session, owner, f"later-{uuid4()}@example.com", UserRole.USER, "Technicien de service"
     )
+    assert "data:read" in grants_for_responsibility("Adjoint administratif", UserRole.USER)
+    assert "billing:manage" not in grants_for_responsibility("Adjoint administratif", UserRole.USER)
     WorkspaceService(db_session, _Mail()).revoke_invitation(owner, revoked.id)
     with pytest.raises(WorkspaceError):
         WorkspaceService(db_session, _Mail()).accept_invitation(revoked_raw, "Theo", "Tech", "Password123!")
+
+
+def test_existing_administrator_keeps_their_place_and_can_enter_with_the_new_password(db_session) -> None:
+    company = _company(db_session, f"keep-{uuid4().hex[:8]}")
+    owner = _owner(db_session, company)
+    email = f"mircea-{uuid4()}@example.com"
+    admin = User(
+        company_id=company.id,
+        first_name="Mircea",
+        last_name="Cioban",
+        email=email,
+        password_hash=hash_password("Oldpassword1!"),
+        role=UserRole.ADMIN,
+        job_title="Vice-président",
+        is_active=True,
+    )
+    db_session.add(admin)
+    db_session.commit()
+    with pytest.raises(WorkspaceError, match="déjà un accès"):
+        _invite(db_session, owner, email, UserRole.USER, "Adjoint administratif")
+    raw = generate_token()
+    db_session.add(EmployeeInvitation(
+        company_id=company.id,
+        invited_by_user_id=owner.id,
+        email=email,
+        role="user",
+        job_title="Adjoint administratif",
+        department="Administration",
+        token_hash=hash_token(raw),
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=2),
+    ))
+    db_session.commit()
+    joined = WorkspaceService(db_session, _Mail()).accept_invitation(raw, "Lucia", "Cioban", "Newpassword1!")
+    assert joined.id == admin.id
+    assert joined.first_name == "Mircea"
+    assert joined.role == UserRole.ADMIN
+    assert joined.job_title == "Vice-président"
+    assert verify_password("Newpassword1!", joined.password_hash)
+    assert db_session.scalar(select(func.count()).select_from(User).where(User.email == email)) == 1

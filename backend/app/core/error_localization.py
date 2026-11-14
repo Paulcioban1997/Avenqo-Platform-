@@ -997,6 +997,7 @@ def http_error_message(
         or "aucune invitation active" in detail_text
         or "autre entreprise" in detail_text
         or "mot de passe de ce compte" in detail_text
+        or "déjà un accès" in detail_text
         or "déjà utilisée" in detail_text
         or "invitation introuvable" in detail_text
     ):
