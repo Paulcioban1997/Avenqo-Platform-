@@ -102,7 +102,7 @@ export function DashboardView({
   const [regionalSplit, setRegionalSplit] = useState<DashboardSplit>({ available: false, items: [] });
   const [conversion, setConversion] = useState<DashboardConversion>({ available: false, value: null });
   const [currency, setCurrency] = useState("CAD");
-  const [hoveredTrendIdx, setHoveredTrendIdx] = useState<number | null>(null);
+  const [selectedTrendIdx, setSelectedTrendIdx] = useState<number | null>(null);
   const [calendarReconnectNeeded, setCalendarReconnectNeeded] = useState(false);
   const session = useSession();
   const loadRevision = useRef(0);
@@ -127,6 +127,7 @@ export function DashboardView({
     setKpis({});
     setPriorities([]);
     setTrendPoints([]);
+    setSelectedTrendIdx(null);
     setCategorySplit({ available: false, items: [] });
     setRegionalSplit({ available: false, items: [] });
     setConversion({ available: false, value: null });
@@ -459,47 +460,78 @@ export function DashboardView({
               </div>
             </div>
 
-            {/* Interactive SVG Chart or Empty State */}
+            {/* Interactive chart. Values stay outside the scroller so overflow cannot hide them. */}
             {isLoading ? (
               <ChartSkeleton height={240} />
             ) : hasData && trendPoints.length > 0 ? (
-              <HorizontalScroller>
-                <div className="h-60 flex items-end gap-3 pt-4" style={{ minWidth: `${Math.max(trendPoints.length * 48, 320)}px` }}>
-                  {trendPoints.map((point, idx) => {
-                    const maxRevenue = Math.max(...trendPoints.map((item) => item.revenue), 1);
-                    const maxOrders = Math.max(...trendPoints.map((item) => item.orders), 1);
-                    const revenueHeight = (point.revenue / maxRevenue) * 100;
-                    const ordersHeight = (point.orders / maxOrders) * 100;
-                    return (
-                    <div
-                      key={point.period}
-                      onMouseEnter={() => setHoveredTrendIdx(idx)}
-                      onMouseLeave={() => setHoveredTrendIdx(null)}
-                      className="flex-1 flex flex-col items-center h-full justify-end group cursor-pointer"
-                    >
-                      {hoveredTrendIdx === idx && (
-                        <div className="absolute top-0 px-2.5 py-1 rounded-lg bg-slate-900 text-white dark:bg-white dark:text-slate-900 text-[10px] font-bold shadow-md animate-in fade-in">
-                          {point.period}: {formatMoney(point.revenue)} / {point.orders.toLocaleString()} {t.dashboard.orders.toLowerCase()}
-                        </div>
-                      )}
-                      <div className="w-full max-w-[28px] flex items-end gap-1 h-full justify-center">
-                        <div
-                          className="w-1/2 rounded-t-md bg-[#0076FF] group-hover:bg-[#158bff] transition-all duration-300"
-                          style={{ height: `${revenueHeight}%` }}
-                        />
-                        <div
-                          className="w-1/2 rounded-t-md bg-[#00D4FF] group-hover:bg-cyan-300 transition-all duration-300"
-                          style={{ height: `${ordersHeight}%` }}
-                        />
-                      </div>
-                      <span className="mt-2 text-[11px] font-medium text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white">
-                        {point.period}
-                      </span>
+              <>
+                {selectedTrendIdx !== null && trendPoints[selectedTrendIdx] ? (
+                  <div
+                    role="status"
+                    className="mb-4 grid grid-cols-2 gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-white/[0.08] dark:bg-white/[0.04]"
+                  >
+                    <p className="col-span-2 text-xs font-semibold text-slate-500 dark:text-[#94A3B8]">
+                      {trendPoints[selectedTrendIdx].period}
+                    </p>
+                    <div>
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-[#94A3B8]">
+                        {t.dashboard.revenue}
+                      </p>
+                      <p className="text-lg font-bold tabular-nums text-slate-900 dark:text-[#F4F7FB]">
+                        {formatMoney(trendPoints[selectedTrendIdx].revenue)}
+                      </p>
                     </div>
-                    );
-                  })}
-                </div>
-              </HorizontalScroller>
+                    <div>
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-[#94A3B8]">
+                        {t.dashboard.orders}
+                      </p>
+                      <p className="text-lg font-bold tabular-nums text-slate-900 dark:text-[#F4F7FB]">
+                        {trendPoints[selectedTrendIdx].orders.toLocaleString(locale === "fr" ? "fr-CA" : "en-CA")}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mb-4 text-xs text-slate-500 dark:text-[#94A3B8]">
+                    {t.dashboard.trendPointHint}
+                  </p>
+                )}
+                <HorizontalScroller>
+                  <div className="h-60 flex items-end gap-3 pt-4" style={{ minWidth: `${Math.max(trendPoints.length * 48, 320)}px` }}>
+                    {trendPoints.map((point, idx) => {
+                      const maxRevenue = Math.max(...trendPoints.map((item) => item.revenue), 1);
+                      const maxOrders = Math.max(...trendPoints.map((item) => item.orders), 1);
+                      const revenueHeight = (point.revenue / maxRevenue) * 100;
+                      const ordersHeight = (point.orders / maxOrders) * 100;
+                      const selected = selectedTrendIdx === idx;
+                      const numberLocale = locale === "fr" ? "fr-CA" : "en-CA";
+                      return (
+                      <button
+                        key={point.period}
+                        type="button"
+                        aria-pressed={selected}
+                        aria-label={`${point.period}. ${t.dashboard.revenue} ${formatMoney(point.revenue)}. ${t.dashboard.orders} ${point.orders.toLocaleString(numberLocale)}`}
+                        onClick={() => setSelectedTrendIdx(idx)}
+                        className={`flex-1 flex flex-col items-center h-full justify-end rounded-lg px-0.5 group cursor-pointer ${selected ? "ring-2 ring-[#0076FF]" : ""}`}
+                      >
+                        <div className="w-full max-w-[28px] flex items-end gap-1 h-full justify-center">
+                          <div
+                            className="w-1/2 rounded-t-md bg-[#0076FF] group-hover:bg-[#158bff] transition-all duration-300"
+                            style={{ height: `${revenueHeight}%` }}
+                          />
+                          <div
+                            className="w-1/2 rounded-t-md bg-[#00D4FF] group-hover:bg-cyan-300 transition-all duration-300"
+                            style={{ height: `${ordersHeight}%` }}
+                          />
+                        </div>
+                        <span className={`mt-2 text-[11px] font-medium ${selected ? "text-slate-900 dark:text-white" : "text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white"}`}>
+                          {point.period}
+                        </span>
+                      </button>
+                      );
+                    })}
+                  </div>
+                </HorizontalScroller>
+              </>
             ) : (
               <EmptyState
                 title={t.dashboard.noTransactionsForPeriod.replace("{period}", periodLabel)}

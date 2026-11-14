@@ -135,6 +135,7 @@ export type AppTranslations = {
     conversionRate: string;
     trendTitle: string;
     trendSubtitle: string;
+    trendPointHint: string;
     categorySplitTitle: string;
     regionalSalesTitle: string;
     conversionUnavailable: string;
@@ -462,6 +463,7 @@ const frApp: AppTranslations = {
     conversionRate: "Taux de conversion",
     trendTitle: "Tendance Combinée : Revenus & Commandes",
     trendSubtitle: "Évolution temporelle consolidée multi-sources",
+    trendPointHint: "Cliquez une barre pour afficher le chiffre d'affaires et le nombre de commandes.",
     categorySplitTitle: "Répartition des ventes par catégorie",
     regionalSalesTitle: "Performance des ventes régionales",
     conversionUnavailable: "Indisponible : cette source n’inclut pas les visites ou sessions.",
@@ -789,6 +791,7 @@ const enApp: AppTranslations = {
     conversionRate: "Conversion Rate",
     trendTitle: "Combined Trend: Revenue & Orders",
     trendSubtitle: "Multi-source consolidated timeline",
+    trendPointHint: "Click a bar to show revenue and the number of orders.",
     categorySplitTitle: "Sales breakdown by category",
     regionalSalesTitle: "Regional sales distribution",
     conversionUnavailable: "Unavailable: this source has no visit or session data.",
