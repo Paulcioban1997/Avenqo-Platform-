@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { getAuthHeaders } from "@/lib/api-headers";
 import { HorizontalScroller } from "@/components/shell/horizontal-scroller";
+import { DisplayAmount } from "@/components/common/display-amount";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 
@@ -180,7 +181,7 @@ export function AccountingView() {
             </span>
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-2">
-            ${revenue.toLocaleString(isFr ? "fr-CA" : "en-US", { minimumFractionDigits: 2 })} {currency}
+            <DisplayAmount amount={revenue} currency={currency} locale={locale} />
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
             {unreconciled ? recordedCaption : (isFr ? "Flux entrants confirmés" : "Confirmed incoming revenue")}
@@ -196,7 +197,7 @@ export function AccountingView() {
             </span>
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-2">
-            ${expenses.toLocaleString(isFr ? "fr-CA" : "en-US", { minimumFractionDigits: 2 })} {currency}
+            <DisplayAmount amount={expenses} currency={currency} locale={locale} />
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
             {unreconciled ? recordedCaption : (isFr ? "Flux sortants opérationnels" : "Operational expenses")}
@@ -212,7 +213,7 @@ export function AccountingView() {
             </span>
           </div>
           <div className={`text-2xl font-extrabold mt-2 ${netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600"}`}>
-            ${netProfit.toLocaleString(isFr ? "fr-CA" : "en-US", { minimumFractionDigits: 2 })} {currency}
+            <DisplayAmount amount={netProfit} currency={currency} locale={locale} />
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
             {unreconciled ? recordedCaption : (isFr ? "Marge nette opérationnelle" : "Net operational margin")}
@@ -231,7 +232,7 @@ export function AccountingView() {
             {overview?.unpaid_invoices_count || 0} {isFr ? "en attente" : "pending"}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            ${(overview?.unpaid_invoices_amount || 0).toLocaleString(isFr ? "fr-CA" : "en-US", { minimumFractionDigits: 2 })} {currency}
+            <DisplayAmount amount={overview?.unpaid_invoices_amount || 0} currency={currency} locale={locale} />
           </div>
         </div>
       </div>
@@ -245,8 +246,8 @@ export function AccountingView() {
             </h2>
             <p className="text-xs text-slate-500 dark:text-[#94A3B8]">
               {isFr
-                ? "Écritures enregistrées pour cette entreprise. La source externe est indiquée seulement lorsqu’elle existe."
-                : "Entries recorded for this company. An external source is shown only when one exists."}
+                ? "Les totaux utilisent le cours du jour. Chaque écriture utilise le taux à sa date. La source externe est indiquée seulement lorsqu’elle existe."
+                : "Totals use today's rate. Each entry uses the rate on its date. An external source is shown only when one exists."}
             </p>
           </div>
 
@@ -368,7 +369,13 @@ export function AccountingView() {
                         {tx.reference_id || "—"}
                       </td>
                       <td className={`py-3 px-4 font-mono font-bold text-right ${isRevenue ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600"}`}>
-                        {isRevenue ? "+" : "-"}${Number(tx.amount || 0).toFixed(2)} {tx.currency || currency}
+                        <DisplayAmount
+                          amount={(isRevenue ? 1 : -1) * Number(tx.amount || 0)}
+                          currency={tx.currency || currency}
+                          locale={locale}
+                          onDate={tx.transaction_date ? tx.transaction_date.slice(0, 10) : null}
+                          align="end"
+                        />
                       </td>
                       <td className="py-3 px-4 text-right">
                         <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">

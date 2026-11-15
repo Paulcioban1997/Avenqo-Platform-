@@ -21,6 +21,7 @@ import {
 import type { AppTranslations } from "@/lib/i18n/app-dictionary";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { currencyText, dateText, metricText } from "./crm-format";
+import { DisplayAmount } from "@/components/common/display-amount";
 
 export interface AppointmentItem {
   id: string;
@@ -192,7 +193,9 @@ export function AppointmentDetailsDrawer({
                   {appointment.service_name || t.crm.filters.service}
                 </p>
                 <p className="text-xs text-[#0076FF] font-bold mt-1">
-                  {currencyText(appointment.price, appointment.currency, locale, t.common.insufficientData)}
+                  {typeof appointment.currency === "string" && /^[A-Z]{3}$/.test(appointment.currency)
+                    ? <DisplayAmount amount={appointment.price} currency={appointment.currency} locale={locale} onDate={appointment.start_time ? appointment.start_time.slice(0, 10) : null} />
+                    : currencyText(appointment.price, appointment.currency, locale, t.common.insufficientData)}
                 </p>
               </div>
               <div className="p-3.5 rounded-xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#060B13]/40">

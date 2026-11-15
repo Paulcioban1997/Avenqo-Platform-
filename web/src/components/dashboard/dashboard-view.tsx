@@ -28,6 +28,7 @@ import { apiFetch, ApiRequestError } from "@/lib/api-request";
 import { useSession } from "@/lib/session-context";
 import { RequestFailure } from "@/components/ui/request-failure";
 import { HorizontalScroller } from "@/components/shell/horizontal-scroller";
+import { DisplayAmount } from "@/components/common/display-amount";
 import { getAuthHeaders } from "@/lib/api-headers";
 
 export interface DashboardViewProps {
@@ -339,7 +340,7 @@ export function DashboardView({
             {/* Chiffre d'affaires / Revenue */}
             <MetricCard
               title={t.dashboard.revenue}
-              value={kpis.revenue?.available ? formatMoney(kpis.revenue.value) : "—"}
+              value={kpis.revenue?.available ? <DisplayAmount amount={kpis.revenue.value} currency={currency} locale={locale === "fr" ? "fr-CA" : "en-CA"} /> : "—"}
               delta={
                 (kpis.orders?.value ?? 0) === 0 || (kpis.revenue?.value ?? 0) === 0
                   ? null
@@ -378,7 +379,7 @@ export function DashboardView({
             {/* Panier moyen / AOV */}
             <MetricCard
               title={t.dashboard.aov}
-              value={kpis.aov?.available ? formatMoney(kpis.aov.value) : "—"}
+              value={kpis.aov?.available ? <DisplayAmount amount={kpis.aov.value} currency={currency} locale={locale === "fr" ? "fr-CA" : "en-CA"} /> : "—"}
               delta={
                 (kpis.orders?.value ?? 0) === 0 || (kpis.aov?.value ?? 0) === 0
                   ? null
@@ -465,6 +466,11 @@ export function DashboardView({
               <ChartSkeleton height={240} />
             ) : hasData && trendPoints.length > 0 ? (
               <>
+                <p className="mb-3 text-[11px] text-slate-500 dark:text-[#94A3B8]">
+                  {locale.startsWith("fr")
+                    ? "Le graphique reste dans la devise d'origine. Le montant sélectionné est un cours du jour, pas le taux de chaque vente."
+                    : "The chart stays in the original currency. The selected amount uses today's rate, not each sale's rate."}
+                </p>
                 {selectedTrendIdx !== null && trendPoints[selectedTrendIdx] ? (
                   <div
                     role="status"
@@ -478,7 +484,7 @@ export function DashboardView({
                         {t.dashboard.revenue}
                       </p>
                       <p className="text-lg font-bold tabular-nums text-slate-900 dark:text-[#F4F7FB]">
-                        {formatMoney(trendPoints[selectedTrendIdx].revenue)}
+                        <DisplayAmount amount={trendPoints[selectedTrendIdx].revenue} currency={currency} locale={locale === "fr" ? "fr-CA" : "en-CA"} />
                       </p>
                     </div>
                     <div>
@@ -557,7 +563,7 @@ export function DashboardView({
               {isLoading ? (
                 <ChartSkeleton height={120} />
               ) : categorySplit.available && categorySplit.items.length > 0 ? (
-                <DashboardSplitList items={categorySplit.items} formatMoney={formatMoney} />
+                <DashboardSplitList items={categorySplit.items} currency={currency} locale={locale === "fr" ? "fr-CA" : "en-CA"} />
               ) : (
                 <div className="py-6 text-center text-xs text-slate-400 dark:text-slate-500">
                   {t.dashboard.categorySplitUnavailable}
@@ -579,7 +585,7 @@ export function DashboardView({
               {isLoading ? (
                 <ChartSkeleton height={120} />
               ) : regionalSplit.available && regionalSplit.items.length > 0 ? (
-                <DashboardSplitList items={regionalSplit.items} formatMoney={formatMoney} />
+                <DashboardSplitList items={regionalSplit.items} currency={currency} locale={locale === "fr" ? "fr-CA" : "en-CA"} />
               ) : (
                 <div className="py-6 text-center text-xs text-slate-400 dark:text-slate-500">
                   {t.dashboard.regionalSalesUnavailable}
@@ -679,10 +685,12 @@ export function DashboardView({
 
 function DashboardSplitList({
   items,
-  formatMoney,
+  currency,
+  locale,
 }: {
   items: DashboardSplitItem[];
-  formatMoney: (val: number | null | undefined) => string;
+  currency: string;
+  locale: string;
 }) {
   const max = Math.max(...items.map((item) => item.revenue), 1);
   return (
@@ -692,7 +700,8 @@ function DashboardSplitList({
           <div className="flex items-center justify-between gap-2 text-xs">
             <span className="font-semibold text-slate-800 dark:text-[#F4F7FB] truncate">{item.label}</span>
             <span className="shrink-0 text-slate-500 dark:text-[#94A3B8]">
-              {formatMoney(item.revenue)} · {item.share.toFixed(1)}%
+              <DisplayAmount amount={item.revenue} currency={currency} locale={locale} align="end" />
+              <span> · {item.share.toFixed(1)}%</span>
             </span>
           </div>
           <div className="h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.06]">

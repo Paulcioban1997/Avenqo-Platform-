@@ -24,6 +24,7 @@ import { useLocale } from "@/lib/i18n/locale-context";
 import type { AppointmentItem } from "./appointment-details-drawer";
 import { validDate } from "./crm-format";
 import { HorizontalScroller } from "@/components/shell/horizontal-scroller";
+import { DisplayAmount } from "@/components/common/display-amount";
 
 export type CalendarMode = "month" | "week" | "day" | "agenda" | "list" | "kanban";
 
@@ -58,6 +59,11 @@ export function CRMCalendarView({
   t,
 }: CRMCalendarViewProps) {
   const { locale } = useLocale();
+  const appointmentMoney = (app: AppointmentItem) => (
+    typeof app.currency === "string" && /^[A-Z]{3}$/.test(app.currency)
+      ? <DisplayAmount amount={app.price} currency={app.currency} locale={locale} onDate={app.start_time ? app.start_time.slice(0, 10) : null} align="end" />
+      : <span>{app.price}</span>
+  );
   const isSpanish = locale === "es";
   const [viewMode, setViewMode] = useState<CalendarMode>("week");
   const [selectedServiceId, setSelectedServiceId] = useState<string>("all");
@@ -467,7 +473,7 @@ export function CRMCalendarView({
 
                       <div className="text-right">
                         <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 block">
-                          {app.price} $
+                          {appointmentMoney(app)}
                         </span>
                         {app.employee_name && (
                           <span className="text-xs text-slate-400">{app.employee_name}</span>
@@ -580,7 +586,7 @@ export function CRMCalendarView({
                         </p>
                         <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between text-[10px]">
                           <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                            {app.price} $
+                            {appointmentMoney(app)}
                           </span>
                           <span className="text-slate-400">{app.employee_name || "Non assigné"}</span>
                         </div>
@@ -639,7 +645,7 @@ export function CRMCalendarView({
                         </td>
                         <td className="py-3.5 px-4">{getStatusBadge(app.status)}</td>
                         <td className="py-3.5 px-4 text-right font-bold text-emerald-600 dark:text-emerald-400">
-                          {app.price} $
+                          {appointmentMoney(app)}
                         </td>
                       </tr>
                     ))

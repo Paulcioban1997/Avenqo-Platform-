@@ -8,6 +8,7 @@ import { type CRMKpis } from "./crm-kpi-cards";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { apiFetch } from "@/lib/api-request";
 import { currencyText, metricText } from "./crm-format";
+import { DisplayAmount } from "@/components/common/display-amount";
 
 interface CRMReportsViewProps {
   t: AppTranslations;
@@ -100,7 +101,12 @@ export function CRMReportsView({ t }: CRMReportsViewProps) {
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.04]">
             <div className="text-xs text-slate-400">{locale.startsWith("fr") ? "Valeur du pipeline" : "Pipeline value"}</div>
             <div className="text-xl font-bold text-slate-900 dark:text-white mt-1">
-              {currencyText(summary?.total_pipeline_value, kpis.currency || summary?.currency || "CAD", locale, unavailable)}
+              {(() => {
+                const pipelineCurrency = kpis.currency || summary?.currency;
+                return typeof pipelineCurrency === "string" && /^[A-Z]{3}$/.test(pipelineCurrency) && typeof summary?.total_pipeline_value === "number"
+                  ? <DisplayAmount amount={summary.total_pipeline_value} currency={pipelineCurrency} locale={locale} />
+                  : currencyText(summary?.total_pipeline_value, pipelineCurrency, locale, unavailable);
+              })()}
             </div>
           </div>
           <div className="p-4 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.04]">

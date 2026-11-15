@@ -17,6 +17,7 @@ import { getAuthHeaders } from "@/lib/api-headers";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { finiteMetric, metricText, validDate } from "./crm-format";
 import { HorizontalScroller } from "@/components/shell/horizontal-scroller";
+import { DisplayAmount } from "@/components/common/display-amount";
 
 interface OpportunityItem {
   id: string;
@@ -24,6 +25,7 @@ interface OpportunityItem {
   client_id?: string;
   client_name?: string;
   amount: number;
+  currency?: string;
   probability: number;
   expected_close_date?: string | null;
   stage_id: string;
@@ -193,6 +195,8 @@ export function CRMPipelinesView({ t }: CRMPipelinesViewProps) {
           {activePipeline.stages.map((stage, sIdx) => {
             const opps = stage.opportunities || [];
             const totalStageValue = opps.every((item) => finiteMetric(item.amount) !== null) ? opps.reduce((sum, item) => sum + item.amount, 0) : null;
+            const stageCurrencies = [...new Set(opps.map((item) => item.currency).filter((code): code is string => typeof code === "string" && /^[A-Z]{3}$/.test(code)))];
+            const stageCurrency = stageCurrencies.length === 1 ? stageCurrencies[0] : null;
             return (
               <div
                 key={stage.id}
@@ -205,7 +209,9 @@ export function CRMPipelinesView({ t }: CRMPipelinesViewProps) {
                       {stage.name}
                     </span>
                     <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
-                      {metricText(totalStageValue, locale, t.common.insufficientData)}
+                      {stageCurrency && totalStageValue !== null
+                        ? <DisplayAmount amount={totalStageValue} currency={stageCurrency} locale={locale} />
+                        : metricText(totalStageValue, locale, t.common.insufficientData)}
                     </span>
                   </div>
                   <span className="text-xs px-2 py-0.5 rounded-full bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold border border-slate-200 dark:border-slate-700">
@@ -230,7 +236,9 @@ export function CRMPipelinesView({ t }: CRMPipelinesViewProps) {
                             {opp.title}
                           </h4>
                           <span className="font-bold text-emerald-600 dark:text-emerald-400 shrink-0">
-                            {opp.amount} $
+                            {typeof opp.currency === "string" && /^[A-Z]{3}$/.test(opp.currency)
+                              ? <DisplayAmount amount={opp.amount} currency={opp.currency} locale={locale} align="end" />
+                              : opp.amount}
                           </span>
                         </div>
 

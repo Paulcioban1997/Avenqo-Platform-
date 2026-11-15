@@ -36,6 +36,8 @@ import { RETAIL_ANOMALY_COPY } from "@/lib/i18n/retail-anomaly-copy";
 import { getAuthHeaders } from "@/lib/api-headers";
 import { apiFetch, ApiRequestError } from "@/lib/api-request";
 import { HorizontalScroller } from "@/components/shell/horizontal-scroller";
+import { DisplayAmount } from "@/components/common/display-amount";
+import { formatMoney } from "@/lib/money";
 
 export type RetailSubTab =
   | "overview"
@@ -479,11 +481,9 @@ export function RetailIntelligenceView({
   const formatAnomalyValue = (value: number | null | undefined, metric?: string) => {
     if (value == null || !Number.isFinite(value)) return "—";
     if (metric === "product_revenue") {
-      return new Intl.NumberFormat(locale, {
-        style: "currency",
-        currency: salesSummary?.currency || recommendationsCurrency || "CAD",
-        maximumFractionDigits: 0,
-      }).format(value);
+      const code = salesSummary?.currency || recommendationsCurrency;
+      if (!code) return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(value);
+      return formatMoney(value, code, locale, 0);
     }
     return `${formatStock(value)}${metric === "inventory_stock_quantity" ? ` ${retail.unit}` : ""}`;
   };
@@ -502,11 +502,10 @@ export function RetailIntelligenceView({
       : forecast?.method === "historical_chronological_forecast"
         ? (locale.startsWith("fr") ? "Projection chronologique (historique importé)" : "Chronological projection (historical dataset)")
         : retail.forecasts;
-  const forecastCurrency = new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency: salesSummary?.currency || "USD",
-    maximumFractionDigits: 0,
-  });
+  const sourceCurrency = salesSummary?.currency || recommendationsCurrency || "";
+  const formatSourceMoney = (value: number) => sourceCurrency
+    ? formatMoney(value, sourceCurrency, locale, 0)
+    : value.toLocaleString(locale, { maximumFractionDigits: 0 });
   const retailCounts: Array<{ label: string; value: number }> = [
     { label: retail.products, value: retailStatus?.product_count ?? products.length },
     { label: retail.sales, value: retailStatus?.order_count ?? orders.length },
@@ -779,7 +778,9 @@ export function RetailIntelligenceView({
                           {p.product_category}
                         </td>
                         <td className="py-3 px-4 text-right font-bold text-slate-900 dark:text-[#F4F7FB]">
-                          ${p.unit_price.toFixed(2)}
+                          {sourceCurrency
+                            ? <DisplayAmount amount={p.unit_price} currency={sourceCurrency} locale={locale} align="end" />
+                            : p.unit_price.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                         <td className="py-3 px-4 text-center">
                           <span
@@ -856,7 +857,7 @@ export function RetailIntelligenceView({
                           {o.customer_name}
                         </td>
                         <td className="py-3 px-4 text-right font-bold text-slate-900 dark:text-[#F4F7FB]">
-                          ${o.total_amount.toFixed(2)} {o.currency}
+                          <DisplayAmount amount={o.total_amount} currency={o.currency} locale={locale} onDate={o.created_at ? o.created_at.slice(0, 10) : null} align="end" />
                         </td>
                         <td className="py-3 px-4 text-center">
                           <StatusBadge status="connected" label={o.status} size="sm" />
@@ -916,7 +917,9 @@ export function RetailIntelligenceView({
                         </td>
                         <td className="py-3 px-4 font-mono text-slate-500">{c.email}</td>
                         <td className="py-3 px-4 text-right font-bold text-slate-900 dark:text-[#F4F7FB]">
-                          ${c.total_spent.toFixed(2)} CAD
+                          {sourceCurrency
+                            ? <DisplayAmount amount={c.total_spent} currency={sourceCurrency} locale={locale} align="end" />
+                            : c.total_spent.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                         <td className="py-3 px-4 text-center font-semibold text-slate-700 dark:text-slate-300">
                           {c.orders_count}
@@ -1076,7 +1079,9 @@ export function RetailIntelligenceView({
               <div className="flex items-center gap-6">
                 <div className="text-right">
                   <div className="text-xl font-bold text-slate-900 dark:text-[#F4F7FB]">
-                    {forecastCurrency.format(forecast.forecasted_total)}
+                    {sourceCurrency
+                      ? <DisplayAmount amount={forecast.forecasted_total} currency={sourceCurrency} locale={locale} align="end" />
+                      : formatSourceMoney(forecast.forecasted_total)}
                   </div>
                   <div className="text-xs text-slate-500 dark:text-[#94A3B8]">
                     {retail.sales}
@@ -1115,8 +1120,8 @@ export function RetailIntelligenceView({
                       : point.period;
                     const tooltipText = [
                       periodLabel,
-                      `Chiffre d'affaires prévu: ${forecastCurrency.format(point.value)}`,
-                      hasBounds ? `${locale.startsWith("fr") ? "Intervalle estimé (±1.96 σ)" : "Estimated interval (±1.96 σ)"}: [${forecastCurrency.format(point.lower_bound!)} – ${forecastCurrency.format(point.upper_bound!)}]` : null,
+                      `${locale.startsWith("fr") ? "Chiffre d'affaires prévu, devise d'origine" : "Forecast sales, original currency"}: ${formatSourceMoney(point.value)}`,
+                      hasBounds ? `${locale.startsWith("fr") ? "Intervalle estimé (±1.96 σ), devise d'origine" : "Estimated interval (±1.96 σ), original currency"}: [${formatSourceMoney(point.lower_bound!)} – ${formatSourceMoney(point.upper_bound!)}]` : null,
                       point.orders_volume != null ? `Volume: ${point.orders_volume} commandes` : null,
                     ].filter(Boolean).join("\n");
 
@@ -1138,7 +1143,7 @@ export function RetailIntelligenceView({
                         </span>
                         {hasBounds && (
                           <span className="text-[9px] text-slate-400 font-mono -mt-1 hidden sm:inline">
-                            ±{forecastCurrency.format(Math.round((point.upper_bound! - point.lower_bound!) / 2))}
+                            ±{formatSourceMoney(Math.round((point.upper_bound! - point.lower_bound!) / 2))}
                           </span>
                         )}
                       </div>
@@ -1217,13 +1222,19 @@ export function RetailIntelligenceView({
                     <div className="flex items-center gap-4 text-xs">
                       <div className="text-right">
                         <div className="font-bold text-slate-900 dark:text-[#F4F7FB]">
-                          {anomalyCopy.observed}: {formatAnomalyValue(anom.observed_value, anom.metric)}
+                          {anomalyCopy.observed}: {anom.metric === "product_revenue" && sourceCurrency && Number.isFinite(anom.observed_value)
+                            ? <DisplayAmount amount={anom.observed_value} currency={sourceCurrency} locale={locale} />
+                            : formatAnomalyValue(anom.observed_value, anom.metric)}
                         </div>
                         <div className="text-[10px] text-slate-400">
-                          {anomalyCopy.expectedRange}: {formatAnomalyValue(anom.expected_range.lower, anom.metric)}{anom.expected_range.upper == null ? "+" : `–${formatAnomalyValue(anom.expected_range.upper, anom.metric)}`}
+                          {anomalyCopy.expectedRange}: {anom.metric === "product_revenue" && sourceCurrency
+                            ? <><DisplayAmount amount={anom.expected_range.lower} currency={sourceCurrency} locale={locale} />{anom.expected_range.upper == null ? "+" : <>–<DisplayAmount amount={anom.expected_range.upper} currency={sourceCurrency} locale={locale} /></>}</>
+                            : <>{formatAnomalyValue(anom.expected_range.lower, anom.metric)}{anom.expected_range.upper == null ? "+" : `–${formatAnomalyValue(anom.expected_range.upper, anom.metric)}`}</>}
                         </div>
                         <div className="text-[10px] text-slate-400">
-                          {anomalyCopy.difference}: {formatAnomalyValue(anom.delta, anom.metric)}
+                          {anomalyCopy.difference}: {anom.metric === "product_revenue" && sourceCurrency && Number.isFinite(anom.delta)
+                            ? <DisplayAmount amount={anom.delta} currency={sourceCurrency} locale={locale} />
+                            : formatAnomalyValue(anom.delta, anom.metric)}
                         </div>
                       </div>
                       <button
@@ -1273,7 +1284,11 @@ export function RetailIntelligenceView({
                         {recommendationSource(recommendation)}
                       </p>
                     )}
-                    {recommendationEvidence(recommendation) && (
+                    {(recommendation.metric === "revenue" || recommendation.metric === "product_revenue") && sourceCurrency && typeof recommendation.evidence?.current === "number" ? (
+                      <p className="mt-1 text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                        <DisplayAmount amount={recommendation.evidence.current} currency={sourceCurrency} locale={locale} />
+                      </p>
+                    ) : recommendationEvidence(recommendation) && (
                       <p className="mt-1 text-[11px] font-medium text-slate-600 dark:text-slate-300">
                         {recommendationEvidence(recommendation)}
                       </p>

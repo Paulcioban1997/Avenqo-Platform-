@@ -5,6 +5,7 @@ import { Users, Calendar, CheckCircle2, DollarSign } from "lucide-react";
 import type { AppTranslations } from "@/lib/i18n/app-dictionary";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { metricText, attendanceLabel, currencyText } from "./crm-format";
+import { DisplayAmount } from "@/components/common/display-amount";
 
 export interface CRMKpis {
   active_clients?: number | null;
@@ -49,7 +50,11 @@ export function CRMKpiCards({ kpis, t, isLoading = false }: CRMKpiCardsProps) {
     },
     {
       title: t.crm.kpis.revenueGenerated,
-      value: isLoading ? number(null) : currencyText(kpis?.total_revenue_generated, kpis?.currency, locale, unavailable),
+      value: isLoading
+        ? number(null)
+        : (typeof kpis?.currency === "string" && /^[A-Z]{3}$/.test(kpis.currency) && typeof kpis.total_revenue_generated === "number"
+          ? <DisplayAmount amount={kpis.total_revenue_generated} currency={kpis.currency} locale={locale} />
+          : currencyText(kpis?.total_revenue_generated, kpis?.currency, locale, unavailable)),
       icon: DollarSign,
       color: "text-violet-500",
       bg: "bg-violet-50 dark:bg-violet-950/40 border-violet-100 dark:border-violet-900/40",
