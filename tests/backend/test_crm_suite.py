@@ -1306,7 +1306,7 @@ def test_copilot_multilingual_availability_is_read_only(db_session, monkeypatch,
     monkeypatch.setattr("backend.app.routers.crm.CRMAvailabilityService", lambda session: service)
     monkeypatch.setattr("backend.app.routers.crm.ModuleEntitlementService", lambda session: SimpleNamespace(can_use_module=lambda *args: True))
     response = asyncio.run(crm_copilot_chat(CRMCopilotChatRequest(message=message, locale=locale),
-        TenantContext(company.id), cast(CurrentIdentity, SimpleNamespace()), SimpleNamespace(role=UserRole.OWNER), db_session, CRMAppService(db_session)))
+        TenantContext(company.id), cast(CurrentIdentity, SimpleNamespace(user=SimpleNamespace(id=uuid4(), role=UserRole.OWNER, permission_grants=None))), SimpleNamespace(role=UserRole.OWNER), db_session, CRMAppService(db_session)))
     assert response["locale"] == locale
     assert response["status"] in ("success", "unavailable")
     assert response.get("action") != "appointment_created"
@@ -1342,7 +1342,7 @@ def test_copilot_today_agenda_is_not_treated_as_create_intent(db_session, monkey
         crm_copilot_chat(
             CRMCopilotChatRequest(message="mes rendez-vous aujourd'hui", locale="fr"),
             TenantContext(company.id),
-            cast(CurrentIdentity, SimpleNamespace(user=SimpleNamespace(id=client.id))),
+            cast(CurrentIdentity, SimpleNamespace(user=SimpleNamespace(id=client.id, role=UserRole.OWNER, permission_grants=None))),
             SimpleNamespace(role=UserRole.OWNER),
             db_session,
             service,
