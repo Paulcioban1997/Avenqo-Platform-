@@ -75,6 +75,17 @@ class ProfileUpdate(BaseModel):
     department: str | None = Field(default=None, max_length=120)
 
 
+class EmailCorrectionRequest(BaseModel):
+    new_email: EmailStr
+    confirm_email: EmailStr
+
+
+class EmailCorrectionConfirm(BaseModel):
+    token: str | None = Field(default=None, max_length=512)
+    code: str | None = Field(default=None, max_length=32)
+    email: EmailStr | None = None
+
+
 class ResponsibilityCreate(BaseModel):
     title: str = Field(min_length=2, max_length=180)
     description: str | None = Field(default=None, max_length=2000)
@@ -144,6 +155,63 @@ def update_profile(
     except WorkspaceError as exc:
         raise _http(exc) from exc
     return {"id": str(user.id), "job_title": user.job_title, "department": user.department}
+
+
+@router.post("/employees/{employee_id}/email-correction")
+def request_email_correction(
+    employee_id: UUID,
+    payload: EmailCorrectionRequest,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    service: WorkspaceService = Depends(_service),
+) -> dict:
+    if str(payload.new_email).strip().lower() != str(payload.confirm_email).strip().lower():
+        raise HTTPException(400, "Les deux adresses doivent être identiques")
+    try:
+        row = service.request_email_correction(identity.user, employee_id, str(payload.new_email))
+    except MailNotConfigured as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except WorkspaceError as exc:
+        raise _http(exc) from exc
+    return {
+        "id": str(row.id),
+        "new_email": row.new_email,
+        "expires_at": row.expires_at.isoformat(),
+    }
+
+
+@router.get("/email-corrections/preview")
+def preview_email_correction(
+    token: str,
+    service: WorkspaceService = Depends(_service),
+) -> dict:
+    try:
+        return service.preview_email_correction(token)
+    except WorkspaceError as exc:
+        raise _http(exc) from exc
+
+
+@router.post("/email-corrections/confirm")
+def confirm_email_correction(
+    payload: EmailCorrectionConfirm,
+    service: WorkspaceService = Depends(_service),
+) -> dict:
+    try:
+        user, reissued = service.confirm_email_correction(
+            payload.token,
+            code=payload.code,
+            email=str(payload.email) if payload.email else None,
+        )
+    except WorkspaceError as exc:
+        raise _http(exc) from exc
+    company = user.company
+    return {
+        "confirmed": True,
+        "email": user.email,
+        "company_id": str(user.company_id),
+        "company_name": company.name if company is not None else "",
+        "job_title": user.job_title,
+        "invitation_sent": reissued is not None,
+    }
 
 
 @router.get("/responsibilities")

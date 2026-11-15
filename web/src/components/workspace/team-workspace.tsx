@@ -75,6 +75,7 @@ export function TeamWorkspace() {
   const fr = locale.startsWith("fr");
   const { identity } = useSession();
   const canManage = Boolean(identity?.user.permissions?.includes("users:manage"));
+  const isOwner = identity?.user.role === "owner";
 
   const [team, setTeam] = useState<Member[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -94,6 +95,10 @@ export function TeamWorkspace() {
   const [taskAssigneeId, setTaskAssigneeId] = useState("");
   const [taskPriority, setTaskPriority] = useState("medium");
   const [creatingTask, setCreatingTask] = useState(false);
+  const [correctionMember, setCorrectionMember] = useState<Member | null>(null);
+  const [newEmail, setNewEmail] = useState("");
+  const [confirmEmail, setConfirmEmail] = useState("");
+  const [correcting, setCorrecting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -383,6 +388,9 @@ export function TeamWorkspace() {
                     <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
                       {member.job_title} · {member.department || (fr ? "Général" : "General")}
                     </p>
+                    {canManage && member.email && (
+                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{member.email}</p>
+                    )}
                   </div>
                 </div>
 
@@ -390,6 +398,20 @@ export function TeamWorkspace() {
                   <span className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase">
                     {member.job_title || member.role}
                   </span>
+                  {isOwner && member.role !== "owner" && member.id !== identity?.user.id && (
+                    <button
+                      type="button"
+                      className="text-[10px] font-bold uppercase text-[#0076FF]"
+                      onClick={() => {
+                        setCorrectionMember(member);
+                        setNewEmail("");
+                        setConfirmEmail("");
+                        setError("");
+                      }}
+                    >
+                      {fr ? "Corriger l'adresse" : "Correct the address"}
+                    </button>
+                  )}
                   {canManage && member.role !== "owner" && member.id !== identity?.user.id && (
                     <button
                       type="button"
@@ -423,10 +445,15 @@ export function TeamWorkspace() {
                     <div className="min-w-0">
                       <p className="font-bold text-slate-900 dark:text-white text-sm truncate">{invite.job_title}</p>
                       <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                        {invite.member_name
-                          ? (fr ? `Même accès que ${invite.member_name}` : `Same access as ${invite.member_name}`)
-                          : (invite.department || (fr ? "En attente" : "Pending"))}
+                        {invite.email}
                       </p>
+                      {invite.member_name && (
+                        <p className="text-[11px] text-amber-700 dark:text-amber-300 truncate">
+                          {fr
+                            ? `Cette adresse appartient déjà à ${invite.member_name}. Corrigez d'abord son accès.`
+                            : `This address already belongs to ${invite.member_name}. Correct that access first.`}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="shrink-0 flex items-center gap-2">
@@ -506,6 +533,67 @@ export function TeamWorkspace() {
           </div>
         </section>
       </div>
+
+      {correctionMember && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <form
+            className="w-full max-w-lg rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0B132B] shadow-2xl p-6 sm:p-7 space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (newEmail.trim().toLowerCase() !== confirmEmail.trim().toLowerCase()) {
+                setError(fr ? "Les deux adresses doivent être identiques." : "The two addresses must match.");
+                return;
+              }
+              setCorrecting(true);
+              setError("");
+              void apiFetch(`/api/v1/workspace/employees/${correctionMember.id}/email-correction`, {
+                method: "POST",
+                body: JSON.stringify({ new_email: newEmail.trim(), confirm_email: confirmEmail.trim() }),
+              })
+                .then(() => {
+                  setSuccessNotice(
+                    fr
+                      ? "Confirmation envoyée à la nouvelle adresse. Le compte, le poste et les droits restent inchangés jusqu'à cette confirmation."
+                      : "Confirmation sent to the new address. The account, job and permissions stay unchanged until then.",
+                  );
+                  setCorrectionMember(null);
+                })
+                .catch((err: unknown) => {
+                  setError(err instanceof ApiRequestError && err.publicMessage
+                    ? err.publicMessage
+                    : (fr ? "Cette adresse ne peut pas être utilisée." : "This address cannot be used."));
+                })
+                .finally(() => setCorrecting(false));
+            }}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="font-extrabold text-slate-900 dark:text-white text-lg">
+                {fr ? "Corriger l'adresse" : "Correct the address"}
+              </h3>
+              <button type="button" onClick={() => setCorrectionMember(null)} className="p-2 text-slate-400">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-slate-500">
+              {fr
+                ? `${correctionMember.first_name} ${correctionMember.last_name} garde le même compte, le poste ${correctionMember.job_title} et ses droits. La nouvelle adresse doit confirmer. Une adresse déjà utilisée par un autre compte est refusée.`
+                : `${correctionMember.first_name} ${correctionMember.last_name} keeps the same account, the ${correctionMember.job_title} job and the same permissions. The new address must confirm. An address already used by another account is refused.`}
+            </p>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+              {fr ? "Nouvelle adresse" : "New address"}
+              <input required type="email" value={newEmail} onChange={(event) => setNewEmail(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-4 py-2.5 text-sm font-normal normal-case text-slate-900 dark:text-white" />
+            </label>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+              {fr ? "Confirmer la nouvelle adresse" : "Confirm the new address"}
+              <input required type="email" value={confirmEmail} onChange={(event) => setConfirmEmail(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-4 py-2.5 text-sm font-normal normal-case text-slate-900 dark:text-white" />
+            </label>
+            {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
+            <button type="submit" disabled={correcting} className="w-full rounded-xl bg-[#0076FF] px-4 py-3 text-sm font-bold text-white">
+              {correcting ? (fr ? "Envoi..." : "Sending...") : (fr ? "Envoyer la confirmation" : "Send the confirmation")}
+            </button>
+          </form>
+        </div>
+      )}
 
       {/* INVITE MODAL */}
       {isInviteModalOpen && (

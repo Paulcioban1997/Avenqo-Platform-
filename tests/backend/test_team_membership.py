@@ -472,3 +472,128 @@ def test_distinct_adjoint_keeps_agenda_tasks_and_the_same_login(db_session, clie
     client.cookies.clear()
     blocked = client.post("/api/v1/auth/login", json={"email": email, "password": "Password123!"})
     assert blocked.status_code == 401
+
+
+def test_owner_corrects_one_address_without_moving_another_account(db_session, client: TestClient) -> None:
+    company = _company(db_session, f"ero-{uuid4().hex[:8]}")
+    other = _company(db_session, f"other-{uuid4().hex[:8]}")
+    owner = _owner(db_session, company)
+    outsider = _owner(db_session, other)
+    outsider_hash = outsider.password_hash
+    old_email = f"lucia-{uuid4()}@example.com"
+    new_email = f"mircea-{uuid4()}@example.com"
+    vice = User(
+        company_id=company.id,
+        first_name="Mircea",
+        last_name="Cioban",
+        email=old_email,
+        password_hash=hash_password("Oldpassword1!"),
+        role=UserRole.ADMIN,
+        job_title="Vice-président",
+        is_active=True,
+        email_verified_at=datetime.now(timezone.utc),
+    )
+    admin = User(
+        company_id=company.id,
+        first_name="Ada",
+        last_name="Admin",
+        email=f"ada-{uuid4()}@example.com",
+        password_hash=hash_password("Oldpassword1!"),
+        role=UserRole.ADMIN,
+        job_title="Adjointe",
+        is_active=True,
+    )
+    db_session.add_all([vice, admin])
+    db_session.flush()
+    db_session.add(CompanyMembership(user_id=vice.id, company_id=company.id, role=UserRole.ADMIN, is_active=True))
+    pending = EmployeeInvitation(
+        company_id=company.id,
+        invited_by_user_id=owner.id,
+        email=old_email,
+        role="user",
+        job_title="Adjoint administratif",
+        department="Administration",
+        token_hash=hash_token(generate_token()),
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=4),
+    )
+    db_session.add(pending)
+    db_session.commit()
+    password_hash = vice.password_hash
+    service = WorkspaceService(db_session, _Mail())
+    with pytest.raises(WorkspaceError, match="autre compte"):
+        service.request_email_correction(owner, vice.id, outsider.email)
+    with pytest.raises(WorkspaceError, match="propriétaire"):
+        service.request_email_correction(admin, vice.id, new_email)
+    db_session.refresh(outsider)
+    db_session.refresh(vice)
+    assert outsider.email != new_email
+    assert outsider.company_id == other.id
+    assert outsider.role == UserRole.OWNER
+    assert outsider.password_hash == outsider_hash
+    assert vice.email == old_email
+    assert vice.password_hash == password_hash
+
+    correction = service.request_email_correction(owner, vice.id, new_email)
+    db_session.refresh(vice)
+    assert vice.email == old_email
+    assert vice.job_title == "Vice-président"
+    assert vice.role == UserRole.ADMIN
+    for _attempt in range(5):
+        with pytest.raises(WorkspaceError):
+            service.confirm_email_correction(code="00000000", email=new_email)
+    db_session.refresh(correction)
+    assert correction.revoked_at is not None
+    assert vice.email == old_email
+
+    replacement = service.request_email_correction(owner, vice.id, new_email)
+    confirmed, reissued = service.confirm_email_correction(code=replacement._raw_code, email=new_email)
+    assert reissued is not None and reissued.job_title == "Adjoint administratif"
+    db_session.refresh(vice)
+    assert confirmed.id == vice.id
+    assert vice.email == new_email
+    assert vice.company_id == company.id
+    assert vice.role == UserRole.ADMIN
+    assert vice.job_title == "Vice-président"
+    assert vice.permission_grants is None
+    assert vice.password_hash == password_hash
+    assert vice.first_name == "Mircea"
+    db_session.refresh(pending)
+    assert pending.revoked_at is not None
+    with pytest.raises(WorkspaceError):
+        service.confirm_email_correction(token=replacement._raw_token)
+    db_session.refresh(outsider)
+    assert outsider.company_id == other.id
+    assert outsider.password_hash == outsider_hash
+
+    assert reissued.company_id == company.id
+    grants = set(decode_grants(reissued.permission_grants) or ())
+    assert "billing:manage" not in grants
+    assert "accounting:read" not in grants
+    assert "crm:appointments:read" in grants
+    lucia = service.accept_invitation(
+        None, "Lucia", "Cioban", "Password123!", code=reissued._raw_code, email=old_email
+    )
+    assert lucia.id != vice.id
+    assert lucia.company_id == company.id
+    assert lucia.email == old_email
+    db_session.refresh(vice)
+    assert vice.email == new_email
+    assert vice.password_hash == password_hash
+
+    client.cookies.clear()
+    vice_login = client.post("/api/v1/auth/login", json={"email": new_email, "password": "Oldpassword1!"})
+    lucia_login = client.post("/api/v1/auth/login", json={"email": old_email, "password": "Password123!"})
+    assert vice_login.status_code == 200
+    assert lucia_login.status_code == 200
+    assert vice_login.json()["user"]["company_id"] == lucia_login.json()["user"]["company_id"] == str(company.id)
+    assert vice_login.json()["user"]["id"] != lucia_login.json()["user"]["id"]
+    assert "users:manage" in vice_login.json()["user"]["permissions"]
+    assert set(lucia_login.json()["user"]["permissions"]) == {
+        "tasks:own",
+        "crm:appointments:read",
+        "crm:appointments:write",
+    }
+    client.cookies.clear()
+    headers = {"Authorization": f"Bearer {lucia_login.json()['access_token']}", "X-Requested-With": "avenqo-web"}
+    assert _denied(client.get("/api/v1/accounting/overview", headers=headers))
+    assert _denied(client.get("/api/v1/billing/invoices", headers=headers))

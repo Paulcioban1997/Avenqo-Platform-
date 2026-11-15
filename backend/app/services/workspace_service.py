@@ -21,9 +21,11 @@ from backend.app.core.permission_grants import (
 from backend.app.core.security import generate_token, hash_password, hash_token
 from backend.app.models.company_module import company_module_is_active
 from backend.app.models import (
+    AuthSession,
     Company,
     CompanyMembership,
     CompanyModule,
+    EmployeeEmailCorrection,
     EmployeeInvitation,
     EmployeeResponsibility,
     EmployeeTask,
@@ -33,7 +35,7 @@ from backend.app.models import (
 )
 from backend.app.config.settings import get_settings
 from backend.app.services.account_notifications import AccountNotifier, mailbox_delivery
-from backend.app.services.plan_limits_service import PlanLimitsService
+from backend.app.services.plan_limits_service import PlanLimitReached, PlanLimitsService
 
 
 class WorkspaceError(ValueError):
@@ -327,6 +329,189 @@ class WorkspaceService:
         self._session.commit()
         return invitation
 
+    def request_email_correction(self, actor: User, user_id: UUID, new_email: str) -> EmployeeEmailCorrection:
+        """Le propriétaire propose une adresse. Le compte ne change qu'après confirmation."""
+
+        if actor.role != UserRole.OWNER:
+            raise WorkspaceError("Seul le propriétaire peut corriger une adresse")
+        target = self._user_in_company(actor.company_id, user_id)
+        if target.id == actor.id or target.role == UserRole.OWNER:
+            raise WorkspaceError("Le propriétaire conserve sa propre adresse")
+        normalized = new_email.strip().lower()
+        if normalized == target.email.strip().lower():
+            raise WorkspaceError("Cette adresse est déjà celle de ce compte")
+        taken = self._session.scalar(select(User).where(User.email == normalized))
+        if taken is not None:
+            raise WorkspaceError("Cette adresse appartient déjà à un autre compte")
+        ready, missing = mailbox_delivery(self._notifier, get_settings())
+        if not ready or self._notifier is None or not hasattr(self._notifier, "send_transactional"):
+            raise MailNotConfigured(missing)
+        now = datetime.now(timezone.utc)
+        for older in self._session.scalars(
+            select(EmployeeEmailCorrection).where(
+                EmployeeEmailCorrection.user_id == target.id,
+                EmployeeEmailCorrection.confirmed_at.is_(None),
+                EmployeeEmailCorrection.revoked_at.is_(None),
+            )
+        ):
+            older.revoked_at = now
+        raw = generate_token()
+        code = f"{secrets.randbelow(90000000) + 10000000}"
+        salt = secrets.token_hex(16)
+        correction = EmployeeEmailCorrection(
+            company_id=actor.company_id,
+            user_id=target.id,
+            requested_by_user_id=actor.id,
+            old_email=target.email.strip().lower(),
+            new_email=normalized,
+            token_hash=hash_token(raw),
+            code_hash=hash_token(f"{code}:{salt}"),
+            code_salt=salt,
+            failed_attempts=0,
+            expires_at=now + timedelta(hours=24),
+        )
+        self._session.add(correction)
+        self._session.flush()
+        company_name = actor.company.name if actor.company is not None else "votre entreprise"
+        origin = get_settings().public_frontend_origin()
+        link = f"{origin}/confirm-email?token={raw}"
+        text_body = "\n".join(
+            (
+                f"Confirmez cette adresse pour {target.first_name} {target.last_name}, {target.job_title}, chez {company_name}.",
+                "Le compte, le poste et les droits restent les mêmes.",
+                "Aucune autre entreprise n'est modifiée.",
+                "Cette confirmation est valable 24 heures et ne sert qu'une fois.",
+                link,
+                f"Code de confirmation: {code}",
+            )
+        )
+        html_body = (
+            f"<p>Confirmez cette adresse pour {target.first_name} {target.last_name}, "
+            f"{target.job_title}, chez {company_name}.</p>"
+            "<p>Le compte, le poste et les droits restent les mêmes. "
+            "Aucune autre entreprise n'est modifiée.</p>"
+            f'<p><a href="{link}">Confirmer cette adresse</a></p>'
+            f"<p>Code de confirmation : <strong>{code}</strong>. "
+            "Il est valable 24 heures et ne sert qu'une fois.</p>"
+        )
+        from backend.app.services.account_notifications import sandbox_mail_company_id, sandbox_mail_session
+
+        company_token = sandbox_mail_company_id.set(str(actor.company_id))
+        session_token = sandbox_mail_session.set(self._session)
+        try:
+            try:
+                self._notifier.send_transactional(normalized, "Confirmez votre adresse Avenqo", text_body, html_body)
+            except TypeError:
+                self._notifier.send_transactional(normalized, "Confirmez votre adresse Avenqo", text_body)
+        except Exception:
+            self._session.rollback()
+            raise MailNotConfigured(missing) from None
+        finally:
+            sandbox_mail_company_id.reset(company_token)
+            sandbox_mail_session.reset(session_token)
+        self._session.commit()
+        correction._raw_token = raw  # type: ignore[attr-defined]
+        correction._raw_code = code  # type: ignore[attr-defined]
+        return correction
+
+    def confirm_email_correction(
+        self,
+        token: str | None = None,
+        *,
+        code: str | None = None,
+        email: str | None = None,
+    ) -> tuple[User, EmployeeInvitation | None]:
+        """Applique l'adresse confirmée sans déplacer le compte ni changer ses droits."""
+
+        correction = self._find_correction(token, code=code, email=email, consume_failure=True)
+        self._assert_correction_open(correction)
+        try:
+            locked = self._session.get(EmployeeEmailCorrection, correction.id, with_for_update=True)
+        except Exception:
+            self._session.rollback()
+            correction = self._find_correction(token, code=code, email=email, consume_failure=False)
+            locked = self._session.get(EmployeeEmailCorrection, correction.id)
+        if locked is None:
+            raise WorkspaceError("Confirmation invalide ou expirée")
+        self._assert_correction_open(locked)
+        taken = self._session.scalar(select(User).where(User.email == locked.new_email))
+        if taken is not None:
+            self._session.rollback()
+            raise WorkspaceError("Cette adresse appartient déjà à un autre compte")
+        user = self._session.get(User, locked.user_id)
+        if user is None or user.company_id != locked.company_id or not user.is_active:
+            self._session.rollback()
+            raise WorkspaceError("Confirmation invalide ou expirée")
+        if user.email.strip().lower() != locked.old_email:
+            self._session.rollback()
+            raise WorkspaceError("Cette confirmation ne correspond plus à ce compte")
+        kept = (
+            user.company_id,
+            user.role,
+            user.job_title,
+            user.permission_grants,
+            user.password_hash,
+            user.first_name,
+            user.last_name,
+        )
+        old_email = user.email
+        now = datetime.now(timezone.utc)
+        user.email = locked.new_email
+        for auth_session in self._session.scalars(
+            select(AuthSession).where(AuthSession.user_id == user.id, AuthSession.revoked_at.is_(None))
+        ):
+            auth_session.revoked_at = now
+        pending = list(
+            self._session.scalars(
+                select(EmployeeInvitation)
+                .where(
+                    EmployeeInvitation.company_id == locked.company_id,
+                    EmployeeInvitation.email == old_email.strip().lower(),
+                    EmployeeInvitation.accepted_at.is_(None),
+                    EmployeeInvitation.revoked_at.is_(None),
+                )
+                .order_by(EmployeeInvitation.created_at.desc())
+            )
+        )
+        reissue = None if not pending else (pending[0].role, pending[0].job_title, pending[0].department)
+        for invitation in pending:
+            invitation.revoked_at = now
+        locked.confirmed_at = now
+        if (
+            user.company_id != kept[0]
+            or user.role != kept[1]
+            or user.job_title != kept[2]
+            or user.permission_grants != kept[3]
+            or user.password_hash != kept[4]
+            or user.first_name != kept[5]
+            or user.last_name != kept[6]
+        ):
+            self._session.rollback()
+            raise WorkspaceError("La correction ne peut pas modifier le compte")
+        self._session.commit()
+        reissued: EmployeeInvitation | None = None
+        requester = self._session.get(User, locked.requested_by_user_id)
+        if reissue is not None and requester is not None and requester.role == UserRole.OWNER and requester.company_id == user.company_id:
+            try:
+                reissued = self.invite(requester, old_email, UserRole(reissue[0]), reissue[1], reissue[2])
+            except (WorkspaceError, PlanLimitReached):
+                reissued = None
+        return user, reissued
+
+    def preview_email_correction(self, token: str) -> dict[str, str]:
+        correction = self._find_correction(token, code=None, email=None, consume_failure=False)
+        self._assert_correction_open(correction)
+        user = self._session.get(User, correction.user_id)
+        company = self._session.get(Company, correction.company_id)
+        if user is None or user.company_id != correction.company_id:
+            raise WorkspaceError("Confirmation invalide ou expirée")
+        return {
+            "company_name": company.name if company is not None else "",
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "job_title": user.job_title,
+        }
+
     def pending_invitations(self, actor: User) -> list[EmployeeInvitation]:
         if "users:manage" not in effective_permissions(actor):
             return []
@@ -495,6 +680,65 @@ class WorkspaceService:
                 raise WorkspaceError("Invitation invalide ou expirée")
             return invitation
         raise WorkspaceError("Jeton ou code d'invitation requis")
+
+    def _find_correction(
+        self,
+        token: str | None,
+        *,
+        code: str | None,
+        email: str | None,
+        consume_failure: bool,
+    ) -> EmployeeEmailCorrection:
+        now = datetime.now(timezone.utc)
+        if code and email:
+            normalized = email.strip().lower()
+            rows = list(
+                self._session.scalars(
+                    select(EmployeeEmailCorrection)
+                    .where(EmployeeEmailCorrection.new_email == normalized)
+                    .order_by(EmployeeEmailCorrection.created_at.desc())
+                )
+            )
+            open_rows = [row for row in rows if row.confirmed_at is None and row.revoked_at is None]
+            if not open_rows:
+                raise WorkspaceError("Aucune confirmation active pour cette adresse")
+            for row in open_rows:
+                if (row.failed_attempts or 0) >= 5:
+                    row.revoked_at = now
+                    self._session.commit()
+                    raise WorkspaceError("Nombre maximal de tentatives dépassé. Confirmation révoquée par sécurité.")
+            supplied = code.strip()
+            for row in open_rows:
+                expected_hash = hash_token(f"{supplied}:{row.code_salt or ''}")
+                stored = row.code_hash or ""
+                if stored and len(stored) == len(expected_hash) and secrets.compare_digest(stored, expected_hash):
+                    return row
+            if consume_failure:
+                for row in open_rows:
+                    row.failed_attempts = (row.failed_attempts or 0) + 1
+                    if row.failed_attempts >= 5:
+                        row.revoked_at = now
+                self._session.commit()
+                remaining = max(0, 5 - (open_rows[0].failed_attempts or 0))
+                raise WorkspaceError(f"Code de confirmation incorrect. {remaining} tentative(s) restante(s).")
+            raise WorkspaceError("Confirmation invalide ou expirée")
+        if token:
+            row = self._session.scalar(
+                select(EmployeeEmailCorrection).where(EmployeeEmailCorrection.token_hash == hash_token(token))
+            )
+            if row is None:
+                raise WorkspaceError("Confirmation invalide ou expirée")
+            return row
+        raise WorkspaceError("Jeton ou code de confirmation requis")
+
+    @staticmethod
+    def _assert_correction_open(correction: EmployeeEmailCorrection) -> None:
+        now = datetime.now(timezone.utc)
+        expires = correction.expires_at
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        if correction.confirmed_at is not None or correction.revoked_at is not None or expires <= now:
+            raise WorkspaceError("Confirmation invalide ou expirée")
 
     @staticmethod
     def _assert_invitation_open(invitation: EmployeeInvitation) -> None:

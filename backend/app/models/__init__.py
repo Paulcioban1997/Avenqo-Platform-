@@ -86,7 +86,7 @@ from backend.app.models.voice import (
     VoiceCentralSession, VoiceModulePermission, VoicePhoneNumber, VoiceToolAction,
 )
 from backend.app.models.workspace import (
-    AutomationRun, AutomationWorkflow, EmployeeInvitation, EmployeeResponsibility,
+    AutomationRun, AutomationWorkflow, EmployeeEmailCorrection, EmployeeInvitation, EmployeeResponsibility,
     EmployeeTask, LoginEvent, MediaGeneration, SandboxMailboxMessage, TenantDocument,
 )
 from backend.app.models.secure_download_nonce import SecureDownloadNonce
@@ -182,6 +182,7 @@ __all__ = [
     "User",
     "UserRole",
     "LoginEvent",
+    "EmployeeEmailCorrection",
     "EmployeeInvitation",
     "SandboxMailboxMessage",
     "EmployeeResponsibility",

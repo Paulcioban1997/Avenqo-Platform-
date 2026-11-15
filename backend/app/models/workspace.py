@@ -68,6 +68,32 @@ class EmployeeInvitation(TimestampMixin, Base):
     failed_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
 
+class EmployeeEmailCorrection(TimestampMixin, Base):
+    """Demande du propriétaire. L'adresse ne change qu'après confirmation du nouveau courriel."""
+
+    __tablename__ = "employee_email_corrections"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    requested_by_user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    old_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    new_email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    code_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    code_salt: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    failed_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class EmployeeResponsibility(TimestampMixin, Base):
     __tablename__ = "employee_responsibilities"
 
