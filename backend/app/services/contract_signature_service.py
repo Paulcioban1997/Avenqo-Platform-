@@ -44,12 +44,29 @@ REVIEW_BLOCKED_STATUSES = frozenset({
     "LEGAL_REVIEW_REQUIRED",
     "UNDER_REVIEW_LEGAL_REVIEW_REQUIRED",
 })
+# Explicit legal-reviewer approval of a versioned template. Not a countersignature.
+APPROVED_FOR_CUSTOMER_SIGNING = "APPROVED_FOR_CUSTOMER_SIGNING"
+NDA_CONTRACT_TYPES = frozenset({"MUTUAL_NDA", "NDA"})
+LEGAL_REVIEWER_PLATFORM_ROLES = frozenset({
+    "PLATFORM_SUPER_ADMIN",
+    "PLATFORM_LEGAL_REVIEWER",
+})
 REQUIRED_SAAS_CONTRACTS = ("SAAS_SUBSCRIPTION", "DATA_PROCESSING_ADDENDUM")
 CUSTOMER_ACCEPTED_STATUSES = frozenset({
     ContractLifecycleStatus.CUSTOMER_SIGNED.value,
     ContractLifecycleStatus.SIGNED.value,
     ContractLifecycleStatus.FULLY_EXECUTED.value,
 })
+LEGAL_APPROVAL_METADATA_KEYS = (
+    "approval_status",
+    "legal_approved_by_user_id",
+    "legal_approved_by_email",
+    "legal_approved_by_name",
+    "legal_approved_at",
+    "legal_approved_version",
+    "legal_approved_content_hash",
+    "legal_approved_platform_role",
+)
 
 CONTRACT_TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "legal" / "contracts"
 
@@ -275,7 +292,7 @@ class ContractSignatureService:
                     contract_version=meta["version"],
                 )
                 sha256 = self.compute_sha256(interpolated_text)
-                approval = "LEGAL_REVIEW_REQUIRED" if ctype in {"MUTUAL_NDA", "NDA"} else "NOT_LEGALLY_FINAL"
+                approval = "LEGAL_REVIEW_REQUIRED" if ctype in NDA_CONTRACT_TYPES else "NOT_LEGALLY_FINAL"
                 contract = CompanyContract(
                     company_id=company.id,
                     contract_type=ctype,
@@ -358,15 +375,87 @@ class ContractSignatureService:
         explicit = str(meta.get("approval_status") or "").strip().upper()
         if explicit:
             return explicit
-        if contract.contract_type in {"MUTUAL_NDA", "NDA"}:
+        if contract.contract_type in NDA_CONTRACT_TYPES:
             return "LEGAL_REVIEW_REQUIRED"
         return "NOT_LEGALLY_FINAL"
 
     def signature_blocked(self, contract: CompanyContract) -> bool:
-        if contract.contract_type in {"MUTUAL_NDA", "NDA"}:
-            return True
+        """Block signing while legal review is required. Approval is never implied by document type alone."""
         status = self.approval_status_of(contract)
-        return status in REVIEW_BLOCKED_STATUSES or "LEGAL_REVIEW_REQUIRED" in status or status.startswith("UNDER_REVIEW")
+        return (
+            status in REVIEW_BLOCKED_STATUSES
+            or "LEGAL_REVIEW_REQUIRED" in status
+            or status.startswith("UNDER_REVIEW")
+        )
+
+    @staticmethod
+    def _is_legal_reviewer(user: User) -> bool:
+        role = str(getattr(user, "platform_role", None) or "")
+        return bool(getattr(user, "is_platform_admin", False) and role in LEGAL_REVIEWER_PLATFORM_ROLES)
+
+    def approve_contract_version_for_signing(
+        self,
+        *,
+        company_id: UUID,
+        contract_type: str,
+        reviewer: User,
+        notes: str | None = None,
+    ) -> CompanyContract:
+        """Record an authorized legal reviewer's approval of a concrete version/hash.
+
+        Does not countersign, does not mark the contract executed, and does not invent
+        provider incorporation. Customer signing remains gated by OTP and authority checks.
+        """
+        if not self._is_legal_reviewer(reviewer):
+            raise ContractAuthorityError(
+                "Approbation juridique réservée à un réviseur légal ou super-administrateur plateforme."
+            )
+        contract = self.get_contract(company_id, contract_type)
+        if contract.status in CUSTOMER_ACCEPTED_STATUSES:
+            raise ContractAlreadySignedError(
+                f"Le contrat {contract_type} est déjà signé ; l'approbation de version ne s'applique plus."
+            )
+        prior = self.approval_status_of(contract)
+        if prior == APPROVED_FOR_CUSTOMER_SIGNING:
+            return contract
+
+        now = datetime.now(timezone.utc)
+        content_hash = self.compute_sha256(contract.content_text)
+        reviewer_name = f"{reviewer.first_name} {reviewer.last_name}".strip() or reviewer.email
+        meta = dict(contract.metadata_json) if isinstance(contract.metadata_json, dict) else {}
+        approval_record = {
+            "approval_status": APPROVED_FOR_CUSTOMER_SIGNING,
+            "legal_approved_by_user_id": str(reviewer.id),
+            "legal_approved_by_email": reviewer.email,
+            "legal_approved_by_name": reviewer_name,
+            "legal_approved_at": now.isoformat(),
+            "legal_approved_version": contract.version,
+            "legal_approved_content_hash": content_hash,
+            "legal_approved_platform_role": reviewer.platform_role,
+            "legal_approval_notes": (notes or "").strip() or None,
+            "prior_approval_status": prior,
+            "legal_effect": "version_approved_for_customer_signing_only",
+            "provider_countersigned": False,
+        }
+        meta.update(approval_record)
+        contract.metadata_json = meta
+
+        self._audit.record(
+            actor_user_id=reviewer.id,
+            action="contract.legal_version_approved",
+            target_type="commercial_contract",
+            target_id=str(contract.id),
+            company_id=company_id,
+            metadata=approval_record,
+            commit=False,
+        )
+        self._db.commit()
+        return contract
+
+    @staticmethod
+    def _preserve_legal_approval(meta: dict[str, Any] | None) -> dict[str, Any]:
+        source = meta if isinstance(meta, dict) else {}
+        return {key: source[key] for key in LEGAL_APPROVAL_METADATA_KEYS if key in source and source[key] is not None}
 
     def required_saas_accepted(self, company_id: UUID) -> bool:
         """SaaS subscription and DPA only. The private license and the NDA are not required.
@@ -526,6 +615,9 @@ class ContractSignatureService:
         pdf_sha256 = self.compute_sha256(pdf_bytes)
 
         # 5. Registre d'achèvement électronique Avenqo (tamper-evident completion record)
+        prior_approval = self._preserve_legal_approval(
+            contract.metadata_json if isinstance(contract.metadata_json, dict) else None
+        )
         completion_record = {
             "receipt_id": str(receipt_id),
             "transaction_id": f"TX-{receipt_id.hex[:12].upper()}",
@@ -541,6 +633,8 @@ class ContractSignatureService:
             "user_agent": user_agent,
             "consent_timestamp_utc": now.isoformat(),
             "consent_recorded": True,
+            "identity_verified_via": "email_otp_challenge",
+            "challenge_id": str(parsed_challenge_id),
             "storage_path": storage_rel_path,
             "legal_framework": "RLRQ c. C-1.1 (Québec) & PIPEDA (Canada)",
             "signature_label": "pilot/test" if pilot else "electronic",
@@ -552,6 +646,7 @@ class ContractSignatureService:
                 "provider": "PENDING_COUNTERSIGNATURE",
             },
             "provider_entity_status": self._settings.provider_incorporation_status,
+            **prior_approval,
         }
 
         self._audit.record(

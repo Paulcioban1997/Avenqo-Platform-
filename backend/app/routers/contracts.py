@@ -733,6 +733,52 @@ class VerifyWetInkRequest(BaseModel):
     rejection_reason: str | None = None
 
 
+class LegalVersionApprovalRequest(BaseModel):
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+@router.post("/{contract_type}/approve-legal-version")
+def approve_legal_contract_version(
+    contract_type: str,
+    company_id: UUID,
+    payload: LegalVersionApprovalRequest | None = None,
+    identity: CurrentIdentity = Depends(
+        require_platform_role("PLATFORM_SUPER_ADMIN", "PLATFORM_LEGAL_REVIEWER")
+    ),
+    service: ContractSignatureService = Depends(_get_service),
+) -> dict[str, Any]:
+    """Authorize customer signing for a reviewed version. Not a countersignature."""
+    try:
+        updated = service.approve_contract_version_for_signing(
+            company_id=company_id,
+            contract_type=contract_type,
+            reviewer=identity.user,
+            notes=(payload.notes if payload else None),
+        )
+        meta = updated.metadata_json if isinstance(updated.metadata_json, dict) else {}
+        return {
+            "success": True,
+            "contract_id": str(updated.id),
+            "company_id": str(updated.company_id),
+            "contract_type": updated.contract_type,
+            "version": updated.version,
+            "approval_status": service.approval_status_of(updated),
+            "signable": not service.signature_blocked(updated),
+            "legal_approved_by_email": meta.get("legal_approved_by_email"),
+            "legal_approved_at": meta.get("legal_approved_at"),
+            "legal_approved_version": meta.get("legal_approved_version"),
+            "legal_approved_content_hash": meta.get("legal_approved_content_hash"),
+            "provider_countersigned": False,
+            "legal_effect": "version_approved_for_customer_signing_only",
+        }
+    except ContractNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ContractAlreadySignedError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ContractAuthorityError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
 @router.post("/{contract_type}/verify-wet-ink")
 def verify_wet_ink_contract(
     contract_type: str,

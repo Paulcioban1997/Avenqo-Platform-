@@ -344,6 +344,20 @@ def test_full_contract_lifecycle_customer_to_provider_countersign(db_session: Se
     assert contract.status == "PENDING_SIGNATURE"
     assert contract.execution_state == "PENDING_CUSTOMER"
     assert contract.provider_signed_at is None
+    assert service.approval_status_of(contract) == "LEGAL_REVIEW_REQUIRED"
+
+    legal_reviewer = _create_user(
+        db_session, company, role=UserRole.ADMIN, is_platform_admin=True,
+        platform_role="PLATFORM_LEGAL_REVIEWER",
+    )
+    service.approve_contract_version_for_signing(
+        company_id=company.id,
+        contract_type="MUTUAL_NDA",
+        reviewer=legal_reviewer,
+        notes="Synthetic legal approval for lifecycle test",
+    )
+    db_session.refresh(contract)
+    assert service.approval_status_of(contract) == "APPROVED_FOR_CUSTOMER_SIGNING"
 
     # Signature client
     schedule = CommercialReconciler.reconcile(company, settings)
@@ -467,9 +481,14 @@ def test_unpublished_provider_and_absent_challenge_fail_closed(db_session: Sessi
         "provider_incorporation_status": "VERIFIED",
     })
     service = ContractSignatureService(db_session, settings=approved_in_synthetic_test)
-    with pytest.raises(ValueError, match="défi de signature"):
+    with pytest.raises(ContractAuthorityError, match="révision juridique"):
         service.sign_contract_electronic(
             company=company, user=owner, contract_type="MUTUAL_NDA",
+            signatory_title="Président", declared_authority=True, consent_checkbox=True,
+        )
+    with pytest.raises(ValueError, match="défi de signature"):
+        service.sign_contract_electronic(
+            company=company, user=owner, contract_type="SAAS_SUBSCRIPTION",
             signatory_title="Président", declared_authority=True, consent_checkbox=True,
         )
 

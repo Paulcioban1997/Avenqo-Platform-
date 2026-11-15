@@ -128,6 +128,7 @@ export type ContractsUiCopy = {
   noContracts: string;
   dismiss: string;
   legalReviewBanner: string;
+  legalReviewExplain: string;
   approvalNotFinal: string;
   codeWhy: string;
   pdfLoading: string;
@@ -268,6 +269,7 @@ const fr: ContractsUiCopy = {
   noContracts: "Aucun document n'est disponible pour cette entreprise.",
   dismiss: "Fermer l'alerte",
   legalReviewBanner: "Document en révision juridique — consultation seulement",
+  legalReviewExplain: "La signature électronique reste désactivée tant qu'un réviseur juridique plateforme n'a pas approuvé cette version. Lire et télécharger restent disponibles. Ce n'est pas une contresignature.",
   approvalNotFinal: "Texte non finalisé juridiquement. Une signature pilote n'est pas un contrat exécuté.",
   codeWhy: "Ce code est envoyé à l'adresse vérifiée du signataire autorisé pour confirmer son identité et son consentement. Il expire après 15 minutes, ne sert qu'une fois, n'apparaît jamais dans Équipe, et n'est pas demandé pour lire ou télécharger.",
   pdfLoading: "Préparation des pages…",
@@ -408,6 +410,7 @@ const en: ContractsUiCopy = {
   noContracts: "No document is available for this company.",
   dismiss: "Dismiss alert",
   legalReviewBanner: "Document under legal review — consultation only",
+  legalReviewExplain: "Electronic signing stays disabled until a platform legal reviewer approves this version. Reading and downloading remain available. This is not a countersignature.",
   approvalNotFinal: "The text is not legally final. A pilot signature is not an executed contract.",
   codeWhy: "This code is sent to the authorized signer's verified address to confirm identity and consent. It expires after 15 minutes, works once, never appears on Team, and is not requested in order to read or download.",
   pdfLoading: "Preparing the pages…",

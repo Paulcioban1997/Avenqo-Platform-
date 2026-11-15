@@ -80,11 +80,9 @@ export interface ContractDetail {
   signable?: boolean;
 }
 
-function underReview(item: { contract_type: string; approval_status?: string }) {
+function underReview(item: { approval_status?: string }) {
   const approval = (item.approval_status || "").toUpperCase();
-  return item.contract_type === "MUTUAL_NDA"
-    || item.contract_type === "NDA"
-    || approval.includes("LEGAL_REVIEW")
+  return approval.includes("LEGAL_REVIEW")
     || approval === "UNDER_REVIEW"
     || approval.startsWith("UNDER_REVIEW");
 }
@@ -454,9 +452,9 @@ export function ContractsView() {
     return copy.statusAwaiting;
   };
   const typeText = (type: string) => {
-    if (type === "NDA") return copy.typeNda;
-    if (type === "MSA" || type === "SAAS_MSA" || type === "SAAS") return copy.typeMsa;
-    if (type === "DPA") return copy.typeDpa;
+    if (type === "NDA" || type === "MUTUAL_NDA") return copy.typeNda;
+    if (type === "MSA" || type === "SAAS_MSA" || type === "SAAS" || type === "SAAS_SUBSCRIPTION") return copy.typeMsa;
+    if (type === "DPA" || type === "DATA_PROCESSING_ADDENDUM") return copy.typeDpa;
     if (type === "PRIVATE_LICENSE") return copy.typeLicense;
     return type;
   };
@@ -970,7 +968,10 @@ export function ContractsView() {
                       <h4 className="text-sm font-bold text-slate-900 dark:text-white">{item.title}</h4>
                       <p className="text-[11px] text-slate-600 dark:text-slate-300">{copy.versionLabel} {item.version}</p>
                       {underReview(item) ? (
-                        <p className="text-[11px] font-semibold text-amber-800 dark:text-amber-200">{copy.legalReviewBanner}</p>
+                        <div className="space-y-1">
+                          <p className="text-[11px] font-semibold text-amber-800 dark:text-amber-200">{copy.legalReviewBanner}</p>
+                          <p className="text-[11px] text-amber-900/90 dark:text-amber-100/90">{copy.legalReviewExplain}</p>
+                        </div>
                       ) : (
                         <p className="text-[11px] text-slate-600 dark:text-slate-300">{copy.approvalNotFinal}</p>
                       )}

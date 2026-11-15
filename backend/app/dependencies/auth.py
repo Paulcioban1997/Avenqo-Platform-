@@ -221,6 +221,7 @@ def require_platform_role(*allowed_roles: str):
 
     Rôles supportés :
     - PLATFORM_SUPER_ADMIN : accès complet à tous les modules et actions sensibles (contreseing, configuration)
+    - PLATFORM_LEGAL_REVIEWER : approbation de versions contractuelles avant signature client (pas de contresignature)
     - PLATFORM_FINANCE : vue d'ensemble, entreprises, revenus/Stripe, métriques IA, contrats (lecture)
     - PLATFORM_SUPPORT_READONLY : vue d'ensemble, entreprises (lecture), connecteurs, santé, messages support
     - PLATFORM_SECURITY_AUDITOR : sécurité, logs d'audit, connecteurs, santé, statut de configuration
@@ -238,6 +239,7 @@ def require_platform_role(*allowed_roles: str):
         current_role = identity.user.platform_role
         if current_role not in {
             "PLATFORM_SUPER_ADMIN",
+            "PLATFORM_LEGAL_REVIEWER",
             "PLATFORM_FINANCE",
             "PLATFORM_SUPPORT_READONLY",
             "PLATFORM_SECURITY_AUDITOR",

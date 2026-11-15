@@ -60,6 +60,7 @@ export function CEOCommandCenter({ isFr }: CEOCommandCenterProps) {
 
   const [countersignBusy, setCountersignBusy] = useState<string | null>(null);
   const [countersignMsg, setCountersignMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [legalApproveBusy, setLegalApproveBusy] = useState<string | null>(null);
 
   const loadActiveTabData = useCallback(async () => {
     setLoading(true);
@@ -131,6 +132,42 @@ export function CEOCommandCenter({ isFr }: CEOCommandCenterProps) {
       setCountersignMsg({ text: err.message || "Erreur de contresignature", ok: false });
     } finally {
       setCountersignBusy(null);
+    }
+  };
+
+  const handleLegalApprove = async (companyId: string, contractType: string) => {
+    const key = `${companyId}-${contractType}`;
+    setLegalApproveBusy(key);
+    setCountersignMsg(null);
+    try {
+      const headers = getAuthHeaders();
+      const res = await apiFetch(
+        `/api/v1/contracts/${contractType}/approve-legal-version?company_id=${companyId}`,
+        {
+          method: "POST",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({ notes: "Sandbox legal version approval" }),
+        },
+      );
+      const data = await res.json().catch(() => ({} as Record<string, unknown>));
+      if (!res.ok) {
+        const detail = typeof (data as { detail?: unknown }).detail === "string"
+          ? (data as { detail: string }).detail
+          : (isFr ? "Approbation juridique refusée." : "Legal approval denied.");
+        setCountersignMsg({ text: detail, ok: false });
+        return;
+      }
+      setCountersignMsg({
+        text: isFr
+          ? `Version ${(data as { version?: string }).version || ""} approuvée pour signature client — pas une contresignature.`
+          : `Version ${(data as { version?: string }).version || ""} approved for customer signing — not a countersignature.`,
+        ok: true,
+      });
+      void loadActiveTabData();
+    } catch (err: any) {
+      setCountersignMsg({ text: err.message || (isFr ? "Erreur d'approbation" : "Approval error"), ok: false });
+    } finally {
+      setLegalApproveBusy(null);
     }
   };
 
@@ -385,8 +422,8 @@ export function CEOCommandCenter({ isFr }: CEOCommandCenterProps) {
               </h3>
               <p className="text-xs text-slate-500">
                 {isFr
-                  ? `${contractsData.pending_countersign_count} document(s) signé(s) par le client en attente de contreseing fondateur.`
-                  : `${contractsData.pending_countersign_count} client-signed agreement(s) awaiting provider countersignature.`}
+                  ? `${contractsData.pending_legal_review_count || 0} en revue juridique · ${contractsData.pending_countersign_count} en attente de contreseing.`
+                  : `${contractsData.pending_legal_review_count || 0} awaiting legal review · ${contractsData.pending_countersign_count} awaiting countersignature.`}
               </p>
             </div>
           </div>
@@ -398,8 +435,9 @@ export function CEOCommandCenter({ isFr }: CEOCommandCenterProps) {
                   <th className="p-3 font-bold">{isFr ? "Entreprise" : "Tenant"}</th>
                   <th className="p-3 font-bold">{isFr ? "Contrat" : "Agreement"}</th>
                   <th className="p-3 font-bold">{isFr ? "Statut" : "Status"}</th>
+                  <th className="p-3 font-bold">{isFr ? "Revue juridique" : "Legal review"}</th>
                   <th className="p-3 font-bold">{isFr ? "Signataire Client" : "Client Signer"}</th>
-                  <th className="p-3 font-bold">{isFr ? "Action Fondateur" : "Provider Action"}</th>
+                  <th className="p-3 font-bold">{isFr ? "Action plateforme" : "Platform action"}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
@@ -420,30 +458,51 @@ export function CEOCommandCenter({ isFr }: CEOCommandCenterProps) {
                         {c.status}
                       </span>
                     </td>
+                    <td className="p-3 font-mono text-[10px] text-slate-600 dark:text-slate-300">
+                      {c.approval_status || "—"}
+                    </td>
                     <td className="p-3 text-slate-600 dark:text-slate-300">
                       {c.signatory_name || "En attente"}
                       {c.signed_at && <div className="text-[10px] text-slate-400">{c.signed_at.slice(0, 10)}</div>}
                     </td>
                     <td className="p-3">
-                      {c.is_countersign_ready ? (
-                        <button
-                          onClick={() => handleCountersign(c.company_id, c.contract_type)}
-                          disabled={countersignBusy === `${c.company_id}-${c.contract_type}`}
-                          className="px-3 py-1 rounded-lg bg-[#0076FF] hover:bg-blue-600 text-white font-bold text-[11px] shadow-sm transition-all"
-                        >
-                          {countersignBusy === `${c.company_id}-${c.contract_type}`
-                            ? "Signature..."
-                            : isFr
-                            ? "Contresigner (CEO)"
-                            : "Countersign (CEO)"}
-                        </button>
-                      ) : c.status === "FULLY_EXECUTED" ? (
-                        <span className="inline-flex items-center gap-1 text-emerald-600 font-bold text-[11px]">
-                          <CheckCircle2 size={13} /> {isFr ? "Pleinement Exécuté" : "Fully Executed"}
-                        </span>
-                      ) : (
-                        <span className="text-slate-400 text-[11px]">{isFr ? "Non requis" : "Not ready"}</span>
-                      )}
+                      <div className="flex flex-wrap gap-1.5">
+                        {c.is_legal_approval_ready ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleLegalApprove(c.company_id, c.contract_type)}
+                            disabled={legalApproveBusy === `${c.company_id}-${c.contract_type}`}
+                            className="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] shadow-sm transition-all"
+                          >
+                            {legalApproveBusy === `${c.company_id}-${c.contract_type}`
+                              ? (isFr ? "Approbation…" : "Approving…")
+                              : (isFr ? "Approuver version (juridique)" : "Approve version (legal)")}
+                          </button>
+                        ) : null}
+                        {c.is_countersign_ready ? (
+                          <button
+                            type="button"
+                            onClick={() => handleCountersign(c.company_id, c.contract_type)}
+                            disabled={countersignBusy === `${c.company_id}-${c.contract_type}`}
+                            className="px-3 py-1 rounded-lg bg-[#0076FF] hover:bg-blue-600 text-white font-bold text-[11px] shadow-sm transition-all"
+                          >
+                            {countersignBusy === `${c.company_id}-${c.contract_type}`
+                              ? "Signature..."
+                              : isFr
+                              ? "Contresigner (CEO)"
+                              : "Countersign (CEO)"}
+                          </button>
+                        ) : null}
+                        {!c.is_legal_approval_ready && !c.is_countersign_ready ? (
+                          c.status === "FULLY_EXECUTED" ? (
+                            <span className="inline-flex items-center gap-1 text-emerald-600 font-bold text-[11px]">
+                              <CheckCircle2 size={13} /> {isFr ? "Pleinement Exécuté" : "Fully Executed"}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-[11px]">{isFr ? "Non requis" : "Not ready"}</span>
+                          )
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))}

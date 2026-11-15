@@ -27,7 +27,7 @@ type Access = {
 
 function reviewed(row: ContractRow) {
   const approval = (row.approval_status || "").toUpperCase();
-  return row.contract_type === "MUTUAL_NDA" || row.contract_type === "NDA" || approval.includes("LEGAL_REVIEW") || approval.startsWith("UNDER_REVIEW");
+  return approval.includes("LEGAL_REVIEW") || approval === "UNDER_REVIEW" || approval.startsWith("UNDER_REVIEW");
 }
 
 export default function OnboardingContractsPage() {
@@ -110,6 +110,9 @@ export default function OnboardingContractsPage() {
             <p className="mt-2 text-xs text-amber-200">
               {reviewed(row) ? contractsCopy.legalReviewBanner : contractsCopy.approvalNotFinal}
             </p>
+            {reviewed(row) ? (
+              <p className="mt-1 text-xs text-amber-100/90">{contractsCopy.legalReviewExplain}</p>
+            ) : null}
             <div className="mt-3 flex flex-wrap gap-2">
               <Link href="/settings/contracts" className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white">{contractsCopy.consult}</Link>
               <button type="button" onClick={() => void downloadPdf(row.contract_type)} className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white">{contractsCopy.download}</button>
