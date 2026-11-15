@@ -40,6 +40,21 @@ class SigningChallengeService:
         content_hash: str,
         commercial_hash: str,
     ) -> tuple[ContractSigningChallenge, str]:
+        now = datetime.now(timezone.utc)
+        # Resend invalidates every prior unused challenge for this signer/document.
+        self._db.execute(
+            update(ContractSigningChallenge)
+            .where(
+                ContractSigningChallenge.company_id == company_id,
+                ContractSigningChallenge.user_id == user_id,
+                ContractSigningChallenge.contract_id == contract_id,
+                ContractSigningChallenge.action == self.ACTION,
+                ContractSigningChallenge.used_at.is_(None),
+                ContractSigningChallenge.expires_at > now,
+            )
+            .values(expires_at=now)
+            .execution_options(synchronize_session=False)
+        )
         code = f"{secrets.randbelow(100_000_000):08d}"
         salt = secrets.token_hex(16)
         challenge = ContractSigningChallenge(
@@ -52,7 +67,7 @@ class SigningChallengeService:
             action=self.ACTION,
             code_hash=self._code_hash(code, salt),
             salt=salt,
-            expires_at=datetime.now(timezone.utc) + timedelta(minutes=self.TTL_MINUTES),
+            expires_at=now + timedelta(minutes=self.TTL_MINUTES),
         )
         self._db.add(challenge)
         self._db.flush()

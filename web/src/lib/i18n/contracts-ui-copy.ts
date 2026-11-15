@@ -97,8 +97,11 @@ export type ContractsUiCopy = {
   close: string;
   challengePrompt: string;
   requestCode: string;
+  resendCode: string;
   generatingCode: string;
-  challengeDelivered: string;
+  challengeDeliveredEmail: string;
+  challengeDeliveredCapture: string;
+  challengeDeliveredPending: string;
   challengeTtl: string;
   signatoryTitle: string;
   verificationCode: string;
@@ -232,10 +235,13 @@ const fr: ContractsUiCopy = {
   archiveDownload: "Téléchargement",
   signatoryPending: "En attente",
   close: "Fermer",
-  challengePrompt: "Un code à usage unique est requis avant la signature. Il n'est pas affiché ici.",
+  challengePrompt: "Un code à usage unique est requis avant la signature. Il n'est pas affiché ici ni dans Équipe.",
   requestCode: "Recevoir le code",
+  resendCode: "Renvoyer le code",
   generatingCode: "Envoi…",
-  challengeDelivered: "Le code a été déposé dans la boîte d'essai de l'entreprise. Aucun courriel n'a quitté l'environnement d'essai. Ouvrez Équipe pour le lire, puis saisissez-le ici.",
+  challengeDeliveredEmail: "Un code à 8 chiffres a été accepté pour envoi à {email}. Saisissez-le ici. Il expire dans 15 minutes et ne s'affiche nulle part dans l'application.",
+  challengeDeliveredCapture: "Capture interne d'essai uniquement : aucun courriel n'a quitté l'environnement. Le code n'apparaît pas dans Équipe. Utilisez un destinataire d'essai approuvé pour une livraison réelle.",
+  challengeDeliveredPending: "La demande de code est enregistrée, mais la livraison n'est pas confirmée. Vérifiez votre boîte ou renvoyez le code.",
   challengeTtl: "Usage unique, 15 minutes",
   signatoryTitle: "Titre du signataire",
   verificationCode: "Code à 8 chiffres",
@@ -263,7 +269,7 @@ const fr: ContractsUiCopy = {
   dismiss: "Fermer l'alerte",
   legalReviewBanner: "Document en révision juridique — consultation seulement",
   approvalNotFinal: "Texte non finalisé juridiquement. Une signature pilote n'est pas un contrat exécuté.",
-  codeWhy: "Ce code est envoyé à l'adresse de l'entreprise pour confirmer que la personne qui signe contrôle bien cette adresse. Il expire après 15 minutes, ne sert qu'une fois, et n'est pas demandé pour lire ou télécharger.",
+  codeWhy: "Ce code est envoyé à l'adresse vérifiée du signataire autorisé pour confirmer son identité et son consentement. Il expire après 15 minutes, ne sert qu'une fois, n'apparaît jamais dans Équipe, et n'est pas demandé pour lire ou télécharger.",
   pdfLoading: "Préparation des pages…",
   pdfFailed: "Le PDF n'a pas pu être affiché. Le téléchargement utilise le même fichier.",
   pdfPage: "Page",
@@ -369,10 +375,13 @@ const en: ContractsUiCopy = {
   archiveDownload: "Download",
   signatoryPending: "Pending",
   close: "Close",
-  challengePrompt: "A one-time code is required before signing. It is not shown here.",
+  challengePrompt: "A one-time code is required before signing. It is not shown here or on Team.",
   requestCode: "Send the code",
+  resendCode: "Resend the code",
   generatingCode: "Sending…",
-  challengeDelivered: "The code was placed in the company test mailbox. No email left the test environment. Open Team to read it, then enter it here.",
+  challengeDeliveredEmail: "An 8-digit code was accepted for delivery to {email}. Enter it here. It expires in 15 minutes and is never shown anywhere in the app.",
+  challengeDeliveredCapture: "Sandbox internal capture only: no email left the environment. The code does not appear on Team. Use an approved test recipient for real delivery.",
+  challengeDeliveredPending: "The code request was recorded, but delivery is not confirmed. Check your inbox or resend the code.",
   challengeTtl: "Single use, 15 minutes",
   signatoryTitle: "Signatory title",
   verificationCode: "8-digit code",
@@ -400,7 +409,7 @@ const en: ContractsUiCopy = {
   dismiss: "Dismiss alert",
   legalReviewBanner: "Document under legal review — consultation only",
   approvalNotFinal: "The text is not legally final. A pilot signature is not an executed contract.",
-  codeWhy: "This code is sent to the company address to confirm that the person signing controls that address. It expires after 15 minutes, works once, and is not requested in order to read or download.",
+  codeWhy: "This code is sent to the authorized signer's verified address to confirm identity and consent. It expires after 15 minutes, works once, never appears on Team, and is not requested in order to read or download.",
   pdfLoading: "Preparing the pages…",
   pdfFailed: "The PDF could not be displayed. Download uses the same file.",
   pdfPage: "Page",

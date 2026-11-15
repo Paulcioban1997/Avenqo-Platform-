@@ -26,7 +26,12 @@ from backend.app.models.company_contract import (
 )
 from backend.app.models.company_legal_profile import CompanyLegalProfile
 from backend.app.config.settings import get_settings
-from backend.app.services.account_notifications import AccountNotifier, mailbox_delivery
+from backend.app.core.rate_limit import rate_limit
+from backend.app.services.account_notifications import (
+    AccountNotifier,
+    deliver_signature_otp,
+    mask_email,
+)
 from backend.app.services.audit_log_service import AuditLogService
 from backend.app.services.commercial_reconciler import CommercialReconciler
 from backend.app.services.company_legal_profile_service import (
@@ -310,7 +315,10 @@ def get_commercial_order(
     return schedule.to_dict()
 
 
-@router.post("/signing-challenge")
+@router.post(
+    "/signing-challenge",
+    dependencies=[Depends(rate_limit("signing_challenge", "rate_limit_signing_challenge_per_minute"))],
+)
 def create_signing_challenge(
     contract_type: str,
     tenant: TenantContext = Depends(get_tenant_context),
@@ -319,20 +327,20 @@ def create_signing_challenge(
     notifier: AccountNotifier = Depends(get_account_notifier),
     service: ContractSignatureService = Depends(_get_service),
 ) -> dict[str, Any]:
-    """Envoie un code à l'adresse enregistrée de l'entreprise sans l'exposer au navigateur."""
-    ready, missing = mailbox_delivery(notifier, get_settings())
-    if not ready:
-        names = ", ".join(missing) or "SMTP_HOST"
-        raise HTTPException(
-            status_code=503,
-            detail=f"Livraison du code impossible. Réglages Sandbox manquants : {names}",
-        )
+    """Send an 8-digit OTP to the authorized signer's verified email only."""
     company = db.get(Company, tenant.company_id)
     if company is None:
         raise HTTPException(status_code=404, detail="Entreprise introuvable")
-    recipient = (company.email or identity.user.email or "").strip()
+    # Recipient is always the authenticated signer's verified account email —
+    # never company.email, never an employee address, never a frontend-supplied recipient.
+    recipient = (identity.user.email or "").strip()
     if "@" not in recipient:
-        raise HTTPException(status_code=422, detail="Aucune adresse email d'entreprise n'est enregistrée.")
+        raise HTTPException(
+            status_code=422,
+            detail="Aucune adresse email vérifiée n'est associée au compte signataire.",
+        )
+    masked = mask_email(recipient)
+    settings = getattr(service, "_settings", None) or get_settings()
     try:
         if not service.sandbox_pilot_signing():
             service.require_legal_release()
@@ -340,7 +348,7 @@ def create_signing_challenge(
         contract = service.get_contract(company.id, contract_type)
         if service.signature_blocked(contract):
             raise ContractAuthorityError("Document en révision juridique — consultation seulement.")
-        schedule = CommercialReconciler.reconcile(company, service._settings)
+        schedule = CommercialReconciler.reconcile(company, settings)
         if schedule.is_blocked:
             raise CommercialConfigMismatchError("Configuration commerciale divergente.")
         challenge, code = SigningChallengeService(db).create_challenge(
@@ -356,26 +364,44 @@ def create_signing_challenge(
         company_token = sandbox_mail_company_id.set(str(company.id))
         session_token = sandbox_mail_session.set(db)
         try:
-            notifier.send_transactional(
-                recipient,
-                "Code de signature Avenqo",
-                f"Votre code de confirmation de signature est {code}. Il expire dans 15 minutes.",
+            delivery = deliver_signature_otp(
+                notifier=notifier,
+                settings=settings,
+                recipient=recipient,
+                code=code,
             )
+            if delivery == "failed":
+                db.rollback()
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "Le code n'a pas pu être livré à l'adresse du signataire. "
+                        "Aucun défi actif n'a été créé. Vérifiez la configuration d'envoi "
+                        "ou la liste des destinataires d'essai approuvés."
+                    ),
+                )
             db.commit()
         finally:
             sandbox_mail_company_id.reset(company_token)
             sandbox_mail_session.reset(session_token)
+    except HTTPException:
+        raise
     except (ContractAuthorityError, CommercialConfigMismatchError) as exc:
         db.rollback()
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except Exception:
         db.rollback()
-        raise HTTPException(status_code=503, detail="Livraison du code impossible; aucun défi actif créé.") from None
+        raise HTTPException(
+            status_code=503,
+            detail="Livraison du code impossible; aucun défi actif créé.",
+        ) from None
     return {
         "challenge_id": str(challenge.id),
         "contract_type": contract_type,
         "expires_at": challenge.expires_at.isoformat(),
-        "delivery": "sandbox_mailbox" if type(notifier).__name__ == "SandboxCaptureAccountNotifier" else "email",
+        "delivery": delivery,
+        "recipient_masked": masked,
+        "ttl_minutes": SigningChallengeService.TTL_MINUTES,
     }
 
 

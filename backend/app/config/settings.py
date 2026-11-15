@@ -153,6 +153,11 @@ class Settings(BaseSettings):
     email_provider: str = Field(default="smtp", alias="EMAIL_PROVIDER")
     sandbox_allow_external_email: bool = Field(default=False, alias="SANDBOX_ALLOW_EXTERNAL_EMAIL")
     sandbox_email_capture_enabled: bool = Field(default=False, alias="SANDBOX_EMAIL_CAPTURE_ENABLED")
+    sandbox_approved_email_recipients: str = Field(
+        default="",
+        alias="SANDBOX_APPROVED_EMAIL_RECIPIENTS",
+        description="Comma-separated sandbox addresses allowed to receive real transactional email.",
+    )
     sandbox_commerce_sync_enabled: bool = Field(default=False, alias="SANDBOX_COMMERCE_SYNC_ENABLED")
     email_api_key: str | None = Field(default=None, alias="EMAIL_API_KEY")
     email_from_email: str = Field(default="noreply@avenqo.ca", alias="EMAIL_FROM_EMAIL")
@@ -423,6 +428,9 @@ class Settings(BaseSettings):
     rate_limit_webhook_per_minute: int = Field(default=120, ge=1, alias="RATE_LIMIT_WEBHOOK_PER_MINUTE")
     rate_limit_billing_per_minute: int = Field(default=20, ge=1, alias="RATE_LIMIT_BILLING_PER_MINUTE")
     rate_limit_admin_per_minute: int = Field(default=60, ge=1, alias="RATE_LIMIT_ADMIN_PER_MINUTE")
+    rate_limit_signing_challenge_per_minute: int = Field(
+        default=5, ge=1, alias="RATE_LIMIT_SIGNING_CHALLENGE_PER_MINUTE"
+    )
     rate_limit_default_per_minute: int = Field(default=120, ge=1, alias="RATE_LIMIT_DEFAULT_PER_MINUTE")
     db_pool_size: int = Field(default=10, ge=1, le=100, alias="AVENQO_DB_POOL_SIZE")
     db_max_overflow: int = Field(default=20, ge=0, le=100, alias="AVENQO_DB_MAX_OVERFLOW")
@@ -664,6 +672,27 @@ class Settings(BaseSettings):
         if env in {"sandbox", "staging"}:
             return self.sandbox_allow_external_email
         return True
+
+    def sandbox_email_allowlist(self) -> set[str]:
+        return {
+            part.strip().lower()
+            for part in (self.sandbox_approved_email_recipients or "").split(",")
+            if part.strip() and "@" in part
+        }
+
+    def is_sandbox_email_recipient_approved(self, email: str) -> bool:
+        """Sandbox may send real mail only to explicitly approved test recipients."""
+        env = self.environment.lower()
+        if env in {"production", "prod"}:
+            return True
+        if env not in {"sandbox", "staging"}:
+            return True
+        if not self.is_external_email_allowed:
+            return False
+        approved = self.sandbox_email_allowlist()
+        if not approved:
+            return False
+        return (email or "").strip().lower() in approved
 
     @property
     def email_delivery_configured(self) -> bool:

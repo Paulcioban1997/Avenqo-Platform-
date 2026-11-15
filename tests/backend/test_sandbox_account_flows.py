@@ -115,6 +115,8 @@ def _company(session: Session, slug: str) -> tuple[Company, User]:
         subscription_plan="professional",
         preferred_language="fr",
     )
+    from datetime import datetime, timezone
+
     owner = User(
         id=uuid4(),
         company_id=company.id,
@@ -124,6 +126,7 @@ def _company(session: Session, slug: str) -> tuple[Company, User]:
         last_name="Owner",
         role=UserRole.OWNER,
         is_active=True,
+        email_verified_at=datetime.now(timezone.utc),
     )
     session.add(company)
     session.add(owner)
@@ -160,14 +163,31 @@ def test_failed_mail_does_not_keep_an_invitation_or_challenge():
         raising.invite(owner, "invitee@example.test", UserRole.USER, "Analyst", None)
     assert session.scalar(select(func.count()).select_from(EmployeeInvitation)) == 0
 
+    from backend.app.dependencies.auth import CurrentIdentity
+    from backend.app.services.contract_signature_service import ContractSignatureService
+    from backend.app.config.settings import get_settings
+
+    service = ContractSignatureService(
+        session,
+        settings=get_settings().model_copy(
+            update={
+                "environment": "sandbox",
+                "legal_signing_enabled": False,
+                "provider_incorporation_verified": False,
+                "provider_contracts_published": False,
+                "provider_incorporation_status": "UNVERIFIED_PENDING_INCORPORATION",
+            }
+        ),
+    )
+    service.ensure_contracts_for_company(company)
     with pytest.raises(HTTPException) as challenge_error:
         create_signing_challenge(
             "SAAS_SUBSCRIPTION",
             tenant=TenantContext(company_id=company.id),
-            identity=SimpleNamespace(),
+            identity=CurrentIdentity(auth_session=None, user=owner, raw_token="synthetic"),
             db=session,
             notifier=LoggingAccountNotifier(),
-            service=object(),
+            service=service,
         )
     assert challenge_error.value.status_code == 503
     assert not re.search(r"\b\d{8}\b", str(challenge_error.value.detail))

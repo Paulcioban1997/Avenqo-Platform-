@@ -150,6 +150,8 @@ export function ContractsView() {
   const [challengeId, setChallengeId] = useState<string | null>(null);
   const [challengeCode, setChallengeCode] = useState<string>("");
   const [challengeLoading, setChallengeLoading] = useState(false);
+  const [challengeDelivery, setChallengeDelivery] = useState<string | null>(null);
+  const [challengeRecipientMasked, setChallengeRecipientMasked] = useState<string | null>(null);
 
   // Wet-ink scan upload modal
   const [wetInkContract, setWetInkContract] = useState<ContractItem | null>(null);
@@ -276,6 +278,8 @@ export function ContractsView() {
       setConsentCheckbox(false);
       setChallengeId(null);
       setChallengeCode("");
+      setChallengeDelivery(null);
+      setChallengeRecipientMasked(null);
     } catch (err: any) {
       setPdfBytes(null);
       setPdfError(err?.publicMessage || err?.message || copy.pdfFailed);
@@ -288,24 +292,63 @@ export function ContractsView() {
   const handleRequestChallenge = async () => {
     if (!selectedContract) return;
     setChallengeLoading(true);
+    setAlertError(null);
     try {
       const headers = { ...getAuthHeaders(), "Content-Type": "application/json" };
       const res = await apiFetch(`/api/v1/contracts/signing-challenge?contract_type=${selectedContract.contract_type}`, {
         method: "POST",
         headers,
       });
-      const ch = await res.json();
-      if ((ch.delivery !== "email" && ch.delivery !== "sandbox_mailbox") || !ch.challenge_id) {
-        setAlertError(copy.codeNotSent);
+      const ch = await res.json().catch(() => ({} as Record<string, unknown>));
+      if (!res.ok) {
+        const detail =
+          typeof (ch as { detail?: unknown }).detail === "string"
+            ? (ch as { detail: string }).detail
+            : copy.codeNotDelivered;
+        setAlertError(detail);
+        setChallengeId(null);
+        setChallengeDelivery(null);
+        setChallengeRecipientMasked(null);
         return;
       }
-      setChallengeId(ch.challenge_id);
+      const delivery = typeof ch.delivery === "string" ? ch.delivery : "";
+      const accepted =
+        delivery === "email_accepted"
+        || delivery === "sandbox_internal_capture"
+        // Legacy labels from older sandbox builds — treat capture honestly, never as inbox delivery.
+        || delivery === "sandbox_mailbox"
+        || delivery === "email";
+      if (!accepted || !ch.challenge_id) {
+        setAlertError(copy.codeNotSent);
+        setChallengeId(null);
+        setChallengeDelivery(null);
+        setChallengeRecipientMasked(null);
+        return;
+      }
+      setChallengeId(String(ch.challenge_id));
+      setChallengeDelivery(delivery === "email" ? "email_accepted" : delivery === "sandbox_mailbox" ? "sandbox_internal_capture" : delivery);
+      setChallengeRecipientMasked(typeof ch.recipient_masked === "string" ? ch.recipient_masked : null);
       setChallengeCode("");
     } catch (e: any) {
       setAlertError(e?.publicMessage || copy.codeNotDelivered);
+      setChallengeId(null);
+      setChallengeDelivery(null);
+      setChallengeRecipientMasked(null);
     } finally {
       setChallengeLoading(false);
     }
+  };
+
+  const challengeStatusMessage = () => {
+    if (challengeDelivery === "email_accepted") {
+      return fillContractCopy(copy.challengeDeliveredEmail, {
+        email: challengeRecipientMasked || "***",
+      });
+    }
+    if (challengeDelivery === "sandbox_internal_capture") {
+      return copy.challengeDeliveredCapture;
+    }
+    return copy.challengeDeliveredPending;
   };
 
   const handleSubmitSignature = async (e: React.FormEvent) => {
@@ -1054,24 +1097,33 @@ export function ContractsView() {
               <p className="text-xs leading-relaxed text-slate-700 dark:text-slate-200">{copy.codeWhy}</p>
               {/* Jeton / Défi de signature anti-rejeu */}
               {!challengeId ? (
-                <div className="p-3.5 rounded-xl bg-blue-50 dark:bg-[#111D3D] border border-blue-200 dark:border-blue-900 flex items-center justify-between">
+                <div className="p-3.5 rounded-xl bg-blue-50 dark:bg-[#111D3D] border border-blue-200 dark:border-blue-900 flex items-center justify-between gap-3">
                   <div className="text-xs text-blue-900 dark:text-blue-200">
                     {copy.challengePrompt}
                   </div>
                   <button
-                    onClick={handleRequestChallenge}
+                    type="button"
+                    onClick={() => void handleRequestChallenge()}
                     disabled={challengeLoading}
-                    className="px-3 py-1.5 rounded-xl bg-[#0076FF] text-white text-xs font-bold"
+                    className="shrink-0 px-3 py-1.5 rounded-xl bg-[#0076FF] text-white text-xs font-bold"
                   >
                     {challengeLoading ? copy.generatingCode : copy.requestCode}
                   </button>
                 </div>
               ) : (
-                <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 text-xs text-emerald-900 dark:text-emerald-200 flex items-center justify-between">
-                  <div>
-                    {copy.challengeDelivered}
+                <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 text-xs text-emerald-900 dark:text-emerald-200 space-y-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>{challengeStatusMessage()}</div>
+                    <span className="shrink-0 text-[10px] text-slate-500">{copy.challengeTtl}</span>
                   </div>
-                  <span className="text-[10px] text-slate-500">{copy.challengeTtl}</span>
+                  <button
+                    type="button"
+                    onClick={() => void handleRequestChallenge()}
+                    disabled={challengeLoading}
+                    className="px-3 py-1.5 rounded-xl border border-emerald-400/60 text-emerald-900 dark:text-emerald-100 text-xs font-semibold"
+                  >
+                    {challengeLoading ? copy.generatingCode : copy.resendCode}
+                  </button>
                 </div>
               )}
 

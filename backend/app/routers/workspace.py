@@ -49,24 +49,40 @@ def sandbox_mailbox(
         raise HTTPException(status_code=404, detail="Introuvable")
     if "users:manage" not in effective_permissions(identity.user):
         raise HTTPException(status_code=403, detail="Permission insuffisante")
+    import re
+
+    from backend.app.services.account_notifications import SIGNATURE_OTP_SUBJECT
+
     rows = db.scalars(
         select(SandboxMailboxMessage)
         .where(SandboxMailboxMessage.company_id == identity.user.company_id)
         .order_by(SandboxMailboxMessage.created_at.desc())
         .limit(20)
     ).all()
-    return {
-        "external_delivery": False,
-        "messages": [
+    # Signature OTPs must never appear in Team. Invitation codes may still be shown in sandbox.
+    code_re = re.compile(r"\b\d{8}\b")
+    messages: list[dict] = []
+    for row in rows:
+        subject = row.subject or ""
+        body = row.body or ""
+        if subject == SIGNATURE_OTP_SUBJECT or "confirmation de signature" in body.lower():
+            body = code_re.sub("[code masqué]", body)
+            body = (
+                "Statut : code de signature demandé. "
+                "Le code n'est pas affiché ici — consultez le courriel du signataire."
+            )
+        messages.append(
             {
                 "id": str(row.id),
                 "recipient": row.recipient,
-                "subject": row.subject,
-                "body": row.body,
+                "subject": subject,
+                "body": body,
                 "created_at": row.created_at.isoformat(),
             }
-            for row in rows
-        ],
+        )
+    return {
+        "external_delivery": False,
+        "messages": messages,
     }
 
 

@@ -23,6 +23,22 @@ from backend.app.services.tenant_locale_service import catalog_code_or_none, get
 
 logger = logging.getLogger(__name__)
 
+SIGNATURE_OTP_SUBJECT = "Code de signature Avenqo"
+_SIGNATURE_OTP_BODY_RE = re.compile(
+    r"code de confirmation de signature|signature confirmation code|Code de signature",
+    re.IGNORECASE,
+)
+
+
+def mask_email(email: str) -> str:
+    """Mask a mailbox for UI/status only. Never reverse to recover the address."""
+    value = (email or "").strip()
+    local, sep, domain = value.partition("@")
+    if not sep or not domain:
+        return "***"
+    keep = min(2, len(local))
+    return f"{local[:keep]}***@{domain}"
+
 
 def _company_locale(company: object) -> str:
     """Use the explicit tenant profile, then the legacy setting if absent.
@@ -479,6 +495,9 @@ class SandboxCaptureAccountNotifier:
         with self._lock:
             self._captured.append(item)
         logger.info("Sandbox captured email recipient=%s subject=%s code_present=%s", recipient, subject, bool(code))
+        # Signature OTPs must never appear in the shared Team mailbox.
+        if subject.strip() == SIGNATURE_OTP_SUBJECT or _SIGNATURE_OTP_BODY_RE.search(text_body or ""):
+            return
         session = sandbox_mail_session.get()
         company = sandbox_mail_company_id.get()
         if session is None or not company:
@@ -525,3 +544,78 @@ def get_sandbox_capture_notifier(settings: Settings | None = None) -> SandboxCap
     if _sandbox_capture_notifier is None:
         _sandbox_capture_notifier = SandboxCaptureAccountNotifier(settings)
     return _sandbox_capture_notifier
+
+
+def _is_capture_notifier(notifier: object) -> bool:
+    return type(notifier).__name__ == "SandboxCaptureAccountNotifier"
+
+
+def _is_real_mailbox_notifier(notifier: object) -> bool:
+    if _is_capture_notifier(notifier):
+        return False
+    if type(notifier).__name__ == "LoggingAccountNotifier":
+        return False
+    return bool(getattr(notifier, "delivers_to_mailbox", False) or getattr(notifier, "email_delivery_configured", False))
+
+
+def deliver_signature_otp(
+    *,
+    notifier: object,
+    settings: Settings,
+    recipient: str,
+    code: str,
+) -> str:
+    """Send a signature OTP without exposing it in API/logs/Team.
+
+    Returns one of:
+    - email_accepted: provider accepted the message for the signer's mailbox
+    - sandbox_internal_capture: sandbox-only capture; no outbound email
+    - failed: nothing was delivered or captured safely
+    """
+    recipient = (recipient or "").strip()
+    if "@" not in recipient or not code or not code.isdigit() or len(code) != 8:
+        return "failed"
+    subject = SIGNATURE_OTP_SUBJECT
+    body = (
+        f"Votre code de confirmation de signature est {code}. "
+        "Il expire dans 15 minutes et ne peut être utilisé qu'une seule fois. "
+        "Ne le partagez pas. Avenqo ne l'affiche jamais dans Équipe."
+    )
+    environment = settings.environment.lower()
+    try:
+        if environment in {"sandbox", "staging"}:
+            if settings.is_sandbox_email_recipient_approved(recipient) and _is_real_mailbox_notifier(notifier):
+                notifier.send_transactional(recipient, subject, body)  # type: ignore[attr-defined]
+                logger.info(
+                    "Signature OTP accepted by provider recipient=%s delivery=email_accepted",
+                    mask_email(recipient),
+                )
+                return "email_accepted"
+            if _is_capture_notifier(notifier) or getattr(notifier, "test_transport", False):
+                notifier.send_transactional(recipient, subject, body)  # type: ignore[attr-defined]
+                logger.info(
+                    "Signature OTP sandbox-internal capture recipient=%s delivery=sandbox_internal_capture",
+                    mask_email(recipient),
+                )
+                return "sandbox_internal_capture"
+            logger.warning(
+                "Signature OTP blocked in sandbox recipient=%s approved=%s",
+                mask_email(recipient),
+                settings.is_sandbox_email_recipient_approved(recipient),
+            )
+            return "failed"
+        if not _is_real_mailbox_notifier(notifier):
+            return "failed"
+        notifier.send_transactional(recipient, subject, body)  # type: ignore[attr-defined]
+        logger.info(
+            "Signature OTP accepted by provider recipient=%s delivery=email_accepted",
+            mask_email(recipient),
+        )
+        return "email_accepted"
+    except Exception:
+        logger.warning(
+            "Signature OTP delivery failed recipient=%s",
+            mask_email(recipient),
+            exc_info=False,
+        )
+        return "failed"
