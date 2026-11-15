@@ -369,12 +369,16 @@ class ContractSignatureService:
         return status in REVIEW_BLOCKED_STATUSES or "LEGAL_REVIEW_REQUIRED" in status or status.startswith("UNDER_REVIEW")
 
     def required_saas_accepted(self, company_id: UUID) -> bool:
-        """SaaS subscription and DPA only. The private license and the NDA are not required."""
+        """SaaS subscription and DPA only. The private license and the NDA are not required.
+
+        Once a required document is customer-accepted, a later UNDER_REVIEW flag on
+        another draft must not revoke that acceptance or block an active subscription.
+        """
 
         by_type = {row.contract_type: row for row in self.list_contracts(company_id)}
         for contract_type in REQUIRED_SAAS_CONTRACTS:
             row = by_type.get(contract_type)
-            if row is None or row.status not in CUSTOMER_ACCEPTED_STATUSES or self.signature_blocked(row):
+            if row is None or row.status not in CUSTOMER_ACCEPTED_STATUSES:
                 return False
         return True
 

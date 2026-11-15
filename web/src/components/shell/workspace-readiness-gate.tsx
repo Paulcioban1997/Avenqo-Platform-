@@ -12,6 +12,7 @@ const REACHABLE = ["/settings", "/billing", "/onboarding", "/team", "/employees"
 type Access = {
   workspace_open?: boolean;
   legacy_session?: boolean;
+  invited_member?: boolean;
   contracts_path?: string;
   checkout_path?: string;
 };
@@ -43,7 +44,7 @@ export function WorkspaceReadinessGate({ children }: { children: React.ReactNode
     };
   }, [pathname]);
 
-  if (reachable || failed || !access || access.workspace_open) {
+  if (reachable || failed || !access || access.workspace_open || access.invited_member) {
     return <>{children}</>;
   }
 

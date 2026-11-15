@@ -268,10 +268,10 @@ def test_private_license_is_not_required_and_prices_stay_put(db_session, tmp_pat
 
 def test_new_company_gate_and_legacy_session_stay_distinct(db_session, tmp_path):
     company = _company(db_session)
-    _user(db_session, company)
+    owner = _user(db_session, company)
     service = ContractSignatureService(db_session, settings=_settings(tmp_path))
     onboarding = OnboardingService(db_session)
-    tenant = TenantContext(company_id=company.id)
+    tenant = TenantContext(company_id=company.id, user_id=owner.id)
     onboarding.update_step(tenant, "modules", {"selected_modules": ["crm"]})
     onboarding.update_step(tenant, "contracts", {"accepted_contract_types": ["SAAS_SUBSCRIPTION"], "accepted_by_name": "Ada"})
     saas = service.get_contract(company.id, "SAAS_SUBSCRIPTION")
@@ -279,6 +279,7 @@ def test_new_company_gate_and_legacy_session_stay_distinct(db_session, tmp_path)
     assert saas.signed_at is None
     access = onboarding.workspace_access(tenant)
     assert access["workspace_open"] is False
+    assert access["invited_member"] is False
     assert access["private_license_required"] is False
     assert access["saas_accepted"] is False
     assert access["next_path"] == "/settings/contracts"
@@ -299,3 +300,39 @@ def test_new_company_gate_and_legacy_session_stay_distinct(db_session, tmp_path)
     assert legacy["workspace_open"] is True
     assert legacy["stripe_confirmed"] is False
     assert legacy["checkout_path"] == "/onboarding/checkout"
+
+
+def test_invited_employee_skips_commercial_gate(db_session, tmp_path):
+    company = _company(db_session)
+    _user(db_session, company)
+    employee = _user(db_session, company, UserRole.USER)
+    ContractSignatureService(db_session, settings=_settings(tmp_path)).ensure_contracts_for_company(company)
+    access = OnboardingService(db_session).workspace_access(
+        TenantContext(company_id=company.id, user_id=employee.id)
+    )
+    assert access["invited_member"] is True
+    assert access["workspace_open"] is True
+    assert access["saas_accepted"] is False
+    assert access["stripe_confirmed"] is False
+    assert access["next_path"] == "/dashboard"
+    assert access["private_license_required"] is False
+
+
+def test_signed_saas_stays_accepted_when_other_docs_are_under_review(db_session, tmp_path):
+    company = _company(db_session)
+    owner = _user(db_session, company)
+    service = ContractSignatureService(db_session, settings=_settings(tmp_path))
+    service.ensure_contracts_for_company(company)
+    _sign(service, company, owner, "SAAS_SUBSCRIPTION")
+    _sign(service, company, owner, "DATA_PROCESSING_ADDENDUM")
+    nda = service.get_contract(company.id, "MUTUAL_NDA")
+    nda.metadata_json = {"approval_status": "UNDER_REVIEW"}
+    saas = service.get_contract(company.id, "SAAS_SUBSCRIPTION")
+    saas.metadata_json = {**(saas.metadata_json or {}), "approval_status": "UNDER_REVIEW"}
+    db_session.commit()
+    assert service.required_saas_accepted(company.id) is True
+    assert service.get_contract(company.id, "SAAS_SUBSCRIPTION").status in {
+        "CUSTOMER_SIGNED", "SIGNED", "FULLY_EXECUTED",
+    }
+    with pytest.raises(ContractAuthorityError, match="révision juridique"):
+        _sign(service, company, owner, "MUTUAL_NDA")

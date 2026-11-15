@@ -27,7 +27,7 @@ from backend.app.models import (
     User,
     VoiceBusinessConfig,
 )
-from backend.app.models.base import CompanyStatus, OnboardingStatus
+from backend.app.models.base import CompanyStatus, OnboardingStatus, UserRole
 from backend.app.schemas.onboarding import (
     FinalizeOnboardingResponse,
     MultiStepOnboardingStateResponse,
@@ -192,6 +192,9 @@ class OnboardingService:
         company = self._session.get(Company, tenant.company_id)
         if company is None:
             raise ValueError("Entreprise introuvable")
+        actor = self._session.get(User, tenant.user_id) if tenant.user_id else None
+        # Invited employees join via invitation only — no commercial contract or Checkout.
+        invited_member = actor is not None and actor.role != UserRole.OWNER
         draft = dict(record.draft_payload or {})
         service = ContractSignatureService(self._session)
         service.ensure_contracts_for_company(company)
@@ -199,7 +202,7 @@ class OnboardingService:
         stripe_confirmed = self._stripe_confirmed_for(company.id)
         legacy = self._legacy_operating_session(tenant, company)
         selected = draft.get("selected_modules") or list(self._active_module_codes(tenant))
-        if legacy or (saas_accepted and stripe_confirmed):
+        if invited_member or legacy or (saas_accepted and stripe_confirmed):
             next_path = "/dashboard"
             workspace_open = True
         elif not selected:
@@ -217,6 +220,7 @@ class OnboardingService:
             "stripe_confirmed": stripe_confirmed,
             "private_license_required": False,
             "legacy_session": legacy,
+            "invited_member": invited_member,
             "required_contract_types": list(REQUIRED_SAAS_CONTRACTS),
             "next_path": next_path,
             "contracts_path": "/settings/contracts",
