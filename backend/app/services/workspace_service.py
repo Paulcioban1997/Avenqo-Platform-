@@ -184,10 +184,10 @@ class WorkspaceService:
         existing_user = self._session.scalar(select(User).where(User.email == normalized))
         if existing_user is not None and existing_user.company_id != actor.company_id:
             raise WorkspaceError("Cette adresse appartient déjà à une autre entreprise")
-        if existing_user is not None and existing_user.role not in {UserRole.USER, UserRole.VIEWER, UserRole.ANALYST}:
+        if existing_user is not None:
             raise WorkspaceError(
                 f"{existing_user.first_name} {existing_user.last_name} a déjà un accès avec cette adresse. "
-                "Utilisez un autre courriel pour ajouter une autre personne."
+                "Une invitation ne modifie pas un compte existant. Utilisez un autre courriel."
             )
         granted = encode_grants(
             cap_grants(grants_for_responsibility(job_title, role), effective_permissions(actor))
@@ -301,7 +301,7 @@ class WorkspaceService:
         code: str | None = None,
         email: str | None = None,
     ) -> dict[str, str]:
-        invitation = self._find_invitation(token, code=code, email=email, consume_failure=False)
+        invitation = self._find_invitation(token, code=code, email=email, consume_failure=True)
         self._assert_invitation_open(invitation)
         company = self._session.get(Company, invitation.company_id)
         member = self._session.scalar(select(User).where(User.email == invitation.email))
@@ -372,8 +372,16 @@ class WorkspaceService:
         self._assert_invitation_open(locked)
         now = datetime.now(timezone.utc)
         existing = self._session.scalar(select(User).where(User.email == locked.email))
-        if existing is not None and existing.company_id != locked.company_id:
-            raise WorkspaceError("Cette adresse appartient déjà à une autre entreprise")
+        if existing is not None:
+            held_name = f"{existing.first_name} {existing.last_name}".strip()
+            other_company = existing.company_id != locked.company_id
+            self._session.rollback()
+            if other_company:
+                raise WorkspaceError("Cette adresse appartient déjà à une autre entreprise")
+            raise WorkspaceError(
+                f"Ce courriel appartient déjà à {held_name}. "
+                "Une invitation ne modifie pas un compte existant. Utilisez le courriel de la personne."
+            )
         if existing is None:
             PlanLimitsService(self._session).ensure_user_capacity(locked.company_id, adding=0)
             user = User(
@@ -401,44 +409,6 @@ class WorkspaceService:
                 )
             )
             self._assign_job_tasks(user, locked)
-        else:
-            if existing.company_id != locked.company_id:
-                raise WorkspaceError("Cette adresse appartient déjà à une autre entreprise")
-            if existing.role != UserRole.USER or existing.last_login is not None:
-                raise WorkspaceError(
-                    f"Ce courriel appartient déjà à {existing.first_name} {existing.last_name} dans cette entreprise. "
-                    "Le code d'accès ne crée pas un autre employé. Utilisez le courriel de la personne."
-                )
-            existing.password_hash = hash_password(password)
-            existing.first_name = first_name.strip() or existing.first_name
-            existing.last_name = last_name.strip() or existing.last_name
-            existing.role = UserRole(locked.role)
-            existing.job_title = locked.job_title
-            existing.department = locked.department
-            existing.permission_grants = locked.permission_grants or encode_grants(
-                grants_for_responsibility(locked.job_title, locked.role)
-            )
-            existing.is_active = True
-            user = existing
-            self._assign_job_tasks(user, locked)
-            membership = self._session.scalar(
-                select(CompanyMembership).where(
-                    CompanyMembership.user_id == user.id,
-                    CompanyMembership.company_id == locked.company_id,
-                )
-            )
-            if membership is None:
-                self._session.add(
-                    CompanyMembership(
-                        user_id=user.id,
-                        company_id=locked.company_id,
-                        role=user.role,
-                        is_active=True,
-                    )
-                )
-            else:
-                membership.is_active = True
-                membership.role = user.role
         locked.accepted_at = now
         try:
             self._session.commit()
@@ -485,28 +455,38 @@ class WorkspaceService:
         now = datetime.now(timezone.utc)
         if code and email:
             normalized_email = email.strip().lower()
-            invitation = self._session.scalar(
-                select(EmployeeInvitation)
-                .where(EmployeeInvitation.email == normalized_email)
-                .order_by(EmployeeInvitation.created_at.desc())
+            rows = list(
+                self._session.scalars(
+                    select(EmployeeInvitation)
+                    .where(EmployeeInvitation.email == normalized_email)
+                    .order_by(EmployeeInvitation.created_at.desc())
+                )
             )
-            if invitation is None or invitation.accepted_at is not None or invitation.revoked_at is not None:
+            open_rows = [
+                row for row in rows if row.accepted_at is None and row.revoked_at is None
+            ]
+            if not open_rows:
                 raise WorkspaceError("Aucune invitation active trouvée pour cet email")
-            if invitation.failed_attempts >= 5:
-                invitation.revoked_at = now
-                self._session.commit()
-                raise WorkspaceError("Nombre maximal de tentatives dépassé. Invitation révoquée par sécurité.")
-            expected_hash = hash_token(f"{code.strip()}:{invitation.code_salt}")
-            if not secrets.compare_digest(invitation.code_hash or "", expected_hash):
-                if consume_failure:
-                    invitation.failed_attempts += 1
-                    if invitation.failed_attempts >= 5:
-                        invitation.revoked_at = now
+            for row in open_rows:
+                if (row.failed_attempts or 0) >= 5:
+                    row.revoked_at = now
                     self._session.commit()
-                    remaining = max(0, 5 - invitation.failed_attempts)
-                    raise WorkspaceError(f"Code d'invitation incorrect. {remaining} tentative(s) restante(s).")
-                raise WorkspaceError("Invitation invalide ou expirée")
-            return invitation
+                    raise WorkspaceError("Nombre maximal de tentatives dépassé. Invitation révoquée par sécurité.")
+            supplied = code.strip()
+            for row in open_rows:
+                expected_hash = hash_token(f"{supplied}:{row.code_salt or ''}")
+                stored = row.code_hash or ""
+                if stored and len(stored) == len(expected_hash) and secrets.compare_digest(stored, expected_hash):
+                    return row
+            if consume_failure:
+                for row in open_rows:
+                    row.failed_attempts = (row.failed_attempts or 0) + 1
+                    if row.failed_attempts >= 5:
+                        row.revoked_at = now
+                self._session.commit()
+                remaining = max(0, 5 - (open_rows[0].failed_attempts or 0))
+                raise WorkspaceError(f"Code d'invitation incorrect. {remaining} tentative(s) restante(s).")
+            raise WorkspaceError("Invitation invalide ou expirée")
         if token:
             invitation = self._session.scalar(
                 select(EmployeeInvitation).where(EmployeeInvitation.token_hash == hash_token(token))

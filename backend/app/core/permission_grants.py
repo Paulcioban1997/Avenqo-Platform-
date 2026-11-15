@@ -14,6 +14,7 @@ from backend.app.core.permissions import permissions_for
 from backend.app.models.base import UserRole
 
 _OFFICE = ("tasks:own",)
+_AGENDA = ("crm:appointments:read", "crm:appointments:write", "tasks:own")
 _FRONT_DESK = ("crm:appointments:read", "crm:appointments:write", "tasks:own")
 _SALES = ("crm:clients:read", "crm:appointments:read", "tasks:own")
 _BOOKS = ("accounting:read", "accounting:write", "tasks:own")
@@ -22,12 +23,12 @@ _MARKETING = ("marketing:read", "marketing:connect", "tasks:own")
 _STOCK = ("retail:read", "tasks:own")
 
 _BY_TITLE: dict[str, tuple[str, ...]] = {
-    "adjoint administratif": _OFFICE,
-    "administrative assistant": _OFFICE,
-    "adjoint de direction": _OFFICE,
-    "adjoint à la direction": _OFFICE,
-    "executive assistant": _OFFICE,
-    "deputy director": _OFFICE,
+    "adjoint administratif": _AGENDA,
+    "administrative assistant": _AGENDA,
+    "adjoint de direction": _AGENDA,
+    "adjoint à la direction": _AGENDA,
+    "executive assistant": _AGENDA,
+    "deputy director": _AGENDA,
     "réceptionniste": _FRONT_DESK,
     "receptionist": ("crm:appointments:read", "crm:appointments:write", "tasks:own"),
     "comptable": _BOOKS,

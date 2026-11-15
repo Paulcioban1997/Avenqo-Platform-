@@ -163,7 +163,7 @@ def test_new_employee_joins_the_existing_company_with_limited_access(db_session)
         WorkspaceService(db_session, _Mail()).accept_invitation(raw, "Lucia", "Desk", "Password123!")
 
 
-def test_existing_same_company_account_is_reused_and_other_company_is_refused(db_session) -> None:
+def test_existing_account_is_never_rewritten_by_an_invitation(db_session) -> None:
     company = _company(db_session, f"same-{uuid4().hex[:8]}")
     other = _company(db_session, f"other-{uuid4().hex[:8]}")
     owner = _owner(db_session, company)
@@ -175,16 +175,19 @@ def test_existing_same_company_account_is_reused_and_other_company_is_refused(db
         email=email,
         password_hash=hash_password("Password123!"),
         role=UserRole.USER,
+        job_title="Comptable",
         is_active=True,
     )
     db_session.add(existing)
     db_session.commit()
-    _invitation, raw, _mail = _invite(db_session, owner, email, UserRole.ANALYST, "Comptable")
-    users_before = db_session.scalar(select(func.count()).select_from(User))
-    joined = WorkspaceService(db_session, _Mail()).accept_invitation(raw, "Camille", "Books", "Password123!")
-    assert joined.id == existing.id
-    assert db_session.scalar(select(func.count()).select_from(User)) == users_before
-    assert "accounting:write" in set(decode_grants(joined.permission_grants) or ())
+    original_hash = existing.password_hash
+    with pytest.raises(WorkspaceError, match="déjà un accès"):
+        _invite(db_session, owner, email, UserRole.ANALYST, "Adjoint administratif")
+    db_session.refresh(existing)
+    assert existing.password_hash == original_hash
+    assert existing.permission_grants is None
+    assert existing.job_title == "Comptable"
+    assert db_session.scalar(select(func.count()).select_from(User).where(User.email == email)) == 1
     with pytest.raises(WorkspaceError, match="autre entreprise"):
         _invite(db_session, owner, _owner(db_session, other).email, UserRole.USER, "Réceptionniste")
 
@@ -283,8 +286,9 @@ def test_expired_revoked_and_removed_access_stop_at_the_server(db_session, clien
         db_session, owner, f"later-{uuid4()}@example.com", UserRole.USER, "Technicien de service"
     )
     office = set(grants_for_responsibility("Adjoint administratif", UserRole.USER))
-    assert office == {"tasks:own"}
+    assert office == {"tasks:own", "crm:appointments:read", "crm:appointments:write"}
     assert "accounting:read" not in office
+    assert "billing:manage" not in office
     WorkspaceService(db_session, _Mail()).revoke_invitation(owner, revoked.id)
     with pytest.raises(WorkspaceError):
         WorkspaceService(db_session, _Mail()).accept_invitation(revoked_raw, "Theo", "Tech", "Password123!")
@@ -324,5 +328,147 @@ def test_existing_administrator_keeps_their_place_and_can_enter_with_the_new_pas
         WorkspaceService(db_session, _Mail()).accept_invitation(raw, "Lucia", "Cioban", "Newpassword1!")
     assert admin.first_name == "Mircea"
     assert admin.role == UserRole.ADMIN
+    assert admin.job_title == "Vice-président"
+    assert admin.permission_grants is None
     assert verify_password("Oldpassword1!", admin.password_hash)
+    assert not verify_password("Newpassword1!", admin.password_hash)
     assert db_session.scalar(select(func.count()).select_from(User).where(User.email == email)) == 1
+
+
+def _denied(response) -> bool:
+    payload = response.json()
+    if not isinstance(payload, dict):
+        return False
+    message = payload.get("error", {}).get("message", "")
+    return response.status_code == 403 and ("pas accès" in message or "do not have access" in message)
+
+
+def test_access_code_opens_only_the_inviting_company(db_session) -> None:
+    company = _company(db_session, f"home-{uuid4().hex[:8]}")
+    other = _company(db_session, f"away-{uuid4().hex[:8]}")
+    owner = _owner(db_session, company)
+    outsider = _owner(db_session, other)
+    companies = db_session.scalar(select(func.count()).select_from(Company))
+    accounts = db_session.scalar(select(func.count()).select_from(BillingAccount))
+    email = f"lucia-{uuid4()}@example.com"
+    invitation, _token, _mail = _invite(db_session, owner, email, UserRole.USER, "Adjoint administratif")
+    service = WorkspaceService(db_session, _Mail())
+
+    with pytest.raises(WorkspaceError):
+        service.accept_invitation(None, "Lucia", "Cioban", "Password123!", code=invitation._raw_code, email=outsider.email)
+    expired, _raw, _mail = _invite(db_session, owner, f"old-{uuid4()}@example.com", UserRole.USER, "Adjoint administratif")
+    expired.expires_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+    db_session.commit()
+    with pytest.raises(WorkspaceError):
+        WorkspaceService(db_session, _Mail()).accept_invitation(
+            None, "Old", "Code", "Password123!", code=expired._raw_code, email=expired.email
+        )
+
+    guessed, _raw, _mail = _invite(db_session, owner, f"guess-{uuid4()}@example.com", UserRole.USER, "Adjoint administratif")
+    for _attempt in range(5):
+        with pytest.raises(WorkspaceError):
+            WorkspaceService(db_session, _Mail()).preview_invitation(code="00000000", email=guessed.email)
+    db_session.refresh(guessed)
+    assert guessed.revoked_at is not None
+    with pytest.raises(WorkspaceError):
+        WorkspaceService(db_session, _Mail()).accept_invitation(
+            None, "Guess", "Limit", "Password123!", code=guessed._raw_code, email=guessed.email
+        )
+
+    user = WorkspaceService(db_session, _Mail()).accept_invitation(
+        None, "Lucia", "Cioban", "Password123!", code=invitation._raw_code, email=email
+    )
+    assert user.company_id == company.id
+    assert user.email == email
+    assert db_session.scalar(select(func.count()).select_from(Company)) == companies
+    assert db_session.scalar(select(func.count()).select_from(BillingAccount)) == accounts
+    with pytest.raises(WorkspaceError):
+        WorkspaceService(db_session, _Mail()).accept_invitation(
+            None, "Lucia", "Cioban", "Otherpass123!", code=invitation._raw_code, email=email
+        )
+    assert verify_password("Password123!", user.password_hash)
+    assert not verify_password("Otherpass123!", user.password_hash)
+
+    shared = f"shared-{uuid4()}@example.com"
+    home_invite, _raw, _mail = _invite(db_session, owner, shared, UserRole.USER, "Adjoint administratif")
+    away_invite, _raw, _mail = _invite(db_session, outsider, shared, UserRole.ANALYST, "Comptable")
+    opened = WorkspaceService(db_session, _Mail()).accept_invitation(
+        None, "Ada", "Join", "Password123!", code=home_invite._raw_code, email=shared
+    )
+    assert opened.company_id == company.id
+    assert "accounting:read" not in set(decode_grants(opened.permission_grants) or ())
+    with pytest.raises(WorkspaceError, match="autre entreprise"):
+        WorkspaceService(db_session, _Mail()).accept_invitation(
+            None, "Ada", "Join", "Otherpass123!", code=away_invite._raw_code, email=shared
+        )
+    db_session.refresh(opened)
+    assert opened.company_id == company.id
+    assert opened.job_title == "Adjoint administratif"
+    assert verify_password("Password123!", opened.password_hash)
+    db_session.refresh(away_invite)
+    assert away_invite.accepted_at is None
+
+
+def test_distinct_adjoint_keeps_agenda_tasks_and_the_same_login(db_session, client: TestClient) -> None:
+    company = _company(db_session, f"desk-{uuid4().hex[:8]}")
+    owner = _owner(db_session, company)
+    colleague = User(
+        company_id=company.id,
+        first_name="Mircea",
+        last_name="Cioban",
+        email=f"mircea-{uuid4()}@example.com",
+        password_hash=hash_password("Oldpassword1!"),
+        role=UserRole.ADMIN,
+        job_title="Vice-président",
+        is_active=True,
+    )
+    db_session.add(colleague)
+    db_session.commit()
+    colleague_hash = colleague.password_hash
+    email = f"lucia-{uuid4()}@example.com"
+    invitation, _token, _mail = _invite(db_session, owner, email, UserRole.USER, "Adjoint administratif")
+    preview = WorkspaceService(db_session, _Mail()).preview_invitation(code=invitation._raw_code, email=email)
+    assert preview["company_name"] == company.name
+    assert preview["job_title"] == "Adjoint administratif"
+    assert preview["already_member"] == ""
+
+    user = WorkspaceService(db_session, _Mail()).accept_invitation(
+        None, "Lucia", "Cioban", "Password123!", code=invitation._raw_code, email=email
+    )
+    db_session.refresh(colleague)
+    assert colleague.password_hash == colleague_hash
+    assert colleague.role == UserRole.ADMIN
+    assert colleague.job_title == "Vice-président"
+    WorkspaceService(db_session, _Mail()).create_task(
+        owner, assignee_user_id=owner.id, title="Dossier réservé au propriétaire", description=None, priority="medium", due_at=None
+    )
+    client.cookies.clear()
+    signed_in = client.post("/api/v1/auth/login", json={"email": email, "password": "Password123!"})
+    assert signed_in.status_code == 200
+    body = signed_in.json()
+    assert body["user"]["company_id"] == str(company.id)
+    assert body["company"]["name"] == company.name
+    permissions = set(body["user"]["permissions"])
+    assert permissions == {"tasks:own", "crm:appointments:read", "crm:appointments:write"}
+    again = client.post("/api/v1/auth/login", json={"email": email, "password": "Password123!"})
+    assert again.status_code == 200
+    assert set(again.json()["user"]["permissions"]) == permissions
+    assert again.json()["user"]["company_id"] == str(company.id)
+    client.cookies.clear()
+    headers = {"Authorization": f"Bearer {again.json()['access_token']}", "X-Requested-With": "avenqo-web"}
+    assert _denied(client.get("/api/v1/accounting/overview", headers=headers))
+    assert _denied(client.get("/api/v1/billing/invoices", headers=headers))
+    assert not _denied(client.get("/api/v1/crm/appointments", headers=headers))
+    tasks = client.get("/api/v1/workspace/tasks", headers=headers)
+    assert tasks.status_code == 200
+    titles = {row["title"] for row in tasks.json()}
+    assert titles == {
+        "Tenir l'agenda et les suivis du bureau",
+        "Préparer les documents demandés par la direction",
+        "Classer les dossiers du service",
+    }
+    EmployeeService(db_session, _Mail()).update(owner, user.id, EmployeeUpdateRequest(is_active=False))
+    assert client.get("/api/v1/workspace/guidance", headers=headers).status_code == 401
+    client.cookies.clear()
+    blocked = client.post("/api/v1/auth/login", json={"email": email, "password": "Password123!"})
+    assert blocked.status_code == 401
