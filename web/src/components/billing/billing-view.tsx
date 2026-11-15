@@ -385,7 +385,11 @@ export function BillingView() {
     const code = (subscription.plan_code || "").toLowerCase();
     // Anti-double-subscription protection: an active Professional subscriber NEVER checks out again
     if (code === "professional") {
-      void handleOpenStripePortal();
+      if (subscription.stripe_subscription_linked) {
+        void handleOpenStripePortal();
+      } else {
+        void handleConfirmUpgradeToProfessional();
+      }
       return;
     }
     if (code === "demo" || code === "base") {

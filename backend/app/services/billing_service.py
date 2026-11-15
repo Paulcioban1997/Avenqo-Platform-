@@ -24,7 +24,7 @@ from backend.app.models import (
 )
 from backend.app.services.account_notifications import AccountNotifier
 from backend.app.services.tenant_locale_service import get_company_locale
-from backend.app.services.stripe_gateway import BillingProvider
+from backend.app.services.stripe_gateway import BillingProvider, StripeCustomerNotFoundError
 from backend.app.services.invoice_tax import invoice_tax_snapshot
 from backend.app.services.tenant_rls import apply_tenant_rls
 from payments import PlanCode, get_plan
@@ -62,6 +62,47 @@ class BillingService:
             raise BillingConfigurationError("Stripe n'est pas configuré")
         return self._provider
 
+    def _sandbox_test_stripe(self) -> bool:
+        environment = str(getattr(self._settings, "environment", "") or "").lower()
+        key = str(getattr(self._settings, "stripe_secret_key", "") or "")
+        return environment == "sandbox" and key.startswith("sk_test_")
+
+    def _customer_is_visible(self, customer_id: str) -> bool:
+        try:
+            self.provider.get_active_subscription(customer_id)
+        except StripeCustomerNotFoundError:
+            return False
+        return True
+
+    def _reconcile_sandbox_customer(self, account: BillingAccount, company: Company) -> BillingAccount:
+        """Replace a test customer this Stripe account cannot see. Production ids stay untouched."""
+        if not self._sandbox_test_stripe():
+            return account
+        previous = account.stripe_customer_id
+        if previous and self._customer_is_visible(previous):
+            return account
+        found = None
+        finder = getattr(self.provider, "find_customer_by_company", None)
+        if callable(finder):
+            found = finder(str(company.id))
+        if found and self._customer_is_visible(found):
+            account.stripe_customer_id = found
+        else:
+            account.stripe_customer_id = self.provider.create_customer(
+                company.email,
+                company.name,
+                str(company.id),
+            )
+        if previous and account.stripe_customer_id != previous:
+            account.stripe_subscription_id = None
+        self._session.commit()
+        return account
+
+    def _sandbox_saas_accepted(self, company: Company) -> bool:
+        from backend.app.services.contract_signature_service import ContractSignatureService
+
+        return ContractSignatureService(self._session, settings=self._settings).sandbox_saas_accepted(company.id)
+
     def get_account(self, company_id: UUID) -> BillingAccount:
         account = self._session.scalar(select(BillingAccount).where(
             BillingAccount.company_id == company_id,
@@ -90,6 +131,39 @@ class BillingService:
         )
         if account is None:
             account = self.get_account(company.id)
+
+        if self._sandbox_test_stripe():
+            account = self._reconcile_sandbox_customer(account, company)
+            remote = None
+            if account.stripe_customer_id:
+                remote = self.provider.get_active_subscription(account.stripe_customer_id)
+            if remote:
+                sub_id = remote.get("id") if isinstance(remote, dict) else getattr(remote, "id", None)
+                sub_status = remote.get("status") if isinstance(remote, dict) else getattr(remote, "status", "active")
+                if sub_id:
+                    account.stripe_subscription_id = sub_id
+                    account.status = sub_status
+                    self._session.commit()
+                raise BillingOperationError(
+                    "Un abonnement test existe déjà sur ce client Stripe. "
+                    "Utilisez le portail Stripe pour le gérer sans créer de doublon."
+                )
+            if not account.stripe_customer_id:
+                account.stripe_customer_id = self.provider.create_customer(
+                    company.email, company.name, str(company.id),
+                )
+                self._session.commit()
+            price_id = self._required_price(plan.code, company.currency_code)
+            window_bucket = int(time.time() // 300)
+            idempotency_key = f"checkout_{company.id}_{price_id}_{window_bucket}"
+            return self.provider.create_checkout(
+                account.stripe_customer_id,
+                price_id,
+                str(company.id),
+                f"{self._settings.frontend_url.rstrip('/')}/billing?checkout=success",
+                f"{self._settings.frontend_url.rstrip('/')}/pricing?checkout=cancelled",
+                idempotency_key=idempotency_key,
+            )
 
         # 1. Vérification locale immédiate : abonnement déjà lié et actif
         if account.stripe_subscription_id and account.status not in {"canceled", "incomplete_expired"}:
@@ -162,6 +236,13 @@ class BillingService:
     def create_portal(self, company: Company) -> str:
         """Ouvre le portail Stripe et réconcilie proactivement l'abonnement distant si nécessaire."""
         account = self.get_account(company.id)
+        if self._sandbox_test_stripe():
+            account = self._reconcile_sandbox_customer(account, company)
+            remote = None
+            if account.stripe_customer_id:
+                remote = self.provider.get_active_subscription(account.stripe_customer_id)
+            if remote is None and self._sandbox_saas_accepted(company):
+                return self.create_checkout(company, account.plan_code or company.subscription_plan or "professional")
         if not account.stripe_customer_id:
             account.stripe_customer_id = self.provider.create_customer(
                 company.email,
@@ -182,10 +263,14 @@ class BillingService:
             except Exception as e:
                 logger.warning("Impossible de synchroniser l'abonnement distant à l'ouverture du portail: %s", e)
 
-        return self.provider.create_portal(
-            account.stripe_customer_id,
-            f"{self._settings.frontend_url.rstrip('/')}/billing",
-        )
+        return_url = f"{self._settings.frontend_url.rstrip('/')}/billing"
+        try:
+            return self.provider.create_portal(account.stripe_customer_id, return_url)
+        except StripeCustomerNotFoundError:
+            if not self._sandbox_test_stripe():
+                raise
+            account = self._reconcile_sandbox_customer(account, company)
+            return self.provider.create_portal(account.stripe_customer_id, return_url)
 
     def list_invoices(self, company_id: UUID) -> list[BillingInvoice]:
         return list(self._session.scalars(

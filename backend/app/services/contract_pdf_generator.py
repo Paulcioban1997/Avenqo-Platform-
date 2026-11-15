@@ -199,10 +199,17 @@ class ContractPdfGenerator:
 
         # 2. Avertissement Sandbox si applicable
         if is_sandbox or not provider_signed_at:
+            pilot_label = ""
+            if signature_mode == "SANDBOX_PILOT":
+                pilot_label = (
+                    " Signature pilote/test : elle enregistre le consentement du client, "
+                    "sans contresignature et sans attester l'incorporation de PMC Solutions AI."
+                )
             sandbox_note = (
                 "<b>ENVIRONNEMENT BAC À SABLE / SANDBOX :</b> Document généré pour revue et signature client. "
                 "En attente de contresignature autorisée par le Fournisseur (PMC Solutions AI). "
                 "Ne constitue pas un engagement pleinement exécuté tant que le fournisseur n'a pas formellement contresigné."
+                + pilot_label
             )
             sandbox_table = Table([[Paragraph(sandbox_note, ParagraphStyle("Sbx", parent=body_style, fontSize=8, leading=11, textColor=colors.HexColor("#92400E")))]], colWidths=[532])
             sandbox_table.setStyle(TableStyle([

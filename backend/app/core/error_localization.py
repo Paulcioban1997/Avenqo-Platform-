@@ -1012,6 +1012,8 @@ def http_error_message(
         return "Les horaires de cette entreprise sont configurés dans le module CRM. Modifiez-les dans le CRM." if locale.startswith("fr") else "Edit CRM schedules and dated exceptions in the CRM workspace."
     if isinstance(detail, dict) and detail.get("code") == "mfa_required":
         return "Un code d'authentification est requis." if locale.startswith("fr") else "An authentication code is required."
+    if isinstance(detail, str) and "signature pilote" in detail_text:
+        return detail
     if "stripe" in detail_text:
         if isinstance(detail, dict) and "message" in detail:
             return str(detail["message"])

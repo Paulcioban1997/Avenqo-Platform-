@@ -115,6 +115,24 @@ class StripeGateway:
         if self._automatic_tax_enabled and price.get("tax_behavior") == "inclusive":
             raise StripeTaxConfigurationError("Ce tarif Stripe inclut les taxes ; utilisez un nouveau tarif hors taxes.")
 
+    def find_customer_by_company(self, company_id: str) -> str | None:
+        """Reuse one test customer already tagged for this tenant."""
+        if not company_id or not all(char in "0123456789abcdef-" for char in company_id.lower()):
+            return None
+        try:
+            result = stripe.Customer.search(
+                query=f"metadata['avenqo_company_id']:'{company_id}'",
+                limit=1,
+                api_key=self._api_key,
+            )
+        except Exception:
+            return None
+        data = getattr(result, "data", None) or []
+        if not data:
+            return None
+        found = data[0]
+        return str(getattr(found, "id", "") or "") or None
+
     def create_customer(self, email: str, name: str, company_id: str) -> str:
         customer = stripe.Customer.create(
             email=email,

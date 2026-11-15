@@ -327,6 +327,32 @@ class ContractSignatureService:
         if not user.is_active or user.email_verified_at is None:
             raise ContractAuthorityError("Le compte et son adresse email doivent être vérifiés avant la signature.")
 
+    def sandbox_pilot_signing(self) -> bool:
+        """Sandbox may record a labeled pilot signature. Production keeps the legal gate."""
+        if str(getattr(self._settings, "environment", "") or "").lower() != "sandbox":
+            return False
+        try:
+            self.require_legal_release()
+        except ContractAuthorityError:
+            return True
+        return False
+
+    def sandbox_saas_accepted(self, company_id: UUID) -> bool:
+        """The ordinary SaaS agreement was accepted. A private-server license is not required."""
+        accepted = {
+            ContractLifecycleStatus.CUSTOMER_SIGNED.value,
+            ContractLifecycleStatus.SIGNED.value,
+            ContractLifecycleStatus.FULLY_EXECUTED.value,
+        }
+        contract = self._db.scalar(
+            select(CompanyContract).where(
+                CompanyContract.company_id == company_id,
+                CompanyContract.contract_type == "SAAS_SUBSCRIPTION",
+                CompanyContract.status.in_(accepted),
+            )
+        )
+        return contract is not None
+
     def require_legal_release(self) -> None:
         if not (
             self._settings.legal_signing_enabled
@@ -351,7 +377,9 @@ class ContractSignatureService:
         challenge_code: str | None = None,
     ) -> dict[str, Any]:
         """Exécute la signature électronique numérique avec preuve d'audit, réconciliation et génération de PDF certifié."""
-        self.require_legal_release()
+        pilot = self.sandbox_pilot_signing()
+        if not pilot:
+            self.require_legal_release()
         self.verify_signatory_authority(user, company.id, declared_authority)
 
         if not consent_checkbox:
@@ -416,7 +444,8 @@ class ContractSignatureService:
         currency = company.currency_code or "CAD"
         price_str = f"{schedule.monthly_price} {currency} / mois" if schedule.monthly_price else "Sur devis personnalisé"
 
-        is_sandbox_env = self._settings.provider_incorporation_status == "UNVERIFIED_PENDING_INCORPORATION"
+        is_sandbox_env = pilot or self._settings.provider_incorporation_status == "UNVERIFIED_PENDING_INCORPORATION"
+        signature_mode = "SANDBOX_PILOT" if pilot else "ELECTRONIC"
 
         pdf_bytes = ContractPdfGenerator.generate_pdf(
             contract_title=contract.title,
@@ -433,7 +462,7 @@ class ContractSignatureService:
             content_text=interpolated_text,
             sha256_hash=final_sha256,
             signed_at=now,
-            signature_mode="ELECTRONIC",
+            signature_mode=signature_mode,
             audit_receipt_id=str(receipt_id),
             ip_address=ip_address,
             is_draft=False,
@@ -464,8 +493,13 @@ class ContractSignatureService:
             "ip_address": ip_address,
             "user_agent": user_agent,
             "consent_timestamp_utc": now.isoformat(),
+            "consent_recorded": True,
             "storage_path": storage_rel_path,
             "legal_framework": "RLRQ c. C-1.1 (Québec) & PIPEDA (Canada)",
+            "signature_label": "pilot/test" if pilot else "electronic",
+            "legal_effect": "sandbox_pilot" if pilot else "customer_signed_pending_provider",
+            "provider_countersigned": False,
+            "provider_incorporated": bool(self._settings.provider_incorporation_verified),
             "execution_party_states": {
                 "customer": "SIGNED",
                 "provider": "PENDING_COUNTERSIGNATURE",
@@ -486,7 +520,7 @@ class ContractSignatureService:
         # 6. Mise à jour de l'enregistrement de contrat
         contract.status = ContractLifecycleStatus.CUSTOMER_SIGNED.value
         contract.execution_state = ContractExecutionPartyState.PENDING_PROVIDER.value
-        contract.signature_mode = "ELECTRONIC"
+        contract.signature_mode = signature_mode
         contract.signatory_user_id = user.id
         contract.signatory_name = user_name
         contract.signatory_email = user.email
@@ -510,8 +544,8 @@ class ContractSignatureService:
                 mail_body = (
                     f"Bonjour {user_name},\n\n"
                     f"Votre contrat {contract.title} (Réf : {contract.contract_type}-{contract.version}) "
-                    f"a été signé avec succès le {now.strftime('%Y-%m-%d %H:%M UTC')}.\n\n"
-                    f"Statut : Signé par le client — En attente de contresignature autorisée par PMC Solutions AI.\n"
+                    f"a été accepté le {now.strftime('%Y-%m-%d %H:%M UTC')}.\n\n"
+                    f"Statut : {'Signature pilote du bac à sable — pas une contresignature et pas une preuve d incorporation.' if pilot else 'Signé par le client — en attente de contresignature.'}\n"
                     f"Empreinte cryptographique SHA-256 : {final_sha256}\n"
                     f"Identifiant de transaction : TX-{receipt_id.hex[:12].upper()}\n\n"
                     "L'exemplaire certifié est disponible dans votre portail libre-service 'Mes Contrats'.\n\n"
@@ -530,7 +564,8 @@ class ContractSignatureService:
             "contract_type": contract.contract_type,
             "status": contract.status,
             "execution_state": contract.execution_state,
-            "signature_mode": "ELECTRONIC",
+            "signature_mode": signature_mode,
+            "signature_label": completion_record["signature_label"],
             "signatory_name": user_name,
             "signatory_email": user.email,
             "signatory_title": signatory_title,

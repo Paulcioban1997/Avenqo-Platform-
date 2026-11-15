@@ -41,7 +41,7 @@ export interface ContractItem {
   execution_state?: string;
   version: string;
   language: string;
-  signature_mode: "ELECTRONIC" | "MANUSCRIPT_WET_INK" | null;
+  signature_mode: "ELECTRONIC" | "MANUSCRIPT_WET_INK" | "SANDBOX_PILOT" | null;
   signatory_name: string | null;
   signatory_title: string | null;
   signatory_email: string | null;
@@ -294,13 +294,20 @@ export function ContractsView() {
 
       if (!res.ok) {
         const errJson = await res.json();
-        throw new Error(errJson.detail || (isFrench ? "Échec de signature" : "Signing failed"));
+        const detail = typeof errJson.detail === "string"
+          ? errJson.detail
+          : errJson.detail?.message || errJson.error?.message;
+        throw new Error(detail || (isFrench ? "Échec de signature" : "Signing failed"));
       }
-
+      const signed = await res.json();
       setAlertSuccess(
-        isFrench
-          ? `Le contrat ${selectedContract.title} a été signé avec succès (en attente de contreseing autorisée du fournisseur).`
-          : `Agreement ${selectedContract.title} has been signed successfully (pending provider countersignature).`
+        signed.signature_mode === "SANDBOX_PILOT"
+          ? (isFrench
+            ? `Signature pilote enregistrée pour ${selectedContract.title}. Ce n'est pas une contresignature et PMC Solutions AI n'est pas déclaré incorporé.`
+            : `Pilot signature recorded for ${selectedContract.title}. This is not a countersignature and PMC Solutions AI is not marked incorporated.`)
+          : (isFrench
+            ? `Le contrat ${selectedContract.title} a été signé (en attente de contresignature du fournisseur).`
+            : `Agreement ${selectedContract.title} was signed (pending provider countersignature).`)
       );
       setSelectedContract(null);
       void loadContractsAndWizard();
@@ -914,6 +921,16 @@ export function ContractsView() {
                           </span>
                         </div>
                         <h4 className="text-sm font-bold text-slate-900 dark:text-white mt-2">{item.title}</h4>
+                        {item.contract_type === "PRIVATE_LICENSE" && (
+                          <p className="mt-1 text-[11px] text-slate-500">
+                            {isFrench ? "Optionnel. Une entreprise Professional n'a pas à signer la licence de serveur privé." : "Optional. A Professional company does not have to sign the private-server license."}
+                          </p>
+                        )}
+                        {item.signature_mode === "SANDBOX_PILOT" && (
+                          <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
+                            {isFrench ? "Signature pilote. Pas une contresignature et pas une preuve d'incorporation." : "Pilot signature. Not a countersignature and not proof of incorporation."}
+                          </p>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-2 pt-2 border-t border-slate-200/60 dark:border-white/[0.06]">

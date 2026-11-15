@@ -144,11 +144,11 @@ def get_wizard_status(
     step2_complete = not schedule.is_blocked
 
     contracts = service.ensure_contracts_for_company(company)
-    mandatory_signed = service.has_signed_mandatory_contracts(company.id)
-    all_signed = all(
-        c.status in (ContractLifecycleStatus.SIGNED.value, ContractLifecycleStatus.CUSTOMER_SIGNED.value, ContractLifecycleStatus.FULLY_EXECUTED.value)
-        for c in contracts
-    )
+    sandbox = str(service._settings.environment).lower() == "sandbox"
+    mandatory_signed = service.sandbox_saas_accepted(company.id) if sandbox else service.has_signed_mandatory_contracts(company.id)
+    applicable = [c for c in contracts if not (sandbox and c.contract_type == "PRIVATE_LICENSE")]
+    signed_states = (ContractLifecycleStatus.SIGNED.value, ContractLifecycleStatus.CUSTOMER_SIGNED.value, ContractLifecycleStatus.FULLY_EXECUTED.value)
+    all_signed = all(c.status in signed_states for c in applicable)
 
     current_step = 1
     if step1_complete:
@@ -190,6 +190,7 @@ def get_wizard_status(
                     "version": c.version,
                     "status": c.status,
                     "execution_state": c.execution_state,
+                    "optional": c.contract_type == "PRIVATE_LICENSE",
                     "draft_pdf_available": True,
                 }
                 for c in contracts
@@ -330,7 +331,8 @@ def create_signing_challenge(
     if "@" not in recipient:
         raise HTTPException(status_code=422, detail="Aucune adresse email d'entreprise n'est enregistrée.")
     try:
-        service.require_legal_release()
+        if not service.sandbox_pilot_signing():
+            service.require_legal_release()
         service.verify_signatory_authority(identity.user, company.id, declared_authority=True)
         contract = service.get_contract(company.id, contract_type)
         schedule = CommercialReconciler.reconcile(company, service._settings)

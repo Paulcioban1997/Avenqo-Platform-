@@ -4,6 +4,7 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from backend.app.config.settings import get_settings
 from backend.app.database import get_db
 from backend.app.dependencies.auth import get_tenant_context
 from backend.app.models import BillingAccount
@@ -41,7 +42,15 @@ def require_signed_mandatory_contracts(
     db: Session = Depends(get_db),
 ) -> TenantContext:
     """Exige explicitement que tous les contrats obligatoires soient signés."""
-    service = ContractSignatureService(db)
+    settings = get_settings()
+    service = ContractSignatureService(db, settings=settings)
+    if str(settings.environment).lower() == "sandbox":
+        if service.sandbox_saas_accepted(tenant.company_id):
+            return tenant
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Le contrat d'abonnement SaaS doit être accepté comme signature pilote avant le paiement test. La licence privée n'est pas exigée.",
+        )
     try:
         service.require_legal_release()
     except ContractAuthorityError as exc:
