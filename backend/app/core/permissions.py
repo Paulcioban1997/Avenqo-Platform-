@@ -42,6 +42,7 @@ ROLE_PERMISSIONS: dict[UserRole, tuple[str, ...]] = {
         "retail:read",
         "tasks:own",
         "ai:use",
+        "trading:read",
     ),
     UserRole.MANAGER: (
         "data:manage",

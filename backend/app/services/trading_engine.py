@@ -178,8 +178,12 @@ def list_watch(session: Session, company_id: UUID, user_id: UUID) -> list[str]:
 
 
 def add_watch(session: Session, company_id: UUID, user_id: UUID, symbol: str) -> list[str]:
-    if instrument(symbol) is None:
-        raise KeyError(symbol)
+    from backend.app.services.crypto_market import symbol_format
+
+    try:
+        symbol = symbol_format(symbol)
+    except ValueError as exc:
+        raise KeyError(symbol) from exc
     existing = session.scalar(
         select(TradingWatchItem).where(
             TradingWatchItem.company_id == company_id,

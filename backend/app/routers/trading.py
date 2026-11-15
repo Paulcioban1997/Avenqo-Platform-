@@ -1,4 +1,4 @@
-"""Trading AI. Demo series only until a licensed feed is configured."""
+"""Trading crypto en direct, inclus dans Base et Professional."""
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -6,20 +6,9 @@ from sqlalchemy.orm import Session
 
 from backend.app.core.permission_grants import effective_permissions
 from backend.app.database import get_db
-from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
-from backend.app.services.module_entitlement_service import ModuleEntitlementService
-from backend.app.services.trading_engine import (
-    DEMO_INSTRUMENTS,
-    DEMO_SOURCE,
-    add_watch,
-    candles,
-    forecast,
-    instrument,
-    list_watch,
-    remove_watch,
-    simulation,
-)
-from shared.ai_engine.contracts import TenantContext
+from backend.app.dependencies.auth import CurrentIdentity, get_current_identity
+from backend.app.services.crypto_market import MarketUnavailable, candles, popular, quotes, search
+from backend.app.services.trading_engine import add_watch, list_watch, remove_watch
 
 router = APIRouter(prefix="/trading", tags=["trading"])
 
@@ -30,63 +19,64 @@ class WatchRequest(BaseModel):
 
 def require_trading(
     identity: CurrentIdentity = Depends(get_current_identity),
-    tenant: TenantContext = Depends(get_tenant_context),
-    db: Session = Depends(get_db),
 ) -> CurrentIdentity:
     if "trading:read" not in effective_permissions(identity.user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission insuffisante")
-    if not ModuleEntitlementService(db).can_use_module(tenant, "trading"):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Module trading inactif")
     return identity
+
+
+def _market_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, (KeyError, ValueError)):
+        return HTTPException(status_code=404, detail="Crypto introuvable")
+    return HTTPException(status_code=503, detail="Cours Binance indisponible")
 
 
 @router.get("/status")
 def trading_status(identity: CurrentIdentity = Depends(require_trading)) -> dict:
     del identity
     return {
-        "data_mode": "demo",
-        "realtime": False,
-        "source": DEMO_SOURCE,
-        "live_provider": None,
+        "data_mode": "live",
+        "realtime": True,
+        "source": "binance-public",
+        "included_in": ["base", "professional"],
+        "extra_plan": False,
         "brokerage": False,
         "advice": False,
-        "message": "Données synthétiques. Aucune cote réelle, aucun ordre, aucun conseil d'achat ou de vente.",
+        "message": "Cours crypto publics Binance, inclus dans Base et Professional. Aucun ordre et aucun conseil.",
     }
 
 
 @router.get("/instruments")
-def trading_instruments(identity: CurrentIdentity = Depends(require_trading)) -> dict:
+def trading_instruments(q: str = "", identity: CurrentIdentity = Depends(require_trading)) -> dict:
     del identity
-    return {"data_mode": "demo", "source": DEMO_SOURCE, "instruments": list(DEMO_INSTRUMENTS)}
+    try:
+        instruments = search(q) if q else popular()
+    except MarketUnavailable as exc:
+        raise _market_error(exc) from exc
+    return {"data_mode": "live", "source": "binance-public", "instruments": instruments}
 
 
 @router.get("/candles")
-def trading_candles(symbol: str, identity: CurrentIdentity = Depends(require_trading)) -> dict:
+def trading_candles(
+    symbol: str,
+    interval: str = "1m",
+    identity: CurrentIdentity = Depends(require_trading),
+) -> dict:
     del identity
     try:
-        return candles(symbol)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail="Instrument démo introuvable") from exc
+        return candles(symbol, interval)
+    except (KeyError, ValueError, MarketUnavailable) as exc:
+        raise _market_error(exc) from exc
 
 
-@router.get("/forecast")
-def trading_forecast(symbol: str, horizon: str = "7d", identity: CurrentIdentity = Depends(require_trading)) -> dict:
+@router.get("/quotes")
+def trading_quotes(symbols: str = "", identity: CurrentIdentity = Depends(require_trading)) -> dict:
     del identity
-    if instrument(symbol) is None:
-        raise HTTPException(status_code=404, detail="Instrument démo introuvable")
+    requested = [item for item in symbols.split(",") if item.strip()]
     try:
-        return forecast(symbol, horizon)
-    except KeyError as exc:
-        raise HTTPException(status_code=400, detail="Horizon non pris en charge") from exc
-
-
-@router.get("/simulation")
-def trading_simulation(symbol: str, identity: CurrentIdentity = Depends(require_trading)) -> dict:
-    del identity
-    try:
-        return simulation(symbol)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail="Instrument démo introuvable") from exc
+        return quotes(requested)
+    except (KeyError, ValueError, MarketUnavailable) as exc:
+        raise _market_error(exc) from exc
 
 
 @router.get("/watchlist")

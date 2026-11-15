@@ -236,7 +236,7 @@ export function AppShell({ children }: AppShellProps) {
     { href: "/chatbots", label: t.navigation.chatbotsAi, icon: MessagesSquare, moduleKey: "chatbots", permissions: ["ai:use"] },
     { href: "/automations", label: t.navigation.automations, icon: Zap, moduleKey: "workflow", permissions: ["ai:use", "modules:manage"] },
     { href: "/agents", label: t.navigation.agentsAi, icon: Bot, permissions: ["ai:use"] },
-    { href: "/trading", label: "Trading AI", icon: LineChart, moduleKey: "trading", permissions: ["trading:read"] },
+    { href: "/trading", label: "Trading AI", icon: LineChart, permissions: ["trading:read"] },
   ];
 
   const aiModules = allAiModules.filter(filterByEntitlements);

@@ -211,7 +211,7 @@ class ModuleEntitlementService:
                 display_name=definition.display_name,
                 description=definition.description,
                 availability=definition.availability.value,
-                active=definition.key in active_set,
+                active=definition.included or definition.key in active_set,
                 state=self._calculate_state(definition, plan, active_set, remaining),
                 premium=definition.premium,
                 category=definition.category,
@@ -238,6 +238,8 @@ class ModuleEntitlementService:
     ) -> ModuleEntitlementState:
         if definition is None or definition.availability == ModuleAvailability.UNAVAILABLE:
             return ModuleEntitlementState.UNAVAILABLE
+        if definition.included and plan.allows_module(definition.key):
+            return ModuleEntitlementState.ACTIVE
         if definition.key in active_set:
             return ModuleEntitlementState.ACTIVE
         if definition.availability == ModuleAvailability.COMING_SOON:
