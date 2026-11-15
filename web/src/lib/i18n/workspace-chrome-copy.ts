@@ -1,3 +1,4 @@
+import { getApplicationCatalog } from "./generated-app-catalogs";
 import type { LocaleCode } from "./types";
 
 export type WorkspaceChromeCopy = {
@@ -43,9 +44,20 @@ export const WORKSPACE_CHROME_EXPLICIT: Partial<Record<LocaleCode, WorkspaceChro
   "en-GB": en,
 };
 
-export function getWorkspaceChrome(locale: string): { copy: WorkspaceChromeCopy; explicit: boolean } {
+/** Existing assistant catalog. Not a new translation. */
+export const WORKSPACE_CATALOG_BACKED_KEYS = ["retry"] as const;
+
+export function getWorkspaceChrome(locale: string): {
+  copy: WorkspaceChromeCopy;
+  explicit: boolean;
+  catalogBackedKeys: readonly string[];
+} {
   const direct = WORKSPACE_CHROME_EXPLICIT[locale as LocaleCode];
-  if (direct) return { copy: direct, explicit: true };
   const fallback = locale.toLowerCase().startsWith("fr") ? "fr" : "en";
-  return { copy: WORKSPACE_CHROME_EXPLICIT[fallback] as WorkspaceChromeCopy, explicit: false };
+  const base = direct ?? (WORKSPACE_CHROME_EXPLICIT[fallback] as WorkspaceChromeCopy);
+  return {
+    copy: { ...base, retry: getApplicationCatalog(locale).assistant.retry },
+    explicit: Boolean(direct),
+    catalogBackedKeys: WORKSPACE_CATALOG_BACKED_KEYS,
+  };
 }

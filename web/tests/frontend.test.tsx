@@ -79,7 +79,7 @@ describe("public trust content", () => {
     const requests: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input, init) => {
       const path = String(input); requests.push(path);
-      if (path.endsWith("/auth/me")) return Response.json({ user: { id: "user" }, company: { id: "tenant", name: "Tenant" } });
+      if (path.endsWith("/auth/me")) return Response.json({ user: { id: "user", permissions: ["data:read"] }, company: { id: "tenant", name: "Tenant" } });
       if (path.endsWith("/ai-credits")) return Response.json({});
       if (path.endsWith("/sources/active")) { selected = JSON.parse(String(init.body)).source_id; return Response.json({}); }
       if (path.endsWith("/sources/context")) return Response.json({ state: "READY", source_type: selected === "file-test" ? "dataset" : "connector", source_id: selected, sources });
@@ -87,9 +87,10 @@ describe("public trust content", () => {
     }));
     render(<LocaleProvider><SessionProvider><GlobalSourceSelector /></SessionProvider></LocaleProvider>);
     await screen.findByText("Uploaded test");
-    fireEvent.click(screen.getByRole("button", { name: SOURCE_SELECTOR_COPY.fr[0] }));
+    const sourceButton = () => screen.getByRole("button", { name: new RegExp(SOURCE_SELECTOR_COPY.fr[0]) });
+    fireEvent.click(sourceButton());
     fireEvent.click(screen.getByRole("menuitemradio", { name: /Verified merchant/ }));
-    await waitFor(() => expect(screen.getByRole("button", { name: SOURCE_SELECTOR_COPY.fr[0] })).toHaveTextContent("Verified merchant"));
+    await waitFor(() => expect(sourceButton()).toHaveTextContent("Verified merchant"));
     expect(requests.some(path => /enabled|sync|disconnect/.test(path))).toBe(false);
   });
   it("does not label unverified Shopify credentials as connected", async () => {
@@ -1031,7 +1032,7 @@ describe("44-locale translation catalog", () => {
 });
 
 describe("authenticated navigation labels", () => {
-  it("uses IA consistently in French", () => {
+  it("uses the current French navigation labels", () => {
     const { navigation, shell } = getAppTranslations("fr");
     expect([
       navigation.dashboard,
@@ -1049,14 +1050,14 @@ describe("authenticated navigation labels", () => {
       navigation.settings,
       shell.aiCredits,
     ]).toEqual([
-      "Tableau de bord", "Retail IA", "CRM IA", "Comptabilité IA",
-      "Marketing IA", "Voice IA", "OCR IA", "Chatbots IA", "Agents IA",
+      "Tableau de bord", "Retail", "CRM", "Comptabilité",
+      "Marketing", "Voice", "Documents", "Chatbots", "Agents",
       "Connexions", "Données & Nettoyage", "Facturation & Plans",
       "Paramètres", "Crédits IA",
     ]);
   });
 
-  it("uses AI consistently in English", () => {
+  it("uses the current English navigation labels", () => {
     const { navigation, shell } = getAppTranslations("en");
     expect([
       navigation.dashboard,
@@ -1074,9 +1075,10 @@ describe("authenticated navigation labels", () => {
       navigation.settings,
       shell.aiCredits,
     ]).toEqual([
-      "Dashboard", "Retail AI", "CRM AI", "Accounting AI", "Marketing AI",
-      "Voice AI", "OCR AI", "AI Chatbots", "AI Agents", "Connections",
-      "Data & Cleaning", "Billing & Plans", "Settings", "AI Credits",
+      "Dashboard", "Retail", "CRM", "Accounting",
+      "Marketing", "Voice", "Documents", "Chatbots", "Agents",
+      "Connections", "Data & Cleaning", "Billing & Plans",
+      "Settings", "AI Credits",
     ]);
   });
 });

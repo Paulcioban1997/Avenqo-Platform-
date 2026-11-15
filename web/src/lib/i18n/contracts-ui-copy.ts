@@ -1,3 +1,5 @@
+import { getApplicationCatalog } from "./generated-app-catalogs";
+import { APP_COMMON_WORDS } from "./app-locale-overrides";
 import type { LocaleCode } from "./types";
 
 export type ContractsUiCopy = {
@@ -380,17 +382,36 @@ export const CONTRACTS_UI_EXPLICIT: Partial<Record<LocaleCode, ContractsUiCopy>>
   "en-GB": en,
 };
 
+/** Existing approved catalogs. These keys are not translated here. */
+export const CONTRACTS_CATALOG_BACKED_KEYS = ["firstName", "lastName", "billingEmail", "refresh", "close"] as const;
+
+function catalogContractLabels(locale: string): Pick<ContractsUiCopy, (typeof CONTRACTS_CATALOG_BACKED_KEYS)[number]> {
+  const catalog = getApplicationCatalog(locale);
+  const common = APP_COMMON_WORDS[locale as LocaleCode] ?? APP_COMMON_WORDS.en;
+  return {
+    firstName: catalog.auth.firstName,
+    lastName: catalog.auth.lastName,
+    billingEmail: catalog.auth.billingEmail,
+    refresh: catalog.company.employeesRefreshTooltip,
+    close: common.close,
+  };
+}
+
 export function getContractsUi(locale: string): {
   copy: ContractsUiCopy;
   explicit: boolean;
   fallbackLocale: "fr" | "en";
+  catalogBackedKeys: readonly string[];
 } {
   const direct = CONTRACTS_UI_EXPLICIT[locale as LocaleCode];
-  if (direct) {
-    return { copy: direct, explicit: true, fallbackLocale: locale.startsWith("fr") ? "fr" : "en" };
-  }
   const fallbackLocale = locale.toLowerCase().startsWith("fr") ? "fr" : "en";
-  return { copy: CONTRACTS_UI_EXPLICIT[fallbackLocale] as ContractsUiCopy, explicit: false, fallbackLocale };
+  const base = direct ?? (CONTRACTS_UI_EXPLICIT[fallbackLocale] as ContractsUiCopy);
+  return {
+    copy: { ...base, ...catalogContractLabels(locale) },
+    explicit: Boolean(direct),
+    fallbackLocale,
+    catalogBackedKeys: CONTRACTS_CATALOG_BACKED_KEYS,
+  };
 }
 
 export function fillContractCopy(template: string, values: Record<string, string>): string {

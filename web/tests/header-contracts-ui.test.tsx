@@ -8,7 +8,9 @@ import { GlobalSourceSelector } from "@/components/shell/global-source-selector"
 import { LocaleProvider } from "@/lib/i18n/locale-context";
 import { SessionProvider } from "@/lib/session-context";
 import { localeKeyCoverage } from "@/lib/i18n/locale-coverage";
-import { CONTRACTS_UI_EXPLICIT } from "@/lib/i18n/contracts-ui-copy";
+import { CONTRACTS_UI_EXPLICIT, getContractsUi } from "@/lib/i18n/contracts-ui-copy";
+import { WORKSPACE_CHROME_EXPLICIT, getWorkspaceChrome } from "@/lib/i18n/workspace-chrome-copy";
+import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
 import { privateLicenseRequiredForPlan } from "@/lib/contracts/private-license";
 import { LOCALES } from "@/lib/i18n/locales";
 import { SOURCE_SELECTOR_COPY } from "@/lib/i18n/source-selector-copy";
@@ -25,16 +27,40 @@ describe("header and contracts UI", () => {
     expect(LOCALES).toHaveLength(44);
     for (const catalog of report) {
       expect(catalog.localeCount).toBe(44);
-      expect(catalog.explicitLocales).toHaveLength(4);
-      expect(catalog.missingLocales).toHaveLength(40);
-      expect(catalog.explicitKeySlots).toBe(4 * catalog.keyCount);
-      expect(catalog.missingKeySlots).toBe(40 * catalog.keyCount);
+      expect(catalog.fallbackKeyCount).toBe(catalog.keyCount - catalog.catalogBackedKeys.length);
+      expect(catalog.catalogBackedSlots).toBe(catalog.localeCount * catalog.catalogBackedKeys.length);
+      expect(catalog.explicitKeySlots).toBe(catalog.explicitLocales.length * catalog.fallbackKeyCount);
+      expect(catalog.missingKeySlots).toBe(catalog.missingLocales.length * catalog.fallbackKeyCount);
     }
-    expect(report.find((item) => item.name === "contractsUi")?.keyCount).toBeGreaterThan(40);
-    expect(report.find((item) => item.name === "workspaceChrome")?.keyCount).toBeGreaterThan(5);
     const contracts = report.find((item) => item.name === "contractsUi");
+    const chrome = report.find((item) => item.name === "workspaceChrome");
+    const sources = report.find((item) => item.name === "sourceSelector");
+    expect(contracts?.keyCount).toBeGreaterThan(40);
     expect(contracts?.explicitLocales.sort()).toEqual(["en", "en-GB", "fr", "fr-FR"]);
+    expect(contracts?.missingLocales).toHaveLength(40);
+    expect(contracts?.catalogBackedKeys.sort()).toEqual(["billingEmail", "close", "firstName", "lastName", "refresh"]);
+    expect(contracts?.missingKeySlots).toBe(40 * (contracts?.fallbackKeyCount ?? 0));
+    expect(chrome?.catalogBackedKeys).toEqual(["retry"]);
+    expect(chrome?.missingLocales).toHaveLength(40);
+    expect(chrome?.missingKeySlots).toBe(40 * (chrome?.fallbackKeyCount ?? 0));
+    expect(sources?.explicitLocales).toHaveLength(44);
+    expect(sources?.missingKeySlots).toBe(0);
     expect(Object.keys(CONTRACTS_UI_EXPLICIT.fr || {})).toEqual(Object.keys(CONTRACTS_UI_EXPLICIT.en || {}));
+
+    const spanish = getContractsUi("es");
+    const german = getWorkspaceChrome("de");
+    expect(spanish.explicit).toBe(false);
+    expect(spanish.copy.firstName).toBe(getApplicationCatalog("es").auth.firstName);
+    expect(spanish.copy.lastName).toBe(getApplicationCatalog("es").auth.lastName);
+    expect(spanish.copy.billingEmail).toBe(getApplicationCatalog("es").auth.billingEmail);
+    expect(spanish.copy.pageTitle).toBe(CONTRACTS_UI_EXPLICIT.en?.pageTitle);
+    expect(spanish.copy.governingNotice).toBe(CONTRACTS_UI_EXPLICIT.en?.governingNotice);
+    expect(spanish.copy.typeNda).toBe(CONTRACTS_UI_EXPLICIT.en?.typeNda);
+    expect(german.explicit).toBe(false);
+    expect(german.copy.retry).toBe(getApplicationCatalog("de").assistant.retry);
+    expect(german.copy.contracts).toBe(WORKSPACE_CHROME_EXPLICIT.en?.contracts);
+    expect(spanish.copy.refresh).toBe(getApplicationCatalog("es").company.employeesRefreshTooltip);
+    expect(spanish.copy.close).not.toBe(CONTRACTS_UI_EXPLICIT.fr?.close);
   });
 
   it("does not require the private license for an ordinary SaaS plan", () => {
