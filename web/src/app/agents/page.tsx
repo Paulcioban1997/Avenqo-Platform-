@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AppShell } from "@/components/shell/app-shell";
 import { apiFetch, ApiRequestError } from "@/lib/api-request";
 import { useLocale } from "@/lib/i18n/locale-context";
+import { useSession } from "@/lib/session-context";
 import {
   Bot,
   Sparkles,
@@ -133,9 +134,17 @@ const AGENT_METADATA: Record<string, AgentMeta> = {
   },
 };
 
+type ModuleRow = { key: string; display_name: string; active: boolean; state: string; availability: string };
+type ModulePayload = { plan_code: string; module_limit: number | null; active_modules: string[]; modules: ModuleRow[] };
+
 export default function AgentsPage() {
   const { locale } = useLocale();
+  const { identity } = useSession();
   const fr = locale.startsWith("fr");
+  const canManage = Boolean(identity?.user.permissions?.includes("modules:manage"));
+  const [modules, setModules] = useState<ModulePayload | null>(null);
+  const [moduleMessage, setModuleMessage] = useState("");
+  const [moduleBusy, setModuleBusy] = useState("");
   const [data, setData] = useState<AgentsApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -161,8 +170,31 @@ export default function AgentsPage() {
     }
   };
 
+  const loadModules = async () => {
+    const response = await apiFetch("/api/v1/modules/entitlements");
+    if (response.ok) setModules(await response.json());
+  };
+
+  const toggleModule = async (key: string, active: boolean) => {
+    setModuleBusy(key);
+    setModuleMessage("");
+    try {
+      const response = await apiFetch(`/api/v1/modules/${key}/${active ? "deactivate" : "activate"}`, { method: "POST" });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setModuleMessage(body.detail || (fr ? "La limite du forfait est atteinte. Bloquez d'abord un module." : "Plan limit reached. Block a module first."));
+        return;
+      }
+      setModules(body);
+      await loadAgents();
+    } finally {
+      setModuleBusy("");
+    }
+  };
+
   useEffect(() => {
     void loadAgents();
+    void loadModules();
   }, []);
 
   const allAgents = useMemo(() => {
@@ -233,6 +265,35 @@ export default function AgentsPage() {
             </Link>
           </div>
         </header>
+
+        {canManage && modules && (
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-[#0B132B]">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-extrabold text-slate-900 dark:text-white">
+                  {fr ? "Modules du forfait" : "Plan modules"}
+                </h2>
+                <p className="text-xs text-slate-500">
+                  {modules.plan_code} · {modules.active_modules.length}/{modules.module_limit ?? "—"} {fr ? "places" : "slots"}. {fr ? "Trading AI compte pour une place. Aucun forfait supplémentaire." : "Trading AI uses one slot. No extra plan."}
+                </p>
+              </div>
+            </div>
+            {moduleMessage && <p className="mt-2 text-sm text-rose-600">{moduleMessage}</p>}
+            <div className="mt-3 flex flex-wrap gap-2">
+              {modules.modules.filter((item) => item.availability === "available").map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  disabled={moduleBusy === item.key}
+                  onClick={() => void toggleModule(item.key, item.active)}
+                  className={`rounded-xl px-3 py-2 text-xs font-bold ${item.active ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900" : "border border-slate-200 text-slate-600 dark:border-white/10"} ${item.key === "trading" ? "ring-2 ring-[#0076FF]" : ""}`}
+                >
+                  {item.display_name} · {item.active ? (fr ? "Bloquer" : "Block") : (fr ? "Activer" : "Activate")}
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
 
         {error && (
           <div role="alert" className="flex items-center gap-2.5 p-4 rounded-xl border border-rose-200 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 text-sm">

@@ -42,7 +42,7 @@ BUSINESS_MODULE_REGISTRY: tuple[BusinessModuleDefinition, ...] = (
     BusinessModuleDefinition("legal", "Legal AI", "Document analysis with explicit non-advice limits.", ModuleAvailability.AVAILABLE, "legal"),
     BusinessModuleDefinition("workflow", "Workflow Automation", "Tenant-scoped triggers, conditions and actions.", ModuleAvailability.AVAILABLE, "operations"),
     BusinessModuleDefinition("ai_agents", "AI Agents", "Catalog of implemented assistants with execution history.", ModuleAvailability.AVAILABLE, "automation", premium=True, credit_multiplier=2.0),
-    BusinessModuleDefinition("trading", "Trading AI", "Live public crypto prices included in Base and Professional. No extra plan, no brokerage, and no buy or sell advice.", ModuleAvailability.AVAILABLE, "markets", included=True),
+    BusinessModuleDefinition("trading", "Trading AI", "Optional module. Public crypto prices from Binance and Coinbase. No brokerage and no buy or sell advice.", ModuleAvailability.AVAILABLE, "markets"),
 )
 
 BUSINESS_MODULES_BY_KEY = {module.key: module for module in BUSINESS_MODULE_REGISTRY}

@@ -178,10 +178,10 @@ def list_watch(session: Session, company_id: UUID, user_id: UUID) -> list[str]:
 
 
 def add_watch(session: Session, company_id: UUID, user_id: UUID, symbol: str) -> list[str]:
-    from backend.app.services.crypto_market import symbol_format
+    from backend.app.services.market_feed import watch_symbol
 
     try:
-        symbol = symbol_format(symbol)
+        symbol = watch_symbol(symbol)
     except ValueError as exc:
         raise KeyError(symbol) from exc
     existing = session.scalar(

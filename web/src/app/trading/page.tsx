@@ -4,7 +4,7 @@ import { TradingView } from "@/components/trading/trading-view";
 
 export const metadata: Metadata = {
   title: "Trading AI | AVENQO",
-  description: "Espace démo Trading AI. Aucune cote réelle et aucun conseil d'investissement.",
+  description: "Cours crypto publics Binance et Coinbase. Aucun ordre et aucun conseil d'investissement.",
 };
 
 export default function TradingPage() {
