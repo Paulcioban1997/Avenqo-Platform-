@@ -68,6 +68,8 @@ interface SubscriptionInfo {
   billing_frequency?: string;
   currency?: string;
   stripe_subscription_linked?: boolean;
+  entitlement_status?: string | null;
+  stripe_payment_status?: string | null;
   company_name?: string;
   payment_method?: PaymentMethodSummary | null;
 }
@@ -382,21 +384,8 @@ export function BillingView() {
       setActionError(companyTranslations.billingUnavailable);
       return;
     }
-    const code = (subscription.plan_code || "").toLowerCase();
-    // Anti-double-subscription protection: an active Professional subscriber NEVER checks out again
-    if (code === "professional") {
-      if (subscription.stripe_subscription_linked) {
-        void handleOpenStripePortal();
-      } else {
-        void handleConfirmUpgradeToProfessional();
-      }
-      return;
-    }
-    if (code === "demo" || code === "base") {
-      setIsUpgradeModalOpen(true);
-    } else {
-      void handleOpenStripePortal();
-    }
+    // Real Stripe subscription → Customer Portal; otherwise sandbox Checkout via /portal.
+    void handleOpenStripePortal();
   };
 
   const handleSubscribeToBase = async () => {
@@ -566,26 +555,32 @@ export function BillingView() {
 
   const totalHistoryPages = Math.ceil(historyTotal / historyPageSize) || 1;
 
-  const statusLabel =
-    subscription.status === "active"
-      ? "Actif"
-      : subscription.status === "trialing"
+  const stripeLinked = Boolean(subscription.stripe_subscription_linked);
+  const paymentStatus = subscription.stripe_payment_status || (stripeLinked ? subscription.status : "unlinked");
+  const statusLabel = !stripeLinked
+    ? (locale.startsWith("fr") ? "Plan local — Stripe non lié" : "Local plan — Stripe unlinked")
+    : paymentStatus === "active"
+      ? (locale.startsWith("fr") ? "Actif (Stripe)" : "Active (Stripe)")
+      : paymentStatus === "trialing"
       ? "Essai"
-      : subscription.status === "past_due"
+      : paymentStatus === "past_due"
       ? "Paiement en retard"
-      : subscription.status === "canceled"
+      : paymentStatus === "canceled"
       ? "Annulé"
-      : subscription.status === "canceling_at_period_end" ? "Annulation en fin de période"
-      : subscription.status === "inactive" ? "Inactif" : "—";
+      : paymentStatus === "canceling_at_period_end"
+      ? "Annulation en fin de période"
+      : paymentStatus === "inactive"
+      ? "Inactif"
+      : "—";
 
   const statusColor =
-    subscription.status === "active"
+    stripeLinked && paymentStatus === "active"
       ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
-      : subscription.status === "trialing"
+      : stripeLinked && paymentStatus === "trialing"
       ? "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400"
-      : subscription.status === "past_due"
+      : paymentStatus === "past_due"
       ? "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400"
-      : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
+      : "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300";
 
   if (loadError) return <div role="alert" className="mx-auto max-w-6xl rounded-2xl border border-rose-400 p-6">
     <p>{companyTranslations.billingUnavailable}</p>
@@ -615,6 +610,16 @@ export function BillingView() {
       </div>
 
       {/* Notifications */}
+      {!stripeLinked && (
+        <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-200 dark:border-white/[0.08] flex items-center gap-2.5 text-xs text-slate-700 dark:text-slate-300">
+          <AlertCircle size={16} className="shrink-0 text-[#0076FF]" />
+          <span>
+            {locale.startsWith("fr")
+              ? "Le plan et les modules locaux restent actifs. Aucun abonnement Stripe test n’est lié : utilisez Gérer l’abonnement pour ouvrir Checkout (après acceptation SaaS) ou le portail client s’il existe déjà."
+              : "Local plan and modules stay active. No Stripe test subscription is linked: use Manage subscription to open Checkout (after SaaS acceptance) or the customer portal if one already exists."}
+          </span>
+        </div>
+      )}
       {actionError && (
         <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 flex items-center gap-2.5 text-xs text-amber-800 dark:text-amber-300">
           <AlertCircle size={16} className="shrink-0 text-amber-600 dark:text-amber-400" />

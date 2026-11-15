@@ -201,15 +201,21 @@ def subscription_response(account: Any, company: Any = None) -> SubscriptionResp
     usd, price = _plan_display_price(plan_obj, currency)
     comp_name = company.name if company else None
     stripe_linked = bool(account.stripe_subscription_id)
+    entitlement_status = str(account.status or "inactive")
+    stripe_payment_status = (
+        "canceling_at_period_end"
+        if stripe_linked and account.cancel_at_period_end and account.status in {"active", "trialing"}
+        else (account.status if stripe_linked else "unlinked")
+    )
+    # Never present Stripe Active / Paid / renewal without a linked Stripe subscription id.
+    display_status = (
+        "inactive"
+        if not stripe_linked
+        else stripe_payment_status
+    )
     return SubscriptionResponse(
         plan_code=account.plan_code,
-        status=(
-            "inactive"
-            if not stripe_linked
-            else "canceling_at_period_end"
-            if account.cancel_at_period_end and account.status in {"active", "trialing"}
-            else account.status
-        ),
+        status=display_status,
         current_period_end=account.current_period_end if stripe_linked else None,
         cancel_at_period_end=account.cancel_at_period_end,
         plan_name=plan_name,
@@ -218,6 +224,8 @@ def subscription_response(account: Any, company: Any = None) -> SubscriptionResp
         billing_frequency="monthly",
         currency=currency,
         stripe_subscription_linked=stripe_linked,
+        entitlement_status=entitlement_status,
+        stripe_payment_status=stripe_payment_status,
         company_name=comp_name,
         payment_method=None,
     )
@@ -263,6 +271,7 @@ def plans() -> list[PlanResponse]:
 def subscription(
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
+    service: BillingService = Depends(get_billing_service),
 ) -> SubscriptionResponse:
     account = db.scalar(
         select(BillingAccount).where(
@@ -284,9 +293,17 @@ def subscription(
             billing_frequency="monthly",
             currency=currency,
             stripe_subscription_linked=False,
+            entitlement_status="inactive",
+            stripe_payment_status="unlinked",
             company_name=identity.user.company.name,
             payment_method=None,
         )
+    try:
+        account = service.refresh_stripe_payment_evidence(identity.user.company)
+    except (BillingConfigurationError, StripeCustomerNotFoundError, StripePriceNotFoundError):
+        pass
+    except Exception:
+        logger.exception("Sandbox Stripe evidence refresh failed for tenant %s", identity.user.company_id)
     return subscription_response(account, company=identity.user.company)
 
 
@@ -369,7 +386,7 @@ def portal(
 ) -> RedirectResponse:
     try:
         return RedirectResponse(url=service.create_portal(identity.user.company))
-    except StripeCustomerNotFoundError as exc:
+    except (StripeCustomerNotFoundError, StripePriceNotFoundError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except BillingConfigurationError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc

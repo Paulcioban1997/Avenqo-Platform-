@@ -1,3 +1,4 @@
+import logging
 import time
 """Cas d'usage de facturation Stripe limités au tenant authentifié."""
 
@@ -29,6 +30,8 @@ from backend.app.services.invoice_tax import invoice_tax_snapshot
 from backend.app.services.tenant_rls import apply_tenant_rls
 from payments import PlanCode, get_plan
 from payments.plans import AI_CREDIT_PACKS, AICreditPack, get_ai_credit_pack
+
+logger = logging.getLogger(__name__)
 
 
 class BillingConfigurationError(RuntimeError):
@@ -102,6 +105,40 @@ class BillingService:
         from backend.app.services.contract_signature_service import ContractSignatureService
 
         return ContractSignatureService(self._session, settings=self._settings).sandbox_saas_accepted(company.id)
+
+    def refresh_stripe_payment_evidence(self, company: Company) -> BillingAccount:
+        """Keep local plan/entitlement; only claim Stripe payment when a test subscription is visible."""
+
+        account = self.get_account(company.id)
+        if not self._sandbox_test_stripe():
+            return account
+        account = self._reconcile_sandbox_customer(account, company)
+        remote = None
+        if account.stripe_customer_id:
+            try:
+                remote = self.provider.get_active_subscription(account.stripe_customer_id)
+            except StripeCustomerNotFoundError:
+                remote = None
+        if remote:
+            sub_id = remote.get("id") if isinstance(remote, dict) else getattr(remote, "id", None)
+            sub_status = remote.get("status") if isinstance(remote, dict) else getattr(remote, "status", "active")
+            period_end = None
+            if isinstance(remote, dict):
+                period_end = remote.get("current_period_end")
+            if sub_id:
+                account.stripe_subscription_id = str(sub_id)
+                if sub_status:
+                    account.status = str(sub_status)
+                if period_end:
+                    account.current_period_end = datetime.fromtimestamp(int(period_end), timezone.utc)
+                self._session.commit()
+            return account
+        if account.stripe_subscription_id:
+            account.stripe_subscription_id = None
+            account.current_period_end = None
+            # Preserve plan_code and local entitlement status for modules/credits.
+            self._session.commit()
+        return account
 
     def get_account(self, company_id: UUID) -> BillingAccount:
         account = self._session.scalar(select(BillingAccount).where(
@@ -234,15 +271,28 @@ class BillingService:
         return account
 
     def create_portal(self, company: Company) -> str:
-        """Ouvre le portail Stripe et réconcilie proactivement l'abonnement distant si nécessaire."""
+        """Checkout when no real Stripe subscription; Customer Portal when one exists."""
         account = self.get_account(company.id)
         if self._sandbox_test_stripe():
-            account = self._reconcile_sandbox_customer(account, company)
+            account = self.refresh_stripe_payment_evidence(company)
             remote = None
             if account.stripe_customer_id:
-                remote = self.provider.get_active_subscription(account.stripe_customer_id)
-            if remote is None and self._sandbox_saas_accepted(company):
-                return self.create_checkout(company, account.plan_code or company.subscription_plan or "professional")
+                try:
+                    remote = self.provider.get_active_subscription(account.stripe_customer_id)
+                except StripeCustomerNotFoundError:
+                    remote = None
+            if remote is None:
+                if self._sandbox_saas_accepted(company):
+                    return self.create_checkout(
+                        company,
+                        account.plan_code or company.subscription_plan or "professional",
+                    )
+                raise BillingOperationError(
+                    "Les accords SaaS requis doivent être acceptés avant le paiement test. "
+                    "Ouvrez Paramètres → Contrats, puis réessayez Gérer l'abonnement."
+                )
+            return_url = f"{self._settings.frontend_url.rstrip('/')}/billing"
+            return self.provider.create_portal(account.stripe_customer_id, return_url)
         if not account.stripe_customer_id:
             account.stripe_customer_id = self.provider.create_customer(
                 company.email,

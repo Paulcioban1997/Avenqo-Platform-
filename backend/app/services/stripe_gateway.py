@@ -103,7 +103,7 @@ class StripeGateway:
         except stripe.InvalidRequestError as exc:
             if "No such price" in str(exc):
                 raise StripePriceNotFoundError(
-                    f"Le tarif Stripe '{price_id}' n'a pas été trouvé dans le compte Stripe configuré."
+                    "Stripe price not found in the configured Stripe account."
                 ) from exc
             raise
         # Stripe SDK resources expose to_dict(), but do not always expose get().
@@ -176,7 +176,7 @@ class StripeGateway:
                 ) from exc
             if "No such price" in str(exc):
                 raise StripePriceNotFoundError(
-                    f"Le tarif Stripe '{price_id}' n'a pas été trouvé dans le compte Stripe configuré."
+                    "Stripe price not found in the configured Stripe account."
                 ) from exc
             raise
         if not checkout.url:

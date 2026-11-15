@@ -175,7 +175,7 @@ class Settings(BaseSettings):
     stripe_price_base: str | None = Field(default=None, alias="STRIPE_PRICE_BASE")
     stripe_price_demo: str | None = Field(default=None, alias="STRIPE_PRICE_DEMO")
     stripe_price_professional: str | None = Field(default=None, alias="STRIPE_PRICE_PROFESSIONAL")
-    stripe_prices_by_currency: dict[str, dict[str, str]] = Field(
+    stripe_prices_by_currency: Annotated[dict[str, dict[str, str]], NoDecode] = Field(
         default_factory=dict,
         alias="STRIPE_PRICES_BY_CURRENCY",
     )
@@ -489,6 +489,26 @@ class Settings(BaseSettings):
     provider_contracts_published: bool = Field(default=False, alias="PROVIDER_CONTRACTS_PUBLISHED")
     # Independent release switch: provider verification alone never activates signatures.
     legal_signing_enabled: bool = Field(default=False, alias="LEGAL_SIGNING_ENABLED")
+
+    @field_validator("stripe_prices_by_currency", mode="before")
+    @classmethod
+    def parse_stripe_prices_by_currency(cls, value: object) -> object:
+        """Tolerate missing or corrupted Railway JSON; fall back to STRIPE_PRICE_*."""
+
+        if value in (None, ""):
+            return {}
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return {}
+            try:
+                parsed = json.loads(stripped)
+            except json.JSONDecodeError:
+                return {}
+            return parsed if isinstance(parsed, dict) else {}
+        return {}
 
     @field_validator("cors_origins", "allowed_hosts", mode="before")
     @classmethod

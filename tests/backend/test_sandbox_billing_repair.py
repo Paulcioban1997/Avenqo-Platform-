@@ -14,7 +14,7 @@ from backend.app.models.company import Company
 from backend.app.models.company_contract import CompanyContract
 from backend.app.models.user import User
 from backend.app.routers.billing import _stripe_paid_invoice_ids
-from backend.app.services.billing_service import BillingService
+from backend.app.services.billing_service import BillingOperationError, BillingService
 from backend.app.services.commercial_reconciler import CommercialReconciler
 from backend.app.services.contract_signature_service import (
     ContractAuthorityError,
@@ -22,6 +22,7 @@ from backend.app.services.contract_signature_service import (
 )
 from backend.app.services.signing_challenge_service import SigningChallengeService
 from backend.app.services.stripe_gateway import StripeCustomerNotFoundError
+from backend.app.routers.billing import subscription_response
 
 
 class _Settings:
@@ -124,18 +125,20 @@ def test_sandbox_replaces_a_missing_test_customer_and_leaves_old_invoices(db_ses
             return "cus_new_test"
 
         def create_portal(self, customer_id: str, return_url: str) -> str:
-            assert customer_id == "cus_new_test"
-            return "https://billing.stripe.com/p/session/test"
+            raise AssertionError("portal requires a real Stripe subscription")
 
         def create_checkout(self, *args, **kwargs):
             raise AssertionError("checkout must wait for the SaaS agreement")
 
     service = BillingService(db_session, Provider(), _Settings(), None, None)
-    url = service.create_portal(company)
-    assert url.startswith("https://billing.stripe.com/")
+    with pytest.raises(BillingOperationError) as refused:
+        service.create_portal(company)
+    assert "accords SaaS" in str(refused.value)
     reloaded = db_session.scalar(select(BillingAccount).where(BillingAccount.company_id == company.id))
     assert reloaded.stripe_customer_id == "cus_new_test"
     assert reloaded.stripe_subscription_id is None
+    assert reloaded.plan_code == "professional"
+    assert reloaded.status == "active"
     kept = db_session.scalar(select(BillingInvoice).where(BillingInvoice.number == "XVMNAYLP-0001"))
     assert kept.status == "paid"
     assert kept.amount_paid == 2800
@@ -178,11 +181,15 @@ def test_sandbox_reuses_the_tagged_test_customer(db_session):
             raise AssertionError("an existing tagged customer must be reused")
 
         def create_portal(self, customer_id: str, return_url: str) -> str:
-            assert customer_id == "cus_existing_test"
-            return "https://billing.stripe.com/p/session/reused"
+            raise AssertionError("portal requires a real Stripe subscription")
+
+        def create_checkout(self, *args, **kwargs):
+            raise AssertionError("checkout must wait for the SaaS agreement")
 
     service = BillingService(db_session, Provider(), _Settings(), None, None)
-    assert service.create_portal(company).endswith("/reused")
+    with pytest.raises(BillingOperationError) as refused:
+        service.create_portal(company)
+    assert "accords SaaS" in str(refused.value)
     reloaded = db_session.scalar(select(BillingAccount).where(BillingAccount.company_id == company.id))
     assert reloaded.stripe_customer_id == "cus_existing_test"
     assert reloaded.stripe_subscription_id is None
@@ -316,3 +323,207 @@ def test_sandbox_checkout_uses_the_existing_price_after_pilot_saas_acceptance(db
 
     billing = BillingService(db_session, Provider(), _Settings(), None, None)
     assert billing.create_portal(company) == "https://checkout.stripe.com/c/pay/cs_test_session"
+
+
+def test_sandbox_portal_opens_when_real_test_subscription_exists(db_session):
+    company = _company(db_session)
+    account = BillingAccount(
+        company_id=company.id,
+        plan_code="professional",
+        status="active",
+        stripe_customer_id="cus_test_live",
+        stripe_subscription_id=None,
+    )
+    db_session.add(account)
+    db_session.commit()
+
+    class Provider:
+        def get_active_subscription(self, customer_id: str):
+            assert customer_id == "cus_test_live"
+            return {"id": "sub_test_active", "status": "active", "current_period_end": 1_900_000_000}
+
+        def create_portal(self, customer_id: str, return_url: str) -> str:
+            assert customer_id == "cus_test_live"
+            return "https://billing.stripe.com/p/session/active_sub"
+
+        def create_checkout(self, *args, **kwargs):
+            raise AssertionError("real subscription must open the portal")
+
+    service = BillingService(db_session, Provider(), _Settings(), None, None)
+    assert service.create_portal(company).endswith("/active_sub")
+    reloaded = db_session.scalar(select(BillingAccount).where(BillingAccount.company_id == company.id))
+    assert reloaded.stripe_subscription_id == "sub_test_active"
+    payload = subscription_response(reloaded, company=company)
+    assert payload.stripe_subscription_linked is True
+    assert payload.status == "active"
+    assert payload.stripe_payment_status == "active"
+
+
+def test_local_entitlement_stays_active_without_claiming_stripe_paid(db_session):
+    company = _company(db_session)
+    account = BillingAccount(
+        company_id=company.id,
+        plan_code="professional",
+        status="active",
+        stripe_customer_id="cus_visible",
+        stripe_subscription_id="sub_stale",
+        current_period_end=datetime.now(timezone.utc),
+    )
+    db_session.add(account)
+    db_session.commit()
+
+    class Provider:
+        def get_active_subscription(self, customer_id: str):
+            return None
+
+    service = BillingService(db_session, Provider(), _Settings(), None, None)
+    refreshed = service.refresh_stripe_payment_evidence(company)
+    assert refreshed.plan_code == "professional"
+    assert refreshed.status == "active"
+    assert refreshed.stripe_subscription_id is None
+    assert refreshed.current_period_end is None
+    payload = subscription_response(refreshed, company=company)
+    assert payload.stripe_subscription_linked is False
+    assert payload.status == "inactive"
+    assert payload.entitlement_status == "active"
+    assert payload.stripe_payment_status == "unlinked"
+    assert payload.current_period_end is None
+
+
+def test_cancel_requires_linked_stripe_subscription(db_session):
+    company = _company(db_session)
+    account = BillingAccount(
+        company_id=company.id,
+        plan_code="professional",
+        status="active",
+        stripe_customer_id="cus_visible",
+        stripe_subscription_id=None,
+    )
+    db_session.add(account)
+    db_session.commit()
+    service = BillingService(db_session, object(), _Settings(), None, None)
+    with pytest.raises(BillingOperationError):
+        service.cancel(company.id)
+
+
+def test_payment_success_webhook_links_subscription_and_replay_is_idempotent(db_session, monkeypatch):
+    company = _company(db_session)
+    account = BillingAccount(
+        company_id=company.id,
+        plan_code="professional",
+        status="inactive",
+        stripe_customer_id="cus_pay",
+    )
+    db_session.add(account)
+    db_session.commit()
+
+    class Provider:
+        def construct_event(self, payload, signature, secret):
+            return {
+                "id": "evt_sub_paid_once",
+                "type": "customer.subscription.updated",
+                "data": {
+                    "object": {
+                        "id": "sub_paid",
+                        "status": "active",
+                        "customer": "cus_pay",
+                        "cancel_at_period_end": False,
+                        "current_period_end": 1_900_000_000,
+                        "metadata": {"avenqo_company_id": str(company.id)},
+                        "items": {
+                            "data": [
+                                {
+                                    "price": {"id": "price_professional_existing"},
+                                    "current_period_end": 1_900_000_000,
+                                }
+                            ]
+                        },
+                    }
+                },
+            }
+
+    settings = _Settings()
+    settings.stripe_webhook_secret = "whsec_test"
+    settings.stripe_price_professional = "price_professional_existing"
+    settings.stripe_price_demo = "price_base_existing"
+    settings.stripe_price_base = "price_base_existing"
+    settings.stripe_prices_by_currency = {}
+    settings.stripe_plan_code = lambda price_id: {
+        "price_professional_existing": "professional",
+        "price_base_existing": "base",
+    }.get(price_id)
+
+    class Usage:
+        def reset_credits_for_renewal(self, *args, **kwargs):
+            return None
+
+    class Notifier:
+        email_delivery_configured = False
+
+    service = BillingService(db_session, Provider(), settings, Usage(), Notifier())
+    assert service.process_webhook(b"{}", "sig") is True
+    assert service.process_webhook(b"{}", "sig") is False
+    reloaded = db_session.scalar(select(BillingAccount).where(BillingAccount.company_id == company.id))
+    assert reloaded.stripe_subscription_id == "sub_paid"
+    assert reloaded.status == "active"
+    assert reloaded.plan_code == "professional"
+
+
+def test_webhook_invoice_cross_tenant_is_rejected(db_session):
+    company_a = _company(db_session)
+    company_b = _company(db_session)
+    account_a = BillingAccount(
+        company_id=company_a.id,
+        plan_code="professional",
+        status="active",
+        stripe_customer_id="cus_a",
+        stripe_subscription_id="sub_a",
+    )
+    account_b = BillingAccount(
+        company_id=company_b.id,
+        plan_code="base",
+        status="active",
+        stripe_customer_id="cus_b",
+        stripe_subscription_id="sub_b",
+    )
+    db_session.add_all([account_a, account_b])
+    db_session.commit()
+
+    class Provider:
+        def construct_event(self, payload, signature, secret):
+            return {
+                "id": "evt_cross_tenant_invoice",
+                "type": "invoice.paid",
+                "data": {
+                    "object": {
+                        "id": "in_cross",
+                        "customer": "cus_a",
+                        "status": "paid",
+                        "currency": "cad",
+                        "subtotal": 4999,
+                        "total": 4999,
+                        "amount_due": 0,
+                        "amount_paid": 4999,
+                        "created": int(datetime.now(timezone.utc).timestamp()),
+                        "lines": {"data": []},
+                        "metadata": {"avenqo_company_id": str(company_b.id)},
+                        "status_transitions": {"paid_at": int(datetime.now(timezone.utc).timestamp())},
+                    }
+                },
+            }
+
+    settings = _Settings()
+    settings.stripe_webhook_secret = "whsec_test"
+    settings.stripe_plan_code = lambda price_id: None
+
+    class Usage:
+        def reset_credits_for_renewal(self, *args, **kwargs):
+            raise AssertionError("cross-tenant invoice must not renew credits")
+
+    class Notifier:
+        email_delivery_configured = False
+
+    service = BillingService(db_session, Provider(), settings, Usage(), Notifier())
+    with pytest.raises(BillingOperationError):
+        service.process_webhook(b"{}", "sig")
+    assert db_session.scalar(select(BillingInvoice).where(BillingInvoice.stripe_invoice_id == "in_cross")) is None
