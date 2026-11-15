@@ -550,11 +550,16 @@ export function TeamWorkspace() {
                 method: "POST",
                 body: JSON.stringify({ new_email: newEmail.trim(), confirm_email: confirmEmail.trim() }),
               })
-                .then(() => {
+                .then(async (response) => {
+                  const payload = await response.json().catch(() => ({}));
                   setSuccessNotice(
-                    fr
-                      ? "Confirmation envoyée à la nouvelle adresse. Le compte, le poste et les droits restent inchangés jusqu'à cette confirmation."
-                      : "Confirmation sent to the new address. The account, job and permissions stay unchanged until then.",
+                    payload.release_required
+                      ? (fr
+                        ? "Cette adresse est déjà un compte. Un message lui a été envoyé. Rien ne change tant qu'elle n'a pas confirmé et choisi une adresse de remplacement pour l'autre compte."
+                        : "This address is already an account. A message was sent to it. Nothing changes until that inbox confirms and chooses a replacement address for the other account.")
+                      : (fr
+                        ? "Confirmation envoyée à la nouvelle adresse. Le compte, le poste et les droits restent inchangés jusqu'à cette confirmation."
+                        : "Confirmation sent to the new address. The account, job and permissions stay unchanged until then."),
                   );
                   setCorrectionMember(null);
                 })

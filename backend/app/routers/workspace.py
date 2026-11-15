@@ -84,6 +84,7 @@ class EmailCorrectionConfirm(BaseModel):
     token: str | None = Field(default=None, max_length=512)
     code: str | None = Field(default=None, max_length=32)
     email: EmailStr | None = None
+    replacement_email: EmailStr | None = None
 
 
 class ResponsibilityCreate(BaseModel):
@@ -176,6 +177,7 @@ def request_email_correction(
         "id": str(row.id),
         "new_email": row.new_email,
         "expires_at": row.expires_at.isoformat(),
+        "release_required": row.releasing_user_id is not None,
     }
 
 
@@ -200,6 +202,7 @@ def confirm_email_correction(
             payload.token,
             code=payload.code,
             email=str(payload.email) if payload.email else None,
+            replacement_email=str(payload.replacement_email) if payload.replacement_email else None,
         )
     except WorkspaceError as exc:
         raise _http(exc) from exc

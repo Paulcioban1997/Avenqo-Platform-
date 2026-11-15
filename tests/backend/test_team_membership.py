@@ -520,8 +520,14 @@ def test_owner_corrects_one_address_without_moving_another_account(db_session, c
     db_session.commit()
     password_hash = vice.password_hash
     service = WorkspaceService(db_session, _Mail())
-    with pytest.raises(WorkspaceError, match="autre compte"):
-        service.request_email_correction(owner, vice.id, outsider.email)
+    release = service.request_email_correction(owner, vice.id, outsider.email)
+    assert release.releasing_user_id == outsider.id
+    with pytest.raises(WorkspaceError, match="remplacement"):
+        service.confirm_email_correction(code=release._raw_code, email=outsider.email)
+    db_session.refresh(vice)
+    db_session.refresh(outsider)
+    assert vice.email == old_email
+    assert outsider.password_hash == outsider_hash
     with pytest.raises(WorkspaceError, match="propriétaire"):
         service.request_email_correction(admin, vice.id, new_email)
     db_session.refresh(outsider)
@@ -597,3 +603,66 @@ def test_owner_corrects_one_address_without_moving_another_account(db_session, c
     headers = {"Authorization": f"Bearer {lucia_login.json()['access_token']}", "X-Requested-With": "avenqo-web"}
     assert _denied(client.get("/api/v1/accounting/overview", headers=headers))
     assert _denied(client.get("/api/v1/billing/invoices", headers=headers))
+
+
+def test_inbox_can_release_its_address_without_moving_either_company(db_session, client: TestClient) -> None:
+    company = _company(db_session, f"home-{uuid4().hex[:8]}")
+    other = _company(db_session, f"away-{uuid4().hex[:8]}")
+    owner = _owner(db_session, company)
+    holder = _owner(db_session, other)
+    holder.email_verified_at = datetime.now(timezone.utc)
+    db_session.commit()
+    held_email = holder.email
+    held_hash = holder.password_hash
+    vice = User(
+        company_id=company.id,
+        first_name="Mircea",
+        last_name="Cioban",
+        email=f"vice-{uuid4()}@example.com",
+        password_hash=hash_password("Oldpassword1!"),
+        role=UserRole.ADMIN,
+        job_title="Vice-président",
+        is_active=True,
+        email_verified_at=datetime.now(timezone.utc),
+    )
+    colleague = User(
+        company_id=company.id,
+        first_name="Luc",
+        last_name="Same",
+        email=f"same-{uuid4()}@example.com",
+        password_hash=hash_password("Oldpassword1!"),
+        role=UserRole.USER,
+        job_title="Comptable",
+        is_active=True,
+    )
+    db_session.add_all([vice, colleague])
+    db_session.commit()
+    vice_hash = vice.password_hash
+    service = WorkspaceService(db_session, _Mail())
+    with pytest.raises(WorkspaceError, match="dans cette entreprise"):
+        service.request_email_correction(owner, vice.id, colleague.email)
+    correction = service.request_email_correction(owner, vice.id, held_email)
+    replacement = f"released-{uuid4()}@example.com"
+    service.confirm_email_correction(
+        code=correction._raw_code,
+        email=held_email,
+        replacement_email=replacement,
+    )
+    db_session.refresh(vice)
+    db_session.refresh(holder)
+    assert vice.email == held_email
+    assert vice.company_id == company.id
+    assert vice.role == UserRole.ADMIN
+    assert vice.job_title == "Vice-président"
+    assert vice.password_hash == vice_hash
+    assert holder.email == replacement
+    assert holder.company_id == other.id
+    assert holder.role == UserRole.OWNER
+    assert holder.password_hash == held_hash
+    client.cookies.clear()
+    vice_login = client.post("/api/v1/auth/login", json={"email": held_email, "password": "Oldpassword1!"})
+    holder_login = client.post("/api/v1/auth/login", json={"email": replacement, "password": "Ownerpass1!"})
+    assert vice_login.status_code == 200
+    assert holder_login.status_code == 200
+    assert vice_login.json()["user"]["company_id"] == str(company.id)
+    assert holder_login.json()["user"]["company_id"] == str(other.id)

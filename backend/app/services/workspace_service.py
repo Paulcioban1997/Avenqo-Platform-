@@ -341,8 +341,11 @@ class WorkspaceService:
         if normalized == target.email.strip().lower():
             raise WorkspaceError("Cette adresse est déjà celle de ce compte")
         taken = self._session.scalar(select(User).where(User.email == normalized))
-        if taken is not None:
-            raise WorkspaceError("Cette adresse appartient déjà à un autre compte")
+        if taken is not None and taken.company_id == actor.company_id:
+            raise WorkspaceError(
+                f"Cette adresse appartient déjà à {taken.first_name} {taken.last_name} dans cette entreprise."
+            )
+        releasing_user_id = None if taken is None else taken.id
         ready, missing = mailbox_delivery(self._notifier, get_settings())
         if not ready or self._notifier is None or not hasattr(self._notifier, "send_transactional"):
             raise MailNotConfigured(missing)
@@ -362,6 +365,7 @@ class WorkspaceService:
             company_id=actor.company_id,
             user_id=target.id,
             requested_by_user_id=actor.id,
+            releasing_user_id=releasing_user_id,
             old_email=target.email.strip().lower(),
             new_email=normalized,
             token_hash=hash_token(raw),
@@ -375,24 +379,47 @@ class WorkspaceService:
         company_name = actor.company.name if actor.company is not None else "votre entreprise"
         origin = get_settings().public_frontend_origin()
         link = f"{origin}/confirm-email?token={raw}"
-        text_body = "\n".join(
-            (
+        if taken is None:
+            text_lines = (
                 f"Confirmez cette adresse pour {target.first_name} {target.last_name}, {target.job_title}, chez {company_name}.",
                 "Le compte, le poste et les droits restent les mêmes.",
                 "Aucune autre entreprise n'est modifiée.",
+            )
+            html_intro = (
+                f"<p>Confirmez cette adresse pour {target.first_name} {target.last_name}, "
+                f"{target.job_title}, chez {company_name}.</p>"
+                "<p>Le compte, le poste et les droits restent les mêmes. "
+                "Aucune autre entreprise n'est modifiée.</p>"
+            )
+        else:
+            taken_company = taken.company.name if taken.company is not None else "une autre entreprise"
+            text_lines = (
+                f"Cette adresse est déjà le compte de {taken.first_name} {taken.last_name}, {taken.job_title}, chez {taken_company}.",
+                f"{company_name} demande de l'utiliser pour {target.first_name} {target.last_name}, {target.job_title}.",
+                "Les deux entreprises restent séparées. Les postes et les droits ne changent pas.",
+                "Pour confirmer, choisissez une adresse de remplacement pour le compte qui libère celle-ci.",
+            )
+            html_intro = (
+                f"<p>Cette adresse est déjà le compte de {taken.first_name} {taken.last_name}, "
+                f"{taken.job_title}, chez {taken_company}.</p>"
+                f"<p>{company_name} demande de l'utiliser pour {target.first_name} {target.last_name}, "
+                f"{target.job_title}.</p>"
+                "<p>Les deux entreprises restent séparées. Les postes et les droits ne changent pas. "
+                "Pour confirmer, choisissez une adresse de remplacement pour le compte qui libère celle-ci.</p>"
+            )
+        text_body = "\n".join(
+            (
+                *text_lines,
                 "Cette confirmation est valable 24 heures et ne sert qu'une fois.",
                 link,
                 f"Code de confirmation: {code}",
             )
         )
         html_body = (
-            f"<p>Confirmez cette adresse pour {target.first_name} {target.last_name}, "
-            f"{target.job_title}, chez {company_name}.</p>"
-            "<p>Le compte, le poste et les droits restent les mêmes. "
-            "Aucune autre entreprise n'est modifiée.</p>"
-            f'<p><a href="{link}">Confirmer cette adresse</a></p>'
-            f"<p>Code de confirmation : <strong>{code}</strong>. "
-            "Il est valable 24 heures et ne sert qu'une fois.</p>"
+            html_intro
+            + f'<p><a href="{link}">Confirmer cette adresse</a></p>'
+            + f"<p>Code de confirmation : <strong>{code}</strong>. "
+            + "Il est valable 24 heures et ne sert qu'une fois.</p>"
         )
         from backend.app.services.account_notifications import sandbox_mail_company_id, sandbox_mail_session
 
@@ -420,6 +447,7 @@ class WorkspaceService:
         *,
         code: str | None = None,
         email: str | None = None,
+        replacement_email: str | None = None,
     ) -> tuple[User, EmployeeInvitation | None]:
         """Applique l'adresse confirmée sans déplacer le compte ni changer ses droits."""
 
@@ -434,10 +462,22 @@ class WorkspaceService:
         if locked is None:
             raise WorkspaceError("Confirmation invalide ou expirée")
         self._assert_correction_open(locked)
+        holder = self._session.get(User, locked.releasing_user_id) if locked.releasing_user_id else None
         taken = self._session.scalar(select(User).where(User.email == locked.new_email))
-        if taken is not None:
+        if taken is not None and (holder is None or taken.id != holder.id):
             self._session.rollback()
             raise WorkspaceError("Cette adresse appartient déjà à un autre compte")
+        if holder is not None:
+            replacement = (replacement_email or "").strip().lower()
+            if not replacement:
+                self._session.rollback()
+                raise WorkspaceError("Indiquez une adresse de remplacement pour le compte qui libère cette adresse")
+            if replacement == locked.new_email or self._session.scalar(select(User).where(User.email == replacement)) is not None:
+                self._session.rollback()
+                raise WorkspaceError("Cette adresse de remplacement appartient déjà à un autre compte")
+            if holder.email.strip().lower() != locked.new_email or holder.company_id == locked.company_id:
+                self._session.rollback()
+                raise WorkspaceError("Cette confirmation ne correspond plus à ce compte")
         user = self._session.get(User, locked.user_id)
         if user is None or user.company_id != locked.company_id or not user.is_active:
             self._session.rollback()
@@ -456,6 +496,23 @@ class WorkspaceService:
         )
         old_email = user.email
         now = datetime.now(timezone.utc)
+        holder_kept = None
+        if holder is not None:
+            holder_kept = (
+                holder.company_id,
+                holder.role,
+                holder.job_title,
+                holder.permission_grants,
+                holder.password_hash,
+                holder.first_name,
+                holder.last_name,
+            )
+            holder.email = (replacement_email or "").strip().lower()
+            self._session.flush()
+            for auth_session in self._session.scalars(
+                select(AuthSession).where(AuthSession.user_id == holder.id, AuthSession.revoked_at.is_(None))
+            ):
+                auth_session.revoked_at = now
         user.email = locked.new_email
         for auth_session in self._session.scalars(
             select(AuthSession).where(AuthSession.user_id == user.id, AuthSession.revoked_at.is_(None))
@@ -485,6 +542,19 @@ class WorkspaceService:
             or user.password_hash != kept[4]
             or user.first_name != kept[5]
             or user.last_name != kept[6]
+            or (
+                holder is not None
+                and holder_kept is not None
+                and (
+                    holder.company_id != holder_kept[0]
+                    or holder.role != holder_kept[1]
+                    or holder.job_title != holder_kept[2]
+                    or holder.permission_grants != holder_kept[3]
+                    or holder.password_hash != holder_kept[4]
+                    or holder.first_name != holder_kept[5]
+                    or holder.last_name != holder_kept[6]
+                )
+            )
         ):
             self._session.rollback()
             raise WorkspaceError("La correction ne peut pas modifier le compte")
@@ -505,11 +575,16 @@ class WorkspaceService:
         company = self._session.get(Company, correction.company_id)
         if user is None or user.company_id != correction.company_id:
             raise WorkspaceError("Confirmation invalide ou expirée")
+        holder = self._session.get(User, correction.releasing_user_id) if correction.releasing_user_id else None
+        holder_company = self._session.get(Company, holder.company_id) if holder is not None else None
         return {
             "company_name": company.name if company is not None else "",
             "first_name": user.first_name,
             "last_name": user.last_name,
             "job_title": user.job_title,
+            "release_required": "yes" if holder is not None else "",
+            "release_name": f"{holder.first_name} {holder.last_name}".strip() if holder is not None else "",
+            "release_company": holder_company.name if holder_company is not None else "",
         }
 
     def pending_invitations(self, actor: User) -> list[EmployeeInvitation]:

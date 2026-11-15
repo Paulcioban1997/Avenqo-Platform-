@@ -18,6 +18,9 @@ export function ConfirmEmailView() {
   const [submitting, setSubmitting] = useState(false);
   const [companyName, setCompanyName] = useState("");
   const [person, setPerson] = useState("");
+  const [releaseName, setReleaseName] = useState("");
+  const [releaseCompany, setReleaseCompany] = useState("");
+  const [replacement, setReplacement] = useState("");
 
   useEffect(() => {
     if (!token) return;
@@ -28,6 +31,8 @@ export function ConfirmEmailView() {
         if (cancelled || !response.ok) return;
         setCompanyName(String(payload.company_name || ""));
         setPerson(`${payload.first_name || ""} ${payload.last_name || ""} · ${payload.job_title || ""}`.trim());
+        setReleaseName(String(payload.release_name || ""));
+        setReleaseCompany(String(payload.release_company || ""));
       })
       .catch(() => undefined);
     return () => {
@@ -42,7 +47,10 @@ export function ConfirmEmailView() {
     try {
       const response = await apiFetch("/api/v1/workspace/email-corrections/confirm", {
         method: "POST",
-        body: JSON.stringify(token ? { token } : { email: email.trim(), code: code.trim() }),
+        body: JSON.stringify({
+          ...(token ? { token } : { email: email.trim(), code: code.trim() }),
+          ...(replacement.trim() ? { replacement_email: replacement.trim() } : {}),
+        }),
       });
       const payload = await response.json();
       setDone(
@@ -80,6 +88,19 @@ export function ConfirmEmailView() {
           <p className="text-sm text-emerald-300">{done}</p>
         ) : (
           <>
+            {releaseName && (
+              <>
+                <p className="text-sm text-amber-200">
+                  {fr
+                    ? `Cette adresse est déjà le compte de ${releaseName}${releaseCompany ? ` chez ${releaseCompany}` : ""}. Les deux entreprises restent séparées. Indiquez l'adresse de remplacement de ce compte.`
+                    : `This address is already ${releaseName}${releaseCompany ? ` at ${releaseCompany}` : ""}. The two companies stay separate. Enter the replacement address for that account.`}
+                </p>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
+                  {fr ? "Adresse de remplacement" : "Replacement address"}
+                  <input required type="email" value={replacement} onChange={(event) => setReplacement(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm font-normal normal-case" />
+                </label>
+              </>
+            )}
             {!token && (
               <>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
