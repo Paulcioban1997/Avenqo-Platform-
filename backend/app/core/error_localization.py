@@ -998,6 +998,8 @@ def http_error_message(
         or "autre entreprise" in detail_text
         or "mot de passe de ce compte" in detail_text
         or "déjà un accès" in detail_text
+        or "appartient déjà" in detail_text
+        or "code d'accès" in detail_text
         or "déjà utilisée" in detail_text
         or "invitation introuvable" in detail_text
     ):

@@ -11,6 +11,7 @@ export function JoinWorkspaceView() {
   const token = rawToken.length >= 60 ? rawToken : "";
   const { locale } = useLocale();
   const fr = locale.startsWith("fr");
+  const [step, setStep] = useState<"identify" | "password">("identify");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -20,33 +21,58 @@ export function JoinWorkspaceView() {
   const [submitting, setSubmitting] = useState(false);
   const [companyName, setCompanyName] = useState("");
   const [responsibility, setResponsibility] = useState("");
-  const [memberName, setMemberName] = useState("");
-  const [memberTitle, setMemberTitle] = useState("");
 
   useEffect(() => {
-    const query = token
-      ? `token=${encodeURIComponent(token)}`
-      : email.trim() && code.trim()
-        ? `email=${encodeURIComponent(email.trim())}&code=${encodeURIComponent(code.trim())}`
-        : "";
-    if (!query) return;
+    if (!token) return;
     let cancelled = false;
-    void apiFetch(`/api/v1/workspace/invitations/preview?${query}`)
+    void apiFetch(`/api/v1/workspace/invitations/preview?token=${encodeURIComponent(token)}`)
       .then(async (response) => {
         const payload = await response.json();
         if (cancelled || !response.ok) return;
         setCompanyName(String(payload.company_name || ""));
         setResponsibility(String(payload.job_title || ""));
-        setMemberName(String(payload.member_name || ""));
-        setMemberTitle(String(payload.member_title || ""));
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, [token, email, code]);
+  }, [token]);
 
-  async function submit(event: FormEvent) {
+  async function confirmCode(event: FormEvent) {
+    event.preventDefault();
+    setSubmitting(true);
+    setError("");
+    try {
+      const response = await apiFetch(
+        `/api/v1/workspace/invitations/preview?email=${encodeURIComponent(email.trim())}&code=${encodeURIComponent(code.trim())}`,
+      );
+      const payload = await response.json();
+      if (payload.already_member) {
+        throw new ApiRequestError(
+          "backend_error",
+          409,
+          fr
+            ? `Ce courriel appartient déjà à ${payload.member_name} dans ${payload.company_name}. Le code ouvre seulement cette entreprise et ne crée pas un autre employé.`
+            : `This email already belongs to ${payload.member_name} in ${payload.company_name}. The code only opens that company.`,
+        );
+      }
+      setCompanyName(String(payload.company_name || ""));
+      setResponsibility(String(payload.job_title || ""));
+      setStep("password");
+    } catch (err) {
+      setError(
+        err instanceof ApiRequestError && err.publicMessage
+          ? err.publicMessage
+          : fr
+            ? "Ce code ne correspond pas à une invitation de cette entreprise."
+            : "This code does not match an invitation from this company.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function createAccess(event: FormEvent) {
     event.preventDefault();
     setSubmitting(true);
     setError("");
@@ -55,22 +81,13 @@ export function JoinWorkspaceView() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json", Accept: "application/json", "X-Requested-With": "avenqo-web" },
-        body: JSON.stringify(
-          email.trim() && code.trim()
-            ? {
-                email: email.trim(),
-                code: code.trim(),
-                first_name: firstName.trim(),
-                last_name: lastName.trim(),
-                password,
-              }
-            : {
-                token: token || undefined,
-                first_name: firstName.trim(),
-                last_name: lastName.trim(),
-                password,
-              },
-        ),
+        body: JSON.stringify({
+          email: email.trim(),
+          code: code.trim(),
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          password,
+        }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -78,12 +95,10 @@ export function JoinWorkspaceView() {
           ? payload.detail
           : typeof payload?.error?.message === "string"
             ? payload.error.message
-            : typeof payload?.message === "string"
-              ? payload.message
-              : "";
+            : "";
         throw new ApiRequestError("backend_error", response.status, detail);
       }
-      window.location.assign(typeof payload.home === "string" ? payload.home : "/dashboard");
+      window.location.assign(typeof payload.home === "string" ? payload.home : "/employees");
     } catch (err) {
       setError(
         err instanceof ApiRequestError && err.publicMessage
@@ -98,25 +113,39 @@ export function JoinWorkspaceView() {
 
   return (
     <main className="min-h-screen bg-[#070B16] text-white flex items-center justify-center p-6">
-      <form onSubmit={submit} className="w-full max-w-md rounded-3xl border border-slate-800 bg-[#0B132B] p-7 space-y-4">
+      <form onSubmit={step === "identify" ? confirmCode : createAccess} className="w-full max-w-md rounded-3xl border border-slate-800 bg-[#0B132B] p-7 space-y-4">
         <h1 className="text-2xl font-extrabold">{fr ? "Rejoindre l'entreprise" : "Join the company"}</h1>
         <p className="text-sm text-slate-400">
           {companyName
             ? (fr
-              ? `${companyName}${responsibility ? ` · ${responsibility}` : ""}. Vous rejoignez cette entreprise, sans créer un nouvel abonnement.`
-              : `${companyName}${responsibility ? ` · ${responsibility}` : ""}. You are joining this company, without a new subscription.`)
+              ? `${companyName}${responsibility ? ` · ${responsibility}` : ""}. Le code ouvre seulement cette entreprise.`
+              : `${companyName}${responsibility ? ` · ${responsibility}` : ""}. The code opens only this company.`)
             : (fr
-              ? "Créez votre accès avec le lien reçu par courriel."
-              : "Create your access with the link you received by email.")}
+              ? "Entrez votre courriel et le code reçu de votre entreprise."
+              : "Enter your email and the code sent by your company.")}
         </p>
-        {memberName && (
-          <p className="text-sm text-amber-200">
-            {fr
-              ? `Ce courriel est déjà l'accès de ${memberName}${memberTitle ? `, ${memberTitle}` : ""}. Continuer ouvre cet accès avec le mot de passe choisi. Une autre personne a besoin de son propre courriel.`
-              : `This email is already ${memberName}${memberTitle ? `, ${memberTitle}` : ""}. Continuing opens that access with the password you choose. Another person needs their own email.`}
-          </p>
-        )}
-        <>
+        {step === "identify" ? (
+          <>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
+              {fr ? "Votre courriel" : "Your email"}
+              <input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm font-normal normal-case" />
+            </label>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
+              {fr ? "Code d'accès de l'entreprise" : "Company access code"}
+              <input required inputMode="numeric" value={code} onChange={(event) => setCode(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm font-normal normal-case" />
+            </label>
+            {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
+            <button type="submit" disabled={submitting} className="w-full rounded-xl bg-[#0076FF] px-4 py-3 text-sm font-bold">
+              {submitting ? (fr ? "Vérification..." : "Checking...") : (fr ? "Vérifier le code" : "Check the code")}
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-emerald-300">
+              {fr
+                ? `${responsibility || "Ce poste"} dans ${companyName}. Choisissez ensuite votre mot de passe. Vous n'aurez que les tâches de ce poste.`
+                : `${responsibility || "This role"} at ${companyName}. Then choose your password. You only receive that job's tasks.`}
+            </p>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
               {fr ? "Prénom" : "First name"}
               <input required value={firstName} onChange={(event) => setFirstName(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm font-normal normal-case" />
@@ -126,29 +155,15 @@ export function JoinWorkspaceView() {
               <input required value={lastName} onChange={(event) => setLastName(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm font-normal normal-case" />
             </label>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
-              {fr ? "Courriel" : "Email"}
-              <input required={!token} type="email" value={email} onChange={(event) => setEmail(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm font-normal normal-case" />
-            </label>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
-              {fr ? "Code du courriel" : "Code from the email"}
-              <input required={!token} inputMode="numeric" value={code} onChange={(event) => setCode(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm font-normal normal-case" />
-            </label>
-            {!token && (
-              <p className="text-xs text-amber-200">
-                {fr
-                  ? "Le lien du courriel est coupé. Entrez le code affiché sous le lien."
-                  : "The email link was cut off. Enter the code shown under the link."}
-              </p>
-            )}
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
               {fr ? "Mot de passe" : "Password"}
               <input required type="password" minLength={10} value={password} onChange={(event) => setPassword(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm font-normal normal-case" />
             </label>
             {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
             <button type="submit" disabled={submitting} className="w-full rounded-xl bg-[#0076FF] px-4 py-3 text-sm font-bold">
-              {submitting ? (fr ? "Ouverture..." : "Opening...") : (fr ? "Rejoindre l'entreprise" : "Join the company")}
+              {submitting ? (fr ? "Création..." : "Creating...") : (fr ? "Créer mon accès" : "Create my access")}
             </button>
-        </>
+          </>
+        )}
       </form>
     </main>
   );

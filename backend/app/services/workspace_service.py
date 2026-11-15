@@ -16,8 +16,9 @@ from backend.app.core.permission_grants import (
     effective_permissions,
     encode_grants,
     grants_for_responsibility,
+    tasks_for_responsibility,
 )
-from backend.app.core.security import generate_token, hash_password, hash_token, verify_password
+from backend.app.core.security import generate_token, hash_password, hash_token
 from backend.app.models.company_module import company_module_is_active
 from backend.app.models import (
     Company,
@@ -240,17 +241,18 @@ class WorkspaceService:
         text_body = "\n".join(
             (
                 f"Vous êtes invité à rejoindre {company_name} comme {title}.",
-                "Ouvrez ce lien pour créer votre accès. Il est valable 24 heures.",
+                "Ce code ouvre uniquement l'espace de cette entreprise.",
+                "Entrez votre courriel, ce code, puis choisissez votre mot de passe.",
                 link,
-                "Si le lien ne s'ouvre pas, utilisez ce code avec la même adresse courriel.",
-                f"Code: {code}",
+                f"Code d'accès: {code}",
             )
         )
         html_body = (
             f"<p>Vous êtes invité à rejoindre {company_name} comme {title}.</p>"
-            f'<p><a href="{link}">Créer mon accès</a></p>'
-            "<p>Ce lien est valable 24 heures. S'il ne s'ouvre pas, "
-            f"utilisez le code <strong>{code}</strong> avec la même adresse courriel.</p>"
+            "<p>Ce code ouvre uniquement l'espace de cette entreprise. "
+            "Entrez votre courriel, le code, puis choisissez votre mot de passe.</p>"
+            f'<p><a href="{link}">Ouvrir {company_name}</a></p>'
+            f"<p>Code d'accès : <strong>{code}</strong></p>"
         )
         from backend.app.services.account_notifications import sandbox_mail_company_id, sandbox_mail_session
 
@@ -398,32 +400,27 @@ class WorkspaceService:
                     is_active=True,
                 )
             )
+            self._assign_job_tasks(user, locked)
         else:
-            unused_account = existing.last_login is None and existing.role in {
-                UserRole.USER,
-                UserRole.VIEWER,
-                UserRole.ANALYST,
-            }
-            if existing.role == UserRole.OWNER:
-                if not verify_password(password, existing.password_hash):
-                    raise WorkspaceError("Ce courriel a déjà un accès. Entrez le mot de passe actuel de ce compte.")
-            elif unused_account:
-                existing.password_hash = hash_password(password)
-                existing.first_name = first_name.strip() or existing.first_name
-                existing.last_name = last_name.strip() or existing.last_name
-                existing.role = UserRole(locked.role)
-                existing.job_title = locked.job_title
-                existing.department = locked.department
-                existing.permission_grants = locked.permission_grants or encode_grants(
-                    grants_for_responsibility(locked.job_title, locked.role)
+            if existing.company_id != locked.company_id:
+                raise WorkspaceError("Cette adresse appartient déjà à une autre entreprise")
+            if existing.role != UserRole.USER or existing.last_login is not None:
+                raise WorkspaceError(
+                    f"Ce courriel appartient déjà à {existing.first_name} {existing.last_name} dans cette entreprise. "
+                    "Le code d'accès ne crée pas un autre employé. Utilisez le courriel de la personne."
                 )
-                existing.is_active = True
-            elif existing.last_login is None:
-                existing.password_hash = hash_password(password)
-                existing.is_active = True
-            elif not verify_password(password, existing.password_hash):
-                raise WorkspaceError("Ce courriel a déjà un accès. Entrez le mot de passe actuel de ce compte.")
+            existing.password_hash = hash_password(password)
+            existing.first_name = first_name.strip() or existing.first_name
+            existing.last_name = last_name.strip() or existing.last_name
+            existing.role = UserRole(locked.role)
+            existing.job_title = locked.job_title
+            existing.department = locked.department
+            existing.permission_grants = locked.permission_grants or encode_grants(
+                grants_for_responsibility(locked.job_title, locked.role)
+            )
+            existing.is_active = True
             user = existing
+            self._assign_job_tasks(user, locked)
             membership = self._session.scalar(
                 select(CompanyMembership).where(
                     CompanyMembership.user_id == user.id,
@@ -449,6 +446,33 @@ class WorkspaceService:
             self._session.rollback()
             raise WorkspaceError("Invitation invalide ou expirée") from None
         return user
+
+    def _assign_job_tasks(self, user: User, invitation: EmployeeInvitation) -> None:
+        """Pose les tâches du poste dans l'entreprise qui a émis le code, et nulle part ailleurs."""
+
+        if user.company_id != invitation.company_id:
+            raise WorkspaceError("Le code d'accès ne correspond pas à cette entreprise")
+        existing = set(
+            self._session.scalars(
+                select(EmployeeTask.title).where(
+                    EmployeeTask.company_id == invitation.company_id,
+                    EmployeeTask.assignee_user_id == user.id,
+                )
+            )
+        )
+        for title in tasks_for_responsibility(invitation.job_title):
+            if title in existing:
+                continue
+            self._session.add(
+                EmployeeTask(
+                    company_id=invitation.company_id,
+                    assignee_user_id=user.id,
+                    created_by_user_id=invitation.invited_by_user_id,
+                    title=title,
+                    priority="medium",
+                    status="open",
+                )
+            )
 
     def _find_invitation(
         self,

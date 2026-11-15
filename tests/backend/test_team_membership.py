@@ -23,6 +23,7 @@ from backend.app.models import (
     CompanyMembership,
     CompanyStatus,
     EmployeeInvitation,
+    EmployeeTask,
     User,
     UserRole,
 )
@@ -152,6 +153,12 @@ def test_new_employee_joins_the_existing_company_with_limited_access(db_session)
     assert "accounting:read" not in grants
     assert "billing:manage" not in grants
     assert "company:manage" not in grants
+    duties = db_session.scalars(select(EmployeeTask).where(EmployeeTask.assignee_user_id == user.id)).all()
+    assert {task.title for task in duties} == {
+        "Accueillir les rendez-vous du jour",
+        "Confirmer les horaires autorisés",
+    }
+    assert {task.company_id for task in duties} == {company.id}
     with pytest.raises(WorkspaceError):
         WorkspaceService(db_session, _Mail()).accept_invitation(raw, "Lucia", "Desk", "Password123!")
 
@@ -275,8 +282,9 @@ def test_expired_revoked_and_removed_access_stop_at_the_server(db_session, clien
     revoked, revoked_raw, _mail = _invite(
         db_session, owner, f"later-{uuid4()}@example.com", UserRole.USER, "Technicien de service"
     )
-    assert "data:read" in grants_for_responsibility("Adjoint administratif", UserRole.USER)
-    assert "billing:manage" not in grants_for_responsibility("Adjoint administratif", UserRole.USER)
+    office = set(grants_for_responsibility("Adjoint administratif", UserRole.USER))
+    assert office == {"tasks:own"}
+    assert "accounting:read" not in office
     WorkspaceService(db_session, _Mail()).revoke_invitation(owner, revoked.id)
     with pytest.raises(WorkspaceError):
         WorkspaceService(db_session, _Mail()).accept_invitation(revoked_raw, "Theo", "Tech", "Password123!")
@@ -312,10 +320,9 @@ def test_existing_administrator_keeps_their_place_and_can_enter_with_the_new_pas
         expires_at=datetime.now(timezone.utc) + timedelta(hours=2),
     ))
     db_session.commit()
-    joined = WorkspaceService(db_session, _Mail()).accept_invitation(raw, "Lucia", "Cioban", "Newpassword1!")
-    assert joined.id == admin.id
-    assert joined.first_name == "Mircea"
-    assert joined.role == UserRole.ADMIN
-    assert joined.job_title == "Vice-président"
-    assert verify_password("Newpassword1!", joined.password_hash)
+    with pytest.raises(WorkspaceError, match="appartient déjà"):
+        WorkspaceService(db_session, _Mail()).accept_invitation(raw, "Lucia", "Cioban", "Newpassword1!")
+    assert admin.first_name == "Mircea"
+    assert admin.role == UserRole.ADMIN
+    assert verify_password("Oldpassword1!", admin.password_hash)
     assert db_session.scalar(select(func.count()).select_from(User).where(User.email == email)) == 1
