@@ -91,7 +91,43 @@ def _credit_usage_period_start(period: str, identity: CurrentIdentity, db: Sessi
         return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
-def _ai_usage_module(operation: str | None) -> str:
+def _central_entrypoints(db: Session, company_id: UUID, attempts: Sequence[TenantAIProviderAttempt]) -> dict[UUID, str]:
+    """Spoken Avenqo IA sessions stay Copilot. Phone calls stay Voice AI."""
+    from backend.app.models import VoiceCentralSession
+
+    conversation_ids = list({attempt.conversation_id for attempt in attempts if attempt.conversation_id})
+    entrypoints: dict[UUID, str] = {}
+    for start in range(0, len(conversation_ids), 500):
+        rows = db.scalars(
+            select(VoiceCentralSession).where(
+                VoiceCentralSession.company_id == company_id,
+                VoiceCentralSession.conversation_id.in_(conversation_ids[start:start + 500]),
+            )
+        ).all()
+        for row in rows:
+            entrypoint = str((row.source_context or {}).get("entrypoint") or "")
+            if entrypoint:
+                entrypoints[row.conversation_id] = entrypoint
+    return entrypoints
+
+
+def _ai_usage_module(
+    operation: str | None,
+    *,
+    module_id: str | None = None,
+    entrypoint: str | None = None,
+) -> str:
+    if entrypoint == "central" or module_id in {"central", "copilot"}:
+        return "Copilot"
+    known_modules = {
+        "retail": "Retail AI",
+        "crm": "CRM AI",
+        "ocr": "OCR AI",
+        "marketing": "Marketing AI",
+        "voice": "Voice AI",
+    }
+    if module_id in known_modules:
+        return known_modules[module_id]
     normalized = (operation or "").lower()
     if "voice" in normalized:
         return "Voice AI"
@@ -590,9 +626,14 @@ def ai_credits_breakdown(
 
     total = 0
     debited = _debited_attempt_credits(db, identity.user.company_id, attempts)
+    entrypoints = _central_entrypoints(db, identity.user.company_id, attempts)
     for att in attempts:
         creds = debited[att.id]
-        module_counts[_ai_usage_module(att.operation)] += creds
+        module_counts[_ai_usage_module(
+            att.operation,
+            module_id=att.module_id,
+            entrypoint=entrypoints.get(att.conversation_id),
+        )] += creds
         total += creds
 
     items = []
@@ -642,6 +683,7 @@ def ai_credits_history(
     )} if actor_ids else {}
     items = []
     debited = _debited_attempt_credits(db, identity.user.company_id, attempts)
+    entrypoints = _central_entrypoints(db, identity.user.company_id, attempts)
     for att in attempts:
         op = (att.operation or "Requête IA").replace("_", " ").title()
         timestamp = att.created_at
@@ -651,7 +693,11 @@ def ai_credits_history(
             AICreditHistoryItem(
                 id=str(att.id),
                 date=timestamp.isoformat(),
-                module=_ai_usage_module(att.operation),
+                module=_ai_usage_module(
+                    att.operation,
+                    module_id=att.module_id,
+                    entrypoint=entrypoints.get(att.conversation_id),
+                ),
                 operation=op,
                 credits_used=debited[att.id],
                 user=actors.get(att.user_id, "—") if att.user_id is not None else "—",

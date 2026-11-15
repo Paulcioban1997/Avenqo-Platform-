@@ -204,6 +204,8 @@ export function AppShell({ children }: AppShellProps) {
     permissions?: string[];
   };
   const granted = currentUser?.permissions;
+  const allows = (permissions?: string[]) => Boolean(granted && (!permissions || permissions.some((permission) => granted.includes(permission))));
+  const showCopilot = allows(["ai:use"]);
 
   const allMainModules: NavItem[] = [
     { href: "/dashboard", label: t.navigation.dashboard, icon: LayoutDashboard, permissions: ["data:read"] },
@@ -270,8 +272,8 @@ export function AppShell({ children }: AppShellProps) {
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#060B13] text-slate-900 dark:text-[#F4F7FB] flex flex-col font-sans transition-colors duration-200">
       {/* Universal Topbar */}
-      <header className="sticky top-0 z-50 h-16 bg-white/80 dark:bg-[#0B132B]/80 backdrop-blur-md border-b border-slate-200/80 dark:border-white/[0.08] px-2 sm:px-4 lg:px-6 flex items-center justify-between gap-1 sm:gap-4 shadow-xs">
-        <div className="min-w-0 flex items-center gap-1 sm:gap-3 lg:gap-4">
+      <header className="sticky top-0 z-50 min-h-16 bg-white/80 dark:bg-[#0B132B]/80 backdrop-blur-md border-b border-slate-200/80 dark:border-white/[0.08] px-2 sm:px-4 lg:px-6 flex flex-wrap items-center justify-between gap-1 sm:gap-4 shadow-xs">
+        <div className="min-w-0 flex flex-1 items-center gap-1 sm:gap-3 lg:gap-4">
           {/* Mobile menu toggle */}
           <button
             onClick={() => setIsSidebarOpen((prev) => !prev)}
@@ -357,8 +359,9 @@ export function AppShell({ children }: AppShellProps) {
             </div>
           )}
 
-          {/* Dynamic Active Data Sources Pill (Only shown if live connection exists) */}
-          <GlobalSourceSelector />
+          <div className="hidden md:block min-w-0">
+            <GlobalSourceSelector />
+          </div>
         </div>
 
         {/* Center: Command Palette Input Trigger */}
@@ -433,7 +436,7 @@ export function AppShell({ children }: AppShellProps) {
             )}
           </div>
 
-          {/* Avenqo Copilot Trigger Button */}
+          {showCopilot && (
           <button
             type="button"
             aria-label={t.shell.copilotButton}
@@ -445,14 +448,20 @@ export function AppShell({ children }: AppShellProps) {
             <Sparkles className="w-3.5 h-3.5 text-[#00D4FF]" />
             <span className="hidden sm:inline">{t.shell.copilotButton}</span>
           </button>
+          )}
         </div>
+        {allows(["data:read", "data:manage", "retail:read"]) && (
+          <div className="md:hidden w-full pb-2">
+            <GlobalSourceSelector wide />
+          </div>
+        )}
       </header>
 
       {/* Main Container */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar */}
         <aside
-          className={`fixed inset-y-0 left-0 z-40 w-64 bg-white dark:bg-[#0B132B] border-r border-slate-200/80 dark:border-white/[0.08] flex flex-col justify-between transition-transform duration-200 lg:sticky lg:top-16 lg:h-[calc(100vh-4rem)] lg:z-20 lg:translate-x-0 ${
+          className={`fixed inset-y-0 left-0 z-40 w-[min(100vw,18rem)] bg-white dark:bg-[#0B132B] border-r border-slate-200/80 dark:border-white/[0.08] flex flex-col justify-between transition-transform duration-200 lg:sticky lg:top-16 lg:h-[calc(100vh-4rem)] lg:z-20 lg:translate-x-0 ${
             isSidebarOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
@@ -535,7 +544,7 @@ export function AppShell({ children }: AppShellProps) {
               </nav>
             </div>
 
-            {/* AI Specialized Modules */}
+            {aiModules.length > 0 && (
             <div>
               <div className="px-3 mb-2 text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500">
                 {t.shell.artificialIntelligence}
@@ -569,6 +578,7 @@ export function AppShell({ children }: AppShellProps) {
                 })}
               </nav>
             </div>
+            )}
 
             {/* Platform & Integrations */}
             <div>
@@ -660,7 +670,7 @@ export function AppShell({ children }: AppShellProps) {
         )}
 
         {/* Page Main Content Area */}
-        <main className="min-w-0 flex-1 overflow-y-auto focus:outline-none p-4 sm:p-6 lg:p-8">
+        <main className="min-w-0 flex-1 overflow-y-auto focus:outline-none p-4 pb-20 sm:p-6 sm:pb-20 md:pb-6 lg:p-8">
           {session.error ? <RequestFailure error={session.error} retry={() => { void session.reload(); }} />
             : session.identity ? <>
               {session.sourceError && <RequestFailure error={session.sourceError} retry={() => { void session.reload(); }} />}
@@ -671,44 +681,60 @@ export function AppShell({ children }: AppShellProps) {
 
       {/* Mobile Bottom Navigation Bar (< 768px) */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 h-14 bg-white/95 dark:bg-[#0B132B]/95 backdrop-blur-md border-t border-slate-200 dark:border-white/[0.08] flex items-center justify-around px-2">
+        {allows(["data:read"]) && (
         <Link
           href="/dashboard"
-          className={`flex flex-col items-center gap-0.5 text-[10px] font-semibold ${
+          className={`flex min-w-0 flex-col items-center gap-0.5 text-[10px] font-semibold ${
             pathname === "/dashboard" ? "text-[#0076FF] dark:text-[#00D4FF]" : "text-slate-500 dark:text-[#94A3B8]"
           }`}
         >
           <LayoutDashboard size={18} />
-          <span>{t.navigation.dashboard}</span>
+          <span className="max-w-16 truncate">{t.navigation.dashboard}</span>
         </Link>
-        {entitlementsStatus === "success" && activeModuleKeys?.includes("retail") ? (
+        )}
+        {allows(["retail:read"]) && entitlementsStatus === "success" && activeModuleKeys?.includes("retail") ? (
         <Link
           href="/retail"
-          className={`flex flex-col items-center gap-0.5 text-[10px] font-semibold ${
+          className={`flex min-w-0 flex-col items-center gap-0.5 text-[10px] font-semibold ${
             pathname.startsWith("/retail") ? "text-[#0076FF] dark:text-[#00D4FF]" : "text-slate-500 dark:text-[#94A3B8]"
           }`}
         >
           <ShoppingBag size={18} />
-          <span>{t.navigation.retailAi}</span>
+          <span className="max-w-16 truncate">{t.navigation.retailAi}</span>
+        </Link>
+        ) : allows(["data:read"]) ? (
+        <Link
+          href="/data"
+          className={`flex min-w-0 flex-col items-center gap-0.5 text-[10px] font-semibold ${
+            pathname.startsWith("/data") ? "text-[#0076FF] dark:text-[#00D4FF]" : "text-slate-500 dark:text-[#94A3B8]"
+          }`}
+        >
+          <Database size={18} />
+          <span className="max-w-16 truncate">{t.navigation.dataHub}</span>
         </Link>
         ) : null}
+        {showCopilot && (
         <button
           onClick={() => setIsCopilotOpen(true)}
-          className="flex flex-col items-center gap-0.5 text-[10px] font-semibold text-[#0076FF] dark:text-[#00D4FF]"
+          className="flex min-w-0 flex-col items-center gap-0.5 text-[10px] font-semibold text-[#0076FF] dark:text-[#00D4FF]"
         >
           <div className="p-1.5 rounded-full bg-blue-50 dark:bg-[#172652] shadow-2xs">
             <Sparkles size={16} />
           </div>
-          <span>{t.shell.copilotButton}</span>
+          <span className="max-w-16 truncate">{t.shell.copilotButton}</span>
         </button>
+        )}
+        {allows(["data:manage"]) && (
         <Link
-          href="/integrations"
-          className={`flex flex-col items-center gap-0.5 text-[10px] font-semibold ${
-            pathname === "/integrations" ? "text-[#0076FF] dark:text-[#00D4FF]" : "text-slate-500 dark:text-[#94A3B8]"
+          href="/connections"
+          className={`flex min-w-0 flex-col items-center gap-0.5 text-[10px] font-semibold ${
+            pathname.startsWith("/connections") ? "text-[#0076FF] dark:text-[#00D4FF]" : "text-slate-500 dark:text-[#94A3B8]"
           }`}
         >
           <Plug size={18} />
-          <span>{t.navigation.connections}</span>
+          <span className="max-w-16 truncate">{t.navigation.connections}</span>
         </Link>
+        )}
         <button
           onClick={() => setIsSidebarOpen(true)}
           className="flex flex-col items-center gap-0.5 text-[10px] font-semibold text-slate-500 dark:text-[#94A3B8]"
@@ -725,7 +751,7 @@ export function AppShell({ children }: AppShellProps) {
         authorizedModuleKeys={entitlementsStatus === "success" ? activeModuleKeys : null}
         t={t}
         onTriggerAction={(actionId) => {
-          if (actionId === "open-copilot") setIsCopilotOpen(true);
+          if (actionId === "open-copilot" && showCopilot) setIsCopilotOpen(true);
         }}
       />
 

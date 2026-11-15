@@ -3,7 +3,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 from sqlalchemy import select
 from backend.app.ai.llm.schemas import LLMProviderAttempt, LLMUsage
-from backend.app.models import TenantAICreditLedgerEntry, TenantAIProviderAttempt
+from backend.app.models import AIConversation, TenantAICreditLedgerEntry, TenantAIProviderAttempt, VoiceCentralSession
 from backend.app.routers.billing import ai_credits_breakdown, ai_credits_history
 from tests.backend.test_central_ai import db_session, make_company, make_service, StubProvider
 
@@ -54,6 +54,46 @@ def test_credit_breakdown_includes_voice_usage_and_excludes_other_tenants(db_ses
     assert items["Voice AI"].credits_used == 29
     assert items["Voice AI"].percentage == 96.7
     assert items["Copilot"].credits_used == 1
+
+
+def test_spoken_avenqo_ia_is_not_counted_as_the_phone_module(db_session):
+    company, viewer = make_company(db_session, slug="central-speech")
+    _, _, usage, _ = make_service(db_session, company, StubProvider(), limit=1, retail_entitled=False)
+    conversation = AIConversation(company_id=company.id, user_id=viewer.id, title="Avenqo IA", locale="fr")
+    db_session.add(conversation)
+    db_session.flush()
+    db_session.add(VoiceCentralSession(
+        company_id=company.id,
+        user_id=viewer.id,
+        conversation_id=conversation.id,
+        request_id="central-speech",
+        locale="fr",
+        source_context={"entrypoint": "central"},
+    ))
+    for index, (operation, credits, conversation_id, module_id) in enumerate([
+        ("voice_realtime_tts", 424, conversation.id, None),
+        ("voice_realtime_tts", 80, None, None),
+        ("voice_stt", 12, None, "retail"),
+    ]):
+        attempt = LLMProviderAttempt(
+            provider="stub", model="stub", operation=operation, attempt_number=1,
+            success=True, latency_ms=1, provider_cost_usd=Decimal("0.001"),
+            usage=LLMUsage(provider="stub", model="stub", avenqo_request_id=f"speech-{index}"),
+        )
+        usage._record_provider_attempts(company.id, (attempt,), credits)
+        db_session.flush()
+        record = db_session.scalar(select(TenantAIProviderAttempt).where(
+            TenantAIProviderAttempt.avenqo_request_id == f"speech-{index}"
+        ))
+        record.avenqo_credits = credits
+        record.conversation_id = conversation_id
+        record.module_id = module_id
+    db_session.commit()
+    result = ai_credits_breakdown(period="7d", identity=SimpleNamespace(user=viewer), db=db_session)
+    items = {item.module: item for item in result.items}
+    assert items["Copilot"].credits_used == 424
+    assert items["Voice AI"].credits_used == 80
+    assert items["Retail AI"].credits_used == 12
 
 
 def test_credit_reports_exclude_unfunded_cost_and_do_not_double_count_retries(db_session):

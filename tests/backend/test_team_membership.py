@@ -129,6 +129,28 @@ def _invite(session, owner: User, email: str, role: UserRole, title: str):
     return invitation, invitation._raw_token, mail
 
 
+def test_employee_sees_the_same_company_sources_only_with_data_access(db_session, client: TestClient) -> None:
+    company = _company(db_session, f"sources-{uuid4().hex[:8]}")
+    owner = _owner(db_session, company)
+    vice_invitation, vice_raw, _mail = _invite(
+        db_session, owner, f"vice-{uuid4()}@example.com", UserRole.USER, "Vice-président"
+    )
+    desk_invitation, desk_raw, _mail = _invite(
+        db_session, owner, f"desk-{uuid4()}@example.com", UserRole.USER, "Adjoint administratif"
+    )
+    del vice_invitation, desk_invitation
+    vice = WorkspaceService(db_session, _Mail()).accept_invitation(vice_raw, "Lucia", "Sources", "Password123!")
+    desk = WorkspaceService(db_session, _Mail()).accept_invitation(desk_raw, "Camille", "Desk", "Password123!")
+    client.cookies.clear()
+    owner_sources = client.get("/api/v1/datasets/sources", headers=_headers(db_session, owner))
+    vice_sources = client.get("/api/v1/datasets/sources", headers=_headers(db_session, vice))
+    desk_sources = client.get("/api/v1/datasets/sources", headers=_headers(db_session, desk))
+    assert owner_sources.status_code == 200
+    assert vice_sources.status_code == 200
+    assert vice_sources.json() == owner_sources.json()
+    assert desk_sources.status_code == 403
+
+
 def test_new_employee_joins_the_existing_company_with_limited_access(db_session) -> None:
     company = _company(db_session, f"join-{uuid4().hex[:8]}")
     owner = _owner(db_session, company)

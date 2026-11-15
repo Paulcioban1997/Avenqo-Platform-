@@ -30,6 +30,11 @@ interface SessionState {
 export interface ContextSource { source_type: string; source_id: string; dataset_id: string | null; display_name: string; provider: string | null; status: string; active: boolean; enabled: boolean; }
 export interface SourceContext { state: string; source_type: string | null; source_id: string | null; sources: ContextSource[]; }
 const namesForContext = (context: SourceContext) => context.state === "READY" ? context.sources.filter(source => context.source_type === "all" ? source.enabled : source.source_type === context.source_type && source.source_id === context.source_id).map(source => source.display_name) : [];
+const sourceApiFor = (permissions: string[] | undefined) => {
+  if (permissions?.includes("data:read") || permissions?.includes("data:manage")) return "/api/v1/datasets/sources";
+  if (permissions?.includes("retail:read")) return "/api/v1/retail/sources";
+  return null;
+};
 const SessionContext = createContext<SessionState | null>(null);
 const unknownCredits = { remaining: null, limit: null, used: null };
 const publicRoutes = new Set(["/", "/login", "/register", "/signup", "/forgot-password", "/reset-password", "/pricing", "/contact", "/privacy", "/terms", "/docs", "/trust", "/join", "/confirm-email"]);
@@ -52,6 +57,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const creditVersion = useRef(-1);
   const revision = useRef(0);
   const tenantId = useRef<string | null>(null);
+  const sourceApi = useRef<string | null>(null);
   const protectedPage = !publicRoutes.has(pathname) && !pathname.startsWith("/modules/") && !pathname.startsWith("/docs/");
 
   const refreshCredits = useCallback(function refreshCredits(): Promise<void> {
@@ -91,21 +97,30 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           tenantId.current = data.company.id;
         }
         setIdentity(data); setError(null);
+        sourceApi.current = sourceApiFor(data.user.permissions);
         if (typeof window !== "undefined" && data.company.preferred_language) {
           window.dispatchEvent(new CustomEvent("avenqo:company-preferred-language", { detail: data.company.preferred_language }));
         }
         await Promise.all([
           refreshCredits(),
           (async () => {
+            if (!sourceApi.current) {
+              if (version === revision.current) {
+                setActiveDataSources([]);
+                setSourceContext(null);
+                setSourceError(null);
+              }
+              return;
+            }
             try {
-              const response = await apiFetch("/api/v1/retail/sources");
+              const response = await apiFetch(sourceApi.current);
               const sources: { display_name: string; enabled: boolean }[] = await response.json();
               if (version === revision.current) {
                 setActiveDataSources(sources.filter(source => source.enabled).map(source => source.display_name));
                 setSourceError(null);
               }
               try {
-                const contextResponse = await apiFetch("/api/v1/retail/sources/context");
+                const contextResponse = await apiFetch(`${sourceApi.current}/context`);
                 const context = await contextResponse.json();
                 if (version === revision.current && context && !Array.isArray(context) && Array.isArray(context.sources)) { setSourceContext(context); setActiveDataSources(namesForContext(context)); }
               } catch {
@@ -128,8 +143,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const selectSource = async (sourceType: string, sourceId: string | null) => {
     const version = revision.current;
-    await apiFetch("/api/v1/retail/sources/active", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_type: sourceType, source_id: sourceId }) });
-    const response = await apiFetch("/api/v1/retail/sources/context");
+    const base = sourceApi.current;
+    if (!base) return;
+    await apiFetch(`${base}/active`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_type: sourceType, source_id: sourceId }) });
+    const response = await apiFetch(`${base}/context`);
     const context = await response.json();
     if (version !== revision.current) return;
     setSourceContext(context); setSourceError(null); setSourceRevision(value => value + 1);

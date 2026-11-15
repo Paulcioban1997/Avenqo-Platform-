@@ -6,10 +6,14 @@ from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from backend.app.config.settings import get_settings
+from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
+from backend.app.schemas.retail_sources import RetailSourceResponse, RetailSourceSelectionRequest
+from backend.app.services.retail_source_service import RetailSourceNotFound, RetailSourceService
 from backend.app.dependencies.datasets import (
     get_capability_execution_gate,
     get_company_dataset_ingestion_service,
@@ -76,6 +80,56 @@ def require_dataset_read(
             detail="Permission insuffisante",
         )
     return identity
+
+
+@router.get("/sources", response_model=list[RetailSourceResponse])
+def company_data_sources(
+    identity: CurrentIdentity = Depends(require_dataset_read),
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> list[RetailSourceResponse]:
+    """Company files and commerce sources for anyone allowed to read this tenant's data."""
+    del identity
+    return [
+        RetailSourceResponse.model_validate(source, from_attributes=True)
+        for source in RetailSourceService(db).list_sources(tenant)
+    ]
+
+
+@router.get("/sources/context")
+def company_data_source_context(
+    identity: CurrentIdentity = Depends(require_dataset_read),
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict:
+    del identity
+    context = RetailSourceService(db).context(tenant)
+    return {
+        **context,
+        "sources": [
+            RetailSourceResponse.model_validate(source, from_attributes=True).model_dump(mode="json")
+            for source in context["sources"]
+        ],
+    }
+
+
+@router.put("/sources/active", response_model=RetailSourceResponse)
+def select_company_data_source(
+    request: RetailSourceSelectionRequest,
+    identity: CurrentIdentity = Depends(require_dataset_read),
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> RetailSourceResponse:
+    del identity
+    try:
+        source = RetailSourceService(db).select_source(
+            tenant,
+            source_type=request.source_type,
+            source_id=request.source_id,
+        )
+    except RetailSourceNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source introuvable") from exc
+    return RetailSourceResponse.model_validate(source, from_attributes=True)
 
 
 def _current_source_missing(dataset) -> bool:

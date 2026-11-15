@@ -8,7 +8,7 @@ import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { SOURCE_SELECTOR_COPY } from "@/lib/i18n/source-selector-copy";
 
-export function GlobalSourceSelector() {
+export function GlobalSourceSelector({ wide = false }: { wide?: boolean }) {
   const session = useSession();
   const { locale } = useLocale();
   const catalog = getApplicationCatalog(locale).company;
@@ -48,7 +48,7 @@ export function GlobalSourceSelector() {
     finally { setBusy(false); }
   };
   return <div ref={container} className="relative min-w-0" data-source-state={state}>
-    <button type="button" aria-label={title} aria-expanded={open} aria-haspopup="menu" title={`${title}: ${label} — ${status}`} onClick={() => setOpen(value => !value)} className="flex h-9 max-w-[80px] sm:max-w-[220px] items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-1.5 text-xs dark:border-emerald-900 dark:bg-emerald-950/30">
+    <button type="button" aria-label={title} aria-expanded={open} aria-haspopup="menu" title={`${title}: ${label} — ${status}`} onClick={() => setOpen(value => !value)} className={`flex h-9 items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-1.5 text-xs dark:border-emerald-900 dark:bg-emerald-950/30 ${wide ? "w-full max-w-none" : "max-w-[80px] sm:max-w-[220px]"}`}>
       {busy || state === "LOADING" ? <LoaderCircle size={15} className="shrink-0 animate-spin" /> : <SourceIcon size={15} className="shrink-0" />}<span className="min-w-0 truncate">{label}</span><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${state === "READY" ? "bg-emerald-600" : "bg-amber-600"}`} /><ChevronDown size={13} className="shrink-0" />
     </button>
     {open && <div role="menu" aria-label={title} className="fixed start-4 top-16 z-50 max-h-[65vh] w-[min(340px,calc(100vw-32px))] overflow-y-auto rounded-md border border-gray-200 bg-white p-2 shadow-lg sm:absolute sm:start-0 sm:top-auto sm:mt-2 dark:border-gray-700 dark:bg-[#0B132B]">

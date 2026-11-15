@@ -993,7 +993,7 @@ export function BillingView() {
                     />
                   </div>
                   <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 text-right">
-                    {item.percentage}% {billingTranslations.totalRemaining}
+                    {item.percentage}% {locale.startsWith("fr") ? "de la consommation" : "of usage"}
                   </div>
                 </div>
               </div>
