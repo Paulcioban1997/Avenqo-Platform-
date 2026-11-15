@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from backend.app.core.permission_grants import effective_permissions
 from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity
+from backend.app.services.fx_rates import convert_amount
 from backend.app.services.market_feed import (
     MarketUnavailable,
     asset_classes,
@@ -103,14 +104,20 @@ def trading_candles(
 def trading_quotes(
     symbols: str = "",
     provider: str = "auto",
+    display: str = "",
     identity: CurrentIdentity = Depends(require_trading),
 ) -> dict:
-    del identity
     requested = [item for item in symbols.split(",") if item.strip()]
     try:
-        return quotes(requested, provider)
+        payload = quotes(requested, provider)
     except (KeyError, ValueError, MarketUnavailable) as exc:
         raise _market_error(exc) from exc
+    target = (display or getattr(identity.user.company, "display_currency", None) or "").upper()
+    payload["display_currency"] = target or None
+    if target:
+        for row in payload["quotes"]:
+            row["display"] = convert_amount(row["price"], row.get("currency") or "USDT", target)
+    return payload
 
 
 @router.get("/rankings")

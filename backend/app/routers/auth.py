@@ -25,6 +25,7 @@ from backend.app.schemas.auth import (
     LoginRequest,
     MessageResponse,
     OrganizationMembershipResponse,
+    DisplayCurrencyRequest,
     PreferredLanguageRequest,
     RefreshTokenRequest,
     RegisterRequest,
@@ -73,6 +74,7 @@ def _company_response(company: Company) -> CompanyResponse:
         country=company.country,
         preferred_language=company.preferred_language,
         currency_code=getattr(company, "currency_code", None),
+        display_currency=getattr(company, "display_currency", None),
         timezone=company.timezone,
         logo_url=draft.get("company_logo_url"),
         brand_color=draft.get("brand_color"),
@@ -342,6 +344,27 @@ def update_preferred_language(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="unsupported_locale")
     company = identity.user.company
     company.preferred_language = resolve_locale(request.preferred_language)
+    db.commit()
+    db.refresh(company)
+    return _company_response(company)
+
+
+@router.patch("/display-currency", response_model=CompanyResponse)
+def update_display_currency(
+    request: DisplayCurrencyRequest,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> CompanyResponse:
+    permissions = set(effective_permissions(identity.user))
+    if "company:manage" not in permissions and "billing:manage" not in permissions:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission insuffisante")
+    from backend.app.services.fx_rates import SUPPORTED
+
+    raw = (request.display_currency or "").strip().upper()
+    if raw and raw not in SUPPORTED:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Devise non convertible")
+    company = identity.user.company
+    company.display_currency = raw or None
     db.commit()
     db.refresh(company)
     return _company_response(company)

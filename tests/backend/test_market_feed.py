@@ -10,6 +10,7 @@ from backend.app.services.market_feed import (
     watch_symbol,
 )
 from backend.app.services.market_stream import parse_binance_message, parse_coinbase_message, reconnect_delay
+from backend.app.services.fx_rates import convert_amount
 from modules.registry import get_business_module
 
 
@@ -84,6 +85,24 @@ def test_stream_parsers_use_exchange_numbers():
     assert coinbase["currency"] == "USD"
     assert reconnect_delay(1) == 1
     assert reconnect_delay(30) == 30
+
+
+def test_cad_conversion_uses_the_supplied_rate_and_keeps_the_original():
+    def explode(_source: str, _target: str) -> tuple[float, str]:
+        raise AssertionError("network")
+
+    shown = convert_amount(100, "USDT", "CAD", rate=1.4, rate_date="2026-11-14", fetch=explode)
+    assert shown["converted"] is True
+    assert shown["amount"] == 140
+    assert shown["original_currency"] == "USDT"
+    assert shown["currency"] == "CAD"
+    assert shown["source"] == "ecb-frankfurter"
+    assert shown["basis"] == "USD"
+
+    failed = convert_amount(100, "USDT", "CAD", fetch=lambda _source, _target: (_ for _ in ()).throw(RuntimeError("down")))
+    assert failed["converted"] is False
+    assert failed["amount"] == 100
+    assert failed["currency"] == "USDT"
 
 
 def test_stocks_and_etfs_stay_unavailable():

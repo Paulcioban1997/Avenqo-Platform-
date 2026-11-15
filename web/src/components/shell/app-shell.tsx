@@ -14,7 +14,6 @@ import {
   FileScan,
   MessagesSquare,
   Zap,
-  Bot,
   LineChart,
   Plug,
   Database,
@@ -232,17 +231,16 @@ export function AppShell({ children }: AppShellProps) {
     { href: "/marketing", label: t.navigation.marketingAi, icon: Megaphone, moduleKey: "marketing", permissions: ["marketing:read"] },
     { href: "/voice", label: t.navigation.voiceAi, icon: Mic2, moduleKey: "voice", permissions: ["modules:manage"] },
     { href: "/ocr", label: t.navigation.ocrAi, icon: FileScan, moduleKey: "ocr", permissions: ["ai:use"] },
-    { href: "/legal", label: locale.startsWith("fr") ? "Legal AI" : "Legal AI", icon: FileScan, moduleKey: "legal", permissions: ["ai:use"] },
+    { href: "/legal", label: locale.startsWith("fr") ? "Juridique" : "Legal", icon: FileScan, moduleKey: "legal", permissions: ["ai:use"] },
     { href: "/chatbots", label: t.navigation.chatbotsAi, icon: MessagesSquare, moduleKey: "chatbots", permissions: ["ai:use"] },
     { href: "/automations", label: t.navigation.automations, icon: Zap, moduleKey: "workflow", permissions: ["ai:use", "modules:manage"] },
-    { href: "/agents", label: t.navigation.agentsAi, icon: Bot, permissions: ["ai:use"] },
-    { href: "/trading", label: "Trading AI", icon: LineChart, moduleKey: "trading", permissions: ["trading:read"] },
+    { href: "/trading", label: "Trading", icon: LineChart, moduleKey: "trading", permissions: ["trading:read"] },
   ];
 
   const aiModules = allAiModules.filter(filterByEntitlements);
 
   const platformModules = [
-    { href: "/workspace/modules", label: locale.startsWith("fr") ? "Explorer les modules" : "Explore Modules", icon: Sparkles, badge: locale.startsWith("fr") ? "Catalogue" : "Catalog", permissions: ["modules:manage"] },
+    { href: "/workspace/modules", label: "Modules", icon: Sparkles, permissions: ["modules:manage"] },
     { href: "/connections", label: t.navigation.connections, icon: Plug, permissions: ["data:manage"] },
     { href: "/data", label: t.navigation.dataHub, icon: Database, permissions: ["data:read"] },
     { href: "/employees", label: locale.startsWith("fr") ? "Équipe" : "Team", icon: Users },

@@ -3,9 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api-request";
 import { useLocale } from "@/lib/i18n/locale-context";
+import { formatMoney } from "@/lib/money";
 
 interface Candle { time: number; open: number; high: number; low: number; close: number; volume: number; }
-interface Quote { symbol: string; price: number; change_percent: number; high: number; low: number; volume: number; updated_at: number; currency: string; freshness?: string; source?: string; }
+interface DisplayAmount { amount: number; currency: string; converted: boolean; rate: number | null; rate_date: string | null; source: string | null; basis: string | null; original_currency: string; }
+interface Quote { symbol: string; price: number; change_percent: number; high: number; low: number; volume: number; updated_at: number; currency: string; freshness?: string; source?: string; display?: DisplayAmount; }
 interface Instrument { symbol: string; base: string; quote: string; }
 interface Indicators { sma_20: number | null; ema_12: number | null; rsi_14: number | null; macd: { line: number | null; signal: number | null; histogram: number | null }; bollinger: { middle: number | null; upper: number | null; lower: number | null }; }
 
@@ -32,6 +34,7 @@ export function TradingView() {
   const [error, setError] = useState("");
   const [answer, setAnswer] = useState("");
   const [classes, setClasses] = useState<Array<{ asset_class: string; status: string; reason?: string }>>([]);
+  const [displayCurrency, setDisplayCurrency] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -57,6 +60,11 @@ export function TradingView() {
       if (assets.ok) {
         const body = await assets.json();
         setClasses(body.classes ?? []);
+      }
+      const account = await apiFetch("/api/v1/auth/me");
+      if (!cancelled && account.ok) {
+        const body = await account.json();
+        setDisplayCurrency(body.company?.display_currency || "");
       }
     };
     void load();
@@ -101,7 +109,7 @@ export function TradingView() {
     let cancelled = false;
     const loadQuotes = async () => {
       if (!watch.length) return;
-      const response = await apiFetch(`/api/v1/trading/quotes?symbols=${encodeURIComponent(watch.join(","))}&provider=${provider}`);
+      const response = await apiFetch(`/api/v1/trading/quotes?symbols=${encodeURIComponent(watch.join(","))}&provider=${provider}&display=${encodeURIComponent(displayCurrency)}`);
       if (!response.ok || cancelled) return;
       const body = await response.json();
       setQuotes(body.quotes ?? []);
@@ -109,7 +117,7 @@ export function TradingView() {
     void loadQuotes();
     const timer = window.setInterval(() => { void loadQuotes(); }, 3000);
     return () => { cancelled = true; window.clearInterval(timer); };
-  }, [watch, provider]);
+  }, [watch, provider, displayCurrency]);
 
   useEffect(() => {
     let cancelled = false;
@@ -124,7 +132,8 @@ export function TradingView() {
     return () => { cancelled = true; window.clearInterval(timer); };
   }, []);
 
-  const selected = quotes.find((item) => item.symbol === symbol);
+  const compact = (value: string) => value.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  const selected = quotes.find((item) => compact(item.symbol) === compact(symbol));
   const freshness = selected?.freshness || candleFreshness;
 
   const add = async (next: string) => {
@@ -159,7 +168,7 @@ export function TradingView() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-extrabold">Trading AI</h1>
+            <h1 className="text-2xl font-extrabold">Trading</h1>
             <FreshnessBadge value={freshness} french={french} />
           </div>
           <p className="mt-1 max-w-3xl text-sm text-slate-600 dark:text-slate-300">{notice}</p>
@@ -176,6 +185,18 @@ export function TradingView() {
             {selected ? `${selected.change_percent.toFixed(2)} %` : ""}
             {selected ? ` · ${new Date(selected.updated_at).toLocaleTimeString(locale)}` : ""}
           </div>
+          {selected?.display?.converted && (
+            <p className="mt-1 max-w-xs text-xs text-slate-500">
+              {formatMoney(selected.display.amount, selected.display.currency, locale)}
+              {" · "}
+              {french ? "converti" : "converted"}
+              {selected.display.basis ? ` ${selected.display.basis}/${selected.display.currency}` : ""}
+              {selected.display.rate ? ` ${selected.display.rate}` : ""}
+              {selected.display.rate_date ? ` · ${selected.display.rate_date}` : ""}
+              {selected.display.source ? ` · ${selected.display.source}` : ""}
+              {selected.currency === "USDT" ? (french ? " · le cours reste en USDT" : " · the quote stays USDT") : ""}
+            </p>
+          )}
         </div>
       </div>
 

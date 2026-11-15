@@ -94,6 +94,10 @@ class PreferredLanguageRequest(BaseModel):
     preferred_language: str = Field(min_length=2, max_length=16)
 
 
+class DisplayCurrencyRequest(BaseModel):
+    display_currency: str | None = Field(default=None, max_length=3)
+
+
 class CompanyResponse(BaseModel):
     id: UUID
     name: str
@@ -104,6 +108,7 @@ class CompanyResponse(BaseModel):
     country: str | None = None
     preferred_language: str | None = None
     currency_code: str | None = None
+    display_currency: str | None = None
     timezone: str | None = None
     logo_url: str | None = None
     brand_color: str | None = None

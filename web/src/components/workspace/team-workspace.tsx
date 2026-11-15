@@ -376,25 +376,25 @@ export function TeamWorkspace() {
 
           <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
             {team.map((member) => (
-              <div key={member.id} className="py-3.5 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
+              <div key={member.id} className="py-3.5 space-y-2">
+                <div className="flex items-start gap-3">
                   <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-100 to-cyan-100 dark:from-blue-950 dark:to-slate-800 text-[#0076FF] dark:text-[#00D4FF] font-bold text-xs flex items-center justify-center shrink-0">
                     {`${member.first_name?.[0] || ""}${member.last_name?.[0] || ""}`.toUpperCase() || "U"}
                   </div>
-                  <div className="min-w-0">
-                    <p className="font-bold text-slate-900 dark:text-white text-sm truncate">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-slate-900 dark:text-white text-sm break-words">
                       {member.first_name} {member.last_name}
                     </p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 break-words mt-0.5">
                       {member.job_title} · {member.department || (fr ? "Général" : "General")}
                     </p>
                     {canManage && member.email && (
-                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{member.email}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 break-all">{member.email}</p>
                     )}
                   </div>
                 </div>
 
-                <div className="shrink-0 flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 pl-[52px]">
                   <span className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase">
                     {member.job_title || member.role}
                   </span>
@@ -437,18 +437,18 @@ export function TeamWorkspace() {
                 .join("")
                 .toUpperCase() || "E";
               return (
-                <div key={invite.id} className="py-3.5 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
+                <div key={invite.id} className="py-3.5 space-y-2">
+                  <div className="flex items-start gap-3">
                     <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-100 to-cyan-100 dark:from-blue-950 dark:to-slate-800 text-[#0076FF] dark:text-[#00D4FF] font-bold text-xs flex items-center justify-center shrink-0">
                       {initials}
                     </div>
-                    <div className="min-w-0">
-                      <p className="font-bold text-slate-900 dark:text-white text-sm truncate">{invite.job_title}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold text-slate-900 dark:text-white text-sm break-words">{invite.job_title}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 break-all mt-0.5">
                         {invite.email}
                       </p>
                       {invite.member_name && (
-                        <p className="text-[11px] text-amber-700 dark:text-amber-300 truncate">
+                        <p className="text-[11px] text-amber-700 dark:text-amber-300 break-words">
                           {fr
                             ? `Cette adresse appartient déjà à ${invite.member_name}. Corrigez d'abord son accès.`
                             : `This address already belongs to ${invite.member_name}. Correct that access first.`}
@@ -456,7 +456,7 @@ export function TeamWorkspace() {
                       )}
                     </div>
                   </div>
-                  <div className="shrink-0 flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2 pl-[52px]">
                     <span className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase">
                       {invite.job_title}
                     </span>
