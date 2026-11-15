@@ -110,6 +110,19 @@ def skip_onboarding(
 # --- Nouveaux endpoints pour le parcours multi-pages (8 étapes) ---
 
 
+@router.get("/workspace-access")
+def get_workspace_access(
+    tenant: TenantContext = Depends(get_tenant_context),
+    service: OnboardingService = Depends(get_onboarding_service),
+) -> dict[str, Any]:
+    """Says whether the module workspace may open, without hiding the contract or checkout steps."""
+
+    try:
+        return service.workspace_access(tenant)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
 @router.get("/state", response_model=MultiStepOnboardingStateResponse)
 def get_multistep_state(
     tenant: TenantContext = Depends(get_tenant_context),

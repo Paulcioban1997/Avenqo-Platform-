@@ -45,11 +45,11 @@ def require_signed_mandatory_contracts(
     settings = get_settings()
     service = ContractSignatureService(db, settings=settings)
     if str(settings.environment).lower() == "sandbox":
-        if service.sandbox_saas_accepted(tenant.company_id):
+        if service.required_saas_accepted(tenant.company_id):
             return tenant
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Le contrat d'abonnement SaaS doit être accepté comme signature pilote avant le paiement test. La licence privée n'est pas exigée.",
+            detail="Les accords SaaS requis doivent être acceptés avant le paiement test. La licence privée n'est pas exigée.",
         )
     try:
         service.require_legal_release()

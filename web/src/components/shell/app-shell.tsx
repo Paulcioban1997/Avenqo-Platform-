@@ -48,6 +48,7 @@ import { accessibleSurface, readableText } from "@/lib/themes/theme-contrast";
 import { RequestFailure } from "@/components/ui/request-failure";
 import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
 import { getWorkspaceChrome } from "@/lib/i18n/workspace-chrome-copy";
+import { WorkspaceReadinessGate } from "@/components/shell/workspace-readiness-gate";
 
 export interface AppShellProps {
   children: React.ReactNode;
@@ -683,7 +684,7 @@ export function AppShell({ children }: AppShellProps) {
           {session.error ? <RequestFailure error={session.error} retry={() => { void session.reload(); }} />
             : session.identity ? <>
               {session.sourceError && <RequestFailure error={session.sourceError} retry={() => { void session.reload(); }} />}
-              {children}
+              <WorkspaceReadinessGate>{children}</WorkspaceReadinessGate>
             </> : <div role="status">{catalog.company.connectionsLoading}</div>}
         </main>
       </div>

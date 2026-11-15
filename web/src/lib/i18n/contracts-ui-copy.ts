@@ -124,6 +124,19 @@ export type ContractsUiCopy = {
   readableHeading: string;
   noContracts: string;
   dismiss: string;
+  legalReviewBanner: string;
+  approvalNotFinal: string;
+  codeWhy: string;
+  pdfLoading: string;
+  pdfFailed: string;
+  pdfPage: string;
+  pdfOf: string;
+  zoomIn: string;
+  zoomOut: string;
+  gateTitle: string;
+  gateBody: string;
+  gateContracts: string;
+  gateCheckout: string;
 };
 
 const fr: ContractsUiCopy = {
@@ -198,9 +211,9 @@ const fr: ContractsUiCopy = {
   incorporationSummary: "Statut d'incorporation du fournisseur",
   incorporationBody: "Ce dossier ne présente pas PMC Solutions AI comme une société incorporée. Aucun certificat d'incorporation n'est affirmé ici.",
   optionalSaas: "Optionnel. Non requis pour un abonnement SaaS standard.",
-  consult: "Consulter",
-  download: "Télécharger",
-  sign: "Signer",
+  consult: "Lire",
+  download: "Télécharger le PDF",
+  sign: "Signer électroniquement",
   typeNda: "Accord de confidentialité",
   typeMsa: "Contrat-cadre SaaS",
   typeDpa: "Accord de traitement des données",
@@ -248,6 +261,19 @@ const fr: ContractsUiCopy = {
   readableHeading: "Texte du document",
   noContracts: "Aucun document n'est disponible pour cette entreprise.",
   dismiss: "Fermer l'alerte",
+  legalReviewBanner: "Document en révision juridique — consultation seulement",
+  approvalNotFinal: "Texte non finalisé juridiquement. Une signature pilote n'est pas un contrat exécuté.",
+  codeWhy: "Ce code est envoyé à l'adresse de l'entreprise pour confirmer que la personne qui signe contrôle bien cette adresse. Il expire après 15 minutes, ne sert qu'une fois, et n'est pas demandé pour lire ou télécharger.",
+  pdfLoading: "Préparation des pages…",
+  pdfFailed: "Le PDF n'a pas pu être affiché. Le téléchargement utilise le même fichier.",
+  pdfPage: "Page",
+  pdfOf: "sur",
+  zoomIn: "Agrandir",
+  zoomOut: "Réduire",
+  gateTitle: "L'espace n'est pas encore ouvert",
+  gateBody: "Après l'inscription et le choix des modules, il faut accepter les accords SaaS requis, puis terminer le paiement d'essai Stripe. La licence de serveur privé n'est pas demandée. Le paiement n'est enregistré que lorsque Stripe le confirme.",
+  gateContracts: "Lire et signer les accords",
+  gateCheckout: "Paiement d'essai Stripe",
 };
 
 const en: ContractsUiCopy = {
@@ -322,9 +348,9 @@ const en: ContractsUiCopy = {
   incorporationSummary: "Provider incorporation status",
   incorporationBody: "This record does not present PMC Solutions AI as an incorporated company. No certificate of incorporation is asserted here.",
   optionalSaas: "Optional. Not required for a standard SaaS subscription.",
-  consult: "View",
-  download: "Download",
-  sign: "Sign",
+  consult: "Read",
+  download: "Download PDF",
+  sign: "Sign electronically",
   typeNda: "Non-disclosure agreement",
   typeMsa: "SaaS master agreement",
   typeDpa: "Data processing agreement",
@@ -372,6 +398,19 @@ const en: ContractsUiCopy = {
   readableHeading: "Document text",
   noContracts: "No document is available for this company.",
   dismiss: "Dismiss alert",
+  legalReviewBanner: "Document under legal review — consultation only",
+  approvalNotFinal: "The text is not legally final. A pilot signature is not an executed contract.",
+  codeWhy: "This code is sent to the company address to confirm that the person signing controls that address. It expires after 15 minutes, works once, and is not requested in order to read or download.",
+  pdfLoading: "Preparing the pages…",
+  pdfFailed: "The PDF could not be displayed. Download uses the same file.",
+  pdfPage: "Page",
+  pdfOf: "of",
+  zoomIn: "Zoom in",
+  zoomOut: "Zoom out",
+  gateTitle: "The workspace is not open yet",
+  gateBody: "After registration and module selection, the required SaaS agreements must be accepted and the Stripe test payment must be confirmed. The private-server license is not required. Payment is recorded only when Stripe confirms it.",
+  gateContracts: "Read and sign the agreements",
+  gateCheckout: "Stripe test payment",
 };
 
 /** Approved UI copy only. fr-FR and en-GB reuse the same language, not a new translation. */

@@ -203,7 +203,7 @@ def test_electronic_signature_flow(db_session, tmp_path):
     service = ContractSignatureService(db_session, settings=settings)
     service.ensure_contracts_for_company(company)
 
-    res = _synthetic_sign(service, company, owner, "MUTUAL_NDA")
+    res = _synthetic_sign(service, company, owner, "SAAS_SUBSCRIPTION")
 
     assert res["status"] == "CUSTOMER_SIGNED"
     assert res["signature_mode"] == "ELECTRONIC"
@@ -212,13 +212,13 @@ def test_electronic_signature_flow(db_session, tmp_path):
     assert len(res["sha256_hash"]) == 64
     assert res["storage_path"] is not None
 
-    contract_db = service.get_contract(company.id, "MUTUAL_NDA")
+    contract_db = service.get_contract(company.id, "SAAS_SUBSCRIPTION")
     assert contract_db.status == "CUSTOMER_SIGNED"
     assert contract_db.storage_path is not None
     assert contract_db.pdf_sha256 == service.compute_sha256((tmp_path / contract_db.storage_path).read_bytes())
     (tmp_path / contract_db.storage_path).write_bytes(b"tampered synthetic PDF")
     with pytest.raises(HTTPException) as integrity_error:
-        download_contract_pdf("MUTUAL_NDA", TenantContext(company_id=company.id), db_session, service)
+        download_contract_pdf("SAAS_SUBSCRIPTION", TenantContext(company_id=company.id), db_session, service)
     assert integrity_error.value.status_code == 500
 
     # Tentative de re-signature d'un contrat déjà signé -> rejet
@@ -226,7 +226,7 @@ def test_electronic_signature_flow(db_session, tmp_path):
         service.sign_contract_electronic(
             company=company,
             user=owner,
-            contract_type="MUTUAL_NDA",
+            contract_type="SAAS_SUBSCRIPTION",
             signatory_title="Chef de la Direction",
             declared_authority=True,
             consent_checkbox=True,

@@ -36,6 +36,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { fillContractCopy, getContractsUi } from "@/lib/i18n/contracts-ui-copy";
 import { privateLicenseRequiredForPlan } from "@/lib/contracts/private-license";
 import { isSandboxFrontend } from "@/lib/public-site";
+import { ContractPdfReader } from "@/components/settings/contract-pdf-reader";
 
 export interface ContractItem {
   id: string;
@@ -54,6 +55,8 @@ export interface ContractItem {
   provider_signed_at?: string | null;
   sha256_hash: string;
   has_pdf: boolean;
+  approval_status?: string;
+  signable?: boolean;
   updated_at?: string | null;
 }
 
@@ -73,6 +76,17 @@ export interface ContractDetail {
   signed_at: string | null;
   provider_signed_at?: string | null;
   signature_mode: string | null;
+  approval_status?: string;
+  signable?: boolean;
+}
+
+function underReview(item: { contract_type: string; approval_status?: string }) {
+  const approval = (item.approval_status || "").toUpperCase();
+  return item.contract_type === "MUTUAL_NDA"
+    || item.contract_type === "NDA"
+    || approval.includes("LEGAL_REVIEW")
+    || approval === "UNDER_REVIEW"
+    || approval.startsWith("UNDER_REVIEW");
 }
 
 export function ContractsView() {
@@ -127,7 +141,10 @@ export function ContractsView() {
   const [declaredAuthority, setDeclaredAuthority] = useState(false);
   const [consentCheckbox, setConsentCheckbox] = useState(false);
   const [signSubmitting, setSignSubmitting] = useState(false);
-  const [previewPdf, setPreviewPdf] = useState(false);
+  const [panelMode, setPanelMode] = useState<"read" | "sign" | null>(null);
+  const [pdfBytes, setPdfBytes] = useState<ArrayBuffer | null>(null);
+  const [pdfName, setPdfName] = useState("contrat.pdf");
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
   // Défi de signature à usage unique
   const [challengeId, setChallengeId] = useState<string | null>(null);
@@ -207,23 +224,62 @@ export function ContractsView() {
     }
   };
 
-  const handleOpenReview = async (item: ContractItem) => {
+  const savePdfFile = (bytes: ArrayBuffer, filename: string) => {
+    const blob = new Blob([bytes], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const loadContractPdf = async (contractType: string) => {
+    const response = await apiFetch(`/api/v1/contracts/${contractType}/download`, { headers: getAuthHeaders() });
+    const disposition = response.headers.get("content-disposition") || "";
+    const matched = disposition.match(/filename="([^"]+)"/);
+    const bytes = await response.arrayBuffer();
+    return { bytes, filename: matched?.[1] || `${contractType}.pdf` };
+  };
+
+  const handleDownload = async (contractType: string) => {
+    setAlertError(null);
+    try {
+      if (selectedContract?.contract_type === contractType && pdfBytes) {
+        savePdfFile(pdfBytes, pdfName);
+        return;
+      }
+      const loaded = await loadContractPdf(contractType);
+      savePdfFile(loaded.bytes, loaded.filename);
+    } catch (err: any) {
+      setAlertError(err?.publicMessage || err?.message || copy.loadError);
+    }
+  };
+
+  const handleOpenReview = async (item: ContractItem, mode: "read" | "sign") => {
+    if (mode === "sign" && underReview(item)) return;
     setReviewLoading(true);
     setAlertError(null);
+    setPdfError(null);
     try {
       const res = await apiFetch(`/api/v1/contracts/${item.contract_type}`, { headers: getAuthHeaders() });
       if (!res.ok) {
         throw new Error(copy.loadError);
       }
       const detail: ContractDetail = await res.json();
-      setPreviewPdf(Boolean(item.has_pdf));
+      const loaded = await loadContractPdf(item.contract_type);
+      setPdfBytes(loaded.bytes);
+      setPdfName(loaded.filename);
+      setPanelMode(mode);
       setSelectedContract(detail);
       setDeclaredAuthority(false);
       setConsentCheckbox(false);
       setChallengeId(null);
       setChallengeCode("");
     } catch (err: any) {
-      setAlertError(err.message);
+      setPdfBytes(null);
+      setPdfError(err?.publicMessage || err?.message || copy.pdfFailed);
+      setAlertError(err?.publicMessage || err?.message || copy.loadError);
     } finally {
       setReviewLoading(false);
     }
@@ -346,7 +402,7 @@ export function ContractsView() {
   const commercialBlocked = Boolean(commercialSchedule?.is_blocked);
   const signedStatuses = new Set(["CUSTOMER_SIGNED", "SIGNED", "FULLY_EXECUTED"]);
   const documentSigned = (item: ContractItem) => signedStatuses.has(item.status);
-  const canSignDocument = (item: ContractItem) => !documentSigned(item) && !commercialBlocked;
+  const canSignDocument = (item: ContractItem) => !documentSigned(item) && !commercialBlocked && !underReview(item) && item.signable !== false;
   const showTestMark = (item: ContractItem) => sandboxUi || item.signature_mode === "SANDBOX_PILOT";
   const statusText = (item: ContractItem) => {
     if (item.signature_mode === "SANDBOX_PILOT") return copy.statusPilot;
@@ -869,20 +925,26 @@ export function ContractsView() {
                         {optional && <StatusBadge tone="info">{copy.optionalSaas}</StatusBadge>}
                       </div>
                       <h4 className="text-sm font-bold text-slate-900 dark:text-white">{item.title}</h4>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-300">{copy.versionLabel} {item.version}</p>
+                      {underReview(item) ? (
+                        <p className="text-[11px] font-semibold text-amber-800 dark:text-amber-200">{copy.legalReviewBanner}</p>
+                      ) : (
+                        <p className="text-[11px] text-slate-600 dark:text-slate-300">{copy.approvalNotFinal}</p>
+                      )}
                       {modified && <p className="text-[11px] text-slate-600 dark:text-slate-300">{copy.lastModified} : {modified}</p>}
                       {signedOn && <p className="text-[11px] text-slate-600 dark:text-slate-300">{copy.signedOn} : {signedOn}</p>}
                       {item.signature_mode === "SANDBOX_PILOT" && (
                         <p className="text-[11px] text-amber-800 dark:text-amber-200">{copy.statusPilot}</p>
                       )}
                       <div className="mt-auto flex flex-wrap gap-2 border-t border-slate-200/70 pt-3 dark:border-white/10">
-                        <button type="button" onClick={() => handleOpenReview(item)} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0076FF] dark:border-white/10 dark:text-slate-100 dark:hover:bg-white/5">
+                        <button type="button" onClick={() => void handleOpenReview(item, "read")} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0076FF] dark:border-white/10 dark:text-slate-100 dark:hover:bg-white/5">
                           <Eye size={13} /> {copy.consult}
                         </button>
-                        <a href={`/api/v1/contracts/${item.contract_type}/download`} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-800 hover:bg-slate-50 dark:border-white/10 dark:text-slate-100">
+                        <button type="button" onClick={() => void handleDownload(item.contract_type)} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-800 hover:bg-slate-50 dark:border-white/10 dark:text-slate-100">
                           <Download size={13} /> {copy.download}
-                        </a>
-                        {canSignDocument(item) && currentWizardStep === 4 && (
-                          <button type="button" onClick={() => handleOpenReview(item)} className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#0076FF] px-3 text-xs font-semibold text-white hover:bg-[#158bff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00D4FF]">
+                        </button>
+                        {canSignDocument(item) && (
+                          <button type="button" onClick={() => void handleOpenReview(item, "sign")} className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#0076FF] px-3 text-xs font-semibold text-white hover:bg-[#158bff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00D4FF]">
                             {copy.sign}
                           </button>
                         )}
@@ -930,14 +992,9 @@ export function ContractsView() {
                       {c.sha256_hash ? `${c.sha256_hash.slice(0, 16)}...` : "—"}
                     </td>
                     <td className="p-3">
-                      <a
-                        href={`/api/v1/contracts/${c.contract_type}/download`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-[#0076FF] hover:underline font-bold"
-                      >
+                      <button type="button" onClick={() => void handleDownload(c.contract_type)} className="inline-flex items-center gap-1 font-bold text-[#0076FF] hover:underline">
                         <Download size={13} /> PDF
-                      </a>
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -960,30 +1017,41 @@ export function ContractsView() {
                   {selectedContract.title}
                 </h3>
               </div>
-              <button type="button" onClick={() => setSelectedContract(null)} aria-label={copy.close} className="rounded-lg p-1 text-slate-500 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0076FF]">
+              <button type="button" onClick={() => { setSelectedContract(null); setPanelMode(null); setPdfBytes(null); }} aria-label={copy.close} className="rounded-lg p-1 text-slate-500 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0076FF]">
                 <X size={18} />
               </button>
             </div>
 
-            <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-5 text-sm leading-relaxed text-slate-800 dark:bg-[#060A17] dark:text-slate-100">
+            <div className="flex-1 space-y-3 overflow-y-auto bg-slate-200 p-5 text-sm leading-relaxed text-slate-800 dark:bg-slate-800 dark:text-slate-100">
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                {copy.versionLabel} {selectedContract.version}
+                {" · "}
+                {underReview(selectedContract) ? copy.legalReviewBanner : copy.approvalNotFinal}
+              </p>
               {!locale.toLowerCase().startsWith((selectedContract.language || "fr").toLowerCase().slice(0, 2)) && (
                 <p className="rounded-lg border border-[#C4A35A]/40 bg-[#C4A35A]/10 px-3 py-2 text-xs text-[#6E5210] dark:text-[#F3DE9A]">
                   {fillContractCopy(copy.governingNotice, { language: selectedContract.language || "fr" })}
                 </p>
               )}
-              {previewPdf && (
-                <div>
-                  <h4 className="mb-2 text-xs font-semibold">{copy.pdfPreview}</h4>
-                  <object data={`/api/v1/contracts/${selectedContract.contract_type}/download`} type="application/pdf" className="h-80 w-full rounded-xl border border-slate-200 bg-white dark:border-white/10" aria-label={copy.pdfPreview}>
-                    <a href={`/api/v1/contracts/${selectedContract.contract_type}/download`}>{copy.downloadDraft}</a>
-                  </object>
-                </div>
+              {pdfBytes ? (
+                <ContractPdfReader
+                  data={pdfBytes}
+                  labels={{ loading: copy.pdfLoading, failed: copy.pdfFailed, page: copy.pdfPage, of: copy.pdfOf, zoomIn: copy.zoomIn, zoomOut: copy.zoomOut }}
+                />
+              ) : (
+                <p className="text-xs text-amber-800">{pdfError || copy.pdfFailed}</p>
               )}
-              <h4 className="text-xs font-semibold">{copy.readableHeading}</h4>
-              <div className="whitespace-pre-wrap select-text">{selectedContract.content_text}</div>
             </div>
 
+            {panelMode === "read" ? (
+              <div className="flex justify-end border-t border-slate-200 bg-white p-5 dark:border-white/[0.08] dark:bg-[#0B132B]">
+                <button type="button" onClick={() => void handleDownload(selectedContract.contract_type)} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-800">
+                  <Download size={13} /> {copy.download}
+                </button>
+              </div>
+            ) : (
             <div className="p-5 border-t border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#0B132B] space-y-4">
+              <p className="text-xs leading-relaxed text-slate-700 dark:text-slate-200">{copy.codeWhy}</p>
               {/* Jeton / Défi de signature anti-rejeu */}
               {!challengeId ? (
                 <div className="p-3.5 rounded-xl bg-blue-50 dark:bg-[#111D3D] border border-blue-200 dark:border-blue-900 flex items-center justify-between">
@@ -1064,14 +1132,9 @@ export function ContractsView() {
                 </div>
 
                 <div className="flex justify-between items-center pt-3 border-t border-slate-100 dark:border-white/[0.06]">
-                  <a
-                    href={`/api/v1/contracts/${selectedContract.contract_type}/download`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800"
-                  >
-                    <Download size={13} /> {copy.downloadDraft}
-                  </a>
+                  <button type="button" onClick={() => void handleDownload(selectedContract.contract_type)} className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800">
+                    <Download size={13} /> {copy.download}
+                  </button>
                   <button
                     type="submit"
                     disabled={signSubmitting || !declaredAuthority || !consentCheckbox || !challengeId || commercialBlocked}
@@ -1082,6 +1145,7 @@ export function ContractsView() {
                 </div>
               </form>
             </div>
+            )}
           </div>
         </div>
       )}

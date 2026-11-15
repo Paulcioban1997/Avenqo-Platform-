@@ -8,9 +8,14 @@ CUSTOMER_SIGNED de FULLY_EXECUTED.
 
 from __future__ import annotations
 
+import html
 import io
+import re
 from datetime import datetime, timezone
 from typing import Any
+
+_MARKDOWN_BOLD = re.compile(r"\*\*(.+?)\*\*|__(.+?)__")
+_MARKDOWN_HEADING = re.compile(r"^#{1,6}\s+")
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
@@ -25,6 +30,26 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
+
+
+def contract_markup(line: str) -> str:
+    """Turn stored Markdown into ReportLab markup without leaving ### or ** on the page."""
+
+    text = _MARKDOWN_HEADING.sub("", line.strip())
+    parts: list[str] = []
+    cursor = 0
+    for match in _MARKDOWN_BOLD.finditer(text):
+        parts.append(_escape_contract_text(text[cursor:match.start()]))
+        inner = match.group(1) if match.group(1) is not None else match.group(2)
+        parts.append(f"<b>{_escape_contract_text(inner)}</b>")
+        cursor = match.end()
+    parts.append(_escape_contract_text(text[cursor:]))
+    rendered = "".join(parts)
+    return rendered.replace("**", "").replace("###", "").replace("##", "")
+
+
+def _escape_contract_text(value: str) -> str:
+    return html.escape(value, quote=False).replace("**", "").replace("###", "").replace("##", "")
 
 
 class NumberedCanvas(canvas.Canvas):
@@ -291,21 +316,21 @@ class ContractPdfGenerator:
                 elements.append(Spacer(1, 4))
                 continue
             if line_s.startswith("### "):
-                elements.append(Paragraph(line_s[4:], section_heading))
+                elements.append(Paragraph(contract_markup(line_s), section_heading))
             elif line_s.startswith("## "):
-                elements.append(Paragraph(line_s[3:], title_style))
+                elements.append(Paragraph(contract_markup(line_s), title_style))
             elif line_s.startswith("# "):
-                pass
+                elements.append(Paragraph(contract_markup(line_s), title_style))
             elif line_s.startswith("---"):
                 elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#CBD5E1"), spaceBefore=4, spaceAfter=6))
             elif line_s.startswith("- ") or line_s.startswith("* "):
                 bullet_style = ParagraphStyle("Bullet", parent=body_style, leftIndent=12)
-                elements.append(Paragraph(f"• {line_s[2:]}", bullet_style))
-            elif line_s.startswith("1. ") or line_s.startswith("2. ") or line_s.startswith("3. ") or line_s.startswith("4. "):
+                elements.append(Paragraph(f"• {contract_markup(line_s[2:])}", bullet_style))
+            elif line_s[:3] in {"1. ", "2. ", "3. ", "4. ", "5. ", "6. ", "7. ", "8. ", "9. "}:
                 num_style = ParagraphStyle("Num", parent=body_style, leftIndent=12)
-                elements.append(Paragraph(line_s, num_style))
+                elements.append(Paragraph(contract_markup(line_s), num_style))
             else:
-                elements.append(Paragraph(line_s, body_style))
+                elements.append(Paragraph(contract_markup(line_s), body_style))
 
         # 6. Bloc de Signatures d'Engagement
         elements.append(Spacer(1, 12))

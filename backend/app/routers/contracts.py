@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Resp
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from backend.app.core.permission_grants import effective_permissions
 from backend.app.database import get_db
 from backend.app.dependencies.auth import (
     CurrentIdentity,
@@ -112,6 +113,8 @@ class ContractItemResponse(BaseModel):
     provider_signed_at: str | None
     sha256_hash: str
     has_pdf: bool
+    approval_status: str = "NOT_LEGALLY_FINAL"
+    signable: bool = False
 
 
 def _get_service(
@@ -335,6 +338,8 @@ def create_signing_challenge(
             service.require_legal_release()
         service.verify_signatory_authority(identity.user, company.id, declared_authority=True)
         contract = service.get_contract(company.id, contract_type)
+        if service.signature_blocked(contract):
+            raise ContractAuthorityError("Document en révision juridique — consultation seulement.")
         schedule = CommercialReconciler.reconcile(company, service._settings)
         if schedule.is_blocked:
             raise CommercialConfigMismatchError("Configuration commerciale divergente.")
@@ -407,7 +412,13 @@ def list_company_contracts(
             signed_at=c.signed_at.isoformat() if c.signed_at else None,
             provider_signed_at=c.provider_signed_at.isoformat() if c.provider_signed_at else None,
             sha256_hash=c.sha256_hash,
-            has_pdf=bool(c.storage_path),
+            has_pdf=True,
+            approval_status=service.approval_status_of(c),
+            signable=not service.signature_blocked(c) and c.status not in {
+                ContractLifecycleStatus.SIGNED.value,
+                ContractLifecycleStatus.CUSTOMER_SIGNED.value,
+                ContractLifecycleStatus.FULLY_EXECUTED.value,
+            },
         )
         for c in contracts
     ]
@@ -458,7 +469,10 @@ def get_contract_detail(
         "provider_signed_at": contract.provider_signed_at.isoformat() if contract.provider_signed_at else None,
         "sha256_hash": contract.sha256_hash,
         "content_text": contract.content_text,
-        "has_pdf": bool(contract.storage_path),
+        "has_pdf": True,
+        "approval_status": service.approval_status_of(contract),
+        "signable": not service.signature_blocked(contract),
+        "language_notice": contract.language,
         "completion_record": contract.completion_record_json,
     }
 
@@ -592,12 +606,22 @@ async def upload_manuscript_signature(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@router.get("/{contract_type}/download")
+def assert_contract_reader(identity: CurrentIdentity, tenant: TenantContext) -> None:
+    """The file is only returned to the tenant that owns it, and only to a permitted user."""
+
+    if identity.user.company_id != tenant.company_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Accès refusé pour cette entreprise.")
+    role = str(getattr(identity.user.role, "value", identity.user.role) or "").lower()
+    if role in {"owner", "admin"} or "billing:manage" in effective_permissions(identity.user):
+        return
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission insuffisante pour consulter ce contrat.")
+
+
 def download_contract_pdf(
     contract_type: str,
-    tenant: TenantContext = Depends(get_tenant_context),
-    db: Session = Depends(get_db),
-    service: ContractSignatureService = Depends(_get_service),
+    tenant: TenantContext,
+    db: Session,
+    service: ContractSignatureService,
 ) -> Response:
     """Télécharge le PDF certifié signé ou le PDF brouillon pré-rempli pour impression."""
     company = db.get(Company, tenant.company_id)
@@ -650,20 +674,32 @@ def download_contract_pdf(
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
-    # Document brouillon / vierge pré-rempli
-    if contract.status in (ContractLifecycleStatus.PENDING_SIGNATURE.value, ContractLifecycleStatus.DRAFT.value, ContractLifecycleStatus.READY_FOR_SIGNATURE.value):
-        pdf_bytes = service.generate_draft_pdf(company, contract_type)
-        filename = f"{contract_type}_Brouillon_{contract.version}.pdf"
-        return Response(
-            content=pdf_bytes,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-        )
-
-    raise HTTPException(
-        status_code=400,
-        detail=f"Statut contractuel invalide pour le téléchargement ({contract.status}).",
+    pdf_bytes = service.generate_draft_pdf(company, contract_type)
+    filename = f"{contract_type}_{contract.version}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "private, no-store",
+            "X-Contract-Version": contract.version,
+            "X-Approval-Status": service.approval_status_of(contract),
+        },
     )
+
+
+@router.get("/{contract_type}/download")
+def download_contract_pdf_route(
+    contract_type: str,
+    tenant: TenantContext = Depends(get_tenant_context),
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+    service: ContractSignatureService = Depends(_get_service),
+) -> Response:
+    """Authenticated download of the same version the reader displays. No public file URL."""
+
+    assert_contract_reader(identity, tenant)
+    return download_contract_pdf(contract_type, tenant, db, service)
 
 
 class VerifyWetInkRequest(BaseModel):

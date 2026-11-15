@@ -39,6 +39,18 @@ from backend.app.services.signing_challenge_service import SigningChallengeServi
 
 logger = logging.getLogger(__name__)
 
+REVIEW_BLOCKED_STATUSES = frozenset({
+    "UNDER_REVIEW",
+    "LEGAL_REVIEW_REQUIRED",
+    "UNDER_REVIEW_LEGAL_REVIEW_REQUIRED",
+})
+REQUIRED_SAAS_CONTRACTS = ("SAAS_SUBSCRIPTION", "DATA_PROCESSING_ADDENDUM")
+CUSTOMER_ACCEPTED_STATUSES = frozenset({
+    ContractLifecycleStatus.CUSTOMER_SIGNED.value,
+    ContractLifecycleStatus.SIGNED.value,
+    ContractLifecycleStatus.FULLY_EXECUTED.value,
+})
+
 CONTRACT_TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "legal" / "contracts"
 
 AVAILABLE_CONTRACTS: dict[str, dict[str, Any]] = {
@@ -263,6 +275,7 @@ class ContractSignatureService:
                     contract_version=meta["version"],
                 )
                 sha256 = self.compute_sha256(interpolated_text)
+                approval = "LEGAL_REVIEW_REQUIRED" if ctype in {"MUTUAL_NDA", "NDA"} else "NOT_LEGALLY_FINAL"
                 contract = CompanyContract(
                     company_id=company.id,
                     contract_type=ctype,
@@ -273,6 +286,7 @@ class ContractSignatureService:
                     language=template_data["language"],
                     sha256_hash=sha256,
                     content_text=interpolated_text,
+                    metadata_json={"approval_status": approval},
                 )
                 self._db.add(contract)
                 created.append(contract)
@@ -337,6 +351,33 @@ class ContractSignatureService:
             return True
         return False
 
+    def approval_status_of(self, contract: CompanyContract) -> str:
+        """Real review state. An NDA stays in legal review until a stored status says otherwise."""
+
+        meta = contract.metadata_json if isinstance(contract.metadata_json, dict) else {}
+        explicit = str(meta.get("approval_status") or "").strip().upper()
+        if explicit:
+            return explicit
+        if contract.contract_type in {"MUTUAL_NDA", "NDA"}:
+            return "LEGAL_REVIEW_REQUIRED"
+        return "NOT_LEGALLY_FINAL"
+
+    def signature_blocked(self, contract: CompanyContract) -> bool:
+        if contract.contract_type in {"MUTUAL_NDA", "NDA"}:
+            return True
+        status = self.approval_status_of(contract)
+        return status in REVIEW_BLOCKED_STATUSES or "LEGAL_REVIEW_REQUIRED" in status or status.startswith("UNDER_REVIEW")
+
+    def required_saas_accepted(self, company_id: UUID) -> bool:
+        """SaaS subscription and DPA only. The private license and the NDA are not required."""
+
+        by_type = {row.contract_type: row for row in self.list_contracts(company_id)}
+        for contract_type in REQUIRED_SAAS_CONTRACTS:
+            row = by_type.get(contract_type)
+            if row is None or row.status not in CUSTOMER_ACCEPTED_STATUSES or self.signature_blocked(row):
+                return False
+        return True
+
     def sandbox_saas_accepted(self, company_id: UUID) -> bool:
         """The ordinary SaaS agreement was accepted. A private-server license is not required."""
         accepted = {
@@ -386,6 +427,8 @@ class ContractSignatureService:
             raise ValueError("Le consentement exprès et explicite est obligatoire pour valider la signature.")
 
         contract = self.get_contract(company.id, contract_type)
+        if self.signature_blocked(contract):
+            raise ContractAuthorityError("Document en révision juridique — consultation seulement.")
         if contract.status in (ContractLifecycleStatus.SIGNED.value, ContractLifecycleStatus.CUSTOMER_SIGNED.value, ContractLifecycleStatus.FULLY_EXECUTED.value):
             raise ContractAlreadySignedError(f"Le contrat {contract_type} est déjà signé et scellé.")
 
@@ -684,6 +727,8 @@ class ContractSignatureService:
         self.verify_signatory_authority(user, company.id, declared_authority=True)
 
         contract = self.get_contract(company.id, contract_type)
+        if self.signature_blocked(contract):
+            raise ContractAuthorityError("Document en révision juridique — consultation seulement.")
         if contract.status in (ContractLifecycleStatus.SIGNED.value, ContractLifecycleStatus.FULLY_EXECUTED.value):
             raise ContractAlreadySignedError(f"Le contrat {contract_type} est déjà validé.")
 
