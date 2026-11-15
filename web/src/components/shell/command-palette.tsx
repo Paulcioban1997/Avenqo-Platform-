@@ -430,11 +430,11 @@ export function CommandPalette({
       role="dialog"
       aria-modal="true"
       aria-label={t.commandPalette.title}
-      className="fixed inset-0 z-50 flex items-start justify-center pt-20 p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex bg-black/60 backdrop-blur-sm max-md:items-stretch max-md:p-0 md:items-start md:justify-center md:p-4 md:pt-20"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-xl rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.12] shadow-2xl overflow-hidden text-slate-900 dark:text-[#F4F7FB] animate-in zoom-in-95 duration-150"
+        className="flex w-full flex-col overflow-hidden bg-white text-slate-900 dark:bg-[#0B132B] dark:text-[#F4F7FB] max-md:h-full max-md:rounded-none md:max-w-xl md:rounded-2xl md:border md:border-slate-200/80 md:shadow-2xl dark:md:border-white/[0.12]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Search header */}
@@ -457,7 +457,7 @@ export function CommandPalette({
         </div>
 
         {/* Results list */}
-        <div className="max-h-80 overflow-y-auto p-2 divide-y divide-slate-100 dark:divide-white/[0.04]">
+        <div className="min-h-0 flex-1 overflow-y-auto p-2 divide-y divide-slate-100 dark:divide-white/[0.04] md:max-h-80 md:flex-none">
           {items.length === 0 ? (
             <div className="p-8 text-center text-sm text-slate-500 dark:text-[#94A3B8]">
               {t.commandPalette.noResults}

@@ -29,8 +29,13 @@ import { apiFetch, ApiRequestError } from "@/lib/api-request";
 import { RequestFailure } from "@/components/ui/request-failure";
 import { getAuthHeaders } from "@/lib/api-headers";
 import { useLocale } from "@/lib/i18n/locale-context";
-import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { useOptionalSession } from "@/lib/session-context";
+import { AvenqoCard } from "@/components/ui/avenqo-card";
+import { CompactStepper, type StepState } from "@/components/ui/compact-stepper";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { fillContractCopy, getContractsUi } from "@/lib/i18n/contracts-ui-copy";
+import { privateLicenseRequiredForPlan } from "@/lib/contracts/private-license";
+import { isSandboxFrontend } from "@/lib/public-site";
 
 export interface ContractItem {
   id: string;
@@ -49,6 +54,7 @@ export interface ContractItem {
   provider_signed_at?: string | null;
   sha256_hash: string;
   has_pdf: boolean;
+  updated_at?: string | null;
 }
 
 export interface ContractDetail {
@@ -71,9 +77,9 @@ export interface ContractDetail {
 
 export function ContractsView() {
   const { locale } = useLocale();
-  const t = getAppTranslations(locale);
   const session = useOptionalSession();
-  const isFrench = locale.startsWith("fr");
+  const copy = getContractsUi(locale).copy;
+  const sandboxUi = isSandboxFrontend();
 
   const [activeMainTab, setActiveMainTab] = useState<"wizard" | "archive">("wizard");
   const [currentWizardStep, setCurrentWizardStep] = useState<1 | 2 | 3 | 4>(1);
@@ -121,6 +127,7 @@ export function ContractsView() {
   const [declaredAuthority, setDeclaredAuthority] = useState(false);
   const [consentCheckbox, setConsentCheckbox] = useState(false);
   const [signSubmitting, setSignSubmitting] = useState(false);
+  const [previewPdf, setPreviewPdf] = useState(false);
 
   // Défi de signature à usage unique
   const [challengeId, setChallengeId] = useState<string | null>(null);
@@ -187,14 +194,10 @@ export function ContractsView() {
         const errJson = await res.json();
         const errDetail = Array.isArray(errJson.detail)
           ? errJson.detail.map((d: any) => d.message).join(" ")
-          : errJson.detail || "Erreur de validation du profil juridique";
+          : errJson.detail || copy.validationError;
         throw new Error(errDetail);
       }
-      setAlertSuccess(
-        isFrench
-          ? "Profil juridique et représentant légal enregistrés avec succès."
-          : "Corporate legal profile and representative saved successfully."
-      );
+      setAlertSuccess(copy.profileSaved);
       void loadContractsAndWizard();
       setCurrentWizardStep(2);
     } catch (err: any) {
@@ -210,9 +213,10 @@ export function ContractsView() {
     try {
       const res = await apiFetch(`/api/v1/contracts/${item.contract_type}`, { headers: getAuthHeaders() });
       if (!res.ok) {
-        throw new Error(isFrench ? "Erreur de chargement du contrat" : "Failed to load contract");
+        throw new Error(copy.loadError);
       }
       const detail: ContractDetail = await res.json();
+      setPreviewPdf(Boolean(item.has_pdf));
       setSelectedContract(detail);
       setDeclaredAuthority(false);
       setConsentCheckbox(false);
@@ -236,17 +240,13 @@ export function ContractsView() {
       });
       const ch = await res.json();
       if ((ch.delivery !== "email" && ch.delivery !== "sandbox_mailbox") || !ch.challenge_id) {
-        setAlertError(isFrench
-          ? "Le code n'a pas été transmis. La signature reste désactivée."
-          : "The code was not sent. Signing stays disabled.");
+        setAlertError(copy.codeNotSent);
         return;
       }
       setChallengeId(ch.challenge_id);
       setChallengeCode("");
     } catch (e: any) {
-      setAlertError(e?.publicMessage || (isFrench
-        ? "Livraison du code impossible. Aucun code n'a été affiché."
-        : "The code could not be delivered. No code was shown."));
+      setAlertError(e?.publicMessage || copy.codeNotDelivered);
     } finally {
       setChallengeLoading(false);
     }
@@ -257,19 +257,11 @@ export function ContractsView() {
     if (!selectedContract) return;
 
     if (!declaredAuthority) {
-      setAlertError(
-        isFrench
-          ? "Vous devez attester disposer du pouvoir d'engagement légal pour l'entreprise."
-          : "You must declare having the legal authority to bind the company."
-      );
+      setAlertError(copy.authorityRequired);
       return;
     }
     if (!consentCheckbox) {
-      setAlertError(
-        isFrench
-          ? "Le consentement exprès et explicite aux termes du contrat est obligatoire."
-          : "Explicit consent to the contractual terms is required."
-      );
+      setAlertError(copy.consentRequired);
       return;
     }
 
@@ -297,17 +289,13 @@ export function ContractsView() {
         const detail = typeof errJson.detail === "string"
           ? errJson.detail
           : errJson.detail?.message || errJson.error?.message;
-        throw new Error(detail || (isFrench ? "Échec de signature" : "Signing failed"));
+        throw new Error(detail || copy.signFailed);
       }
       const signed = await res.json();
       setAlertSuccess(
         signed.signature_mode === "SANDBOX_PILOT"
-          ? (isFrench
-            ? `Signature pilote enregistrée pour ${selectedContract.title}. Ce n'est pas une contresignature et PMC Solutions AI n'est pas déclaré incorporé.`
-            : `Pilot signature recorded for ${selectedContract.title}. This is not a countersignature and PMC Solutions AI is not marked incorporated.`)
-          : (isFrench
-            ? `Le contrat ${selectedContract.title} a été signé (en attente de contresignature du fournisseur).`
-            : `Agreement ${selectedContract.title} was signed (pending provider countersignature).`)
+          ? fillContractCopy(copy.pilotSaved, { title: selectedContract.title })
+          : fillContractCopy(copy.signedPendingCountersign, { title: selectedContract.title })
       );
       setSelectedContract(null);
       void loadContractsAndWizard();
@@ -339,14 +327,10 @@ export function ContractsView() {
 
       if (!res.ok) {
         const errJson = await res.json();
-        throw new Error(errJson.detail || (isFrench ? "Échec du téléversement" : "Upload failed"));
+        throw new Error(errJson.detail || copy.uploadFailed);
       }
 
-      setAlertSuccess(
-        isFrench
-          ? "Contrat manuscrit téléversé. Il a été placé en attente de vérification par l'administrateur."
-          : "Manuscript agreement uploaded and queued for administrative review."
-      );
+      setAlertSuccess(copy.manuscriptSaved);
       setWetInkContract(null);
       setWetInkFile(null);
       void loadContractsAndWizard();
@@ -357,41 +341,77 @@ export function ContractsView() {
     }
   };
 
-  const signedCount = contracts.filter((c) => c.status === "CUSTOMER_SIGNED" || c.status === "SIGNED" || c.status === "FULLY_EXECUTED").length;
-  const pendingCount = contracts.filter((c) => c.status === "PENDING_SIGNATURE" || c.status === "DRAFT").length;
+  const planName = String(commercialSchedule?.plan_name || session?.identity?.company.subscription_plan || "");
+  const licenseRequired = privateLicenseRequiredForPlan(planName);
+  const commercialBlocked = Boolean(commercialSchedule?.is_blocked);
+  const signedStatuses = new Set(["CUSTOMER_SIGNED", "SIGNED", "FULLY_EXECUTED"]);
+  const documentSigned = (item: ContractItem) => signedStatuses.has(item.status);
+  const canSignDocument = (item: ContractItem) => !documentSigned(item) && !commercialBlocked;
+  const showTestMark = (item: ContractItem) => sandboxUi || item.signature_mode === "SANDBOX_PILOT";
+  const statusText = (item: ContractItem) => {
+    if (item.signature_mode === "SANDBOX_PILOT") return copy.statusPilot;
+    if (item.status === "FULLY_EXECUTED") return copy.statusExecuted;
+    if (documentSigned(item)) return copy.statusCustomerSigned;
+    return copy.statusAwaiting;
+  };
+  const typeText = (type: string) => {
+    if (type === "NDA") return copy.typeNda;
+    if (type === "MSA" || type === "SAAS_MSA" || type === "SAAS") return copy.typeMsa;
+    if (type === "DPA") return copy.typeDpa;
+    if (type === "PRIVATE_LICENSE") return copy.typeLicense;
+    return type;
+  };
+  const formatWhen = (value?: string | null) => {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(date);
+  };
+  const stepState = (step: number): StepState => {
+    if (step >= 2 && commercialBlocked) return "blocked";
+    if (step < currentWizardStep) return "completed";
+    if (step === currentWizardStep) return "current";
+    return "upcoming";
+  };
+  const stepStateText = (state: StepState) => (
+    state === "completed" ? copy.stateCompleted
+      : state === "current" ? copy.stateCurrent
+        : state === "blocked" ? copy.stateBlocked
+          : copy.stateUpcoming
+  );
+  const money = (amount: unknown, currency: string) => {
+    const value = typeof amount === "number" ? amount : Number(amount);
+    if (!Number.isFinite(value)) return "—";
+    try {
+      return new Intl.NumberFormat(locale, { style: "currency", currency: currency || "CAD" }).format(value);
+    } catch {
+      return `${value} ${currency || ""}`.trim();
+    }
+  };
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto pb-16">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200/80 dark:border-white/[0.08]">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-blue-50 dark:bg-[#111D3D] text-[#0076FF] dark:text-[#00D4FF]">
-              <ShieldCheck size={22} />
-            </div>
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-[#F4F7FB]">
-                {isFrench ? "Contrats d'Entreprise & Onboarding Juridique" : "Enterprise Agreements & Legal Onboarding"}
-              </h1>
-              <p className="mt-0.5 text-xs text-slate-500 dark:text-[#94A3B8]">
-                {isFrench
-                  ? "Parcours contractuel 4 étapes certifié : identité corporative, bordereau commercial, revue légale et signature sécurisée."
-                  : "4-step contractual onboarding journey: legal identity, commercial order, legal review, and secure execution."}
-              </p>
-            </div>
+    <div className="mx-auto w-full min-w-0 max-w-6xl space-y-5 pb-16">
+      <div className="flex flex-col gap-3 border-b border-slate-200/80 pb-4 sm:flex-row sm:items-center sm:justify-between dark:border-white/[0.08]">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <div className="rounded-xl bg-blue-50 p-2 text-[#0076FF] dark:bg-[#111D3D] dark:text-[#00D4FF]">
+            <ShieldCheck size={20} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="truncate text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl dark:text-[#F4F7FB]">
+              {copy.pageTitle}
+            </h1>
+            <p className="mt-0.5 text-xs text-slate-600 dark:text-[#C5D0E0]">{copy.pageSubtitle}</p>
           </div>
         </div>
-
-        <div className="flex items-center gap-2.5">
-          <button
-            onClick={() => void loadContractsAndWizard()}
-            disabled={loading}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-white/[0.08] hover:bg-slate-100 dark:hover:bg-white/[0.04] text-xs font-semibold text-slate-700 dark:text-[#F4F7FB] transition-colors"
-          >
-            <RefreshCw size={14} className={loading ? "animate-spin text-[#0076FF]" : ""} />
-            <span>{isFrench ? "Actualiser" : "Refresh"}</span>
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => void loadContractsAndWizard()}
+          disabled={loading}
+          className="inline-flex h-9 items-center gap-1.5 self-start rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-800 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0076FF] disabled:opacity-60 dark:border-white/10 dark:text-[#F4F7FB] dark:hover:bg-white/[0.04]"
+        >
+          <RefreshCw size={14} className={loading ? "animate-spin text-[#0076FF]" : ""} />
+          <span>{copy.refresh}</span>
+        </button>
       </div>
 
       {/* Main Tab Switcher */}
@@ -404,7 +424,7 @@ export function ContractsView() {
               : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
           }`}
         >
-          {isFrench ? "Parcours d'Onboarding Contractuel (4 Étapes)" : "Contractual Onboarding (4 Steps)"}
+          {copy.tabOnboarding}
         </button>
         <button
           onClick={() => setActiveMainTab("archive")}
@@ -414,18 +434,18 @@ export function ContractsView() {
               : "text-slate-600 dark:text-slate-400 hover:text-slate-900"
           }`}
         >
-          {isFrench ? "Mes Contrats & Registre d'Achèvement" : "Executed Agreements & Archive"}
+          {copy.tabArchive}
         </button>
       </div>
 
-      {/* Alerts */}
+      {loadError && <RequestFailure error={loadError} retry={() => { void loadContractsAndWizard(); }} />}
       {alertError && (
         <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 flex items-center justify-between text-xs text-amber-800 dark:text-amber-300">
           <div className="flex items-center gap-2.5">
             <AlertCircle size={16} className="text-amber-600 shrink-0" />
             <span>{alertError}</span>
           </div>
-          <button onClick={() => setAlertError(null)}>
+          <button type="button" onClick={() => setAlertError(null)} aria-label={copy.dismiss}>
             <X size={14} />
           </button>
         </div>
@@ -437,7 +457,7 @@ export function ContractsView() {
             <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
             <span>{alertSuccess}</span>
           </div>
-          <button onClick={() => setAlertSuccess(null)}>
+          <button type="button" onClick={() => setAlertSuccess(null)} aria-label={copy.dismiss}>
             <X size={14} />
           </button>
         </div>
@@ -447,47 +467,26 @@ export function ContractsView() {
       {activeMainTab === "wizard" && (
         <div className="space-y-6">
           {/* Progress Indicator */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {[
-              { step: 1, label: isFrench ? "1. Profil Juridique" : "1. Business Info" },
-              { step: 2, label: isFrench ? "2. Bordereau Commercial" : "2. Commercial Order" },
-              { step: 3, label: isFrench ? "3. Revue des Accords" : "3. Review Agreements" },
-              { step: 4, label: isFrench ? "4. Signature Sécurisée" : "4. Verify & Sign" },
-            ].map((s) => {
-              const isDone = s.step < currentWizardStep;
-              const isCurr = s.step === currentWizardStep;
-              return (
-                <button
-                  key={s.step}
-                  onClick={() => setCurrentWizardStep(s.step as any)}
-                  className={`p-3 rounded-2xl text-left border transition-all ${
-                    isCurr
-                      ? "bg-blue-50/70 dark:bg-[#111D3D] border-[#0076FF] text-[#0076FF]"
-                      : isDone
-                      ? "bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800 text-emerald-700"
-                      : "bg-slate-50 dark:bg-white/[0.03] border-slate-200/80 dark:border-white/[0.08] text-slate-500"
-                  }`}
-                >
-                  <div className="text-[10px] font-bold uppercase tracking-wider">
-                    {isDone ? "✓ Terminé" : isCurr ? "En cours" : "À venir"}
-                  </div>
-                  <div className="text-xs font-extrabold mt-0.5">{s.label}</div>
-                </button>
-              );
-            })}
-          </div>
+          <CompactStepper
+            label={copy.stepperLabel}
+            onSelect={(id) => setCurrentWizardStep(Number(id) as 1 | 2 | 3 | 4)}
+            steps={[
+              { id: "1", label: copy.stepLegal, state: stepState(1), stateLabel: stepStateText(stepState(1)) },
+              { id: "2", label: copy.stepOrder, state: stepState(2), stateLabel: stepStateText(stepState(2)) },
+              { id: "3", label: copy.stepReview, state: stepState(3), stateLabel: stepStateText(stepState(3)) },
+              { id: "4", label: copy.stepSign, state: stepState(4), stateLabel: stepStateText(stepState(4)) },
+            ]}
+          />
 
           {/* STEP 1: BUSINESS INFORMATION */}
           {currentWizardStep === 1 && (
             <div className="p-6 rounded-3xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-sm space-y-6">
               <div>
                 <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
-                  {isFrench ? "Étape 1 : Identité Corporative & Représentant Légal" : "Step 1: Legal Entity & Signatory"}
+                  {copy.step1Title}
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {isFrench
-                    ? "Veuillez renseigner les coordonnées officielles exactes qui figureront sur vos contrats certifiés (Loi 25 et LCCJTI)."
-                    : "Enter your official company details to be interpolated into your certified legal agreements."}
+                <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300">
+                  {copy.step1Description}
                 </p>
               </div>
 
@@ -495,7 +494,7 @@ export function ContractsView() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      {isFrench ? "Dénomination légale complète *" : "Full Legal Entity Name *"}
+                      {copy.legalName} *
                     </label>
                     <input
                       type="text"
@@ -508,7 +507,7 @@ export function ContractsView() {
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      {isFrench ? "Nom commercial / Nom d'usage (si différent)" : "Trade Name (optional)"}
+                      {copy.tradeName}
                     </label>
                     <input
                       type="text"
@@ -523,7 +522,7 @@ export function ContractsView() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      {isFrench ? "Pays d'immatriculation *" : "Country *"}
+                      {copy.country} *
                     </label>
                     <input
                       type="text"
@@ -535,7 +534,7 @@ export function ContractsView() {
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      {isFrench ? "Province / État / Région *" : "Province / State *"}
+                      {copy.province} *
                     </label>
                     <input
                       type="text"
@@ -549,10 +548,8 @@ export function ContractsView() {
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                       {legalProfile.country?.toLowerCase() === "canada" &&
                       legalProfile.province_state?.toLowerCase().includes("qu")
-                        ? "NEQ (10 chiffres) *"
-                        : isFrench
-                        ? "N° d'enregistrement / Registre"
-                        : "Registration / State Number"}
+                        ? `${copy.neq} *`
+                        : copy.registration}
                     </label>
                     <input
                       type="text"
@@ -567,7 +564,7 @@ export function ContractsView() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="sm:col-span-2">
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      {isFrench ? "Adresse du siège légal *" : "Registered Street Address *"}
+                      {copy.address} *
                     </label>
                     <input
                       type="text"
@@ -580,7 +577,7 @@ export function ContractsView() {
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      {isFrench ? "Ville *" : "City *"}
+                      {copy.city} *
                     </label>
                     <input
                       type="text"
@@ -596,7 +593,7 @@ export function ContractsView() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      {isFrench ? "Code Postal *" : "Postal Code *"}
+                      {copy.postalCode} *
                     </label>
                     <input
                       type="text"
@@ -609,7 +606,7 @@ export function ContractsView() {
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      {isFrench ? "Téléphone professionnel *" : "Phone *"}
+                      {copy.phone} *
                     </label>
                     <input
                       type="text"
@@ -622,7 +619,7 @@ export function ContractsView() {
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      {isFrench ? "Courriel de facturation *" : "Billing Email *"}
+                      {copy.billingEmail} *
                     </label>
                     <input
                       type="email"
@@ -637,12 +634,12 @@ export function ContractsView() {
 
                 <div className="pt-4 border-t border-slate-100 dark:border-white/[0.06]">
                   <h4 className="text-xs font-black uppercase text-slate-500 mb-3">
-                    {isFrench ? "Signataire & Représentant Autorisé" : "Authorized Signatory"}
+                    {copy.signatorySection}
                   </h4>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                        {isFrench ? "Prénom *" : "First Name *"}
+                        {copy.firstName} *
                       </label>
                       <input
                         type="text"
@@ -656,7 +653,7 @@ export function ContractsView() {
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                        {isFrench ? "Nom de famille *" : "Last Name *"}
+                        {copy.lastName} *
                       </label>
                       <input
                         type="text"
@@ -670,7 +667,7 @@ export function ContractsView() {
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                        {isFrench ? "Courriel professionnel *" : "Professional Email *"}
+                        {copy.professionalEmail} *
                       </label>
                       <input
                         type="email"
@@ -687,7 +684,7 @@ export function ContractsView() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                        {isFrench ? "Fonction / Titre *" : "Job Title *"}
+                        {copy.jobTitle} *
                       </label>
                       <input
                         type="text"
@@ -701,7 +698,7 @@ export function ContractsView() {
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                        {isFrench ? "Qualité d'engagement légal *" : "Legal Capacity *"}
+                        {copy.legalCapacity} *
                       </label>
                       <select
                         value={legalProfile.authorized_representative_capacity || "Owner"}
@@ -710,12 +707,12 @@ export function ContractsView() {
                         }
                         className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-white/[0.02] text-xs font-semibold text-slate-900 dark:text-white"
                       >
-                        <option value="Owner">Owner / Propriétaire</option>
-                        <option value="President">President / Président</option>
-                        <option value="CEO">CEO / Directeur Général</option>
-                        <option value="Authorized Director">Authorized Director / Administrateur</option>
-                        <option value="Authorized Officer">Authorized Officer / Dirigeant</option>
-                        <option value="Authorized Representative">Authorized Representative / Mandataire</option>
+                        <option value="Owner">{copy.capacityOwner}</option>
+                        <option value="President">{copy.capacityPresident}</option>
+                        <option value="CEO">{copy.capacityCeo}</option>
+                        <option value="Authorized Director">{copy.capacityDirector}</option>
+                        <option value="Authorized Officer">{copy.capacityOfficer}</option>
+                        <option value="Authorized Representative">{copy.capacityRepresentative}</option>
                       </select>
                     </div>
                   </div>
@@ -733,11 +730,7 @@ export function ContractsView() {
                         }
                         className="mt-0.5 rounded text-[#0076FF]"
                       />
-                      <span>
-                        {isFrench
-                          ? "J'atteste expressément disposer de l'autorité et du pouvoir d'engagement légal pour représenter et lier l'entreprise dans le cadre des accords commerciaux Avenqo."
-                          : "I expressly declare that I possess the legal authority and binding power to represent the company in Avenqo enterprise agreements."}
-                      </span>
+                      <span>{copy.authorityAttestation}</span>
                     </label>
                   </div>
                 </div>
@@ -748,11 +741,7 @@ export function ContractsView() {
                     disabled={profileSaving}
                     className="px-6 py-2.5 rounded-xl bg-[#0076FF] hover:bg-blue-600 text-white font-bold text-xs shadow-md transition-all"
                   >
-                    {profileSaving
-                      ? "Enregistrement..."
-                      : isFrench
-                      ? "Enregistrer & Passer à l'Étape 2 →"
-                      : "Save & Proceed to Step 2 →"}
+                    {profileSaving ? copy.saving : copy.saveProfile}
                   </button>
                 </div>
               </form>
@@ -765,97 +754,78 @@ export function ContractsView() {
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
-                    {isFrench ? "Étape 2 : Bordereau de Commande Commerciale Dynamique" : "Step 2: Commercial Order Schedule"}
+                    {copy.step2Title}
                   </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    {isFrench
-                      ? "Réconciliation stricte entre votre forfait souscrit, les modules activés et la tarification Stripe."
-                      : "Strict reconciliation between plan, active modules, and configured Stripe price IDs."}
-                  </p>
+                  <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300">{copy.step2Description}</p>
                 </div>
-                <div>
-                  {commercialSchedule.is_blocked ? (
-                    <span className="px-3 py-1 rounded-full bg-red-100 text-red-800 text-xs font-bold flex items-center gap-1.5">
-                      <AlertTriangle size={14} /> COMMERCIAL_CONFIG_MISMATCH
-                    </span>
-                  ) : (
-                    <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center gap-1.5">
-                      <CheckCircle2 size={14} /> CONCORDANCE VÉRIFIÉE
-                    </span>
-                  )}
-                </div>
+                <StatusBadge tone={commercialSchedule.is_blocked ? "warning" : "success"}>
+                  {commercialSchedule.is_blocked ? copy.commercialBlocked : copy.commercialVerified}
+                </StatusBadge>
               </div>
 
               {commercialSchedule.is_blocked && (
-                <div className="p-4 rounded-2xl bg-red-50 dark:bg-red-950/30 border border-red-300 dark:border-red-800/40 text-red-900 dark:text-red-200 text-xs space-y-1">
-                  <div className="font-bold flex items-center gap-1.5">
-                    <AlertTriangle size={16} /> Signature bloquée (Divergence commerciale détectée) :
-                  </div>
-                  <ul className="list-disc pl-5 space-y-0.5">
-                    {commercialSchedule.mismatches?.map((m: string, i: number) => (
-                      <li key={i}>{m}</li>
-                    ))}
-                  </ul>
+                <div role="alert" className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-950 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-50">
+                  <p className="font-semibold">{copy.mismatchTitle}. {copy.mismatchSummary}</p>
+                  {Array.isArray(commercialSchedule.mismatches) && commercialSchedule.mismatches.length > 0 && (
+                    <ul className="mt-2 list-disc space-y-0.5 ps-5">
+                      {commercialSchedule.mismatches.map((item: string, index: number) => (
+                        <li key={index}>{item}</li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.06]">
-                  <span className="text-xs text-slate-500">Forfait Souscrit</span>
-                  <div className="text-lg font-black text-slate-900 dark:text-white mt-0.5 uppercase">
-                    {commercialSchedule.plan_name}
-                  </div>
-                  <div className="text-xs text-slate-400 mt-1">
-                    {commercialSchedule.monthly_price} {commercialSchedule.currency} / mois
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-xl border border-slate-200/70 p-3 dark:border-white/10">
+                  <span className="text-xs text-slate-600 dark:text-slate-300">{copy.planLabel}</span>
+                  <div className="mt-0.5 text-base font-bold text-slate-900 dark:text-white">{commercialSchedule.plan_name}</div>
+                  <div className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                    {money(commercialSchedule.monthly_price, commercialSchedule.currency || "CAD")} {copy.perMonth}
                   </div>
                 </div>
-                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.06]">
-                  <span className="text-xs text-slate-500">Plafond de Modules</span>
-                  <div className="text-lg font-black text-slate-900 dark:text-white mt-0.5">
-                    {commercialSchedule.selected_modules?.length || 0} / {commercialSchedule.max_selectable_modules || "∞"}
+                <div className="rounded-xl border border-slate-200/70 p-3 dark:border-white/10">
+                  <span className="text-xs text-slate-600 dark:text-slate-300">{copy.moduleCap}</span>
+                  <div className="mt-0.5 text-base font-bold text-slate-900 dark:text-white">
+                    {commercialSchedule.selected_modules?.length || 0} / {commercialSchedule.max_selectable_modules || "—"}
                   </div>
-                  <div className="text-xs text-slate-400 mt-1">
-                    {commercialSchedule.selected_modules?.join(", ") || "Accès socle"}
+                  <div className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                    {commercialSchedule.selected_modules?.join(", ") || copy.baseAccess}
                   </div>
                 </div>
-                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.06]">
-                  <span className="text-xs text-slate-500">Crédits IA Mensuels</span>
-                  <div className="text-lg font-black text-slate-900 dark:text-white mt-0.5">
-                    {commercialSchedule.included_ai_credits?.toLocaleString() || "Illimité"}
+                <div className="rounded-xl border border-slate-200/70 p-3 dark:border-white/10">
+                  <span className="text-xs text-slate-600 dark:text-slate-300">{copy.creditsLabel}</span>
+                  <div className="mt-0.5 text-base font-bold text-slate-900 dark:text-white">
+                    {typeof commercialSchedule.included_ai_credits === "number"
+                      ? commercialSchedule.included_ai_credits.toLocaleString(locale)
+                      : copy.unlimited}
                   </div>
-                  <div className="text-xs text-slate-400 mt-1">Rechargements optionnels</div>
+                  <div className="mt-1 text-xs text-slate-600 dark:text-slate-300">{copy.optionalTopups}</div>
                 </div>
-                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-slate-200/60 dark:border-white/[0.06]">
-                  <span className="text-xs text-slate-500">Cycle & Résiliation</span>
-                  <div className="text-lg font-black text-slate-900 dark:text-white mt-0.5">Libre</div>
-                  <div className="text-xs text-slate-400 mt-1">Sans pénalité à tout moment</div>
+                <div className="rounded-xl border border-slate-200/70 p-3 dark:border-white/10">
+                  <span className="text-xs text-slate-600 dark:text-slate-300">{copy.cycleLabel}</span>
+                  <div className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-white">{copy.freeCancellation}</div>
                 </div>
               </div>
 
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/[0.03] text-xs text-slate-600 dark:text-slate-300 space-y-1">
-                <div>
-                  <b>Conditions fiscales :</b> {commercialSchedule.applicable_taxes}
-                </div>
-                <div>
-                  <b>Renouvellement :</b> {commercialSchedule.renewal_terms}
-                </div>
+              <div className="space-y-1 rounded-xl bg-slate-50 p-3 text-xs text-slate-700 dark:bg-white/[0.03] dark:text-slate-200">
+                <div><span className="font-semibold">{copy.taxLabel} : </span>{commercialSchedule.applicable_taxes}</div>
+                <div><span className="font-semibold">{copy.renewalLabel} : </span>{commercialSchedule.renewal_terms}</div>
               </div>
 
-              <div className="flex justify-between items-center pt-2">
-                <button
-                  onClick={() => setCurrentWizardStep(1)}
-                  className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50"
-                >
-                  ← {isFrench ? "Modifier Profil Juridique" : "Edit Business Info"}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                <button type="button" onClick={() => setCurrentWizardStep(1)} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:text-slate-200">
+                  {copy.editProfile}
                 </button>
                 <button
+                  type="button"
                   disabled={commercialSchedule.is_blocked}
                   onClick={() => setCurrentWizardStep(3)}
-                  className={`px-6 py-2.5 rounded-xl text-white font-bold text-xs shadow-md transition-all ${
-                    commercialSchedule.is_blocked ? "bg-slate-400 cursor-not-allowed" : "bg-[#0076FF] hover:bg-blue-600"
+                  className={`rounded-xl px-4 py-2 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0076FF] ${
+                    commercialSchedule.is_blocked ? "cursor-not-allowed bg-slate-400" : "bg-[#0076FF] hover:bg-[#158bff]"
                   }`}
                 >
-                  {isFrench ? "Examiner les Contrats (Étape 3) →" : "Review Agreements (Step 3) →"}
+                  {copy.reviewAgreements}
                 </button>
               </div>
             </div>
@@ -866,92 +836,58 @@ export function ContractsView() {
             <div className="p-6 rounded-3xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-sm space-y-6">
               <div>
                 <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
-                  {currentWizardStep === 3
-                    ? isFrench
-                      ? "Étape 3 : Revue Exhaustive des Accords Contractuels"
-                      : "Step 3: Comprehensive Agreements Review"
-                    : isFrench
-                    ? "Étape 4 : Vérification, Défi Anti-Rejeu & Signature"
-                    : "Step 4: Verify Identity & Sign"}
+                  {currentWizardStep === 3 ? copy.step3Title : copy.step4Title}
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {isFrench
-                    ? "Tous les documents ci-dessous intègrent votre profil juridique vérifié et les barèmes officiels."
-                    : "The agreements below incorporate your verified corporate identity and official order schedule."}
+                <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300">
+                  {currentWizardStep === 3 ? copy.step3Description : copy.step4Description}
                 </p>
               </div>
-
-              {/* Notice Bac à sable */}
-              <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-300 dark:border-amber-800/40 text-amber-900 dark:text-amber-300 text-xs leading-relaxed flex items-start gap-3">
-                <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-bold">
-                    {isFrench ? "Environnement Bac à Sable (Sandbox) :" : "Sandbox Environment Notice:"}
-                  </span>
-                  <p className="mt-0.5">
-                    {isFrench
-                      ? "PMC Solutions AI est actuellement en cours d'incorporation au Québec, Canada. Vos signatures apposées constituent une validation pilote d'entreprise dans l'environnement bac à sable. La contresignature finale sera effectuée dès publication du certificat officiel d'incorporation."
-                      : "PMC Solutions AI is currently in the process of incorporation in Quebec, Canada. Contracts signed in this environment are sandbox-verified and await official corporate countersignature."}
-                  </p>
-                </div>
-              </div>
+              <details className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-200">
+                <summary className="cursor-pointer font-semibold">{copy.incorporationSummary}</summary>
+                <p className="mt-2">{copy.incorporationBody}</p>
+                <p className="mt-2">{copy.testDetailsBody}</p>
+              </details>
 
               {/* Grid of Contracts to Review/Sign */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {contracts.length === 0 && (
+                <p role="status" className="text-sm text-slate-600 dark:text-slate-300">{loading ? copy.refresh : copy.noContracts}</p>
+              )}
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))]">
                 {contracts.map((item) => {
-                  const isSigned = item.status === "CUSTOMER_SIGNED" || item.status === "SIGNED" || item.status === "FULLY_EXECUTED";
+                  const optional = item.contract_type === "PRIVATE_LICENSE" && !licenseRequired;
+                  const modified = formatWhen(item.updated_at);
+                  const signedOn = formatWhen(item.signed_at);
                   return (
-                    <div
-                      key={item.id}
-                      className="p-5 rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-slate-50/50 dark:bg-white/[0.02] flex flex-col justify-between gap-4"
-                    >
-                      <div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-200/60 dark:bg-white/[0.06] text-slate-600 dark:text-slate-300 font-bold">
-                            {item.contract_type} ({item.version})
-                          </span>
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              isSigned
-                                ? "bg-emerald-100 text-emerald-800"
-                                : "bg-amber-100 text-amber-800"
-                            }`}
-                          >
-                            {item.status}
-                          </span>
-                        </div>
-                        <h4 className="text-sm font-bold text-slate-900 dark:text-white mt-2">{item.title}</h4>
-                        {item.contract_type === "PRIVATE_LICENSE" && (
-                          <p className="mt-1 text-[11px] text-slate-500">
-                            {isFrench ? "Optionnel. Une entreprise Professional n'a pas à signer la licence de serveur privé." : "Optional. A Professional company does not have to sign the private-server license."}
-                          </p>
-                        )}
-                        {item.signature_mode === "SANDBOX_PILOT" && (
-                          <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
-                            {isFrench ? "Signature pilote. Pas une contresignature et pas une preuve d'incorporation." : "Pilot signature. Not a countersignature and not proof of incorporation."}
-                          </p>
-                        )}
+                    <AvenqoCard key={item.id} className="flex min-w-0 flex-col gap-3 p-4">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <StatusBadge>{typeText(item.contract_type)}</StatusBadge>
+                        <span className="text-[10px] text-slate-500">{copy.versionLabel} {item.version}</span>
+                        <StatusBadge tone={item.signature_mode === "SANDBOX_PILOT" ? "gold" : documentSigned(item) ? "success" : "warning"}>
+                          {statusText(item)}
+                        </StatusBadge>
+                        {showTestMark(item) && <StatusBadge tone="gold">{copy.testIndicator}</StatusBadge>}
+                        {optional && <StatusBadge tone="info">{copy.optionalSaas}</StatusBadge>}
                       </div>
-
-                      <div className="flex items-center gap-2 pt-2 border-t border-slate-200/60 dark:border-white/[0.06]">
-                        <button
-                          onClick={() => handleOpenReview(item)}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/[0.1] text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 shadow-xs"
-                        >
-                          <Eye size={13} />
-                          {isFrench ? "Consulter & Signer" : "Review & Sign"}
+                      <h4 className="text-sm font-bold text-slate-900 dark:text-white">{item.title}</h4>
+                      {modified && <p className="text-[11px] text-slate-600 dark:text-slate-300">{copy.lastModified} : {modified}</p>}
+                      {signedOn && <p className="text-[11px] text-slate-600 dark:text-slate-300">{copy.signedOn} : {signedOn}</p>}
+                      {item.signature_mode === "SANDBOX_PILOT" && (
+                        <p className="text-[11px] text-amber-800 dark:text-amber-200">{copy.statusPilot}</p>
+                      )}
+                      <div className="mt-auto flex flex-wrap gap-2 border-t border-slate-200/70 pt-3 dark:border-white/10">
+                        <button type="button" onClick={() => handleOpenReview(item)} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0076FF] dark:border-white/10 dark:text-slate-100 dark:hover:bg-white/5">
+                          <Eye size={13} /> {copy.consult}
                         </button>
-                        <a
-                          href={`/api/v1/contracts/${item.contract_type}/download`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/[0.1] text-slate-600 hover:text-[#0076FF]"
-                          title={isFrench ? "Télécharger le PDF" : "Download PDF"}
-                        >
-                          <Download size={15} />
+                        <a href={`/api/v1/contracts/${item.contract_type}/download`} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-800 hover:bg-slate-50 dark:border-white/10 dark:text-slate-100">
+                          <Download size={13} /> {copy.download}
                         </a>
+                        {canSignDocument(item) && currentWizardStep === 4 && (
+                          <button type="button" onClick={() => handleOpenReview(item)} className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#0076FF] px-3 text-xs font-semibold text-white hover:bg-[#158bff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00D4FF]">
+                            {copy.sign}
+                          </button>
+                        )}
                       </div>
-                    </div>
+                    </AvenqoCard>
                   );
                 })}
               </div>
@@ -963,15 +899,15 @@ export function ContractsView() {
       {/* ARCHIVE VIEW */}
       {activeMainTab === "archive" && (
         <div className="space-y-4">
-          <div className="rounded-2xl border border-slate-200/80 dark:border-white/[0.08] overflow-hidden bg-white dark:bg-[#0B132B]">
+          <div className="overflow-x-auto rounded-2xl border border-slate-200/80 bg-white dark:border-white/[0.08] dark:bg-[#0B132B]">
             <table className="w-full text-xs text-left">
               <thead className="bg-slate-50 dark:bg-white/[0.03] text-slate-500 border-b border-slate-200/80 dark:border-white/[0.08]">
                 <tr>
-                  <th className="p-3 font-bold">{isFrench ? "Contrat" : "Agreement"}</th>
-                  <th className="p-3 font-bold">{isFrench ? "Statut" : "Status"}</th>
-                  <th className="p-3 font-bold">{isFrench ? "Signataire" : "Signatory"}</th>
-                  <th className="p-3 font-bold">{isFrench ? "Empreinte SHA-256" : "SHA-256"}</th>
-                  <th className="p-3 font-bold">{isFrench ? "Téléchargement" : "Download"}</th>
+                  <th className="p-3 font-bold">{copy.archiveAgreement}</th>
+                  <th className="p-3 font-bold">{copy.archiveStatus}</th>
+                  <th className="p-3 font-bold">{copy.archiveSignatory}</th>
+                  <th className="p-3 font-bold">{copy.archiveHash}</th>
+                  <th className="p-3 font-bold">{copy.archiveDownload}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
@@ -982,21 +918,13 @@ export function ContractsView() {
                       <div className="text-[10px] text-slate-400 font-mono">{c.contract_type}</div>
                     </td>
                     <td className="p-3">
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          c.status === "FULLY_EXECUTED"
-                            ? "bg-emerald-100 text-emerald-800"
-                            : c.status === "CUSTOMER_SIGNED" || c.status === "SIGNED"
-                            ? "bg-blue-100 text-blue-800"
-                            : "bg-amber-100 text-amber-800"
-                        }`}
-                      >
-                        {c.status}
-                      </span>
+                      <StatusBadge tone={c.signature_mode === "SANDBOX_PILOT" ? "gold" : documentSigned(c) ? "success" : "warning"}>
+                        {statusText(c)}
+                      </StatusBadge>
                     </td>
                     <td className="p-3 text-slate-600 dark:text-slate-300">
-                      {c.signatory_name || "En attente"}
-                      {c.signed_at && <div className="text-[10px] text-slate-400">{c.signed_at.slice(0, 10)}</div>}
+                      {c.signatory_name || copy.signatoryPending}
+                      {formatWhen(c.signed_at) && <div className="text-[10px] text-slate-500">{formatWhen(c.signed_at)}</div>}
                     </td>
                     <td className="p-3 font-mono text-[10px] text-slate-500">
                       {c.sha256_hash ? `${c.sha256_hash.slice(0, 16)}...` : "—"}
@@ -1032,13 +960,27 @@ export function ContractsView() {
                   {selectedContract.title}
                 </h3>
               </div>
-              <button onClick={() => setSelectedContract(null)} className="text-slate-400 hover:text-slate-600">
+              <button type="button" onClick={() => setSelectedContract(null)} aria-label={copy.close} className="rounded-lg p-1 text-slate-500 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0076FF]">
                 <X size={18} />
               </button>
             </div>
 
-            <div className="p-5 overflow-y-auto flex-1 font-mono text-xs leading-relaxed text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-[#060A17] whitespace-pre-wrap select-text">
-              {selectedContract.content_text}
+            <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-5 text-sm leading-relaxed text-slate-800 dark:bg-[#060A17] dark:text-slate-100">
+              {!locale.toLowerCase().startsWith((selectedContract.language || "fr").toLowerCase().slice(0, 2)) && (
+                <p className="rounded-lg border border-[#C4A35A]/40 bg-[#C4A35A]/10 px-3 py-2 text-xs text-[#6E5210] dark:text-[#F3DE9A]">
+                  {fillContractCopy(copy.governingNotice, { language: selectedContract.language || "fr" })}
+                </p>
+              )}
+              {previewPdf && (
+                <div>
+                  <h4 className="mb-2 text-xs font-semibold">{copy.pdfPreview}</h4>
+                  <object data={`/api/v1/contracts/${selectedContract.contract_type}/download`} type="application/pdf" className="h-80 w-full rounded-xl border border-slate-200 bg-white dark:border-white/10" aria-label={copy.pdfPreview}>
+                    <a href={`/api/v1/contracts/${selectedContract.contract_type}/download`}>{copy.downloadDraft}</a>
+                  </object>
+                </div>
+              )}
+              <h4 className="text-xs font-semibold">{copy.readableHeading}</h4>
+              <div className="whitespace-pre-wrap select-text">{selectedContract.content_text}</div>
             </div>
 
             <div className="p-5 border-t border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#0B132B] space-y-4">
@@ -1046,22 +988,22 @@ export function ContractsView() {
               {!challengeId ? (
                 <div className="p-3.5 rounded-xl bg-blue-50 dark:bg-[#111D3D] border border-blue-200 dark:border-blue-900 flex items-center justify-between">
                   <div className="text-xs text-blue-900 dark:text-blue-200">
-                    <b>Émission du jeton de sécurité :</b> Un code de signature à usage unique est requis.
+                    {copy.challengePrompt}
                   </div>
                   <button
                     onClick={handleRequestChallenge}
                     disabled={challengeLoading}
                     className="px-3 py-1.5 rounded-xl bg-[#0076FF] text-white text-xs font-bold"
                   >
-                    {challengeLoading ? "Génération..." : "Obtenir mon code"}
+                    {challengeLoading ? copy.generatingCode : copy.requestCode}
                   </button>
                 </div>
               ) : (
                 <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 text-xs text-emerald-900 dark:text-emerald-200 flex items-center justify-between">
                   <div>
-                    <b>Code placé dans la boîte Sandbox de l'entreprise. Aucun courriel n'a quitté Sandbox. Ouvrez Équipe pour le lire, puis saisissez-le ici.</b>
+                    {copy.challengeDelivered}
                   </div>
-                  <span className="text-[10px] text-slate-400">Usage unique • 15 min</span>
+                  <span className="text-[10px] text-slate-500">{copy.challengeTtl}</span>
                 </div>
               )}
 
@@ -1069,7 +1011,7 @@ export function ContractsView() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      {isFrench ? "Titre / Fonction légale *" : "Job Title *"}
+                      {copy.signatoryTitle} *
                     </label>
                     <input
                       type="text"
@@ -1081,7 +1023,7 @@ export function ContractsView() {
                   </div>
                   <div>
                     <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      {isFrench ? "Code reçu par email à 8 chiffres *" : "8-digit email verification code *"}
+                      {copy.verificationCode} *
                     </label>
                     <input
                       type="text"
@@ -1105,9 +1047,7 @@ export function ContractsView() {
                       className="mt-0.5 rounded text-[#0076FF]"
                     />
                     <span>
-                      {isFrench
-                        ? "Je confirme expressément avoir l'autorité légale et le pouvoir d'engagement pour lier l'entreprise."
-                        : "I expressly confirm having the legal authority and binding power to commit the company."}
+                      {copy.authorityConsent}
                     </span>
                   </label>
                   <label className="flex items-start gap-2 cursor-pointer text-xs font-medium text-slate-700 dark:text-slate-300">
@@ -1118,9 +1058,7 @@ export function ContractsView() {
                       className="mt-0.5 rounded text-[#0076FF]"
                     />
                     <span>
-                      {isFrench
-                        ? "J'accepte expressément les termes légaux et consens à l'utilisation de la signature électronique."
-                        : "I expressly agree to the terms and consent to the use of electronic records and signatures."}
+                      {copy.termsConsent}
                     </span>
                   </label>
                 </div>
@@ -1132,14 +1070,14 @@ export function ContractsView() {
                     rel="noreferrer"
                     className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800"
                   >
-                    <Download size={13} /> {isFrench ? "Télécharger le brouillon PDF" : "Download Draft PDF"}
+                    <Download size={13} /> {copy.downloadDraft}
                   </a>
                   <button
                     type="submit"
-                    disabled={signSubmitting || !declaredAuthority || !consentCheckbox || !challengeId}
+                    disabled={signSubmitting || !declaredAuthority || !consentCheckbox || !challengeId || commercialBlocked}
                     className="px-6 py-2 rounded-xl bg-[#0076FF] hover:bg-blue-600 disabled:bg-slate-300 text-white font-bold text-xs shadow-md transition-all"
                   >
-                    {signSubmitting ? "Signature en cours..." : isFrench ? "Signer Numériquement (1-Clic)" : "Sign Digitally (1-Click)"}
+                    {signSubmitting ? copy.signing : copy.signAction}
                   </button>
                 </div>
               </form>

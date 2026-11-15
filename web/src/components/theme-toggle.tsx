@@ -4,10 +4,11 @@ import { useEffect, useState } from "react";
 import { Moon, Sun } from "lucide-react";
 
 import { useLocale } from "@/lib/i18n/locale-context";
+import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
 
 export function ThemeToggle() {
   const { locale } = useLocale();
-  const isEn = locale === "en";
+  const themeWords = getApplicationCatalog(locale).company;
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [mounted, setMounted] = useState(false);
 
@@ -40,13 +41,8 @@ export function ThemeToggle() {
     );
   }
 
-  const ariaLabel = theme === "dark"
-    ? (isEn ? "Switch to light theme" : "Passer au thème clair")
-    : (isEn ? "Switch to dark theme" : "Passer au thème sombre");
-
-  const titleText = theme === "dark"
-    ? (isEn ? "Light theme" : "Thème clair")
-    : (isEn ? "Dark theme" : "Thème sombre");
+  const ariaLabel = `${themeWords.settingsThemeLabel}: ${theme === "dark" ? themeWords.settingsThemeLight : themeWords.settingsThemeDark}`;
+  const titleText = ariaLabel;
 
   return (
     <button
