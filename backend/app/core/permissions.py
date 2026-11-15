@@ -23,6 +23,7 @@ ROLE_PERMISSIONS: dict[UserRole, tuple[str, ...]] = {
         "crm:clients:write",
         "tasks:own",
         "ai:use",
+        "trading:read",
     ),
     UserRole.ADMIN: (
         "users:manage",

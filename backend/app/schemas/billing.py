@@ -135,6 +135,7 @@ class InvoiceResponse(BaseModel):
     issued_at: datetime
     paid_at: datetime | None
     due_at: datetime | None
+    stripe_confirmed: bool | None = None
 
     model_config = {"from_attributes": True}
 

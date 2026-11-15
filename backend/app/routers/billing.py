@@ -68,6 +68,20 @@ router = APIRouter(prefix="/billing", tags=["billing"])
 manage_billing = require_permission("billing:manage")
 
 
+def _stripe_paid_invoice_ids(provider: BillingProvider | None, customer_id: str | None) -> set[str] | None:
+    """Ids Stripe still reports as paid. None means Stripe could not be asked."""
+    if provider is None or not customer_id:
+        return None
+    try:
+        invoices = provider.list_customer_invoices(customer_id, limit=100)
+    except Exception as exc:
+        text = str(exc).lower()
+        if getattr(exc, "code", None) == "resource_missing" or "no such customer" in text or "no such invoice" in text:
+            return set()
+        return None
+    return {str(invoice.get("id")) for invoice in invoices if str(invoice.get("status") or "") == "paid"}
+
+
 def _credit_usage_period_start(period: str, identity: CurrentIdentity, db: Session) -> datetime:
     now = datetime.now(timezone.utc)
     try:
@@ -415,10 +429,17 @@ def invoice_history(
         total = len(items)
 
     bounded_limit = min(max(limit, 1), 200)
+    account = db.scalar(select(BillingAccount).where(BillingAccount.company_id == identity.user.company_id))
+    confirmed_ids = _stripe_paid_invoice_ids(provider, account.stripe_customer_id if account is not None else None)
+    visible = []
+    for invoice in items:
+        payload = InvoiceResponse.model_validate(invoice)
+        confirmed = None if confirmed_ids is None else invoice.stripe_invoice_id in confirmed_ids
+        visible.append(payload.model_copy(update={"stripe_confirmed": confirmed}))
     return InvoiceHistoryResponse(
         environment="test" if (settings.stripe_secret_key or "").startswith("sk_test_") else "live",
         synchronization_status="ready" if synchronized else "unavailable",
-        items=[InvoiceResponse.model_validate(invoice) for invoice in items],
+        items=visible,
         total=total,
         offset=max(offset, 0),
         limit=bounded_limit,

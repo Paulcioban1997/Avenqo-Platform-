@@ -39,6 +39,7 @@ export interface CommandPaletteProps {
   onTriggerAction?: (actionId: string) => void;
   /** Null until the entitlement API answers. Unlisted modules stay hidden. */
   authorizedModuleKeys?: string[] | null;
+  grantedPermissions?: string[] | null;
 }
 
 export function CommandPalette({
@@ -47,6 +48,7 @@ export function CommandPalette({
   t,
   onTriggerAction,
   authorizedModuleKeys = null,
+  grantedPermissions = null,
 }: CommandPaletteProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -54,7 +56,8 @@ export function CommandPalette({
   const [crmResults, setCrmResults] = useState<any[]>([]);
 
   useEffect(() => {
-    if (!query.trim() || query.length < 2) {
+    const canSearchCrm = Boolean(grantedPermissions?.some((permission) => permission === "crm:clients:read" || permission === "crm:appointments:read"));
+    if (!canSearchCrm || !query.trim() || query.length < 2) {
       setCrmResults([]);
       return;
     }
@@ -194,12 +197,13 @@ export function CommandPalette({
     }, 180);
 
     return () => clearTimeout(timer);
-  }, [query, router, onClose]);
+  }, [query, router, onClose, grantedPermissions]);
 
   const items = useMemo(() => {
     const pages = [
       {
         id: "page-dashboard",
+        permissions: ["data:read"],
         title: t.navigation.dashboard,
         group: t.commandPalette.pagesGroup,
         icon: <LayoutDashboard className="w-4 h-4 text-[#0076FF]" />,
@@ -211,6 +215,7 @@ export function CommandPalette({
       {
         id: "page-retail",
         moduleKey: "retail",
+        permissions: ["retail:read"],
         title: t.navigation.retailAi,
         group: t.commandPalette.pagesGroup,
         icon: <ShoppingBag className="w-4 h-4 text-[#00D4FF]" />,
@@ -222,6 +227,7 @@ export function CommandPalette({
       {
         id: "page-crm",
         moduleKey: "crm",
+        permissions: ["crm:clients:read", "crm:appointments:read"],
         title: t.navigation.crmAi,
         group: t.commandPalette.pagesGroup,
         icon: <Network className="w-4 h-4 text-violet-400" />,
@@ -233,6 +239,7 @@ export function CommandPalette({
       {
         id: "page-accounting",
         moduleKey: "accounting",
+        permissions: ["accounting:read"],
         title: t.navigation.accountingAi,
         group: t.commandPalette.pagesGroup,
         icon: <ReceiptText className="w-4 h-4 text-emerald-400" />,
@@ -243,6 +250,7 @@ export function CommandPalette({
       },
       {
         id: "page-integrations",
+        permissions: ["data:manage"],
         title: t.navigation.integrations,
         group: t.commandPalette.pagesGroup,
         icon: <Plug className="w-4 h-4 text-amber-400" />,
@@ -253,6 +261,7 @@ export function CommandPalette({
       },
       {
         id: "page-data",
+        permissions: ["data:read"],
         title: t.navigation.dataHub,
         group: t.commandPalette.pagesGroup,
         icon: <Database className="w-4 h-4 text-cyan-400" />,
@@ -263,6 +272,7 @@ export function CommandPalette({
       },
       {
         id: "page-settings",
+        permissions: ["company:manage"],
         title: t.navigation.settings,
         group: t.commandPalette.pagesGroup,
         icon: <Settings className="w-4 h-4 text-slate-400" />,
@@ -274,6 +284,8 @@ export function CommandPalette({
     ];
 
     const visiblePages = pages.filter((page) => {
+      const required = "permissions" in page ? page.permissions : undefined;
+      if (required && !required.some((permission) => grantedPermissions?.includes(permission))) return false;
       const moduleKey = "moduleKey" in page ? page.moduleKey : undefined;
       if (!moduleKey) return true;
       return authorizedModuleKeys?.includes(moduleKey) ?? false;
@@ -314,7 +326,8 @@ export function CommandPalette({
           onTriggerAction?.("report");
         },
       },
-      {
+      ...(grantedPermissions?.includes("ai:use")
+        ? [{
         id: "action-ask-copilot",
         title: t.commandPalette.actionAskCopilot,
         group: t.commandPalette.actionsGroup,
@@ -323,10 +336,11 @@ export function CommandPalette({
           onClose();
           onTriggerAction?.("open-copilot");
         },
-      },
+      }]
+        : []),
     ];
 
-    const integrations = [
+    const integrations = grantedPermissions?.includes("data:manage") ? [
       {
         id: "int-shopify",
         title: "Shopify (Commerce Sync)",
@@ -347,7 +361,8 @@ export function CommandPalette({
           onClose();
         },
       },
-      {
+      ...(grantedPermissions?.includes("billing:manage")
+        ? [{
         id: "int-stripe",
         title: "Stripe (Subscriptions & Payouts)",
         group: t.commandPalette.integrationsGroup,
@@ -356,8 +371,9 @@ export function CommandPalette({
           router.push("/billing");
           onClose();
         },
-      },
-    ];
+      }]
+        : []),
+    ] : [];
 
     const all = [...visiblePages, ...actions, ...integrations];
 
@@ -369,7 +385,7 @@ export function CommandPalette({
         item.group.toLowerCase().includes(lower)
     );
     return [...crmResults, ...filtered];
-  }, [query, router, onClose, onTriggerAction, t, crmResults, authorizedModuleKeys]);
+  }, [query, router, onClose, onTriggerAction, t, crmResults, authorizedModuleKeys, grantedPermissions]);
 
   useEffect(() => {
     setSelectedIndex(0);

@@ -78,6 +78,7 @@ from backend.app.models.prediction import Prediction
 from backend.app.models.product_reservation import ProductReservation, ReservationStatus
 from backend.app.models.retail_active_source import RetailActiveSource
 from backend.app.models.retail_source_state import RetailSourceState
+from backend.app.models.trading import TradingWatchItem
 from backend.app.models.training_job import TrainingJob
 from backend.app.models.user import User
 from backend.app.models.voice_provisioning import VoiceNumberTariff, VoiceProvisioningOrder, VoiceProvisioningClaim

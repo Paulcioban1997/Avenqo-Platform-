@@ -125,6 +125,7 @@ interface InvoiceItem {
   period_end?: string;
   invoice_pdf?: string | null;
   hosted_invoice_url?: string | null;
+  stripe_confirmed?: boolean | null;
 }
 
 export function BillingView() {
@@ -1190,7 +1191,9 @@ export function BillingView() {
                         ? `${inv.period_start.slice(0, 7)}`
                         : "Courante";
                     const amountStr = `${((inv.total || 0) / 100).toFixed(2)} ${(inv.currency || "CAD").toUpperCase()}`;
-                    const isPaid = (inv.status || "").toLowerCase() === "paid";
+                    const localPaid = (inv.status || "").toLowerCase() === "paid";
+                    const isPaid = inv.stripe_confirmed === true;
+                    const unconfirmed = localPaid && !isPaid;
 
                     return (
                       <tr
@@ -1223,7 +1226,7 @@ export function BillingView() {
                             }`}
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                            {isPaid ? invoiceTranslations.invoicePaid : inv.status === "open" ? invoiceTranslations.invoiceOpen : inv.status}
+                            {isPaid ? invoiceTranslations.invoicePaid : unconfirmed ? (locale.startsWith("fr") ? "Non confirmée par Stripe" : "Not confirmed by Stripe") : inv.status === "open" ? invoiceTranslations.invoiceOpen : inv.status}
                           </span>
                         </td>
                         <td className="py-3.5 px-4 text-right">

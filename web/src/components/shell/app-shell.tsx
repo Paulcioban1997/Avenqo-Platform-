@@ -15,6 +15,7 @@ import {
   MessagesSquare,
   Zap,
   Bot,
+  LineChart,
   Plug,
   Database,
   Settings,
@@ -235,6 +236,7 @@ export function AppShell({ children }: AppShellProps) {
     { href: "/chatbots", label: t.navigation.chatbotsAi, icon: MessagesSquare, moduleKey: "chatbots", permissions: ["ai:use"] },
     { href: "/automations", label: t.navigation.automations, icon: Zap, moduleKey: "workflow", permissions: ["ai:use", "modules:manage"] },
     { href: "/agents", label: t.navigation.agentsAi, icon: Bot, permissions: ["ai:use"] },
+    { href: "/trading", label: "Trading AI", icon: LineChart, moduleKey: "trading", permissions: ["trading:read"] },
   ];
 
   const aiModules = allAiModules.filter(filterByEntitlements);
@@ -749,6 +751,7 @@ export function AppShell({ children }: AppShellProps) {
         isOpen={isCommandPaletteOpen}
         onClose={() => setIsCommandPaletteOpen(false)}
         authorizedModuleKeys={entitlementsStatus === "success" ? activeModuleKeys : null}
+        grantedPermissions={granted ?? null}
         t={t}
         onTriggerAction={(actionId) => {
           if (actionId === "open-copilot" && showCopilot) setIsCopilotOpen(true);
