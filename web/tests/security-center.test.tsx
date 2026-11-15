@@ -26,17 +26,16 @@ it("revokes another session and reloads the authoritative list", async () => {
   expect(screen.getByRole("button", { name: "Générer une clé" })).toBeInTheDocument();
 });
 
-it("unselected modules link to selection rather than the operational module", async () => {
+it("unselected modules do not link to the operational module", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => Response.json({ plan_code: "base", module_limit: 2, active_modules: ["crm", "voice"], modules: [
-    { key: "crm", display_name: "CRM IA", active: true, state: "active" },
-    { key: "voice", display_name: "Voice IA", active: true, state: "active" },
-    { key: "retail", display_name: "Retail IA", active: false, state: "limit_reached" },
+    { key: "crm", display_name: "CRM IA", description: "", category: "sales", availability: "available", active: true, state: "active" },
+    { key: "voice", display_name: "Voice IA", description: "", category: "sales", availability: "available", active: true, state: "active" },
+    { key: "retail", display_name: "Retail IA", description: "", category: "sales", availability: "available", active: false, state: "limit_reached" },
   ] })));
   render(<LocaleProvider><ModulesView /></LocaleProvider>);
-  await screen.findByText("Retail IA");
-  expect(screen.getByRole("link", { name: "Gérer ma sélection" })).toHaveAttribute("href", "/settings");
-  expect(screen.getAllByRole("link", { name: "Ouvrir le module" }).map(a => a.getAttribute("href"))).toEqual(["/crm", "/voice"]);
-  expect(screen.queryByRole("link", { name: "Retail IA" })).not.toBeInTheDocument();
+  await screen.findByText("Retail");
+  expect(screen.getAllByRole("link", { name: "Ouvrir" }).map(a => a.getAttribute("href"))).toEqual(["/crm", "/voice"]);
+  expect(screen.queryByRole("link", { name: "Retail" })).not.toBeInTheDocument();
 });
 
 it("failed billing requests show an error instead of fabricated plans or packs", async () => {
