@@ -841,6 +841,7 @@ def test_dedicated_bound_phone_number_routes_directly_without_dispatcher_nip(db_
         preferred_language="fr",
         business_name="Produits_Ero",
         greeting_message="Bonjour et bienvenue chez Produits_Ero.",
+        call_policy={"ivr_enabled": False},  # Explicit direct-media mode for this legacy routing regression.
         voice_api_key_hash=hashlib.sha256(uuid4().bytes).hexdigest(),
         voice_api_key_last4=uuid4().hex[:4],
     )
