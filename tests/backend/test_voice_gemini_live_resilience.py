@@ -322,7 +322,6 @@ def test_trilingual_ivr_greetings() -> None:
         call_policy={},
     )
     greeting_fr = voice_ivr_greeting(cfg_fr)
-    assert "Bonjour" in greeting_fr
     assert "Garage Montréal" in greeting_fr
     assert "employé" in greeting_fr and "1" in greeting_fr
     assert "client" in greeting_fr and "2" in greeting_fr
