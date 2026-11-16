@@ -469,6 +469,10 @@ def test_unknown_to_verified_staff_full_signed_dtmf_path(signed_telnyx_webhook, 
     from backend.app.models import VoiceCall, VoiceAuthSession, VoiceCallerCredential, VoiceBusinessConfig
     env = signed_telnyx_webhook
     configure_local_public_call(env)
+    # Exercise the older public-to-verified-staff flow with an explicitly disabled IVR.
+    # The universal employee/customer keypad menu is covered by dedicated IVR tests.
+    env.config.call_policy = {"ivr_enabled": False}
+    env.session.commit()
     secret = "907182"
     user = User(company_id=env.company.id, first_name="Staff", last_name="Test", email="staff-inbound@example.com",
         password_hash="test", phone="+15145550123", role=role, is_active=True)
