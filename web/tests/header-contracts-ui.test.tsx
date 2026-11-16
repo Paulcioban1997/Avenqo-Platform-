@@ -36,31 +36,42 @@ describe("header and contracts UI", () => {
     const chrome = report.find((item) => item.name === "workspaceChrome");
     const sources = report.find((item) => item.name === "sourceSelector");
     expect(contracts?.keyCount).toBeGreaterThan(40);
-    expect(contracts?.explicitLocales.sort()).toEqual(["en", "en-GB", "fr", "fr-FR"]);
-    expect(contracts?.missingLocales).toHaveLength(40);
+    expect(contracts?.explicitLocales).toHaveLength(44);
+    expect(contracts?.missingLocales).toHaveLength(0);
     expect(contracts?.catalogBackedKeys.sort()).toEqual(["billingEmail", "close", "firstName", "lastName", "refresh"]);
-    expect(contracts?.missingKeySlots).toBe(40 * (contracts?.fallbackKeyCount ?? 0));
+    expect(contracts?.missingKeySlots).toBe(0);
     expect(chrome?.catalogBackedKeys).toEqual(["retry"]);
-    expect(chrome?.missingLocales).toHaveLength(40);
-    expect(chrome?.missingKeySlots).toBe(40 * (chrome?.fallbackKeyCount ?? 0));
+    expect(chrome?.explicitLocales).toHaveLength(44);
+    expect(chrome?.missingLocales).toHaveLength(0);
+    expect(chrome?.missingKeySlots).toBe(0);
     expect(sources?.explicitLocales).toHaveLength(44);
     expect(sources?.missingKeySlots).toBe(0);
     expect(Object.keys(CONTRACTS_UI_EXPLICIT.fr || {})).toEqual(Object.keys(CONTRACTS_UI_EXPLICIT.en || {}));
 
     const spanish = getContractsUi("es");
     const german = getWorkspaceChrome("de");
-    expect(spanish.explicit).toBe(false);
+    const arabic = getContractsUi("ar");
+    const hebrew = getContractsUi("he");
+    const persian = getContractsUi("fa");
+    const urdu = getContractsUi("ur");
+    expect(spanish.explicit).toBe(true);
     expect(spanish.copy.firstName).toBe(getApplicationCatalog("es").auth.firstName);
     expect(spanish.copy.lastName).toBe(getApplicationCatalog("es").auth.lastName);
     expect(spanish.copy.billingEmail).toBe(getApplicationCatalog("es").auth.billingEmail);
-    expect(spanish.copy.pageTitle).toBe(CONTRACTS_UI_EXPLICIT.en?.pageTitle);
-    expect(spanish.copy.governingNotice).toBe(CONTRACTS_UI_EXPLICIT.en?.governingNotice);
-    expect(spanish.copy.typeNda).toBe(CONTRACTS_UI_EXPLICIT.en?.typeNda);
-    expect(german.explicit).toBe(false);
+    expect(spanish.copy.pageTitle).toBe("Contratos y recorrido legal");
+    expect(spanish.copy.pageTitle).not.toBe(CONTRACTS_UI_EXPLICIT.en.pageTitle);
+    expect(spanish.copy.typeNda).not.toBe(CONTRACTS_UI_EXPLICIT.en.typeNda);
+    expect(german.explicit).toBe(true);
     expect(german.copy.retry).toBe(getApplicationCatalog("de").assistant.retry);
-    expect(german.copy.contracts).toBe(WORKSPACE_CHROME_EXPLICIT.en?.contracts);
+    expect(german.copy.contracts).toBe("Verträge");
     expect(spanish.copy.refresh).toBe(getApplicationCatalog("es").company.employeesRefreshTooltip);
     expect(spanish.copy.close).not.toBe(CONTRACTS_UI_EXPLICIT.fr?.close);
+    for (const rtl of [arabic, hebrew, persian, urdu]) {
+      expect(rtl.explicit).toBe(true);
+      expect(rtl.copy.pageTitle).not.toBe(CONTRACTS_UI_EXPLICIT.en.pageTitle);
+      expect(rtl.copy.challengeDeliveredEmail).toContain("{email}");
+      expect(rtl.copy.governingNotice).toContain("{language}");
+    }
   });
 
   it("does not require the private license for an ordinary SaaS plan", () => {

@@ -1,5 +1,10 @@
 import { getApplicationCatalog } from "./generated-app-catalogs";
 import { APP_COMMON_WORDS } from "./app-locale-overrides";
+import { CONTRACTS_UI_AF } from "./contracts-ui-locales-af";
+import { CONTRACTS_UI_ASIA_1 } from "./contracts-ui-locales-asia-1";
+import { CONTRACTS_UI_ASIA_2 } from "./contracts-ui-locales-asia-2";
+import { CONTRACTS_UI_EU } from "./contracts-ui-locales-eu";
+import { CONTRACTS_UI_RTL } from "./contracts-ui-locales-rtl";
 import type { LocaleCode } from "./types";
 
 export type ContractsUiCopy = {
@@ -425,12 +430,16 @@ const en: ContractsUiCopy = {
   gateCheckout: "Stripe test payment",
 };
 
-/** Approved UI copy only. fr-FR and en-GB reuse the same language, not a new translation. */
-export const CONTRACTS_UI_EXPLICIT: Partial<Record<LocaleCode, ContractsUiCopy>> = {
+export const CONTRACTS_UI_EXPLICIT: Record<LocaleCode, ContractsUiCopy> = {
   fr,
   "fr-FR": fr,
   en,
   "en-GB": en,
+  ...CONTRACTS_UI_EU,
+  ...CONTRACTS_UI_RTL,
+  ...CONTRACTS_UI_AF,
+  ...CONTRACTS_UI_ASIA_1,
+  ...CONTRACTS_UI_ASIA_2,
 };
 
 /** Existing approved catalogs. These keys are not translated here. */
