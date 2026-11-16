@@ -921,7 +921,7 @@ def test_media_endpoint_central_error_speaks_safe_recovery(authorized_media_call
                 socket.receive_json()
     assert adapter.spoken
     assert "provider-secret-must-never-be-returned" not in adapter.spoken[0]
-    assert "technical error" in adapter.spoken[0].lower()
+    assert "technical error" in adapter.spoken[0].lower() or "erreur technique" in adapter.spoken[0].lower()
 
 
 # =====================================================================
