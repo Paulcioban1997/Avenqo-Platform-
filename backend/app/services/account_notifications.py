@@ -15,7 +15,7 @@ from html import escape
 import json
 import logging
 import smtplib
-from typing import Protocol
+from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -88,8 +88,8 @@ class AccountNotifier(Protocol):
     def send_email_verification(self, email: str, token: str) -> None: ...
     def send_password_reset(self, email: str, token: str) -> None: ...
 
-    def send_new_company(self, company: object, user: object, request: object) -> None: ...
-    def send_invoice_paid(self, recipient: str, company: object, invoice: object) -> None: ...
+    def send_new_company(self, company: Any, user: Any, request: Any) -> None: ...
+    def send_invoice_paid(self, recipient: str, company: Any, invoice: Any) -> None: ...
     def send_transactional(
         self,
         recipient: str,
@@ -123,11 +123,11 @@ class LoggingAccountNotifier:
     def send_password_reset(self, email: str, token: str) -> None:
         logger.info("Réinitialisation de mot de passe demandée")
 
-    def send_new_company(self, company: object, user: object, request: object) -> None:
+    def send_new_company(self, company: Any, user: Any, request: Any) -> None:
         logger.info("Nouvelle entreprise Avenqo enregistrée")
 
-    def send_invoice_paid(self, recipient: str, company: object, invoice: object) -> None:
-        logger.info("Notification de facture Avenqo demandée invoice_id=%s", invoice.id)
+    def send_invoice_paid(self, recipient: str, company: Any, invoice: Any) -> None:
+        logger.info("Notification de facture Avenqo demandée invoice_id=%s", getattr(invoice, "id", None))
 
     def send_transactional(
         self,
@@ -178,7 +178,7 @@ class AccountNotificationService:
             f"Utilisez ce lien pour choisir un nouveau mot de passe : {link}",
         )
 
-    def send_new_company(self, company: object, user: object, request: object) -> None:
+    def send_new_company(self, company: Any, user: Any, request: Any) -> None:
         recipient = self._settings.avenqo_owner_notification_email
         if not recipient:
             return
@@ -203,7 +203,7 @@ class AccountNotificationService:
         )
         self._send(recipient, f"New Avenqo Company — {company.name} — {company.subscription_plan}", body)
 
-    def send_invoice_paid(self, recipient: str, company: object, invoice: object) -> None:
+    def send_invoice_paid(self, recipient: str, company: Any, invoice: Any) -> None:
         labels = self._invoice_labels(_company_locale(company))
         amount = lambda value: f"{int(value) / 100:.2f} {invoice.currency.upper()}"
         period = "—"
@@ -311,7 +311,7 @@ class SMTPEmailTransport:
 
         try:
             with smtplib.SMTP(
-                self._settings.smtp_host,
+                self._settings.smtp_host or "localhost",
                 self._settings.smtp_port,
                 timeout=_SMTP_CONNECTION_TIMEOUT_SECONDS,
             ) as server:
@@ -540,10 +540,10 @@ class SandboxCaptureAccountNotifier:
     def send_password_reset(self, email: str, token: str) -> None:
         self._record(email, "Réinitialisez votre mot de passe Avenqo", f"Token: {token}", f"<p>Token: {token}</p>")
 
-    def send_new_company(self, company: object, user: object, request: object) -> None:
+    def send_new_company(self, company: Any, user: Any, request: Any) -> None:
         self._record(getattr(user, "email", "owner@avenqo.ca"), "New Avenqo Company", f"Company: {getattr(company, 'name', '')}", "")
 
-    def send_invoice_paid(self, recipient: str, company: object, invoice: object) -> None:
+    def send_invoice_paid(self, recipient: str, company: Any, invoice: Any) -> None:
         self._record(recipient, "Facture payée", f"Invoice: {getattr(invoice, 'id', '')}", "")
 
     def send_transactional(

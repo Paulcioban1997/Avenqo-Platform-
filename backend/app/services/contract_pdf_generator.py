@@ -55,13 +55,19 @@ def _escape_contract_text(value: str) -> str:
 class NumberedCanvas(canvas.Canvas):
     """Canvas avec numérotation 'Page X de Y' et registre d'intégrité en pied de page."""
 
+    _saved_page_states: list[dict[str, Any]]
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self._saved_page_states: list[dict[str, Any]] = []
+        self._saved_page_states = []
 
     def showPage(self) -> None:
         self._saved_page_states.append(dict(self.__dict__))
-        self._startPage()
+        start_page_fn = getattr(self, "_startPage", None)
+        if callable(start_page_fn):
+            start_page_fn()
+        else:
+            super().showPage()
 
     def save(self) -> None:
         num_pages = len(self._saved_page_states)
@@ -85,7 +91,8 @@ class NumberedCanvas(canvas.Canvas):
         self.drawString(40, 32, "Avenqo AI Enterprise Platform — Confidentiel & Opposable")
 
         # Pied de page centre / droite : Numéro de page
-        page_str = f"Page {self._pageNumber} sur {page_count}"
+        page_num = getattr(self, "_pageNumber", 1)
+        page_str = f"Page {page_num} sur {page_count}"
         self.drawRightString(572, 32, page_str)
         self.restoreState()
 

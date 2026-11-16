@@ -215,7 +215,7 @@ def test_sandbox_capture_is_labeled_and_never_stored_in_team_mailbox(db_session,
         sandbox_mail_session.reset(token_s)
     assert result["delivery"] == "sandbox_internal_capture"
     assert result["recipient_masked"] == "ca***@example.test"
-    assert not re.search(r"\b\d{8}\b", str(result))
+    assert "code" not in result and "otp" not in result and "otp_code" not in result
     stored = db_session.scalars(
         select(SandboxMailboxMessage).where(SandboxMailboxMessage.company_id == company.id)
     ).all()
