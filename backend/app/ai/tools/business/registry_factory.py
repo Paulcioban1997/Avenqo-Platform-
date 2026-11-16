@@ -87,9 +87,15 @@ from backend.app.ai.tools.business.sales_tools import (
     GetSalesTrendTool,
     GetTopProductsTool,
 )
+from backend.app.ai.tools.business.trading_tools import (
+    GetTradingAssetQuoteTool,
+    GetTradingPredictionsTool,
+    GetTradingPortfolioRiskTool,
+)
 from backend.app.ai.tools.registry import ToolRegistry
 from backend.app.models.enterprise_override import EnterpriseOverride
 from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
+from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.services.prediction_runtime import resolve_active_model_type
 from modules.registry import RETAIL_MODULE_CODE
 from shared.ai_engine.contracts import TenantContext
@@ -170,6 +176,10 @@ def build_business_tool_registry(
     registry.register(GetAICreditsBalanceTool(session))
     # Phase 15 — Cross-Agent Synthesis Tools
     registry.register(GetCrossAgentBusinessHealthTool(session))
+    # Phase Trading AI Voice & Central AI Integration
+    registry.register(GetTradingAssetQuoteTool(session))
+    registry.register(GetTradingPredictionsTool(session))
+    registry.register(GetTradingPortfolioRiskTool(session))
     return registry
 
 
@@ -189,6 +199,11 @@ def resolve_tenant_capabilities(
         capabilities.add("sales_forecast")
     if resolve_active_model_type(session, tenant, RETAIL_MODULE_CODE, "anomaly") is not None:
         capabilities.add("anomaly_detection")
+    try:
+        if ModuleEntitlementService(session).can_use_module(tenant, "trading"):
+            capabilities.add("trading")
+    except Exception:
+        pass
     override = session.query(EnterpriseOverride).filter(
         EnterpriseOverride.company_id == tenant.company_id
     ).one_or_none()

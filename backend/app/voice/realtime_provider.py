@@ -900,7 +900,8 @@ class GeminiLiveRealtimeAudioAdapter:
 
 class FallbackRealtimeAudioAdapter:
     """Adaptateur résilient tentant le fournisseur primaire (ex: Gemini Live) et basculant
-    automatiquement vers l'adaptateur de secours (OpenAI Realtime / Telnyx) en cas d'échec.
+    automatiquement vers l'adaptateur de secours (OpenAI Realtime / Telnyx) en cas d'échec
+    initial ou survenu en cours d'appel (send_audio, speak, events).
     """
 
     def __init__(
@@ -912,7 +913,14 @@ class FallbackRealtimeAudioAdapter:
         self._fallback_factory = fallback_factory
         self._active: RealtimeAudioAdapter | None = None
         self.used_fallback: bool = False
+        self.fallback_reason: str | None = None
         self.last_diagnostics: VoiceRealtimeSessionDiagnostics | None = None
+        self._locale: str = "fr-CA"
+        self._fallback_lock: asyncio.Lock = asyncio.Lock()
+        self._closed: bool = False
+        self._primary_model: str = "gemini-3.8-live"
+        self._primary_voice: str | None = None
+        self._company_id: str | None = None
 
     @property
     def provider_id(self) -> str:
@@ -921,17 +929,74 @@ class FallbackRealtimeAudioAdapter:
         return "gemini_live"
 
     @property
+    def model_name(self) -> str:
+        if self._active is not None:
+            return str(getattr(self._active, "_model", "") or getattr(self._active, "model_name", "") or self._primary_model)
+        return self._primary_model
+
+    @property
+    def active_provider(self) -> str:
+        return self.provider_id
+
+    @property
+    def active_model(self) -> str:
+        return self.model_name
+
+    @property
+    def fallback_occurred(self) -> bool:
+        return self.used_fallback
+
+    @property
     def using_fallback(self) -> bool:
         return self.used_fallback
 
+    async def _trigger_fallback(self, reason: str, error: Exception | None = None) -> None:
+        if self.used_fallback or self._closed:
+            return
+        async with self._fallback_lock:
+            if self.used_fallback or self._closed:
+                return
+            error_code = type(error).__name__ if error is not None else "mid_session_error"
+            logger.warning(
+                "realtime_adapter_mid_session_fallback reason=%s error_code=%s primary_model=%s company_id=%s",
+                reason,
+                error_code,
+                self._primary_model,
+                self._company_id,
+            )
+            old_active = self._active
+            self._active = None
+            if old_active is not None:
+                with suppress(Exception):
+                    await old_active.close()
+            fallback = self._fallback_factory()
+            try:
+                await fallback.open(locale=self._locale)
+            except TypeError:
+                await fallback.open()  # type: ignore[call-arg]
+            self._active = fallback
+            self.used_fallback = True
+            self.fallback_reason = reason
+            self.last_diagnostics = VoiceRealtimeSessionDiagnostics(
+                provider=str(getattr(fallback, "provider_id", "fallback")),
+                model=str(getattr(fallback, "_model", "") or "fallback"),
+                voice=self._primary_voice,
+                locale=self._locale,
+                company_id=self._company_id,
+                fallback_reason=reason,
+                error_code=error_code,
+            )
+            logger.info("voice_realtime_session %s", self.last_diagnostics.to_log_dict())
+
     async def open(self, *, locale: str = "fr-CA") -> None:
+        self._locale = locale
         primary = self._primary_factory()
-        primary_model = str(getattr(primary, "_model", "") or getattr(primary, "model_name", "") or "unknown")
-        primary_voice = str(getattr(primary, "_voice_name", "") or "") or None
-        company_id = None
+        self._primary_model = str(getattr(primary, "_model", "") or getattr(primary, "model_name", "") or "gemini-3.8-live")
+        self._primary_voice = str(getattr(primary, "_voice_name", "") or "") or None
+        self._company_id = None
         config = getattr(primary, "_config", None)
         if config is not None and getattr(config, "company_id", None) is not None:
-            company_id = str(config.company_id)
+            self._company_id = str(config.company_id)
         try:
             try:
                 await primary.open(locale=locale)
@@ -941,10 +1006,10 @@ class FallbackRealtimeAudioAdapter:
             self.used_fallback = False
             self.last_diagnostics = VoiceRealtimeSessionDiagnostics(
                 provider=str(getattr(primary, "provider_id", "gemini_live")),
-                model=primary_model,
-                voice=primary_voice,
+                model=self._primary_model,
+                voice=self._primary_voice,
                 locale=locale,
-                company_id=company_id,
+                company_id=self._company_id,
             )
             logger.info("voice_realtime_session %s", self.last_diagnostics.to_log_dict())
         except Exception as exc:
@@ -952,7 +1017,7 @@ class FallbackRealtimeAudioAdapter:
             logger.warning(
                 "realtime_adapter_primary_failed provider=%s model=%s error_code=%s falling_back=True",
                 getattr(primary, "provider_id", "primary"),
-                primary_model,
+                self._primary_model,
                 error_code,
             )
             with suppress(Exception):
@@ -964,26 +1029,53 @@ class FallbackRealtimeAudioAdapter:
                 await fallback.open()  # type: ignore[call-arg]
             self._active = fallback
             self.used_fallback = True
+            self.fallback_reason = "primary_open_failed"
             self.last_diagnostics = VoiceRealtimeSessionDiagnostics(
                 provider=str(getattr(fallback, "provider_id", "fallback")),
                 model=str(getattr(fallback, "_model", "") or "fallback"),
-                voice=primary_voice,
+                voice=self._primary_voice,
                 locale=locale,
-                company_id=company_id,
+                company_id=self._company_id,
                 fallback_reason="primary_open_failed",
                 error_code=error_code,
             )
             logger.info("voice_realtime_session %s", self.last_diagnostics.to_log_dict())
 
     async def send_audio(self, audio: bytes) -> None:
+        if self._closed:
+            return
         if self._active is None:
-            raise ExternalVoiceConfigurationRequired("Realtime session is not open")
-        await self._active.send_audio(audio)
+            if not self.used_fallback:
+                await self._trigger_fallback("send_audio_without_active_session")
+            if self._active is None:
+                raise ExternalVoiceConfigurationRequired("Realtime session is not open")
+        try:
+            await self._active.send_audio(audio)
+        except Exception as exc:
+            if not self.used_fallback:
+                await self._trigger_fallback("mid_session_send_audio_failed", exc)
+                if self._active is not None:
+                    await self._active.send_audio(audio)
+            else:
+                raise
 
     async def speak(self, text: str) -> None:
+        if self._closed:
+            return
         if self._active is None:
-            raise ExternalVoiceConfigurationRequired("Realtime session is not open")
-        await self._active.speak(text)
+            if not self.used_fallback:
+                await self._trigger_fallback("speak_without_active_session")
+            if self._active is None:
+                raise ExternalVoiceConfigurationRequired("Realtime session is not open")
+        try:
+            await self._active.speak(text)
+        except Exception as exc:
+            if not self.used_fallback:
+                await self._trigger_fallback("mid_session_speak_failed", exc)
+                if self._active is not None:
+                    await self._active.speak(text)
+            else:
+                raise
 
     async def interrupt(self) -> None:
         if self._active is not None:
@@ -994,15 +1086,24 @@ class FallbackRealtimeAudioAdapter:
             await self._active.clear_input()
 
     async def close(self) -> None:
+        self._closed = True
         if self._active is not None:
             await self._active.close()
             self._active = None
 
     async def events(self):
-        if self._active is None:
-            raise ExternalVoiceConfigurationRequired("Realtime session is not open")
-        async for event in self._active.events():
-            yield event
+        while not self._closed and self._active is not None:
+            active_ref = self._active
+            try:
+                async for event in active_ref.events():
+                    yield event
+                break
+            except Exception as exc:
+                if not self.used_fallback:
+                    await self._trigger_fallback("mid_session_events_failed", exc)
+                    if self._active is not None and self._active is not active_ref:
+                        continue
+                raise
 
 
 class VoiceRealtimeProvider(Protocol):
@@ -1016,7 +1117,7 @@ class VoiceRealtimeProvider(Protocol):
         """Vérifie si les clés et dépendances du fournisseur sont disponibles."""
         ...
 
-    async def stream_conversation(
+    def stream_conversation(
         self,
         context: VoiceTurnContext,
         input_audio_stream: AsyncIterator[bytes],
@@ -1690,32 +1791,32 @@ class VoiceRealtimeRouter:
         self._interruptions = NaturalInterruptionManager()
 
     def resolve_provider(self, config: VoiceBusinessConfig | None) -> VoiceRealtimeProvider:
-        """Résout le fournisseur à utiliser avec bascule transparente en cas d'indisponibilité."""
-        requested = getattr(config, "realtime_provider", "retell") if config is not None else "retell"
-        gemini_enabled = bool(getattr(config, "gemini_live_enabled", False)) if config is not None else False
+        """Résout le fournisseur à utiliser avec Gemini 3.8 Live comme moteur universel prioritaire."""
+        requested = getattr(config, "realtime_provider", RealtimeProviderType.GEMINI_LIVE) if config is not None else RealtimeProviderType.GEMINI_LIVE
+        gemini_enabled = bool(getattr(config, "gemini_live_enabled", True)) if config is not None else True
 
-        # 1. Si Gemini Live est explicitement activé pour ce tenant et disponible
+        # 1. Priorité universelle : Google Gemini Live si disponible
         if (requested == RealtimeProviderType.GEMINI_LIVE or gemini_enabled) and self._gemini.is_available():
             return self._gemini
 
-        # 2. Si Retell est configuré et demandé
-        if requested == RealtimeProviderType.RETELL and self._retell.is_available():
-            return self._retell
-
-        # 3. Si Telnyx est configuré et demandé
+        # 2. Si Telnyx/OpenAI est configuré et demandé
         if requested == RealtimeProviderType.TELNYX and self._telnyx.is_available():
             return self._telnyx
 
-        # 4. Fallback vers le fournisseur disponible
-        if self._retell.is_available():
+        # 3. Si Retell est configuré et demandé
+        if requested == RealtimeProviderType.RETELL and self._retell.is_available():
             return self._retell
-        if self._telnyx.is_available():
-            return self._telnyx
+
+        # 4. Fallback vers le fournisseur disponible (ordre : Gemini -> Telnyx -> Retell)
         if self._gemini.is_available():
             return self._gemini
+        if self._telnyx.is_available():
+            return self._telnyx
+        if self._retell.is_available():
+            return self._retell
 
-        # Défaut : Retell
-        return self._retell
+        # Défaut
+        return self._gemini if self._gemini.is_available() else self._telnyx
 
     def build_realtime_adapter(
         self,
@@ -1726,17 +1827,16 @@ class VoiceRealtimeRouter:
     ) -> RealtimeAudioAdapter:
         """Construit l'adaptateur audio temps réel pour `TelnyxMediaBridge`.
 
-        - Si `gemini_live_enabled` (ou `realtime_provider == 'gemini_live'`) est actif pour
-          l'entreprise et que la clé Gemini est configurée, utilise `GeminiLiveRealtimeAudioAdapter`
-          encapsulé dans `FallbackRealtimeAudioAdapter` (repli automatique vers `fallback_factory`).
-        - Sinon, utilise directement `fallback_factory()` (pipeline Telnyx/OpenAI existant).
+        - Priorité absolue : `GeminiLiveRealtimeAudioAdapter` (Gemini 3.8 Live)
+          encapsulé dans `FallbackRealtimeAudioAdapter` (repli automatique initial et en cours d'appel vers `fallback_factory`).
+        - Si la clé Gemini n'est pas disponible, bascule directement sur `fallback_factory()` (OpenAI Realtime / Telnyx).
         """
-        requested = getattr(config, "realtime_provider", "retell") if config is not None else "retell"
-        gemini_enabled = bool(getattr(config, "gemini_live_enabled", False)) if config is not None else False
+        requested = getattr(config, "realtime_provider", RealtimeProviderType.GEMINI_LIVE) if config is not None else RealtimeProviderType.GEMINI_LIVE
+        gemini_enabled = bool(getattr(config, "gemini_live_enabled", True)) if config is not None else True
 
         if (gemini_enabled or requested == RealtimeProviderType.GEMINI_LIVE) and self._gemini.is_available():
             logger.info(
-                "voice_realtime_route provider=gemini_live model=%s company_id=%s",
+                "voice_realtime_route provider=gemini_live model=%s company_id=%s universal_priority=True",
                 self._gemini.model_name,
                 getattr(config, "company_id", None),
             )

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import base64
-from typing import Any, Protocol, cast
+from typing import Any, AsyncIterator, Protocol, cast
 
 from openai import AsyncOpenAI
 
@@ -24,7 +24,8 @@ class TextToSpeechAdapter(Protocol):
 
 
 class RealtimeAudioAdapter(Protocol):
-    provider_id: str
+    @property
+    def provider_id(self) -> str: ...
 
     async def open(self, *, locale: str) -> None: ...
 
@@ -38,7 +39,7 @@ class RealtimeAudioAdapter(Protocol):
 
     async def close(self) -> None: ...
 
-    async def events(self): ...
+    def events(self) -> AsyncIterator[Any]: ...
 
 
 class ExternalVoiceConfigurationRequired(RuntimeError):

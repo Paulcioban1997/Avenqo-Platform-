@@ -226,15 +226,23 @@ def voice_ivr_greeting(config) -> str:
     name = voice_speech_name(config)
     policy = getattr(config, "call_policy", None) or {}
     raw = policy.get("ivr_greeting")
-    fr = str(getattr(config, "preferred_language", "fr") or "fr").startswith("fr")
+    loc = str(getattr(config, "preferred_language", "fr") or "fr").lower()
     if not isinstance(raw, str) or not raw.strip():
-        return (
-            f"Bienvenue chez {name}. Pour les employés, composez le 1. "
-            "Pour le service clientèle, composez le 2."
-            if fr else
-            f"Welcome to {name}. For employees, press 1. "
-            "For customer service, press 2."
-        )
+        if loc.startswith("fr"):
+            return (
+                f"Bonjour, bienvenue chez {name}. Si vous êtes employé, appuyez sur 1. "
+                "Si vous êtes client, appuyez sur 2."
+            )
+        elif loc.startswith("ro"):
+            return (
+                f"Bună ziua, bun venit la {name}. Dacă sunteți angajat, apăsați 1. "
+                "Dacă sunteți client, apăsați 2."
+            )
+        else:
+            return (
+                f"Hello, welcome to {name}. If you are an employee, press 1. "
+                "If you are a customer, press 2."
+            )
     rendered = raw
     for token in ("{company}", "{entreprise}", "{business_name}"):
         rendered = rendered.replace(token, name)

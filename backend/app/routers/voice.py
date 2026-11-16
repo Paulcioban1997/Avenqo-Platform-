@@ -2747,7 +2747,7 @@ async def telnyx_webhook(
             await service.telnyx.answer_call(active_call_control_id, command_id=command_id)
             return {"received": True, "routed": False, "status": "answering"}
         if media_mode:
-            ivr_enabled = bool((config.call_policy or {}).get("ivr_enabled", False))
+            ivr_enabled = bool((config.call_policy or {}).get("ivr_enabled", True))
             current_stage = (call.source_context or {}).get("ivr_stage")
             # If IVR enabled and call has not yet completed menu selection, prompt IVR greeting
             if ivr_enabled and current_stage not in {"customer_public", "staff_authenticated"}:

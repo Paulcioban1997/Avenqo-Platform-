@@ -444,9 +444,9 @@ class PublicInboundConversation:
                 return {"status": "success", "answer": "Aucune prestation réservable ou cueillette en magasin n’est actuellement configurée pour cette entreprise." if french else "No bookable service or store pickup is currently configured for this business.", "public": True}
             if is_pickup_reservation:
                 answer = (
-                    "Les réservations de produits ne sont pas effectuées par téléphone. Pour demander un rendez-vous de service, veuillez indiquer la prestation et la date souhaitées."
+                    "Les réservations de produits ne sont pas effectuées par téléphone. Pour une cueillette ou un rendez-vous de service, veuillez indiquer la prestation et la date souhaitées."
                     if french
-                    else "Product reservations are not processed by phone. To request a service appointment, please provide the desired service and date."
+                    else "Product reservations are not processed by phone. For store pickup or a service appointment, please provide the desired service and date."
                 )
             else:
                 answer = "Pour demander un rendez-vous, indiquez le service et la date souhaités. Aucun rendez-vous n'est encore confirmé." if french else "For an appointment request, please provide the service and desired date. No booking is confirmed yet."
@@ -752,6 +752,8 @@ class TelnyxMediaBridge:
         self.tts_timeout = 10.0
         self.central_ai_timeout = 15.0
         self.inbound_audio_timeout = 5.0
+        self._call_start_time: float = time.monotonic()
+        self._last_speech_stopped_at: float | None = None
         # Safe call telemetry (no raw audio, no secrets)
         self.telemetry: dict[str, Any] = {
             "call_answered": True,
@@ -778,6 +780,15 @@ class TelnyxMediaBridge:
             "tts_provider_error": 0,
             "voice_response_cancelled": 0,
             "voice_response_completed": 0,
+            "active_provider": getattr(adapter, "provider_id", "unknown"),
+            "active_model": getattr(adapter, "model_name", realtime_model or "unknown"),
+            "connection_establishment_duration_ms": 0,
+            "first_audible_response_latency_ms": 0,
+            "fallback_occurred": False,
+            "fallback_reason": None,
+            "crm_function_failures": 0,
+            "unexpected_silence_count": 0,
+            "vad_interruptions_count": 0,
         }
 
     def _clear_all_buffers(self) -> None:
@@ -813,6 +824,7 @@ class TelnyxMediaBridge:
         return cleaned
 
     async def interrupt(self, *, pause_input: bool = False) -> None:
+        self.telemetry["vad_interruptions_count"] += 1
         cancel_response = self.response_id is not None or self.pending_epoch is not None
         session_key = str(self.stream_id or "default")
         self.epoch += 1
@@ -875,6 +887,7 @@ class TelnyxMediaBridge:
                 )
             except asyncio.TimeoutError:
                 self.central_ai_timeouts += 1
+                self.telemetry["crm_function_failures"] += 1
                 logger.warning(
                     "Voice Central AI turn timed out; timeout_seconds=%s count=%s",
                     self.central_ai_timeout, self.central_ai_timeouts,
@@ -885,6 +898,19 @@ class TelnyxMediaBridge:
                     "Pouvez-vous reformuler votre question ?"
                     if resolve_locale(self.locale).startswith("fr")
                     else "Sorry, your request is taking too long. "
+                         "Could you rephrase your question?"
+                )}
+            except Exception as exc:
+                self.telemetry["crm_function_failures"] += 1
+                logger.warning(
+                    "Voice Central AI execution failed; error=%s",
+                    type(exc).__name__,
+                )
+                result = {"status": "success", "answer": (
+                    "Désolé, une erreur technique est survenue lors du traitement de votre demande. "
+                    "Pouvez-vous reformuler votre question ?"
+                    if resolve_locale(self.locale).startswith("fr")
+                    else "Sorry, a technical error occurred while processing your request. "
                          "Could you rephrase your question?"
                 )}
             if epoch != self.epoch:
@@ -1084,6 +1110,7 @@ class TelnyxMediaBridge:
                 # Phone echo trips VAD as soon as playback starts. Clearing the
                 # Telnyx buffer here drops audio the caller never hears.
             elif kind == "input_audio_buffer.speech_stopped" and not self.input_paused:
+                self._last_speech_stopped_at = time.monotonic()
                 logger.info("Caller speech stopped (epoch=%s)", self.epoch)
                 self.telemetry["final_state"] = "PROCESSING"
             elif kind == "conversation.item.input_audio_transcription.completed" and not self.input_paused:
@@ -1165,6 +1192,9 @@ class TelnyxMediaBridge:
                         self.telemetry["tts_audio_bytes_generated"] += pcm_length
                         if self.telemetry["tts_first_audio_chunk_received"] == 0:
                             self.telemetry["tts_first_audio_chunk_received"] = 1
+                            if self._last_speech_stopped_at is not None:
+                                latency_ms = int((time.monotonic() - self._last_speech_stopped_at) * 1000)
+                                self.telemetry["first_audible_response_latency_ms"] = latency_ms
                         encoded = self.codec.outbound_pcm(delta)
                         self.telemetry["audio_encoding_completed"] += 1
                         self._set_phase("PLAYING")
@@ -1390,6 +1420,12 @@ class TelnyxMediaBridge:
             await self.authorize()
             self._authorized_session = True
             await self.adapter.open(locale=self.locale)
+            self.telemetry["connection_establishment_duration_ms"] = int((time.monotonic() - self._call_start_time) * 1000)
+            self.telemetry["active_provider"] = getattr(self.adapter, "provider_id", "unknown")
+            self.telemetry["active_model"] = getattr(self.adapter, "model_name", self.realtime_model or "unknown")
+            if hasattr(self.adapter, "fallback_occurred"):
+                self.telemetry["fallback_occurred"] = getattr(self.adapter, "fallback_occurred", False)
+                self.telemetry["fallback_reason"] = getattr(self.adapter, "fallback_reason", None)
             if self.initial_answer:
                 self.telemetry["final_state"] = "GREETING"
                 try:
@@ -1419,8 +1455,13 @@ class TelnyxMediaBridge:
             for task in done:
                 task.result()
         finally:
+            if hasattr(self.adapter, "fallback_occurred"):
+                self.telemetry["fallback_occurred"] = getattr(self.adapter, "fallback_occurred", False)
+                self.telemetry["fallback_reason"] = getattr(self.adapter, "fallback_reason", None)
+                self.telemetry["active_provider"] = getattr(self.adapter, "provider_id", "unknown")
+                self.telemetry["active_model"] = getattr(self.adapter, "model_name", self.realtime_model or "unknown")
             logger.info(
-                "Call %s session telemetry: call_answered=%s media_connected=%s inbound_frames=%d inbound_audio_ms=%d speech_detected=%s stt_audio_sent=%s transcription_received=%s central_ai_called=%s tts_generated=%s outbound_frames=%d final_state=%s provider_error=%s voice_turns_queued=%d voice_turn_timeouts=%d voice_missing_answers=%d voice_stale_results=%d",
+                "Call %s session telemetry: call_answered=%s media_connected=%s inbound_frames=%d inbound_audio_ms=%d speech_detected=%s stt_audio_sent=%s transcription_received=%s central_ai_called=%s tts_generated=%s outbound_frames=%d final_state=%s provider_error=%s voice_turns_queued=%d voice_turn_timeouts=%d voice_missing_answers=%d voice_stale_results=%d active_provider=%s active_model=%s connect_ms=%d first_audio_latency_ms=%d fallback=%s fallback_reason=%s crm_failures=%d vad_interruptions=%d",
                 self.stream_id,
                 self.telemetry.get("call_answered"),
                 self.telemetry.get("media_connected"),
@@ -1438,6 +1479,14 @@ class TelnyxMediaBridge:
                 self.central_ai_timeouts,
                 self.central_ai_missing_answers,
                 self.central_ai_discarded_epochs,
+                self.telemetry.get("active_provider"),
+                self.telemetry.get("active_model"),
+                self.telemetry.get("connection_establishment_duration_ms"),
+                self.telemetry.get("first_audible_response_latency_ms"),
+                self.telemetry.get("fallback_occurred"),
+                self.telemetry.get("fallback_reason"),
+                self.telemetry.get("crm_function_failures"),
+                self.telemetry.get("vad_interruptions_count"),
             )
             logger.info(
                 "Call %s audio pipeline: phase=%s central_ai_response_ready=%d tts_request_started=%d tts_first_audio_chunk_received=%d tts_audio_bytes_generated=%d audio_encoding_completed=%d outbound_audio_frames_sent=%d outbound_audio_bytes_sent=%d outbound_playback_acknowledged=%d tts_provider_error=%d voice_response_cancelled=%d voice_response_completed=%d",
@@ -1528,25 +1577,22 @@ async def complete_media_hangup(db: Session, settings: Settings, call_id: UUID):
 def media_audio_available(settings: Settings, locale: str, config: VoiceBusinessConfig | None = None) -> bool:
     if resolve_locale(locale) not in {resolve_locale(item) for item in settings.voice_realtime_supported_locales}:
         return False
+    gemini_ok = bool(
+        settings.google_ai_api_key
+        and (
+            config is None
+            or bool(getattr(config, "gemini_live_enabled", True))
+            or getattr(config, "realtime_provider", "gemini_live") == "gemini_live"
+        )
+    )
     openai_ok = bool(
         settings.openai_api_key
-        and settings.voice_realtime_provider == "openai"
         and settings.voice_realtime_model
-        and settings.voice_stt_provider == "openai"
         and settings.voice_stt_model
-        and settings.voice_tts_provider == "openai"
         and settings.voice_tts_voice
         and settings.voice_tts_model
     )
-    gemini_ok = bool(
-        config is not None
-        and (
-            bool(getattr(config, "gemini_live_enabled", False))
-            or getattr(config, "realtime_provider", "") == "gemini_live"
-        )
-        and settings.google_ai_api_key
-    )
-    return openai_ok or gemini_ok
+    return gemini_ok or openai_ok
 
 
 def resolve_media_socket_context(db: Session, settings: Settings, call_id: UUID) -> tuple:
