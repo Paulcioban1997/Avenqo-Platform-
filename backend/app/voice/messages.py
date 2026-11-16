@@ -230,8 +230,8 @@ def voice_ivr_greeting(config) -> str:
     if not isinstance(raw, str) or not raw.strip():
         if loc.startswith("fr"):
             return (
-                f"Bonjour, bienvenue chez {name}. Si vous êtes employé, appuyez sur 1. "
-                "Si vous êtes client, appuyez sur 2."
+                f"Bienvenue chez {name}. Pour les employés, composez le 1. "
+                "Pour les clients, composez le 2."
             )
         elif loc.startswith("ro"):
             return (
