@@ -80,6 +80,8 @@ def _weekday_afternoon(hours_utc: int = 18) -> datetime:
 def _prepare_inbound_media_tenant(env) -> User:
     """Professional tenant with Voice + CRM only (two of five plan slots)."""
     configure_local_public_call(env)
+    # Isolate the end-to-end PCM/CRM scenario from the separately tested two-option IVR menu.
+    env.config.call_policy = {"ivr_enabled": False}
     env.company.business_hours = {
         "weekly": {
             "monday": [{"open": "09:00", "close": "17:00"}],
