@@ -1,8 +1,10 @@
 """A total AI deadline bounds classification, tools, retries and fallback."""
 import asyncio
+from collections.abc import Callable
 from functools import wraps
 from inspect import signature
 import logging
+from typing import Any, ParamSpec, TypeVar
 
 from backend.app.ai.chat.exceptions import AIServiceUnavailableError
 from backend.app.config.settings import get_settings
@@ -10,14 +12,17 @@ from backend.app.core.request_context import request_id_var
 
 logger = logging.getLogger("avenqo.ai.deadline")
 
+P = ParamSpec("P")
+R = TypeVar("R")
 
-def bounded_ai_request(operation):
+
+def bounded_ai_request(operation: Callable[P, R]) -> Callable[P, R]:
     parameters = signature(operation)
     @wraps(operation)
-    async def bounded(*args, **kwargs):
+    async def bounded(*args: P.args, **kwargs: P.kwargs) -> Any:
         try:
             async with asyncio.timeout(get_settings().ai_request_timeout_seconds):
-                return await operation(*args, **kwargs)
+                return await operation(*args, **kwargs)  # type: ignore[misc]
         except TimeoutError as exc:
             arguments = parameters.bind(*args, **kwargs).arguments
             tenant = arguments.get("tenant", arguments.get("tenant_id"))
@@ -27,4 +32,4 @@ def bounded_ai_request(operation):
                 arguments.get("user_id"), operation.__qualname__,
             )
             raise AIServiceUnavailableError("Avenqo AI est temporairement indisponible. Veuillez réessayer.") from exc
-    return bounded
+    return bounded  # type: ignore[return-value]

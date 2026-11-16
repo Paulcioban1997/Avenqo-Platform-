@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -101,7 +102,26 @@ class _Mail:
     def __init__(self) -> None:
         self.deliveries = []
 
-    def send_transactional(self, recipient: str, subject: str, body: str) -> None:
+    def send_email_verification(self, email: str, token: str) -> None:
+        pass
+
+    def send_password_reset(self, email: str, token: str) -> None:
+        pass
+
+    def send_new_company(self, company: Any, user: Any, request: Any) -> None:
+        pass
+
+    def send_invoice_paid(self, recipient: str, company: Any, invoice: Any) -> None:
+        pass
+
+    def send_transactional(
+        self,
+        recipient: str,
+        subject: str,
+        body: str,
+        html_body: str | None = None,
+        attachments: Any = None,
+    ) -> None:
         self.deliveries.append((recipient, subject, body))
 
 

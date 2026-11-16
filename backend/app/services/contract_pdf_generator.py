@@ -412,13 +412,14 @@ class ContractPdfGenerator:
         # 7. Registre d'Achèvement Avenqo (Avenqo Completion Record)
         if signed_at and not is_draft:
             elements.append(Spacer(1, 14))
-            rec = completion_record or {}
+            rec: dict[str, Any] = completion_record if isinstance(completion_record, dict) else {}
             tx_id = rec.get("transaction_id") or (f"TX-{audit_receipt_id[:12].upper()}" if audit_receipt_id else "TX-AUTO")
             sig_label = rec.get("signature_label") or ("pilot/test" if is_sandbox else "electronic")
             legal_effect = rec.get("legal_effect") or ("sandbox_pilot" if is_sandbox else "customer_signed_pending_provider")
-            party_states = rec.get("execution_party_states") if isinstance(rec.get("execution_party_states"), dict) else {}
-            customer_state = party_states.get("customer") or "SIGNED"
-            provider_state = party_states.get("provider") or ("COMPLETED" if execution_state == "COMPLETED" else "PENDING_COUNTERSIGNATURE")
+            party_states_raw = rec.get("execution_party_states")
+            party_states: dict[str, Any] = party_states_raw if isinstance(party_states_raw, dict) else {}
+            customer_state = str(party_states.get("customer") or "SIGNED")
+            provider_state = str(party_states.get("provider") or ("COMPLETED" if execution_state == "COMPLETED" else "PENDING_COUNTERSIGNATURE"))
             verify_via = rec.get("identity_verified_via") or "email_otp_challenge"
             status_summary = (
                 "Signature pilote d'essai (Sandbox) — aucune contresignature fournisseur ni preuve d'incorporation"

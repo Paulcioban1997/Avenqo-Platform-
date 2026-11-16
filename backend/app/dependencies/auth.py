@@ -36,7 +36,7 @@ logger = logging.getLogger("avenqo.auth")
 class CurrentIdentity:
     """Identité vérifiée utilisée par les routes protégées."""
 
-    auth_session: AuthSession
+    auth_session: AuthSession | None
     user: User
     raw_token: str
 
