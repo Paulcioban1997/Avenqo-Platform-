@@ -779,3 +779,120 @@ def test_webhook_router_distinguishes_signature_config_and_internal_errors():
     with pytest.raises(HTTPException) as exc_int:
         asyncio.run(webhook(req, "sig", InternalErrService()))
     assert exc_int.value.status_code == 500
+
+
+def test_non_credit_charge_refund_modern_invoice_pricing_and_stale_canceled_update(db_session):
+    from backend.app.ai.usage.policy import AIQuotaPolicy
+    from backend.app.ai.usage.service import AIUsageService
+    from backend.app.services.billing_service import BillingService
+
+    company = _company(db_session)
+    account = BillingAccount(
+        company_id=company.id,
+        stripe_customer_id="cus_edge_123",
+        stripe_subscription_id="sub_active_pro",
+        plan_code="base",
+        status="active",
+        cancel_at_period_end=False,
+    )
+    db_session.add(account)
+    db_session.commit()
+
+    usage = AIUsageService(db_session, AIQuotaPolicy(get_settings()))
+    events = [
+        # 1. Non-credit-pack charge.refunded (e.g. subscription refund) should succeed without 400
+        {
+            "id": "evt_sub_refund_1",
+            "type": "charge.refunded",
+            "data": {
+                "object": {
+                    "id": "ch_sub_1",
+                    "payment_intent": "pi_sub_unknown",
+                    "customer": "cus_edge_123",
+                    "amount": 4999,
+                    "amount_refunded": 4999,
+                    "currency": "cad",
+                    "metadata": {},
+                }
+            },
+        },
+        # 2. Out-of-order customer.subscription.updated (status=canceled) for an old replaced subscription
+        {
+            "id": "evt_stale_sub_canceled_1",
+            "type": "customer.subscription.updated",
+            "data": {
+                "object": {
+                    "id": "sub_old_replaced",
+                    "customer": "cus_edge_123",
+                    "status": "canceled",
+                    "metadata": {"avenqo_company_id": str(company.id)},
+                    "items": {
+                        "data": [{"price": {"id": "price_base_existing"}}]
+                    },
+                }
+            },
+        },
+        # 3. Modern Stripe invoice.paid with pricing.price_details.price instead of line.price.id
+        {
+            "id": "evt_modern_invoice_1",
+            "type": "invoice.paid",
+            "data": {
+                "object": {
+                    "id": "in_modern_pro_1",
+                    "customer": "cus_edge_123",
+                    "subscription": "sub_active_pro",
+                    "status": "paid",
+                    "billing_reason": "subscription_cycle",
+                    "currency": "cad",
+                    "created": 1_890_000_100,
+                    "subtotal": 4999,
+                    "total": 4999,
+                    "amount_due": 4999,
+                    "amount_paid": 4999,
+                    "metadata": {"avenqo_company_id": str(company.id)},
+                    "lines": {
+                        "data": [
+                            {
+                                "description": "Avenqo Professional",
+                                "quantity": 1,
+                                "amount": 4999,
+                                "currency": "cad",
+                                "period": {"start": 1_890_000_000, "end": 1_892_600_000},
+                                "pricing": {
+                                    "price_details": {
+                                        "price": "price_professional_existing",
+                                        "product": "prod_pro",
+                                    }
+                                },
+                            }
+                        ]
+                    },
+                }
+            },
+        },
+    ]
+
+    class Provider:
+        def construct_event(self, payload: bytes, signature: str, secret: str):
+            return events.pop(0)
+
+    settings = _Settings()
+    settings.stripe_webhook_secret = "whsec_test"
+    settings.stripe_plan_code = lambda price_id: {
+        "price_professional_existing": "professional",
+        "price_base_existing": "base",
+    }.get(price_id)
+
+    class Notifier:
+        email_delivery_configured = False
+
+    service = BillingService(db_session, Provider(), settings, usage, Notifier())
+    assert service.process_webhook(b"{}", "sig") is True
+    assert service.process_webhook(b"{}", "sig") is True
+    assert service.process_webhook(b"{}", "sig") is True
+
+    reloaded = db_session.scalar(select(BillingAccount).where(BillingAccount.company_id == company.id))
+    assert reloaded.stripe_subscription_id == "sub_active_pro"
+    assert reloaded.status == "active"
+    assert reloaded.plan_code == "professional"
+    assert reloaded.company.subscription_plan == "professional"

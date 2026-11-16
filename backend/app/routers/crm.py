@@ -38,6 +38,7 @@ from backend.app.models.crm import (
     CRMContact,
     CRMLead,
     CRMOpportunity,
+    CRMService as CRMServiceModel,
 )
 from backend.app.models.commerce_connection import CommerceOAuthState
 from backend.app.services.calendar.google_provider import GoogleCalendarProvider
@@ -1673,7 +1674,12 @@ async def crm_copilot_chat(
         duration = int(duration_match.group(1)) if duration_match else 30
 
         # Extract service title (dynamically defaults to company's active service or generic consultation)
-        first_service = db.scalar(select(CRMService).where(CRMService.company_id == tenant.company_id, CRMService.is_active == True))
+        first_service = db.scalar(
+            select(CRMServiceModel).where(
+                CRMServiceModel.company_id == tenant.company_id,
+                CRMServiceModel.is_active.is_(True),
+            )
+        )
         default_title = first_service.name if first_service else ("Client Consultation" if req.locale == "en" else "Consultation client")
         service_title = default_title
         if "physio" in msg:
@@ -1695,7 +1701,7 @@ async def crm_copilot_chat(
         end_dt = start_dt + timedelta(minutes=duration)
 
         # Availability / Conflict check
-        avail_svc = CRMAvailabilityService(db)
+        avail_svc = CRMAvailabilityService(db, cipher=get_connector_secret_cipher())
         has_conflict, conflict_reason = avail_svc.check_conflict(tenant.company_id, start_dt, end_dt)
         if has_conflict:
             return {

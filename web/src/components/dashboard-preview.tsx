@@ -21,7 +21,7 @@ const quickModuleIcons: Record<string, typeof ShoppingBag> = {
 export function DashboardPreview() {
   const t = useTranslations();
   const { locale } = useLocale();
-  const isEn = locale === "en";
+  const isEn = !locale.startsWith("fr");
   const greeting = (t.dashboard.greeting || "").replace(/Paul/g, "Alex");
 
   return (

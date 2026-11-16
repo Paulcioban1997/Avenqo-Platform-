@@ -32,6 +32,18 @@ interface FinancialOverview {
   profit_margin?: number;
   unpaid_invoices_count?: number;
   unpaid_invoices_amount?: number;
+  receivables?: {
+    unpaid_count?: number;
+    total_due?: number;
+    overdue_count?: number;
+    overdue_amount?: number;
+  };
+  payables?: {
+    unpaid_count?: number;
+    total_due?: number;
+    overdue_count?: number;
+    overdue_amount?: number;
+  };
   currency?: string;
   confirmed_transactions_count?: number;
 }
@@ -63,7 +75,7 @@ function externalSource(extra: Record<string, unknown> | undefined): string | nu
 export function AccountingView() {
   const { locale } = useLocale();
   const t = getAppTranslations(locale);
-  const isFr = locale === "fr";
+  const isFr = locale.startsWith("fr");
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -121,6 +133,12 @@ export function AccountingView() {
   const expenses = overview?.total_expenses || 0;
   const netProfit = overview?.net_profit || revenue - expenses;
   const margin = overview?.profit_margin ?? (revenue > 0 ? ((netProfit / revenue) * 100).toFixed(1) : 0);
+  const unpaidInvoicesCount =
+    overview?.unpaid_invoices_count ??
+    ((overview?.receivables?.unpaid_count ?? 0) + (overview?.payables?.unpaid_count ?? 0));
+  const unpaidInvoicesAmount =
+    overview?.unpaid_invoices_amount ??
+    ((overview?.receivables?.total_due ?? 0) + (overview?.payables?.total_due ?? 0));
   const unreconciled = transactions.length > 0 && transactions.every((tx) => !externalSource(tx.extra_data));
   const recordedCaption = isFr ? "Somme des écritures, source non indiquée" : "Sum of entries, source not indicated";
 
@@ -229,10 +247,10 @@ export function AccountingView() {
             </span>
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-2">
-            {overview?.unpaid_invoices_count || 0} {isFr ? "en attente" : "pending"}
+            {unpaidInvoicesCount} {isFr ? "en attente" : "pending"}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            <DisplayAmount amount={overview?.unpaid_invoices_amount || 0} currency={currency} locale={locale} />
+            <DisplayAmount amount={unpaidInvoicesAmount} currency={currency} locale={locale} />
           </div>
         </div>
       </div>

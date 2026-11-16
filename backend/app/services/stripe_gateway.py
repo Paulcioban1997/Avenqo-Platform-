@@ -1,4 +1,4 @@
-﻿"""Adaptateur Stripe isolÃ© des cas d'usage de facturation Avenqo."""
+"""Adaptateur Stripe isolÃ© des cas d'usage de facturation Avenqo."""
 
 from dataclasses import dataclass
 from typing import Any, Protocol

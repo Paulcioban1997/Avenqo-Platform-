@@ -4,14 +4,24 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from backend.app.core.permission_grants import effective_permissions
 from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
 from backend.app.dependencies.subscription import require_active_subscription
+from backend.app.models.base import UserRole
 from backend.app.services.media_generation_service import MediaGenerationService, MediaUnavailableError, MediaQuotaError
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from shared.ai_engine.contracts import TenantContext
 
 router = APIRouter(prefix="/media", tags=["media"])
+
+
+def _require_marketing_user_permission(identity: CurrentIdentity) -> None:
+    if identity.user.role in {UserRole.OWNER, UserRole.ADMIN}:
+        return
+    perms = effective_permissions(identity.user)
+    if not {"marketing:read", "ai:use", "data:read"}.intersection(perms):
+        raise HTTPException(403, {"code": "permission_denied", "detail": "Permissions insuffisantes pour le module Marketing IA."})
 
 
 class GenerateRequest(BaseModel):
@@ -36,6 +46,7 @@ def history(
 ) -> list[dict]:
     if not ModuleEntitlementService(db).can_use_module(tenant, "media") and not ModuleEntitlementService(db).can_use_module(tenant, "marketing"):
         raise HTTPException(403, {"code": "module_inactive", "module": "media"})
+    _require_marketing_user_permission(identity)
     return [
         {
             "id": str(row.id),
@@ -62,6 +73,7 @@ def generate(
     entitlements = ModuleEntitlementService(db)
     if not entitlements.can_use_module(tenant, "media") and not entitlements.can_use_module(tenant, "marketing"):
         raise HTTPException(403, {"code": "module_inactive", "module": "media"})
+    _require_marketing_user_permission(identity)
     try:
         row = service.generate(identity.user, payload.prompt, payload.kind, period_key=payload.period, date_from=payload.date_from, date_to=payload.date_to)
     except MediaQuotaError as exc:

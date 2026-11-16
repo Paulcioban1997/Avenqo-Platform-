@@ -49,7 +49,7 @@ const MODULE_SLUGS = [
 export function LandingPage() {
   const t = useTranslations();
   const { locale } = useLocale();
-  const isEn = locale === "en";
+  const isEn = !locale.startsWith("fr");
   const usecaseEntries = [t.usecases.direction, t.usecases.finance, t.usecases.commerce, t.usecases.operations];
 
   const basePrice = getLocalizedPlanPrice("base", locale);

@@ -312,3 +312,100 @@ def test_deliver_signature_otp_never_claims_email_for_capture():
         code="12345678",
     )
     assert status == "sandbox_internal_capture"
+
+
+def test_signed_contract_automatically_emails_pdf_attachment_idempotently_and_enforces_tenant_rbac(
+    db_session, tmp_path
+):
+    from backend.app.routers.contracts import resend_signed_contract_pdf_email
+    from backend.app.services.commercial_reconciler import CommercialReconciler
+
+    company = _company(db_session)
+    company.preferred_language = "en"
+    owner = _user(db_session, company, email="approved-signer@example.test")
+    employee = _user(db_session, company, UserRole.USER, email="emp@example.test")
+    other_company = _company(db_session)
+    other_owner = _user(db_session, other_company, email="other@example.test")
+
+    settings = _sandbox_settings(
+        artifact_root=str(tmp_path),
+        sandbox_approved_email_recipients="approved-signer@example.test",
+    )
+    capture_notifier = SandboxCaptureAccountNotifier(settings)
+    service = ContractSignatureService(db_session, notifier=capture_notifier, settings=settings)
+    service.ensure_contracts_for_company(company)
+    contract = service.get_contract(company.id, "SAAS_SUBSCRIPTION")
+    contract.language = "en"
+    db_session.commit()
+
+    schedule = CommercialReconciler.reconcile(company, settings)
+    content_hash = service.compute_sha256(contract.content_text)
+    commercial_hash = SigningChallengeService.snapshot_hash(schedule.to_dict())
+    challenge, code = SigningChallengeService(db_session).create_challenge(
+        company_id=company.id,
+        user_id=owner.id,
+        contract_id=contract.id,
+        contract_version=contract.version,
+        content_hash=content_hash,
+        commercial_hash=commercial_hash,
+    )
+
+    sign_result = service.sign_contract_electronic(
+        company=company,
+        contract_type="SAAS_SUBSCRIPTION",
+        user=owner,
+        signatory_title="Président",
+        declared_authority=True,
+        consent_checkbox=True,
+        challenge_id=str(challenge.id),
+        challenge_code=code,
+        ip_address="203.0.113.10",
+        user_agent="pytest-sandbox",
+    )
+
+    delivery = sign_result["email_delivery"]
+    assert delivery["status"] == "sandbox_internal_capture"
+    assert delivery["delivered_confirmed"] is False
+    assert delivery["already_sent"] is False
+    assert delivery["attempts"] == 1
+    assert delivery["transaction_id"] == sign_result["transaction_id"]
+    assert delivery["attachment_sha256"] == sign_result["pdf_sha256"]
+    assert delivery["attachment_filename"].endswith(".pdf")
+    assert "/api/v1/secure-downloads/" in delivery["secure_download_url"]
+
+    captured = capture_notifier.get_captured_emails(owner.email)
+    assert len(captured) == 1
+    msg = captured[0]
+    assert sign_result["transaction_id"] in msg.subject
+    assert "Please find attached the certified PDF copy" in msg.text_body
+    assert sign_result["transaction_id"] in msg.text_body
+    assert "/api/v1/secure-downloads/" in msg.text_body
+    assert len(msg.attachments) == 1
+    att = msg.attachments[0]
+    assert att.content.startswith(b"%PDF")
+    assert att.sha256 == sign_result["pdf_sha256"]
+
+    # Idempotence: second call must not send a second email
+    retry_same = resend_signed_contract_pdf_email(
+        "SAAS_SUBSCRIPTION",
+        tenant=TenantContext(company_id=company.id),
+        identity=CurrentIdentity(None, owner, "tok"),
+        service=service,
+    )
+    assert retry_same["already_sent"] is True
+    assert len(capture_notifier.get_captured_emails(owner.email)) == 1
+
+    # Unauthorized employee cannot trigger resend
+    with pytest.raises(HTTPException) as emp_exc:
+        resend_signed_contract_pdf_email(
+            "SAAS_SUBSCRIPTION",
+            tenant=TenantContext(company_id=company.id),
+            identity=CurrentIdentity(None, employee, "tok"),
+            service=service,
+        )
+    assert emp_exc.value.status_code == 403
+
+    # Cross-tenant user cannot trigger resend for another tenant's contract
+    updated_contract = service.get_contract(company.id, "SAAS_SUBSCRIPTION")
+    with pytest.raises(Exception):
+        service.send_signed_contract_email(contract=updated_contract, signer=other_owner)

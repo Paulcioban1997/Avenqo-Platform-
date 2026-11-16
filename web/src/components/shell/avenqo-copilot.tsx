@@ -744,7 +744,7 @@ export function AvenqoCopilot({
       role="dialog"
       aria-modal="true"
       aria-label={t.copilot.title}
-      className="fixed inset-y-0 right-0 z-50 w-full sm:w-[480px] bg-white dark:bg-[#0B132B] border-l border-slate-200/80 dark:border-white/[0.08] shadow-2xl flex flex-col transition-all duration-300 animate-in slide-in-from-right"
+      className="fixed inset-y-0 end-0 z-50 w-full sm:w-[480px] bg-white dark:bg-[#0B132B] border-s border-slate-200/80 dark:border-white/[0.08] shadow-2xl flex flex-col transition-all duration-300 animate-in slide-in-from-right"
     >
       {/* Header */}
       <div className="p-4 border-b border-slate-200/80 dark:border-white/[0.08] bg-slate-50/70 dark:bg-[#060B13]/60 backdrop-blur-md flex items-center justify-between">

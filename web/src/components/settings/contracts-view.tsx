@@ -512,7 +512,7 @@ export function ContractsView() {
       </div>
 
       {/* Main Tab Switcher */}
-      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-white/[0.08] pb-1">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-white/[0.08] pb-1">
         <button
           onClick={() => setActiveMainTab("wizard")}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
@@ -848,7 +848,7 @@ export function ContractsView() {
           {/* STEP 2: COMMERCIAL CONFIGURATION */}
           {currentWizardStep === 2 && commercialSchedule && (
             <div className="p-6 rounded-3xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-sm space-y-6">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
                     {copy.step2Title}
@@ -1006,7 +1006,7 @@ export function ContractsView() {
       {activeMainTab === "archive" && (
         <div className="space-y-4">
           <div className="overflow-x-auto rounded-2xl border border-slate-200/80 bg-white dark:border-white/[0.08] dark:bg-[#0B132B]">
-            <table className="w-full text-xs text-left">
+            <table className="w-full text-xs text-start">
               <thead className="bg-slate-50 dark:bg-white/[0.03] text-slate-500 border-b border-slate-200/80 dark:border-white/[0.08]">
                 <tr>
                   <th className="p-3 font-bold">{copy.archiveAgreement}</th>
@@ -1089,7 +1089,7 @@ export function ContractsView() {
 
             {panelMode === "read" ? (
               <div className="flex justify-end border-t border-slate-200 bg-white p-5 dark:border-white/[0.08] dark:bg-[#0B132B]">
-                <button type="button" onClick={() => void handleDownload(selectedContract.contract_type)} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-800">
+                <button type="button" onClick={() => void handleDownload(selectedContract.contract_type)} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-800 dark:border-white/10 dark:text-slate-100">
                   <Download size={13} /> {copy.download}
                 </button>
               </div>
@@ -1098,7 +1098,7 @@ export function ContractsView() {
               <p className="text-xs leading-relaxed text-slate-700 dark:text-slate-200">{copy.codeWhy}</p>
               {/* Jeton / Défi de signature anti-rejeu */}
               {!challengeId ? (
-                <div className="p-3.5 rounded-xl bg-blue-50 dark:bg-[#111D3D] border border-blue-200 dark:border-blue-900 flex items-center justify-between gap-3">
+                <div className="p-3.5 rounded-xl bg-blue-50 dark:bg-[#111D3D] border border-blue-200 dark:border-blue-900 flex flex-wrap items-center justify-between gap-3">
                   <div className="text-xs text-blue-900 dark:text-blue-200">
                     {copy.challengePrompt}
                   </div>
@@ -1184,7 +1184,7 @@ export function ContractsView() {
                   </label>
                 </div>
 
-                <div className="flex justify-between items-center pt-3 border-t border-slate-100 dark:border-white/[0.06]">
+                <div className="flex flex-wrap justify-between items-center gap-2 pt-3 border-t border-slate-100 dark:border-white/[0.06]">
                   <button type="button" onClick={() => void handleDownload(selectedContract.contract_type)} className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800">
                     <Download size={13} /> {copy.download}
                   </button>

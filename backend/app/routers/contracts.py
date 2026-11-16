@@ -728,6 +728,29 @@ def download_contract_pdf_route(
     return download_contract_pdf(contract_type, tenant, db, service)
 
 
+@router.post("/{contract_type}/resend-signed-copy")
+def resend_signed_contract_pdf_email(
+    contract_type: str,
+    tenant: TenantContext = Depends(get_tenant_context),
+    identity: CurrentIdentity = Depends(get_current_identity),
+    service: ContractSignatureService = Depends(_get_service),
+) -> dict[str, Any]:
+    """Safe idempotent retry for dispatching the signed contract PDF copy to the verified signatory."""
+    assert_contract_reader(identity, tenant)
+    try:
+        contract = service.get_contract(tenant.company_id, contract_type)
+        return service.send_signed_contract_email(
+            contract=contract,
+            signer=identity.user,
+        )
+    except ContractNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ContractAuthorityError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 class VerifyWetInkRequest(BaseModel):
     approved: bool
     rejection_reason: str | None = None

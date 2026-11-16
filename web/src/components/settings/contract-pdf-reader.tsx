@@ -76,16 +76,16 @@ export function ContractPdfReader({ data, labels }: { data: ArrayBuffer; labels:
           {labels.page} {page} {labels.of} {pageCount || "—"}
         </p>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={() => showPage(page - 1)} className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-800">
+          <button type="button" onClick={() => showPage(page - 1)} className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-800 dark:border-white/10 dark:bg-white/[0.06] dark:text-slate-100">
             ‹
           </button>
-          <button type="button" onClick={() => showPage(page + 1)} className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-800">
+          <button type="button" onClick={() => showPage(page + 1)} className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-800 dark:border-white/10 dark:bg-white/[0.06] dark:text-slate-100">
             ›
           </button>
-          <button type="button" onClick={() => setScale((value) => Math.max(0.8, Number((value - 0.15).toFixed(2))))} className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-800">
+          <button type="button" onClick={() => setScale((value) => Math.max(0.8, Number((value - 0.15).toFixed(2))))} className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-800 dark:border-white/10 dark:bg-white/[0.06] dark:text-slate-100">
             {labels.zoomOut}
           </button>
-          <button type="button" onClick={() => setScale((value) => Math.min(2, Number((value + 0.15).toFixed(2))))} className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-800">
+          <button type="button" onClick={() => setScale((value) => Math.min(2, Number((value + 0.15).toFixed(2))))} className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-semibold text-slate-800 dark:border-white/10 dark:bg-white/[0.06] dark:text-slate-100">
             {labels.zoomIn}
           </button>
         </div>

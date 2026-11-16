@@ -21,7 +21,7 @@ export function CompactStepper({
   onSelect?: (id: string) => void;
 }) {
   return (
-    <ol aria-label={label} className="grid w-full min-w-0 grid-cols-4 gap-1 sm:gap-2">
+    <ol aria-label={label} className="grid w-full min-w-0 grid-cols-2 gap-1 sm:grid-cols-4 sm:gap-2">
       {steps.map((step, index) => {
         const tone = {
           completed: "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-100",

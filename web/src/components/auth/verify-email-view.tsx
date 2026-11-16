@@ -19,7 +19,7 @@ export function VerifyEmailView() {
 
   const { locale } = useLocale();
   const authStrings = getAuthStrings(locale);
-  const isEn = locale === "en";
+  const isEn = !locale.startsWith("fr");
 
   const [status, setStatus] = useState<StatusState>(token ? "loading" : "missing_token");
   const [errorMessage, setErrorMessage] = useState<string>("");

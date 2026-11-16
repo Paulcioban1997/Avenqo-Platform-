@@ -67,8 +67,9 @@ manage_connectors = require_permission("data:manage")
 def require_connector_read(
     identity: CurrentIdentity = Depends(get_current_identity),
 ) -> CurrentIdentity:
+    from backend.app.core.permission_grants import effective_permissions
     if not {"data:read", "data:manage"}.intersection(
-        permissions_for(identity.user.role)
+        effective_permissions(identity.user)
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

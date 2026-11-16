@@ -444,12 +444,12 @@ class PublicInboundConversation:
                 return {"status": "success", "answer": "Aucune prestation réservable ou cueillette en magasin n’est actuellement configurée pour cette entreprise." if french else "No bookable service or store pickup is currently configured for this business.", "public": True}
             if is_pickup_reservation:
                 answer = (
-                    "Absolument ! Vous pouvez réserver votre équipement pour un ramassage ou une cueillette en magasin. Quel produit ou planche souhaitez-vous réserver et quel jour souhaitez-vous passer en boutique ?"
+                    "Les réservations de produits ne sont pas effectuées par téléphone. Pour demander un rendez-vous de service, veuillez indiquer la prestation et la date souhaitées."
                     if french
-                    else "Absolutely! You can reserve your equipment for in-store pickup. Which product would you like to reserve, and what date would you like to pick it up?"
+                    else "Product reservations are not processed by phone. To request a service appointment, please provide the desired service and date."
                 )
             else:
-                answer = "Pour demander un rendez-vous ou une cueillette en magasin, indiquez le service ou produit et la date souhaités. Aucune réservation n'est encore confirmée." if french else "For an appointment or store pickup request, please provide the service or product and desired date. No booking is confirmed yet."
+                answer = "Pour demander un rendez-vous, indiquez le service et la date souhaités. Aucun rendez-vous n'est encore confirmé." if french else "For an appointment request, please provide the service and desired date. No booking is confirmed yet."
             call.source_context = {**(call.source_context or {}), "public_appointment_request": True}
             self.db.commit()
             return {"status": "success", "answer": answer, "public": True}

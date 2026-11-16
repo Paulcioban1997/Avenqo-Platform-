@@ -405,15 +405,28 @@ class ContractPdfGenerator:
         # 7. Registre d'Achèvement Avenqo (Avenqo Completion Record)
         if signed_at and not is_draft:
             elements.append(Spacer(1, 14))
-            cert_title = Paragraph("<b>REGISTRE D'ACHÈVEMENT ET D'INTÉGRITÉ AVENQO (COMPLETION RECORD)</b>", meta_label)
+            rec = completion_record or {}
+            tx_id = rec.get("transaction_id") or (f"TX-{audit_receipt_id[:12].upper()}" if audit_receipt_id else "TX-AUTO")
+            sig_label = rec.get("signature_label") or ("pilot/test" if is_sandbox else "electronic")
+            legal_effect = rec.get("legal_effect") or ("sandbox_pilot" if is_sandbox else "customer_signed_pending_provider")
+            party_states = rec.get("execution_party_states") if isinstance(rec.get("execution_party_states"), dict) else {}
+            customer_state = party_states.get("customer") or "SIGNED"
+            provider_state = party_states.get("provider") or ("COMPLETED" if execution_state == "COMPLETED" else "PENDING_COUNTERSIGNATURE")
+            verify_via = rec.get("identity_verified_via") or "email_otp_challenge"
+            status_summary = (
+                "Signature pilote d'essai (Sandbox) — aucune contresignature fournisseur ni preuve d'incorporation"
+                if is_sandbox or legal_effect == "sandbox_pilot"
+                else "Signé par le client — en attente de contresignature fournisseur"
+            )
+            cert_title = Paragraph("<b>REGISTRE D'ACHÈVEMENT ET D'INTÉGRITÉ AVENQO (COMPLETION RECORD &amp; RECEIPT)</b>", meta_label)
             cert_body = Paragraph(
-                f"Ce registre atteste qu'un événement de signature électronique a été consigné par l'infrastructure Avenqo. "
-                f"Identifiant de transaction : <b>{audit_receipt_id or 'TX-AUTO'}</b>. "
-                f"Horodatage certifié : <b>{client_date_str}</b>. "
-                f"Empreinte cryptographique du document source (SHA-256) : <b>{sha256_hash}</b>. "
-                f"Adresse IP source : <b>{ip_address or '127.0.0.1'}</b>. "
-                "Ce document constitue une preuve d'engagement et de traçabilité d'entreprise.",
-                ParagraphStyle("Cert", parent=body_style, fontSize=7.5, leading=10, textColor=colors.HexColor("#475569")),
+                f"Ce registre atteste qu'un événement de signature électronique a été consigné par l'infrastructure Avenqo.<br/>"
+                f"Numéro de transaction : <b>{tx_id}</b> | Reçu d'audit : <b>{audit_receipt_id or 'N/A'}</b><br/>"
+                f"Statut réel du document : <b>{status_summary}</b> (Mode : <b>{signature_mode} / {sig_label}</b>)<br/>"
+                f"État des parties : Client = <b>{customer_state}</b> | Fournisseur = <b>{provider_state}</b><br/>"
+                f"Vérification d'identité : <b>{verify_via}</b> | Horodatage certifié UTC : <b>{client_date_str}</b><br/>"
+                f"Empreinte cryptographique du contrat (SHA-256) : <b>{sha256_hash}</b> | Adresse IP source : <b>{ip_address or '127.0.0.1'}</b>",
+                ParagraphStyle("Cert", parent=body_style, fontSize=7.5, leading=10.5, textColor=colors.HexColor("#475569")),
             )
             cert_table = Table([[cert_title], [cert_body]], colWidths=[532])
             cert_table.setStyle(TableStyle([

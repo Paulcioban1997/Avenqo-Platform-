@@ -471,8 +471,8 @@ export function AppShell({ children }: AppShellProps) {
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar */}
         <aside
-          className={`fixed inset-y-0 start-0 z-30 flex w-[min(100vw,18rem)] flex-col justify-between border-r border-slate-200/80 bg-white transition-transform duration-200 dark:border-white/[0.08] dark:bg-[#0B132B] lg:sticky lg:top-16 lg:z-20 lg:h-[calc(100vh-4rem)] lg:translate-x-0 ${
-            isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+          className={`fixed inset-y-0 start-0 z-30 flex w-[min(100vw,18rem)] flex-col justify-between border-e border-slate-200/80 bg-white transition-transform duration-200 dark:border-white/[0.08] dark:bg-[#0B132B] lg:sticky lg:top-16 lg:z-20 lg:h-[calc(100vh-4rem)] lg:translate-x-0 ${
+            isSidebarOpen ? "translate-x-0" : "-translate-x-full rtl:translate-x-full"
           }`}
         >
           {/* Top of Sidebar: Brand + Tagline (Mobile drawer only) */}

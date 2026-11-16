@@ -392,30 +392,20 @@ export function DashboardView({
             {/* Taux de conversion / Ratio Transactions */}
             {(() => {
               const ordersCount = Number(kpis.orders?.value ?? 0);
-              const customersCount = Number(kpis.customers?.value ?? 0);
-              const estRate = ordersCount > 0 && customersCount > 0
-                ? Math.round(Math.min(8.5, Math.max(1.8, (customersCount / ordersCount) * 18.0)) * 10) / 10
-                : null;
               const hasConversion = Boolean(conversion.available && conversion.value != null);
               const displayVal = conversion.available && conversion.value != null
                 ? `${conversion.value.toFixed(1)}%`
-                : estRate != null
-                  ? `${estRate.toFixed(1)}%`
-                  : "—";
-              const displayTitle = hasConversion
-                ? t.dashboard.conversionRate
-                : "Ratio Indicatif Client / Vente";
+                : "—";
+              const displayTitle = t.dashboard.conversionRate;
               const displaySub = hasConversion
                 ? periodLabel
-                : estRate != null
-                  ? "Ratio indicatif (visites non trackées)"
-                  : t.dashboard.conversionUnavailable;
+                : t.dashboard.conversionUnavailable;
               return (
                 <MetricCard
                   title={displayTitle}
                   value={displayVal}
                   delta={
-                    ordersCount === 0 || (!hasConversion && !estRate)
+                    ordersCount === 0 || !hasConversion
                       ? null
                       : (kpis.conversion_rate?.change_percent ?? null)
                   }

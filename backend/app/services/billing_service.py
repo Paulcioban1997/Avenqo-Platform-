@@ -575,7 +575,10 @@ class BillingService:
                     data,
                     payment_confirmed=event_type == "checkout.session.async_payment_succeeded",
                 )
-        elif event_type == "checkout.session.async_payment_failed":
+        elif event_type in {
+            "checkout.session.async_payment_failed",
+            "checkout.session.expired",
+        }:
             self._mark_credit_checkout_failed(data)
         elif event_type == "charge.refunded":
             self._refund_credit_purchase(data)
@@ -624,6 +627,8 @@ class BillingService:
     def _resolve_credit_purchase(
         self,
         checkout: dict[str, Any],
+        *,
+        require_payment_intent: bool = True,
     ) -> tuple[AICreditPurchase, AICreditPack] | None:
         metadata = checkout.get("metadata") or {}
         if metadata.get("avenqo_kind") != "ai_credit_pack":
@@ -648,7 +653,7 @@ class BillingService:
         payment_intent_id = str(checkout.get("payment_intent") or "")
         if not checkout_session_id:
             raise BillingOperationError("Session Checkout Stripe absente")
-        if not payment_intent_id:
+        if require_payment_intent and not payment_intent_id:
             raise BillingOperationError("PaymentIntent Stripe absent")
         amount_total = checkout.get("amount_total")
         currency = str(checkout.get("currency") or "").lower()
@@ -667,9 +672,13 @@ class BillingService:
         by_session = self._session.scalar(select(AICreditPurchase).where(
             AICreditPurchase.stripe_checkout_session_id == checkout_session_id
         ))
-        by_payment = self._session.scalar(select(AICreditPurchase).where(
-            AICreditPurchase.stripe_payment_intent_id == payment_intent_id
-        ))
+        by_payment = (
+            self._session.scalar(select(AICreditPurchase).where(
+                AICreditPurchase.stripe_payment_intent_id == payment_intent_id
+            ))
+            if payment_intent_id
+            else None
+        )
         matched = {item.id for item in (purchase, by_session, by_payment) if item is not None}
         if len(matched) > 1:
             raise BillingOperationError("Références Stripe associées à des achats différents")
@@ -708,16 +717,17 @@ class BillingService:
                 raise BillingOperationError("Montant ou quantité incompatible avec l'offre achetée")
         if purchase.stripe_checkout_session_id not in {None, checkout_session_id} and by_payment is None:
             raise BillingOperationError("Session Checkout incompatible avec l'achat de crédits")
-        if purchase.stripe_payment_intent_id not in {None, payment_intent_id}:
+        if payment_intent_id and purchase.stripe_payment_intent_id not in {None, payment_intent_id}:
             raise BillingOperationError("PaymentIntent incompatible avec l'achat de crédits")
         purchase.stripe_checkout_session_id = purchase.stripe_checkout_session_id or checkout_session_id
-        purchase.stripe_payment_intent_id = purchase.stripe_payment_intent_id or payment_intent_id
+        if payment_intent_id:
+            purchase.stripe_payment_intent_id = purchase.stripe_payment_intent_id or payment_intent_id
         purchase.amount_paid = amount_total
         purchase.currency = currency
         return purchase, pack
 
     def _mark_credit_checkout_failed(self, checkout: dict[str, Any]) -> None:
-        resolved = self._resolve_credit_purchase(checkout)
+        resolved = self._resolve_credit_purchase(checkout, require_payment_intent=False)
         if resolved is None:
             return
         purchase, _ = resolved
@@ -739,7 +749,12 @@ class BillingService:
             except ValueError as exc:
                 raise BillingOperationError("Référence de remboursement invalide") from exc
         if purchase is None:
-            raise BillingOperationError("Achat de crédits introuvable pour le remboursement")
+            if (
+                metadata.get("avenqo_kind") == "ai_credit_pack"
+                or metadata.get("avenqo_credit_purchase_id")
+            ):
+                raise BillingOperationError("Achat de crédits introuvable pour le remboursement")
+            return
         if payment_intent_id:
             if purchase.stripe_payment_intent_id not in {None, payment_intent_id}:
                 raise BillingOperationError("PaymentIntent incompatible avec le remboursement")
@@ -849,11 +864,18 @@ class BillingService:
         company_id = self._company_id(subscription)
         account = self.get_account(company_id)
         sub_id = str(subscription["id"])
-        # Ignore out-of-order deletion for a previously replaced subscription.
+        incoming_status = str(subscription.get("status") or "")
+        # Ignore out-of-order deletion or terminal cancellation for a previously replaced subscription.
         if (
-            event_type == "customer.subscription.deleted"
-            and account.stripe_subscription_id
+            account.stripe_subscription_id
             and account.stripe_subscription_id != sub_id
+            and (
+                event_type == "customer.subscription.deleted"
+                or (
+                    incoming_status in {"canceled", "incomplete_expired"}
+                    and account.status in {"active", "trialing", "past_due"}
+                )
+            )
         ):
             return
         core_items=[x for x in subscription["items"]["data"] if self._settings.stripe_plan_code(str(x["price"]["id"]))]
@@ -895,7 +917,9 @@ class BillingService:
         lines = (invoice.get("lines") or {}).get("data") or []
         line = lines[0] if lines else {}
         period = line.get("period") or {}
-        price_id = str((line.get("price") or {}).get("id") or "")
+        legacy_price = line.get("price") or {}
+        price_details = ((line.get("pricing") or {}).get("price_details")) or {}
+        price_id = str(legacy_price.get("id") or price_details.get("price") or "")
         plan_code = self._settings.stripe_plan_code(price_id) or account.plan_code
         parent = invoice.get("parent") or {}
         subscription_details = parent.get("subscription_details") or {}
@@ -978,26 +1002,45 @@ class BillingService:
             )
         if invoice.get("status") == "paid" and existing.email_sent_at is None:
             recipient = self._invoice_recipient(account.company, values["customer_email"])
-            if recipient and getattr(self._notifier, "email_delivery_configured", True):
+            if (
+                recipient
+                and getattr(self._notifier, "email_delivery_configured", True)
+                and self._allows_invoice_email(recipient)
+            ):
                 get_company_locale(self._session, company_id)
-                self._notifier.send_invoice_paid(recipient, account.company, existing)
-                existing.email_sent_at = datetime.now(timezone.utc)
+                try:
+                    self._notifier.send_invoice_paid(recipient, account.company, existing)
+                    existing.email_sent_at = datetime.now(timezone.utc)
+                except Exception:
+                    logger.warning(
+                        "Failed to deliver paid invoice email for invoice %s",
+                        existing.stripe_invoice_id,
+                        exc_info=True,
+                    )
+
+    def _allows_invoice_email(self, recipient: str) -> bool:
+        env = self._settings.environment.strip().lower()
+        notifier_cls = type(self._notifier).__name__
+        if env in {"sandbox", "staging"} and notifier_cls in {"HTTPSAccountNotifier", "SMTPAccountNotifier"}:
+            return self._settings.is_sandbox_email_recipient_approved(recipient)
+        return True
 
     @staticmethod
     def _line_item_snapshot(line: dict[str, Any]) -> dict[str, Any]:
         price = line.get("price") or {}
+        price_details = ((line.get("pricing") or {}).get("price_details")) or {}
         return {
             "description": line.get("description"),
             "quantity": line.get("quantity"),
             "amount": int(line.get("amount", 0)),
             "currency": line.get("currency"),
-            "price_id": price.get("id"),
-            "product_id": price.get("product"),
+            "price_id": price.get("id") or price_details.get("price"),
+            "product_id": price.get("product") or price_details.get("product"),
         }
 
     def _invoice_recipient(self, company: Company, stripe_email: object) -> str | None:
-        if company.billing_email.strip():
-            return company.billing_email.strip().lower()
+        if (company.billing_email or "").strip():
+            return (company.billing_email or "").strip().lower()
         if stripe_email:
             return str(stripe_email).strip().lower()
         owner = self._session.scalar(

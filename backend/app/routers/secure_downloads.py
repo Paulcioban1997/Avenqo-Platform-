@@ -304,7 +304,8 @@ def secure_download(
         )
 
     # 2. Revalidation dynamique des permissions RBAC actuelles
-    perms = permissions_for(current_user.role)
+    from backend.app.core.permission_grants import effective_permissions
+    perms = effective_permissions(current_user)
     if "data:read" not in perms:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

@@ -80,7 +80,12 @@ class ToolAuthorizationPolicy:
         if membership is None:
             raise ToolAuthorizationError("An active tenant membership is required.")
 
-        permissions = frozenset(permissions_for(membership.role))
+        from backend.app.core.permission_grants import effective_permissions
+        permissions = (
+            frozenset(effective_permissions(user))
+            if user.company_id == context.tenant.company_id and user.permission_grants is not None
+            else frozenset(permissions_for(membership.role))
+        )
         if context.permissions:
             permissions = permissions.intersection(context.permissions)
         if not set(tool.required_permissions).issubset(permissions):

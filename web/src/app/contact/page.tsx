@@ -9,7 +9,7 @@ import { Mail, Phone, MapPin, CheckCircle2, AlertCircle, ArrowRight, LoaderCircl
 
 export default function ContactPage() {
   const { locale } = useLocale();
-  const isEn = locale === "en";
+  const isEn = !locale.startsWith("fr");
   const contactEmail = "info@avenqo.ca";
   const headquarters = "Montréal, QC, Canada";
 
