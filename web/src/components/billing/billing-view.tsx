@@ -557,6 +557,18 @@ export function BillingView() {
 
   const stripeLinked = Boolean(subscription.stripe_subscription_linked);
   const paymentStatus = subscription.stripe_payment_status || (stripeLinked ? subscription.status : "unlinked");
+  const formatStripeDate = (value?: string | null) => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    // Stripe billing periods are UTC instants; render the UTC calendar day to match Stripe.
+    return parsed.toLocaleDateString(locale, {
+      timeZone: "UTC",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  };
   const statusLabel = !stripeLinked
     ? (locale.startsWith("fr") ? "Plan local — Stripe non lié" : "Local plan — Stripe unlinked")
     : paymentStatus === "active"
@@ -678,11 +690,7 @@ export function BillingView() {
               <Calendar size={14} className="text-slate-400" />
               <span>
                 {subscription.stripe_subscription_linked && subscription.current_period_end
-                  ? new Date(subscription.current_period_end).toLocaleDateString(locale, {
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                    })
+                  ? formatStripeDate(subscription.current_period_end)
                   : t.shell.stripeNotLinked}
               </span>
             </div>
@@ -699,6 +707,10 @@ export function BillingView() {
                 <span>
                   {subscription.payment_method.brand} •••• {subscription.payment_method.last4}
                 </span>
+              ) : stripeLinked ? (
+                <span className="text-slate-500 dark:text-slate-400 text-xs">
+                  {locale.startsWith("fr") ? "Carte gérée via Stripe" : "Card managed in Stripe"}
+                </span>
               ) : (
                 <span className="text-slate-400 dark:text-slate-500 text-xs">{companyTranslations.billingPortalButton}</span>
               )}
@@ -706,7 +718,9 @@ export function BillingView() {
             <div className="text-[11px] text-slate-400 mt-1">
               {subscription.payment_method
                 ? `Exp: ${String(subscription.payment_method.exp_month).padStart(2, "0")}/${subscription.payment_method.exp_year}`
-                : t.shell.stripeNotLinked}
+                : stripeLinked
+                  ? (locale.startsWith("fr") ? "Portail client disponible" : "Customer portal available")
+                  : t.shell.stripeNotLinked}
             </div>
           </div>
         </div>
@@ -1194,10 +1208,10 @@ export function BillingView() {
                 <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
                   {invoices.map((inv) => {
                     const invNumber = inv.number || "—";
-                    const dateStr = inv.issued_at ? inv.issued_at.slice(0, 10) : "—";
+                    const dateStr = formatStripeDate(inv.issued_at) || (inv.issued_at ? inv.issued_at.slice(0, 10) : "—");
                     const periodStr =
                       inv.period_start && inv.period_end
-                        ? `${inv.period_start.slice(0, 7)}`
+                        ? `${formatStripeDate(inv.period_start) || inv.period_start.slice(0, 10)} → ${formatStripeDate(inv.period_end) || inv.period_end.slice(0, 10)}`
                         : "Courante";
                     const amountStr = `${((inv.total || 0) / 100).toFixed(2)} ${(inv.currency || "CAD").toUpperCase()}`;
                     const localPaid = (inv.status || "").toLowerCase() === "paid";

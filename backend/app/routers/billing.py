@@ -194,7 +194,12 @@ def _plan_display_price(plan_obj: Any, currency: str) -> tuple[float | None, flo
     return usd, display
 
 
-def subscription_response(account: Any, company: Any = None) -> SubscriptionResponse:
+def subscription_response(
+    account: Any,
+    company: Any = None,
+    *,
+    payment_method: Any = None,
+) -> SubscriptionResponse:
     plan_obj = next((p for p in PLANS if p.code.value == account.plan_code), None)
     plan_name = plan_obj.name if plan_obj else account.plan_code.capitalize()
     currency = (company.currency_code or "CAD").upper() if company else "CAD"
@@ -227,7 +232,7 @@ def subscription_response(account: Any, company: Any = None) -> SubscriptionResp
         entitlement_status=entitlement_status,
         stripe_payment_status=stripe_payment_status,
         company_name=comp_name,
-        payment_method=None,
+        payment_method=payment_method,
     )
 
 
@@ -304,7 +309,22 @@ def subscription(
         pass
     except Exception:
         logger.exception("Sandbox Stripe evidence refresh failed for tenant %s", identity.user.company_id)
-    return subscription_response(account, company=identity.user.company)
+    payment_method = None
+    if account.stripe_subscription_id and account.stripe_customer_id:
+        card_lookup = getattr(service.provider, "get_customer_card_payment_method", None)
+        if callable(card_lookup):
+            try:
+                payment_method = card_lookup(account.stripe_customer_id)
+            except Exception:
+                logger.exception(
+                    "Stripe payment method lookup failed for tenant %s",
+                    identity.user.company_id,
+                )
+    return subscription_response(
+        account,
+        company=identity.user.company,
+        payment_method=payment_method,
+    )
 
 
 @router.get("/provider-status")

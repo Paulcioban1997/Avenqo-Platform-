@@ -55,6 +55,7 @@ class BillingProvider(Protocol):
     def construct_event(self, payload: bytes, signature: str, secret: str) -> dict[str, Any]: ...
     def get_account_id(self) -> str: ...
     def get_active_subscription(self, customer_id: str) -> dict[str, Any] | None: ...
+    def get_customer_card_payment_method(self, customer_id: str) -> dict[str, Any] | None: ...
 
 
 class StripeGateway:
@@ -290,6 +291,34 @@ class StripeGateway:
                     f"Le client Stripe '{customer_id}' n'a pas été trouvé dans le compte Stripe configuré."
                 ) from exc
             raise
+
+    def get_customer_card_payment_method(self, customer_id: str) -> dict[str, Any] | None:
+        """Return the first card payment method summary for portal/status display."""
+        try:
+            methods = stripe.PaymentMethod.list(
+                customer=customer_id,
+                type="card",
+                limit=1,
+                api_key=self._api_key,
+            )
+        except stripe.InvalidRequestError as exc:
+            if "No such customer" in str(exc):
+                raise StripeCustomerNotFoundError(
+                    f"Le client Stripe '{customer_id}' n'a pas été trouvé dans le compte Stripe configuré."
+                ) from exc
+            raise
+        data = getattr(methods, "data", None) or []
+        if not data:
+            return None
+        method = data[0]
+        method_dict = method.to_dict() if hasattr(method, "to_dict") else dict(method)
+        card = method_dict.get("card") or {}
+        return {
+            "brand": card.get("brand"),
+            "last4": card.get("last4"),
+            "exp_month": card.get("exp_month"),
+            "exp_year": card.get("exp_year"),
+        }
 
     def create_portal(self, customer_id: str, return_url: str) -> str:
         try:

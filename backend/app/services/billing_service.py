@@ -106,6 +106,84 @@ class BillingService:
 
         return ContractSignatureService(self._session, settings=self._settings).sandbox_saas_accepted(company.id)
 
+    @staticmethod
+    def _resource_dict(value: Any) -> dict[str, Any]:
+        if value is None:
+            return {}
+        if isinstance(value, dict):
+            return value
+        if hasattr(value, "to_dict_recursive"):
+            return value.to_dict_recursive()
+        if hasattr(value, "to_dict"):
+            return value.to_dict()
+        return dict(value)
+
+    @classmethod
+    def _subscription_period_end_ts(cls, subscription: dict[str, Any]) -> int | None:
+        """Stripe Billing moved current_period_end onto subscription items."""
+        root = subscription.get("current_period_end")
+        if root:
+            return int(root)
+        items = ((subscription.get("items") or {}).get("data") or [])
+        for item in items:
+            item_end = item.get("current_period_end") if isinstance(item, dict) else None
+            if item_end:
+                return int(item_end)
+        return None
+
+    def _apply_remote_subscription(self, account: BillingAccount, remote: Any) -> bool:
+        remote_dict = self._resource_dict(remote)
+        sub_id = remote_dict.get("id")
+        if not sub_id:
+            return False
+        account.stripe_subscription_id = str(sub_id)
+        if remote_dict.get("status"):
+            account.status = str(remote_dict["status"])
+        if "cancel_at_period_end" in remote_dict:
+            account.cancel_at_period_end = bool(remote_dict.get("cancel_at_period_end"))
+        period_end = self._subscription_period_end_ts(remote_dict)
+        if period_end:
+            # Always overwrite stale local period ends with Stripe's confirmed value.
+            account.current_period_end = datetime.fromtimestamp(period_end, timezone.utc)
+        return True
+
+    def _heal_paid_subscription_credits(self, company_id: UUID, customer_id: str) -> None:
+        """Apply missed invoice.paid renewals once; never invent tax or unpaid renewals."""
+        if self._usage_service is None:
+            return
+        list_invoices = getattr(self.provider, "list_customer_invoices", None)
+        if not callable(list_invoices):
+            return
+        try:
+            invoices = list_invoices(customer_id, limit=20)
+        except Exception:
+            logger.exception("Stripe invoice credit heal failed for tenant %s", company_id)
+            return
+        for invoice in invoices:
+            if str(invoice.get("status") or "") != "paid":
+                continue
+            reason = str(invoice.get("billing_reason") or "")
+            parent = invoice.get("parent") or {}
+            subscription_details = parent.get("subscription_details") or {}
+            has_subscription = bool(
+                invoice.get("subscription")
+                or subscription_details.get("subscription")
+            )
+            if reason not in {"subscription_cycle", "subscription_create"}:
+                if reason or not has_subscription:
+                    continue
+            lines = (invoice.get("lines") or {}).get("data") or []
+            period = (lines[0].get("period") if lines else {}) or {}
+            period_start = self._stripe_datetime(period.get("start")) or self._stripe_datetime(
+                invoice.get("created")
+            )
+            if period_start is None:
+                continue
+            self._usage_service.reset_credits_for_renewal(
+                company_id,
+                period_start.strftime("%Y-%m"),
+            )
+
     def refresh_stripe_payment_evidence(self, company: Company) -> BillingAccount:
         """Keep local plan/entitlement; only claim Stripe payment when a test subscription is visible."""
 
@@ -119,19 +197,22 @@ class BillingService:
                 remote = self.provider.get_active_subscription(account.stripe_customer_id)
             except StripeCustomerNotFoundError:
                 remote = None
-        if remote:
-            sub_id = remote.get("id") if isinstance(remote, dict) else getattr(remote, "id", None)
-            sub_status = remote.get("status") if isinstance(remote, dict) else getattr(remote, "status", "active")
-            period_end = None
-            if isinstance(remote, dict):
-                period_end = remote.get("current_period_end")
-            if sub_id:
-                account.stripe_subscription_id = str(sub_id)
-                if sub_status:
-                    account.status = str(sub_status)
-                if period_end:
-                    account.current_period_end = datetime.fromtimestamp(int(period_end), timezone.utc)
-                self._session.commit()
+            if remote is None:
+                # Visible empty customer must not hide another company-tagged customer with an active sub.
+                finder = getattr(self.provider, "find_customer_by_company", None)
+                if callable(finder):
+                    alternate = finder(str(company.id))
+                    if alternate and alternate != account.stripe_customer_id:
+                        try:
+                            remote = self.provider.get_active_subscription(alternate)
+                        except StripeCustomerNotFoundError:
+                            remote = None
+                        if remote:
+                            account.stripe_customer_id = alternate
+        if remote and self._apply_remote_subscription(account, remote):
+            if account.stripe_customer_id:
+                self._heal_paid_subscription_credits(company.id, account.stripe_customer_id)
+            self._session.commit()
             return account
         if account.stripe_subscription_id:
             account.stripe_subscription_id = None
@@ -175,11 +256,7 @@ class BillingService:
             if account.stripe_customer_id:
                 remote = self.provider.get_active_subscription(account.stripe_customer_id)
             if remote:
-                sub_id = remote.get("id") if isinstance(remote, dict) else getattr(remote, "id", None)
-                sub_status = remote.get("status") if isinstance(remote, dict) else getattr(remote, "status", "active")
-                if sub_id:
-                    account.stripe_subscription_id = sub_id
-                    account.status = sub_status
+                if self._apply_remote_subscription(account, remote):
                     self._session.commit()
                 raise BillingOperationError(
                     "Un abonnement test existe déjà sur ce client Stripe. "
@@ -217,14 +294,12 @@ class BillingService:
         if account.stripe_customer_id:
             remote_sub = self.provider.get_active_subscription(account.stripe_customer_id)
             if remote_sub:
-                sub_id = remote_sub.get("id") if isinstance(remote_sub, dict) else getattr(remote_sub, "id", None)
-                sub_status = remote_sub.get("status") if isinstance(remote_sub, dict) else getattr(remote_sub, "status", "active")
-                if sub_id:
-                    account.stripe_subscription_id = sub_id
-                    account.status = sub_status
+                applied = self._apply_remote_subscription(account, remote_sub)
+                if applied:
                     self._session.commit()
+                linked_id = account.stripe_subscription_id or ""
                 raise BillingOperationError(
-                    f"Un abonnement actif ({sub_id or ''}) existe déjà sur votre compte Stripe. "
+                    f"Un abonnement actif ({linked_id}) existe déjà sur votre compte Stripe. "
                     "Votre compte a été synchronisé. Utilisez le portail Stripe pour le gérer sans créer de doublon."
                 )
 
@@ -303,13 +378,8 @@ class BillingService:
         if not account.stripe_subscription_id and account.stripe_customer_id:
             try:
                 remote_sub = self.provider.get_active_subscription(account.stripe_customer_id)
-                if remote_sub:
-                    sub_id = remote_sub.get("id") if isinstance(remote_sub, dict) else getattr(remote_sub, "id", None)
-                    sub_status = remote_sub.get("status") if isinstance(remote_sub, dict) else getattr(remote_sub, "status", "active")
-                    if sub_id:
-                        account.stripe_subscription_id = sub_id
-                        account.status = sub_status
-                        self._session.commit()
+                if remote_sub and self._apply_remote_subscription(account, remote_sub):
+                    self._session.commit()
             except Exception as e:
                 logger.warning("Impossible de synchroniser l'abonnement distant à l'ouverture du portail: %s", e)
 
@@ -735,9 +805,12 @@ class BillingService:
         account.plan_code = plan_code
         account.status = str(subscription["status"])
         account.cancel_at_period_end = bool(subscription.get("cancel_at_period_end", False))
-        period_end = subscription.get("current_period_end") or core_item.get("current_period_end")
+        period_end = self._subscription_period_end_ts(subscription)
+        if period_end is None:
+            item_end = core_item.get("current_period_end")
+            period_end = int(item_end) if item_end else None
         account.current_period_end = (
-            datetime.fromtimestamp(int(period_end), timezone.utc) if period_end else None
+            datetime.fromtimestamp(period_end, timezone.utc) if period_end else None
         )
         account.company.subscription_plan = plan_code
 

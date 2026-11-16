@@ -359,6 +359,93 @@ def test_sandbox_portal_opens_when_real_test_subscription_exists(db_session):
     assert payload.stripe_payment_status == "active"
 
 
+def test_refresh_overwrites_stale_period_end_from_subscription_items(db_session):
+    company = _company(db_session)
+    stale = datetime(2026, 12, 10, 16, 45, 8, tzinfo=timezone.utc)
+    stripe_period_end = int(datetime(2026, 12, 16, 1, 14, 42, tzinfo=timezone.utc).timestamp())
+    account = BillingAccount(
+        company_id=company.id,
+        plan_code="professional",
+        status="active",
+        stripe_customer_id="cus_paid",
+        stripe_subscription_id="sub_stale_period",
+        current_period_end=stale,
+    )
+    db_session.add(account)
+    db_session.commit()
+
+    class Provider:
+        def get_active_subscription(self, customer_id: str):
+            return {
+                "id": "sub_paid_now",
+                "status": "active",
+                "cancel_at_period_end": False,
+                "current_period_end": None,
+                "items": {"data": [{"current_period_end": stripe_period_end, "price": {"id": "price_professional_existing"}}]},
+            }
+
+        def list_customer_invoices(self, customer_id: str, *, limit: int = 100):
+            return []
+
+    class Usage:
+        def reset_credits_for_renewal(self, *args, **kwargs):
+            raise AssertionError("no paid invoice in this fixture")
+
+    service = BillingService(db_session, Provider(), _Settings(), Usage(), None)
+    refreshed = service.refresh_stripe_payment_evidence(company)
+    assert refreshed.stripe_subscription_id == "sub_paid_now"
+    assert refreshed.current_period_end == datetime(2026, 12, 16, 1, 14, 42, tzinfo=timezone.utc)
+    payload = subscription_response(refreshed, company=company)
+    assert payload.stripe_subscription_linked is True
+    assert payload.current_period_end == refreshed.current_period_end
+
+
+def test_refresh_heals_missed_subscription_create_credit_renewal_once(db_session):
+    company = _company(db_session)
+    account = BillingAccount(
+        company_id=company.id,
+        plan_code="professional",
+        status="active",
+        stripe_customer_id="cus_paid",
+        stripe_subscription_id=None,
+    )
+    db_session.add(account)
+    db_session.commit()
+    period_start = int(datetime(2026, 11, 16, 1, 14, 42, tzinfo=timezone.utc).timestamp())
+    period_end = int(datetime(2026, 12, 16, 1, 14, 42, tzinfo=timezone.utc).timestamp())
+    renewals: list[str] = []
+
+    class Provider:
+        def get_active_subscription(self, customer_id: str):
+            return {
+                "id": "sub_paid_now",
+                "status": "active",
+                "current_period_end": None,
+                "items": {"data": [{"current_period_end": period_end}]},
+            }
+
+        def list_customer_invoices(self, customer_id: str, *, limit: int = 100):
+            return [{
+                "id": "in_paid_create",
+                "status": "paid",
+                "billing_reason": "subscription_create",
+                "created": period_start,
+                "parent": {"subscription_details": {"subscription": "sub_paid_now"}},
+                "lines": {"data": [{"period": {"start": period_start, "end": period_end}}]},
+            }]
+
+    class Usage:
+        def reset_credits_for_renewal(self, company_id, billing_period):
+            renewals.append(f"{company_id}:{billing_period}")
+
+    service = BillingService(db_session, Provider(), _Settings(), Usage(), None)
+    service.refresh_stripe_payment_evidence(company)
+    assert renewals == [f"{company.id}:2026-11"]
+    reloaded = db_session.scalar(select(BillingAccount).where(BillingAccount.company_id == company.id))
+    assert reloaded.stripe_subscription_id == "sub_paid_now"
+    assert reloaded.current_period_end == datetime(2026, 12, 16, 1, 14, 42, tzinfo=timezone.utc)
+
+
 def test_local_entitlement_stays_active_without_claiming_stripe_paid(db_session):
     company = _company(db_session)
     account = BillingAccount(
