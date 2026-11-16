@@ -1,6 +1,7 @@
 """Catalogue des offres d'abonnement Avenqo indépendant de Stripe."""
 
 from dataclasses import dataclass
+from decimal import Decimal
 from enum import StrEnum
 
 from modules.registry import BUSINESS_MODULE_REGISTRY
@@ -127,8 +128,8 @@ class AICreditPack:
     code: str
     plan_code: PlanCode
     credits: int
-    price_usd: int
-    price_cad: int
+    price_usd: int | Decimal
+    price_cad: int | Decimal
 
 
 AI_CREDIT_PACKS: tuple[AICreditPack, ...] = (

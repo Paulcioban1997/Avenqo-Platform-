@@ -2,6 +2,7 @@ import logging
 import time
 """Cas d'usage de facturation Stripe limités au tenant authentifié."""
 
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_CEILING
 from typing import Any
@@ -84,10 +85,12 @@ class BillingService:
         previous = account.stripe_customer_id
         if previous and self._customer_is_visible(previous):
             return account
-        found = None
+        found: str | None = None
         finder = getattr(self.provider, "find_customer_by_company", None)
         if callable(finder):
-            found = finder(str(company.id))
+            raw_found = finder(str(company.id))
+            if isinstance(raw_found, str):
+                found = raw_found
         if found and self._customer_is_visible(found):
             account.stripe_customer_id = found
         else:
@@ -159,6 +162,8 @@ class BillingService:
         except Exception:
             logger.exception("Stripe invoice credit heal failed for tenant %s", company_id)
             return
+        if not isinstance(invoices, Iterable):
+            return
         for invoice in invoices:
             if str(invoice.get("status") or "") != "paid":
                 continue
@@ -202,7 +207,7 @@ class BillingService:
                 finder = getattr(self.provider, "find_customer_by_company", None)
                 if callable(finder):
                     alternate = finder(str(company.id))
-                    if alternate and alternate != account.stripe_customer_id:
+                    if isinstance(alternate, str) and alternate and alternate != account.stripe_customer_id:
                         try:
                             remote = self.provider.get_active_subscription(alternate)
                         except StripeCustomerNotFoundError:
@@ -366,8 +371,11 @@ class BillingService:
                     "Les accords SaaS requis doivent être acceptés avant le paiement test. "
                     "Ouvrez Paramètres → Contrats, puis réessayez Gérer l'abonnement."
                 )
+            customer_id = account.stripe_customer_id
+            if not customer_id:
+                raise BillingOperationError("Compte client Stripe introuvable")
             return_url = f"{self._settings.frontend_url.rstrip('/')}/billing"
-            return self.provider.create_portal(account.stripe_customer_id, return_url)
+            return self.provider.create_portal(customer_id, return_url)
         if not account.stripe_customer_id:
             account.stripe_customer_id = self.provider.create_customer(
                 company.email,
@@ -384,13 +392,19 @@ class BillingService:
                 logger.warning("Impossible de synchroniser l'abonnement distant à l'ouverture du portail: %s", e)
 
         return_url = f"{self._settings.frontend_url.rstrip('/')}/billing"
+        customer_id = account.stripe_customer_id
+        if not customer_id:
+            raise BillingOperationError("Compte client Stripe introuvable")
         try:
-            return self.provider.create_portal(account.stripe_customer_id, return_url)
+            return self.provider.create_portal(customer_id, return_url)
         except StripeCustomerNotFoundError:
             if not self._sandbox_test_stripe():
                 raise
             account = self._reconcile_sandbox_customer(account, company)
-            return self.provider.create_portal(account.stripe_customer_id, return_url)
+            reconciled_customer_id = account.stripe_customer_id
+            if not reconciled_customer_id:
+                raise BillingOperationError("Compte client Stripe introuvable")
+            return self.provider.create_portal(reconciled_customer_id, return_url)
 
     def list_invoices(self, company_id: UUID) -> list[BillingInvoice]:
         return list(self._session.scalars(
@@ -861,8 +875,9 @@ class BillingService:
             datetime.fromtimestamp(period_end, timezone.utc) if period_end else None
         )
         account.company.subscription_plan = plan_code
-        if account.status in {"active", "trialing"} and account.stripe_customer_id:
-            self._heal_paid_subscription_credits(company_id, account.stripe_customer_id)
+        customer_id = account.stripe_customer_id
+        if account.status in {"active", "trialing"} and customer_id:
+            self._heal_paid_subscription_credits(company_id, customer_id)
 
     def _sync_invoice(self, invoice: dict[str, Any]) -> None:
         company_id = self._invoice_company_id(invoice)
@@ -995,7 +1010,9 @@ class BillingService:
 
     @staticmethod
     def _stripe_datetime(timestamp: object) -> datetime | None:
-        return datetime.fromtimestamp(int(timestamp), timezone.utc) if timestamp else None
+        if isinstance(timestamp, (int, float, str)) and not isinstance(timestamp, bool) and timestamp:
+            return datetime.fromtimestamp(int(timestamp), timezone.utc)
+        return None
 
     def _invoice_company_id(self, invoice: dict[str, Any]) -> UUID:
         parent = invoice.get("parent") or {}
