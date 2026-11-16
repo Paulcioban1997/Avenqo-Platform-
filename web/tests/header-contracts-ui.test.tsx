@@ -136,7 +136,7 @@ describe("header and contracts UI", () => {
     render(<LocaleProvider><SessionProvider><ContractsView /></SessionProvider></LocaleProvider>);
     expect(await screen.findByRole("heading", { name: "Contrats et parcours juridique" })).toBeInTheDocument();
     expect(screen.queryByText(/Sandbox Environment Notice|Environnement Bac à Sable/)).not.toBeInTheDocument();
-    expect(screen.getByText("Optionnel. Non requis pour un abonnement SaaS standard.")).toBeInTheDocument();
+    expect(await screen.findByText("Optionnel. Non requis pour un abonnement SaaS standard.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Lire" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Télécharger le PDF" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Signer électroniquement" })).toBeInTheDocument();
