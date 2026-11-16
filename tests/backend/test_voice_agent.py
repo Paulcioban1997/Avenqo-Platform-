@@ -1382,6 +1382,8 @@ def test_signed_dtmf_without_matching_challenge_never_authenticates(signed_telny
 
 def test_local_media_inbound_answers_then_streams_without_retell_or_caller_auth(signed_telnyx_webhook):
     env = signed_telnyx_webhook
+    # Exercise the explicitly configured legacy direct-media mode, not the universal IVR menu.
+    env.config.call_policy = {"ivr_enabled": False}
     env.settings.telnyx_media_enabled = True; env.settings.telnyx_media_inbound_enabled = True
     env.settings.telnyx_media_stream_base_url = "wss://api.example.test/api/v1/voice/telnyx/media"
     env.settings.openai_api_key = "fake-audio-key"; env.settings.voice_realtime_supported_locales = ["fr"]
@@ -1403,6 +1405,8 @@ def test_local_media_inbound_answers_then_streams_without_retell_or_caller_auth(
 
 def test_sandbox_media_start_failure_requests_hangup_and_never_claims_ended(signed_telnyx_webhook, monkeypatch, caplog):
     env = signed_telnyx_webhook
+    # Validate direct media start failure independently of the two-option IVR menu.
+    env.config.call_policy = {"ivr_enabled": False}
     env.settings.environment = "sandbox"
     env.settings.telnyx_media_enabled = True
     env.settings.telnyx_media_inbound_enabled = True
