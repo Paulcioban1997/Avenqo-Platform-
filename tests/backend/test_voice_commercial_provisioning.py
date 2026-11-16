@@ -192,7 +192,9 @@ async def test_registered_paid_agent_signed_inbound_books_only_own_crm(setup,mon
  from backend.app.voice.service import VoiceOrchestrator
  e=setup;o=await paid_order(e);await e.svc.run_one()
  cfg=e.db.get(VoiceBusinessConfig,o.config_id)
- cfg.opening_hours={day:{'open':'09:00','close':'17:00'} for day in ('monday','tuesday','wednesday','thursday','friday')};e.db.commit()
+ cfg.opening_hours={day:{'open':'09:00','close':'17:00'} for day in ('monday','tuesday','wednesday','thursday','friday')}
+ # The provisioning test verifies a tenant-configured direct-media path; the default IVR is tested separately.
+ cfg.call_policy={"ivr_enabled":False};e.db.commit()
  key=Ed25519PrivateKey.generate();e.settings.telnyx_public_key=base64.b64encode(key.public_key().public_bytes(Encoding.Raw,PublicFormat.Raw)).decode();e.settings.rate_limit_enabled=False
  commands=[]
  class Calls:
