@@ -614,3 +614,168 @@ def test_webhook_invoice_cross_tenant_is_rejected(db_session):
     with pytest.raises(BillingOperationError):
         service.process_webhook(b"{}", "sig")
     assert db_session.scalar(select(BillingInvoice).where(BillingInvoice.stripe_invoice_id == "in_cross")) is None
+
+
+def test_webhook_out_of_order_invoice_and_subscription_checkout_and_stale_delete(db_session):
+    from backend.app.ai.usage.policy import AIQuotaPolicy
+    from backend.app.ai.usage.service import AIUsageService
+
+    company = _company(db_session)
+    account = BillingAccount(
+        company_id=company.id,
+        plan_code="base",
+        status="inactive",
+        stripe_customer_id="cus_order",
+    )
+    db_session.add(account)
+    db_session.commit()
+
+    usage = AIUsageService(db_session, AIQuotaPolicy(get_settings()))
+    events = [
+        # 1. invoice.paid arrives BEFORE customer.subscription.created
+        {
+            "id": "evt_inv_first",
+            "type": "invoice.paid",
+            "data": {
+                "object": {
+                    "id": "in_first",
+                    "customer": "cus_order",
+                    "subscription": "sub_new_pro",
+                    "billing_reason": "subscription_create",
+                    "status": "paid",
+                    "currency": "cad",
+                    "subtotal": 4999,
+                    "total": 4999,
+                    "amount_due": 0,
+                    "amount_paid": 4999,
+                    "created": 1_890_000_000,
+                    "lines": {
+                        "data": [
+                            {
+                                "price": {"id": "price_professional_existing"},
+                                "period": {"start": 1_890_000_000, "end": 1_892_600_000},
+                            }
+                        ]
+                    },
+                    "metadata": {"avenqo_company_id": str(company.id)},
+                    "status_transitions": {"paid_at": 1_890_000_000},
+                }
+            },
+        },
+        # 2. checkout.session.completed (mode=subscription) arrives idempotently
+        {
+            "id": "evt_chk_sub",
+            "type": "checkout.session.completed",
+            "data": {
+                "object": {
+                    "id": "cs_sub_1",
+                    "mode": "subscription",
+                    "payment_status": "paid",
+                    "customer": "cus_order",
+                    "subscription": "sub_new_pro",
+                    "metadata": {"avenqo_company_id": str(company.id)},
+                }
+            },
+        },
+        # 3. Stale deletion for an older replaced subscription must NOT deactivate sub_new_pro
+        {
+            "id": "evt_stale_del",
+            "type": "customer.subscription.deleted",
+            "data": {
+                "object": {
+                    "id": "sub_old_replaced",
+                    "status": "canceled",
+                    "customer": "cus_order",
+                    "metadata": {"avenqo_company_id": str(company.id)},
+                    "items": {"data": [{"price": {"id": "price_base_existing"}}]},
+                }
+            },
+        },
+    ]
+
+    class Provider:
+        def __init__(self):
+            self.idx = 0
+
+        def construct_event(self, payload, signature, secret):
+            ev = events[self.idx]
+            self.idx += 1
+            return ev
+
+        def get_active_subscription(self, customer_id):
+            return {
+                "id": "sub_new_pro",
+                "status": "active",
+                "customer": customer_id,
+                "cancel_at_period_end": False,
+                "items": {
+                    "data": [
+                        {
+                            "price": {"id": "price_professional_existing"},
+                            "current_period_end": 1_892_600_000,
+                        }
+                    ]
+                },
+            }
+
+        def list_customer_invoices(self, customer_id, limit=20):
+            return [events[0]["data"]["object"]]
+
+    settings = _Settings()
+    settings.stripe_webhook_secret = "whsec_test"
+    settings.stripe_plan_code = lambda price_id: {
+        "price_professional_existing": "professional",
+        "price_base_existing": "base",
+    }.get(price_id)
+
+    class Notifier:
+        email_delivery_configured = False
+
+    service = BillingService(db_session, Provider(), settings, usage, Notifier())
+    assert service.process_webhook(b"{}", "sig") is True
+    assert service.process_webhook(b"{}", "sig") is True
+    assert service.process_webhook(b"{}", "sig") is True
+
+    reloaded = db_session.scalar(select(BillingAccount).where(BillingAccount.company_id == company.id))
+    assert reloaded.stripe_subscription_id == "sub_new_pro"
+    assert reloaded.status == "active"
+    assert reloaded.plan_code == "professional"
+    assert reloaded.current_period_end == datetime.fromtimestamp(1_892_600_000, timezone.utc)
+
+
+def test_webhook_router_distinguishes_signature_config_and_internal_errors():
+    from fastapi import HTTPException
+    from starlette.requests import Request
+    from backend.app.routers.billing import webhook
+    from backend.app.services.billing_service import BillingConfigurationError
+    from backend.app.services.stripe_gateway import StripeWebhookSignatureError
+    import asyncio
+
+    async def _receive():
+        return {"type": "http.request", "body": b"{}", "more_body": False}
+
+    req = Request({"type": "http", "headers": []}, receive=_receive)
+
+    class BadSigService:
+        def process_webhook(self, payload, sig):
+            raise StripeWebhookSignatureError("bad sig")
+
+    with pytest.raises(HTTPException) as exc_sig:
+        asyncio.run(webhook(req, "sig", BadSigService()))
+    assert exc_sig.value.status_code == 400
+
+    class ConfigErrService:
+        def process_webhook(self, payload, sig):
+            raise BillingConfigurationError("missing secret")
+
+    with pytest.raises(HTTPException) as exc_cfg:
+        asyncio.run(webhook(req, "sig", ConfigErrService()))
+    assert exc_cfg.value.status_code == 503
+
+    class InternalErrService:
+        def process_webhook(self, payload, sig):
+            raise RuntimeError("db connection lost")
+
+    with pytest.raises(HTTPException) as exc_int:
+        asyncio.run(webhook(req, "sig", InternalErrService()))
+    assert exc_int.value.status_code == 500

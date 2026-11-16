@@ -547,17 +547,20 @@ class BillingService:
         elif hasattr(data, "to_dict"):
             data = data.to_dict()
         if event_type.startswith("customer.subscription."):
-            self._sync_subscription(data)
+            self._sync_subscription(data, event_type=event_type)
         elif event_type.startswith("invoice."):
             self._sync_invoice(data)
         elif event_type in {
             "checkout.session.completed",
             "checkout.session.async_payment_succeeded",
         }:
-            self._fulfill_credit_checkout(
-                data,
-                payment_confirmed=event_type == "checkout.session.async_payment_succeeded",
-            )
+            if str(data.get("mode") or "") == "subscription":
+                self._sync_subscription_checkout(data)
+            else:
+                self._fulfill_credit_checkout(
+                    data,
+                    payment_confirmed=event_type == "checkout.session.async_payment_succeeded",
+                )
         elif event_type == "checkout.session.async_payment_failed":
             self._mark_credit_checkout_failed(data)
         elif event_type == "charge.refunded":
@@ -791,9 +794,54 @@ class BillingService:
         except ValueError as exc:
             raise BillingOperationError("Pack de crédits inconnu") from exc
 
-    def _sync_subscription(self, subscription: dict[str, Any]) -> None:
+    def _sync_subscription_checkout(self, checkout: dict[str, Any]) -> None:
+        """Reconcile a completed subscription checkout if subscription/invoice webhooks are delayed or missing."""
+        if str(checkout.get("payment_status") or "") not in {"paid", "no_payment_required"}:
+            return
+        company_id = self._resolve_stripe_company_id(
+            metadata_company_id=(checkout.get("metadata") or {}).get("avenqo_company_id"),
+            customer_id=str(checkout.get("customer") or ""),
+            missing_message="Tenant introuvable pour la session Checkout Stripe",
+        )
+        account = self.get_account(company_id)
+        customer_id = str(checkout.get("customer") or account.stripe_customer_id or "")
+        if customer_id and not account.stripe_customer_id:
+            account.stripe_customer_id = customer_id
+        sub_id = str(checkout.get("subscription") or "")
+        if sub_id and not account.stripe_subscription_id:
+            account.stripe_subscription_id = sub_id
+            account.status = "active"
+        get_sub = getattr(self.provider, "get_active_subscription", None)
+        if customer_id and callable(get_sub):
+            try:
+                remote = get_sub(customer_id)
+            except StripeCustomerNotFoundError:
+                remote = None
+            if remote:
+                self._apply_remote_subscription(account, remote)
+                remote_dict = self._resource_dict(remote)
+                items = ((remote_dict.get("items") or {}).get("data") or [])
+                for item in items:
+                    price_id = str((item.get("price") or {}).get("id") or "")
+                    mapped_plan = self._settings.stripe_plan_code(price_id)
+                    if mapped_plan:
+                        account.plan_code = mapped_plan
+                        account.company.subscription_plan = mapped_plan
+                        break
+        if customer_id:
+            self._heal_paid_subscription_credits(company_id, customer_id)
+
+    def _sync_subscription(self, subscription: dict[str, Any], *, event_type: str = "") -> None:
         company_id = self._company_id(subscription)
         account = self.get_account(company_id)
+        sub_id = str(subscription["id"])
+        # Ignore out-of-order deletion for a previously replaced subscription.
+        if (
+            event_type == "customer.subscription.deleted"
+            and account.stripe_subscription_id
+            and account.stripe_subscription_id != sub_id
+        ):
+            return
         core_items=[x for x in subscription["items"]["data"] if self._settings.stripe_plan_code(str(x["price"]["id"]))]
         if len(core_items)!=1:
             raise BillingConfigurationError("Exactly one known Avenqo core plan is required")
@@ -801,7 +849,7 @@ class BillingService:
         price_id=str(core_item["price"]["id"])
         plan_code=self._settings.stripe_plan_code(price_id)
         account.stripe_customer_id = str(subscription["customer"])
-        account.stripe_subscription_id = str(subscription["id"])
+        account.stripe_subscription_id = sub_id
         account.plan_code = plan_code
         account.status = str(subscription["status"])
         account.cancel_at_period_end = bool(subscription.get("cancel_at_period_end", False))
@@ -813,6 +861,8 @@ class BillingService:
             datetime.fromtimestamp(period_end, timezone.utc) if period_end else None
         )
         account.company.subscription_plan = plan_code
+        if account.status in {"active", "trialing"} and account.stripe_customer_id:
+            self._heal_paid_subscription_credits(company_id, account.stripe_customer_id)
 
     def _sync_invoice(self, invoice: dict[str, Any]) -> None:
         company_id = self._invoice_company_id(invoice)
@@ -884,6 +934,22 @@ class BillingService:
         else:
             for field, value in values.items():
                 setattr(existing, field, value)
+        if (
+            invoice.get("status") == "paid"
+            and subscription_id
+            and (not account.stripe_subscription_id or account.stripe_subscription_id == str(subscription_id))
+        ):
+            if not account.stripe_customer_id and values["stripe_customer_id"]:
+                account.stripe_customer_id = values["stripe_customer_id"]
+            if not account.stripe_subscription_id:
+                account.stripe_subscription_id = str(subscription_id)
+            if account.status not in {"active", "trialing"}:
+                account.status = "active"
+            if plan_code:
+                account.plan_code = plan_code
+                account.company.subscription_plan = plan_code
+            if account.current_period_end is None and values["period_end"] is not None:
+                account.current_period_end = values["period_end"]
         if (
             invoice.get("status") == "paid"
             and invoice.get("billing_reason") in {"subscription_cycle", "subscription_create"}

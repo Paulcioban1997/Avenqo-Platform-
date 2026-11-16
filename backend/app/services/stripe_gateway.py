@@ -21,6 +21,10 @@ class StripePriceNotFoundError(StripeGatewayError, ValueError):
     """Le tarif Stripe n'existe pas dans le compte Stripe configuré."""
 
 
+class StripeWebhookSignatureError(ValueError):
+    """La signature ou le payload du webhook Stripe est invalide."""
+
+
 
 @dataclass(frozen=True, slots=True)
 class CreditCheckoutSession:
@@ -341,4 +345,7 @@ class StripeGateway:
             raise
 
     def construct_event(self, payload: bytes, signature: str, secret: str) -> dict[str, Any]:
-        return stripe.Webhook.construct_event(payload, signature, secret)
+        try:
+            return stripe.Webhook.construct_event(payload, signature, secret)
+        except (stripe.SignatureVerificationError, ValueError) as exc:
+            raise StripeWebhookSignatureError("Signature ou payload webhook Stripe invalide") from exc

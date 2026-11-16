@@ -56,7 +56,7 @@ from backend.app.services.invoice_fiscal_service import (
     InvoiceFiscalService,
     InvoiceNotFoundError,
 )
-from backend.app.services.stripe_gateway import BillingProvider, StripeCustomerNotFoundError, StripePriceNotFoundError, StripeTaxConfigurationError
+from backend.app.services.stripe_gateway import BillingProvider, StripeCustomerNotFoundError, StripePriceNotFoundError, StripeTaxConfigurationError, StripeWebhookSignatureError
 from backend.app.services.stripe_invoice_sync import sync_customer_invoices
 from backend.app.models import BillingAccount, BillingInvoice, BillingTestDocument, Company, TenantAICreditBalance, TenantAICreditLedgerEntry, TenantAIProviderAttempt
 from payments import PLANS
@@ -924,12 +924,20 @@ def list_enterprise_quotes(
 @router.post("/webhook", include_in_schema=False)
 async def webhook(
     request: Request,
-    stripe_signature: str = Header(alias="Stripe-Signature"),
+    stripe_signature: str | None = Header(default=None, alias="Stripe-Signature"),
     service: BillingService = Depends(get_billing_service),
 ) -> dict[str, bool]:
+    if not stripe_signature:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Signature Stripe manquante")
     try:
         processed = service.process_webhook(await request.body(), stripe_signature)
-    except Exception:
-        logger.exception("Stripe webhook processing failed")
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Webhook Stripe invalide")
+    except (StripeWebhookSignatureError, ValueError, BillingOperationError) as exc:
+        logger.warning("Stripe webhook rejected: %s", exc)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Webhook Stripe invalide") from exc
+    except BillingConfigurationError as exc:
+        logger.error("Stripe webhook configuration error: %s", exc)
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Configuration webhook Stripe indisponible") from exc
+    except Exception as exc:
+        logger.exception("Stripe webhook internal processing error")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Erreur interne lors du traitement du webhook Stripe") from exc
     return {"processed": processed}
