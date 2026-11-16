@@ -1,6 +1,6 @@
-"""Automated Resilience, Multi-Tenant, Audio Codec, and Financial Data Integrity tests for Gemini Live & Telnyx Voice AI."""
-
 from __future__ import annotations
+
+"""Automated Resilience, Multi-Tenant, Audio Codec, and Financial Data Integrity tests for Gemini Live & Telnyx Voice AI."""
 
 import asyncio
 import base64

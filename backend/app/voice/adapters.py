@@ -27,7 +27,7 @@ class RealtimeAudioAdapter(Protocol):
     @property
     def provider_id(self) -> str: ...
 
-    async def open(self, *, locale: str) -> None: ...
+    async def open(self, *, locale: str = "fr-CA") -> None: ...
 
     async def send_audio(self, audio: bytes) -> None: ...
 
@@ -103,7 +103,7 @@ class OpenAITextToSpeechAdapter:
 class UnconfiguredRealtimeAudioAdapter:
     provider_id = "none"
 
-    async def open(self, *, locale: str) -> None:
+    async def open(self, *, locale: str = "fr-CA") -> None:
         raise ExternalVoiceConfigurationRequired("VOICE_REALTIME_PROVIDER is required")
 
     async def send_audio(self, audio: bytes) -> None:
@@ -135,7 +135,7 @@ class OpenAIRealtimeAudioAdapter:
         self._manager = None
         self._connection = None
 
-    async def open(self, *, locale: str) -> None:
+    async def open(self, *, locale: str = "fr-CA") -> None:
         if not self._config.api_key or not self._model:
             raise ExternalVoiceConfigurationRequired("OPENAI_API_KEY and VOICE_REALTIME_MODEL are required")
         client = AsyncOpenAI(api_key=self._config.api_key, base_url=self._config.base_url)

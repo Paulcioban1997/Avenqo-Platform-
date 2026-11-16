@@ -539,7 +539,7 @@ class GeminiLiveRealtimeAudioAdapter:
                 "voice_name": self._voice_name,
             }
 
-    async def open(self, *, locale: str) -> None:
+    async def open(self, *, locale: str = "fr-CA") -> None:
         client = self._build_genai_client()
         live_config = self._build_live_config(locale)
         self._closed = False
@@ -976,7 +976,8 @@ class FallbackRealtimeAudioAdapter:
             try:
                 await fallback.open(locale=self._locale)
             except TypeError:
-                await fallback.open()  # type: ignore[call-arg]
+                open_fn: Any = getattr(fallback, "open")
+                await open_fn()
             self._active = fallback
             self.used_fallback = True
             self.fallback_reason = reason
@@ -1009,7 +1010,8 @@ class FallbackRealtimeAudioAdapter:
             try:
                 await primary.open(locale=locale)
             except TypeError:
-                await primary.open()  # type: ignore[call-arg]
+                open_fn: Any = getattr(primary, "open")
+                await open_fn()
             self._active = primary
             self.used_fallback = False
             self.last_diagnostics = VoiceRealtimeSessionDiagnostics(
@@ -1034,7 +1036,8 @@ class FallbackRealtimeAudioAdapter:
             try:
                 await fallback.open(locale=locale)
             except TypeError:
-                await fallback.open()  # type: ignore[call-arg]
+                open_fn: Any = getattr(fallback, "open")
+                await open_fn()
             self._active = fallback
             self.used_fallback = True
             self.fallback_reason = "primary_open_failed"
