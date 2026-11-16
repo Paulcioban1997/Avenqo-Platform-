@@ -1,6 +1,18 @@
-"""Outils d'intelligence de marché et Trading AI autorisés pour Central AI et Voice."""
+"""Outils d'intelligence de marché et Trading AI autorisés pour Central AI et Voice.
+
+Règles de conformité et d'intégrité financière (P0) :
+1. Aucun cours fictif : si le flux de marché est hors ligne, le statut est "unavailable", jamais un faux prix.
+2. Aucune cotation boursière non agréée : les actions (AAPL, TSLA, etc.) ne disposant pas de flux temps réel
+   réglementé sont explicitement déclarées non prises en charge.
+3. Prédictions désactivées par défaut : aucun chiffre spéculatif fictif n'est formulé tant que les modèles
+   (GRU, XGBoost, Transformer) n'ont pas fait l'objet d'évaluations certifiées en production.
+4. Aucun ratio de risque inventé : Sharpe Ratio, Win Rate et Drawdown exigent un historique de transactions
+   audité, sans substitut synthétique silencieux.
+5. Isolation multi-tenant et vérification des habilitations 'trading:read' et entitlements à chaque appel.
+"""
 from __future__ import annotations
 
+import re
 from typing import Any
 from pydantic import Field
 from sqlalchemy.orm import Session
@@ -8,14 +20,17 @@ from sqlalchemy.orm import Session
 from backend.app.ai.tools.base import TradingAITool, ToolArguments
 from backend.app.ai.tools.contracts import ToolExecutionContext, ToolResult
 from backend.app.services.market_feed import factual_brief, live_quote, MarketUnavailable
-from backend.app.services.trading_engine import forecast, simulation
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
+
+_KNOWN_EQUITY_SYMBOLS = frozenset({
+    "AAPL", "TSLA", "MSFT", "GOOG", "GOOGL", "AMZN", "NVDA", "META", "SPY", "QQQ"
+})
 
 
 class AssetQuoteArgs(ToolArguments):
     symbol: str = Field(
         default="BTC/USD",
-        description="Symbole financier ou crypto à interroger (ex: BTC/USD, ETH/USD, SOL/USD, AAPL, TSLA).",
+        description="Symbole crypto vérifié à interroger (ex: BTC/USD, ETH/USD, SOL/USD).",
         min_length=1,
         max_length=32,
     )
@@ -24,7 +39,7 @@ class AssetQuoteArgs(ToolArguments):
 class TradingPredictionArgs(ToolArguments):
     symbol: str = Field(
         default="BTC/USD",
-        description="Symbole financier ou crypto pour lequel calculer les prédictions (ex: BTC/USD, ETH/USD).",
+        description="Symbole crypto pour lequel interroger les prédictions certifiées.",
         min_length=1,
         max_length=32,
     )
@@ -37,18 +52,31 @@ class TradingPredictionArgs(ToolArguments):
 class TradingRiskArgs(ToolArguments):
     symbol: str = Field(
         default="BTC/USD",
-        description="Symbole financier pour l'analyse de risque et de stratégie.",
+        description="Symbole pour l'analyse de risque de portefeuille audité.",
         min_length=1,
         max_length=32,
     )
 
 
+def _normalize_crypto_symbol(raw: str) -> str:
+    cleaned = raw.strip().upper().replace(" ", "").replace("_", "")
+    if "/" not in cleaned and "-" not in cleaned:
+        if cleaned.endswith("USDT") and len(cleaned) > 4:
+            return f"{cleaned[:-4]}/USDT"
+        if cleaned.endswith("USD") and len(cleaned) > 3:
+            return f"{cleaned[:-3]}/USD"
+        if cleaned.endswith("EUR") and len(cleaned) > 3:
+            return f"{cleaned[:-3]}/EUR"
+        return f"{cleaned}/USD"
+    return cleaned.replace("-", "/")
+
+
 class GetTradingAssetQuoteTool(TradingAITool):
-    """Fournit les cotations de marché en temps réel et l'évolution 24h d'un actif."""
+    """Fournit les cotations de marché en temps réel et l'évolution 24h d'un actif vérifié."""
 
     name = "get_asset_quote"
     description = (
-        "Consulte le cours actuel, l'évolution récente, le volume et les niveaux de prix d'un actif crypto ou financier. "
+        "Consulte le cours actuel, l'évolution récente et la fraîcheur d'un actif crypto vérifié. "
         "Usage strictement informatif, aucune exécution d'ordre de bourse."
     )
     input_schema = AssetQuoteArgs
@@ -58,44 +86,96 @@ class GetTradingAssetQuoteTool(TradingAITool):
         self._session = session
 
     def execute(self, asset: str = "BTC") -> dict[str, Any]:
-        sym = asset.strip().upper()
-        if not sym.endswith("USDT") and not sym.endswith("USD") and "/" not in sym:
-            sym = f"{sym}/USD"
-        try:
-            brief = factual_brief(sym, interval="1h", locale="fr")
-            quote_data = live_quote(sym)
-            price = quote_data.get("price") or 87985.20
+        raw_sym = asset.strip().upper()
+        # 1. Vérification des actions traditionnelles (actions US/internationales sans flux agréé)
+        base_token = re.split(r"[/_\-\s]", raw_sym)[0]
+        if base_token in _KNOWN_EQUITY_SYMBOLS or raw_sym in _KNOWN_EQUITY_SYMBOLS:
             return {
-                "status": "success",
-                "asset": asset,
-                "symbol": sym,
-                "price_usd": price,
-                "change_24h": quote_data.get("change_percent_24h", "+1.81%"),
-                "high_24h": quote_data.get("high_24h", 88421.50),
-                "low_24h": quote_data.get("low_24h", 85600.00),
-                "freshness": quote_data.get("freshness", "realtime"),
-                "analysis_summary": brief.get("text", f"Tendance haussière sur {sym}"),
+                "status": "unsupported_asset",
+                "asset": raw_sym,
+                "symbol": raw_sym,
+                "price_usd": None,
+                "freshness": "unavailable",
+                "error": (
+                    f"Les cotations d'actions (actions américaines telles que {raw_sym}) "
+                    "nécessitent une intégration de courtage agréée non connectée sur cet environnement. "
+                    "Seules les paires cryptographiques vérifiées sont actuellement disponibles."
+                ),
+                "vocal_summary": (
+                    f"Les cotations pour l'action {raw_sym} nécessitent un flux boursier agréé "
+                    "non disponible sur ce serveur. Seules les cryptomonnaies sont prises en charge."
+                ),
             }
-        except Exception:
+
+        # 2. Normalisation du symbole crypto
+        sym = _normalize_crypto_symbol(raw_sym)
+
+        # 3. Récupération auprès du flux de marché réel (sans données fictives)
+        try:
+            quote_data = live_quote(sym)
+            price = quote_data.get("price")
+            if price is None:
+                raise MarketUnavailable(f"Prix absent pour {sym}")
+
+            freshness = str(quote_data.get("freshness", "stale"))
+            change_24h = quote_data.get("change_percent_24h")
+            high_24h = quote_data.get("high_24h")
+            low_24h = quote_data.get("low_24h")
+
+            # Synthèse textuelle
+            summary_text = ""
+            try:
+                brief = factual_brief(sym, interval="1h", locale="fr")
+                summary_text = str(brief.get("text", ""))
+            except Exception:
+                summary_text = f"Cours vérifié {sym} à {price:,.2f} USD."
+
             return {
                 "status": "success",
-                "asset": asset,
+                "asset": base_token,
                 "symbol": sym,
-                "price_usd": 87985.20,
-                "change_24h": "+1.81%",
-                "high_24h": 88421.50,
-                "low_24h": 85600.00,
-                "freshness": "realtime",
-                "analysis_summary": f"Tendance haussière sur {sym} avec consolidation au-dessus de 86 000 USD.",
+                "price_usd": float(price),
+                "change_24h": change_24h,
+                "high_24h": high_24h,
+                "low_24h": low_24h,
+                "freshness": freshness,
+                "source": quote_data.get("source"),
+                "updated_at": quote_data.get("updated_at"),
+                "analysis_summary": summary_text,
+                "vocal_summary": (
+                    f"Le cours en direct de {base_token} est de {price:,.2f} USD ({freshness})."
+                    if freshness == "realtime"
+                    else f"Le dernier cours enregistré pour {base_token} est de {price:,.2f} USD (données différées)."
+                ),
+            }
+        except (MarketUnavailable, ValueError, KeyError) as exc:
+            return {
+                "status": "unavailable",
+                "asset": base_token,
+                "symbol": sym,
+                "price_usd": None,
+                "freshness": "unavailable",
+                "error": f"Le flux de marché pour {sym} est temporairement indisponible. Aucun cours fictif n'est retourné ({exc}).",
+                "vocal_summary": f"Désolé, le flux de marché pour {base_token} est actuellement indisponible.",
             }
 
     async def run(self, context: ToolExecutionContext, arguments: AssetQuoteArgs) -> ToolResult:
+        if "trading:read" not in context.permissions:
+            return ToolResult(
+                success=False,
+                error="Permission 'trading:read' requise pour accéder aux cotations financières.",
+            )
         if self._session is not None:
             entitlements = ModuleEntitlementService(self._session)
             if not entitlements.can_use_module(context.tenant, "trading"):
-                return ToolResult(success=False, error="Le module Trading AI n'est pas activé pour cette entreprise.")
+                return ToolResult(
+                    success=False,
+                    error="Le module Trading AI n'est pas activé pour cette entreprise.",
+                )
         data = self.execute(arguments.symbol)
-        return ToolResult(success=True, data=data)
+        if data.get("status") == "success":
+            return ToolResult(success=True, data=data)
+        return ToolResult(success=False, error=data.get("error", "Cours indisponible"), data=data)
 
 
 class GetTradingPredictionsTool(TradingAITool):
@@ -103,8 +183,8 @@ class GetTradingPredictionsTool(TradingAITool):
 
     name = "get_trading_predictions"
     description = (
-        "Récupère les projections de prix calculées par les modèles prédictifs Avenqo Trading (GRU, XGBoost, Transformer). "
-        "Ne constitue pas un conseil financier personnalisé."
+        "Consulte les prévisions de prix calculées par les modèles prédictifs certifiés Avenqo Trading. "
+        "Désactivé tant que des modèles certifiés et audités ne sont pas en production."
     )
     input_schema = TradingPredictionArgs
     required_permissions = ("ai:use", "trading:read")
@@ -113,44 +193,48 @@ class GetTradingPredictionsTool(TradingAITool):
         self._session = session
 
     def execute(self, asset: str = "BTC", horizon: str = "24h") -> dict[str, Any]:
-        sym = asset.strip().upper()
-        if not sym.endswith("USDT") and not sym.endswith("USD") and "/" not in sym:
-            sym = f"{sym}/USD"
-        engine_sym = "DEMO-BTC" if "BTC" in sym else ("DEMO-EURUSD" if "EUR" in sym else "DEMO-SPY")
-        engine_horizon = "1d" if horizon in ("1h", "24h", "1d") else ("7d" if horizon == "7d" else "30d")
-        try:
-            res = forecast(engine_sym, engine_horizon)
-        except Exception:
-            res = {}
-        pred_price = res.get("predicted_price") or 87985.20
-        direction = res.get("direction") or "Achat (Long)"
-        confidence = res.get("confidence") or "76%"
+        # Conformité stricte : aucun modèle synthétique demo ou chiffre aléatoire
+        raw_sym = asset.strip().upper()
+        sym = _normalize_crypto_symbol(raw_sym)
         return {
-            "status": "success",
-            "asset": asset,
+            "status": "unavailable",
+            "asset": raw_sym,
             "symbol": sym,
             "horizon": horizon,
-            "predicted_price": pred_price,
-            "direction": direction,
-            "confidence": confidence,
-            "models": {
-                "GRU": {"predicted_price": 87814.20, "mape": "3.21%", "direction": "Achat"},
-                "XGBoost": {"predicted_price": 87940.10, "mape": "2.85%", "direction": "Achat"},
-                "Transformer": {"predicted_price": 88050.00, "mape": "2.61%", "direction": "Achat"},
-            },
+            "predicted_price": None,
+            "direction": None,
+            "confidence": None,
+            "models": {},
+            "error": (
+                "Les modèles prédictifs d'apprentissage profond (GRU, XGBoost, Transformer) "
+                "ne disposent pas encore d'évaluations certifiées en production pour cet actif. "
+                "Conformément aux règles d'intégrité financière Avenqo, aucune prédiction fictive n'est diffusée."
+            ),
             "vocal_summary": (
-                f"Sur l'horizon {horizon}, le modèle unifié anticipe une poursuite haussière pour {sym} "
-                f"avec un objectif proche de {pred_price:,.2f} USD et un indice de confiance de {confidence}."
+                f"Les modèles prédictifs pour {raw_sym} ne sont pas encore certifiés en production. "
+                "Aucune prédiction spéculative ne peut être formulée."
             ),
         }
 
     async def run(self, context: ToolExecutionContext, arguments: TradingPredictionArgs) -> ToolResult:
+        if "trading:read" not in context.permissions:
+            return ToolResult(
+                success=False,
+                error="Permission 'trading:read' requise pour accéder aux prédictions.",
+            )
         if self._session is not None:
             entitlements = ModuleEntitlementService(self._session)
             if not entitlements.can_use_module(context.tenant, "trading"):
-                return ToolResult(success=False, error="Le module Trading AI n'est pas activé pour cette entreprise.")
+                return ToolResult(
+                    success=False,
+                    error="Le module Trading AI n'est pas activé pour cette entreprise.",
+                )
         data = self.execute(arguments.symbol, arguments.horizon)
-        return ToolResult(success=True, data=data)
+        return ToolResult(
+            success=False,
+            error=data["error"],
+            data=data,
+        )
 
 
 class GetTradingPortfolioRiskTool(TradingAITool):
@@ -158,8 +242,8 @@ class GetTradingPortfolioRiskTool(TradingAITool):
 
     name = "get_trading_portfolio_risk"
     description = (
-        "Calcule les indicateurs techniques (RSI, EMA, volatilité) et les métriques de simulation "
-        "du Strategy Lab (Sharpe ratio, Max Drawdown, Win Rate) pour l'actif indiqué."
+        "Calcule les indicateurs techniques et les métriques de risque du Strategy Lab "
+        "(Sharpe ratio, Max Drawdown, Win Rate) à partir de transactions réelles auditées."
     )
     input_schema = TradingRiskArgs
     required_permissions = ("ai:use", "trading:read")
@@ -168,30 +252,43 @@ class GetTradingPortfolioRiskTool(TradingAITool):
         self._session = session
 
     def execute(self, asset: str = "BTC") -> dict[str, Any]:
-        engine_sym = "DEMO-BTC" if "BTC" in asset.upper() else ("DEMO-EURUSD" if "EUR" in asset.upper() else "DEMO-SPY")
-        try:
-            sim = simulation(engine_sym)
-        except Exception:
-            sim = {}
+        # Conformité stricte : aucun Sharpe ou Win Rate inventé
+        raw_sym = asset.strip().upper()
         return {
-            "status": "success",
-            "asset": asset,
-            "portfolio_risk_level": "MODERATE",
-            "sharpe_ratio": sim.get("sharpe_ratio") or 1.38,
-            "max_drawdown": sim.get("max_drawdown") or "-8.4%",
-            "win_rate": sim.get("win_rate") or "58.2%",
-            "benchmark_return": sim.get("benchmark_return") or "+34.1%",
-            "strategy_return": sim.get("strategy_return") or "+42.7%",
+            "status": "unavailable",
+            "asset": raw_sym,
+            "portfolio_risk_level": "UNKNOWN",
+            "sharpe_ratio": None,
+            "max_drawdown": None,
+            "win_rate": None,
+            "benchmark_return": None,
+            "strategy_return": None,
+            "error": (
+                "Aucune simulation validée ni historique de transaction audité n'est disponible "
+                "pour calculer le ratio de Sharpe, le Win Rate ou le risque de portefeuille. "
+                "Aucune métrique financière fictive n'est affichée."
+            ),
             "vocal_summary": (
-                f"Pour l'actif {asset}, la stratégie affiche un ratio de Sharpe de 1.38 avec un Max Drawdown "
-                "maîtrisé à -8.4% et un rendement simulé de +42.7%."
+                "Aucun historique de trading vérifié n'est disponible pour calculer les métriques de risque de ce portefeuille."
             ),
         }
 
     async def run(self, context: ToolExecutionContext, arguments: TradingRiskArgs) -> ToolResult:
+        if "trading:read" not in context.permissions:
+            return ToolResult(
+                success=False,
+                error="Permission 'trading:read' requise pour accéder aux métriques de risque.",
+            )
         if self._session is not None:
             entitlements = ModuleEntitlementService(self._session)
             if not entitlements.can_use_module(context.tenant, "trading"):
-                return ToolResult(success=False, error="Le module Trading AI n'est pas activé pour cette entreprise.")
+                return ToolResult(
+                    success=False,
+                    error="Le module Trading AI n'est pas activé pour cette entreprise.",
+                )
         data = self.execute(arguments.symbol)
-        return ToolResult(success=True, data=data)
+        return ToolResult(
+            success=False,
+            error=data["error"],
+            data=data,
+        )

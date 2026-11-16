@@ -786,6 +786,7 @@ class TelnyxMediaBridge:
             "first_audible_response_latency_ms": 0,
             "fallback_occurred": False,
             "fallback_reason": None,
+            "fallback_duration_ms": None,
             "crm_function_failures": 0,
             "unexpected_silence_count": 0,
             "vad_interruptions_count": 0,
@@ -1458,6 +1459,7 @@ class TelnyxMediaBridge:
             if hasattr(self.adapter, "fallback_occurred"):
                 self.telemetry["fallback_occurred"] = getattr(self.adapter, "fallback_occurred", False)
                 self.telemetry["fallback_reason"] = getattr(self.adapter, "fallback_reason", None)
+                self.telemetry["fallback_duration_ms"] = getattr(self.adapter, "fallback_duration_ms", None)
                 self.telemetry["active_provider"] = getattr(self.adapter, "provider_id", "unknown")
                 self.telemetry["active_model"] = getattr(self.adapter, "model_name", self.realtime_model or "unknown")
             logger.info(

@@ -1,4 +1,4 @@
-"""Automated Resilience, Multi-Tenant, and Audio Codec tests for Gemini Live & Telnyx Voice AI."""
+"""Automated Resilience, Multi-Tenant, Audio Codec, and Financial Data Integrity tests for Gemini Live & Telnyx Voice AI."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import asyncio
 import base64
 import time
 from typing import Any, AsyncIterator
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -19,20 +19,27 @@ from backend.app.voice.realtime_provider import (
 )
 from backend.app.voice.auth import validate_voice_pin
 from backend.app.ai.tools.business.trading_tools import (
+    AssetQuoteArgs,
     GetTradingAssetQuoteTool,
     GetTradingPredictionsTool,
     GetTradingPortfolioRiskTool,
+    TradingPredictionArgs,
+    TradingRiskArgs,
 )
+from backend.app.ai.tools.contracts import ToolExecutionContext
+from backend.app.services.market_feed import MarketUnavailable
+from shared.ai_engine.contracts import TenantContext
 
 
 class MockRealtimeAdapter:
     """Mock audio adapter simulating either primary (Gemini Live) or fallback (OpenAI)."""
 
-    def __init__(self, provider_id: str, model_name: str, fail_send_on_turn: int = -1, fail_speak: bool = False) -> None:
+    def __init__(self, provider_id: str, model_name: str, fail_send_on_turn: int = -1, fail_speak: bool = False, open_delay_seconds: float = 0.0) -> None:
         self._provider_id = provider_id
         self._model = model_name
         self.fail_send_on_turn = fail_send_on_turn
         self.fail_speak = fail_speak
+        self.open_delay_seconds = open_delay_seconds
         self.send_count = 0
         self.spoken_texts: list[str] = []
         self.is_open = False
@@ -48,6 +55,8 @@ class MockRealtimeAdapter:
         return self._model
 
     async def open(self, *, locale: str = "fr-CA") -> None:
+        if self.open_delay_seconds > 0:
+            await asyncio.sleep(self.open_delay_seconds)
         self.is_open = True
         self.is_closed = False
 
@@ -137,6 +146,31 @@ async def test_mid_session_speak_fallback() -> None:
     assert "Bonjour, comment puis-je vous aider ?" in fallback.spoken_texts
 
 
+@pytest.mark.asyncio
+async def test_fallback_actual_latency_measurement() -> None:
+    """Measure the actual wall-clock duration of Gemini Live to OpenAI fallback switch."""
+    # Simulate a realistic 12ms fallback initialization delay
+    fallback_delay_s = 0.012
+    primary = MockRealtimeAdapter("gemini_live", "gemini-3.8-live", fail_send_on_turn=1)
+    fallback = MockRealtimeAdapter("openai", "gpt-4o-realtime-preview", open_delay_seconds=fallback_delay_s)
+
+    adapter = FallbackRealtimeAudioAdapter(
+        primary_factory=lambda: primary,
+        fallback_factory=lambda: fallback,
+    )
+    await adapter.open(locale="fr-CA")
+    assert adapter.fallback_duration_ms is None
+
+    t_before = time.perf_counter()
+    await adapter.send_audio(b"\x00\x01" * 160)
+    measured_outside_ms = (time.perf_counter() - t_before) * 1000.0
+
+    assert adapter.fallback_occurred is True
+    assert adapter.fallback_duration_ms is not None
+    assert adapter.fallback_duration_ms >= 5.0  # Must reflect actual work done
+    assert adapter.fallback_duration_ms <= measured_outside_ms + 5.0
+
+
 def test_natural_interruption_manager_deduplication() -> None:
     """Verify NaturalInterruptionManager prevents duplicate tool execution across barge-in turns."""
     manager = NaturalInterruptionManager()
@@ -179,31 +213,101 @@ def test_multi_tenant_ivr_routing_three_tenants() -> None:
         public_scope_allowed = False
     assert public_scope_allowed is False
 
-    # Tenant 3: Financial Trading AI Tools
-    trading_id = uuid4()
+    # Tenant 3: Financial Trading AI Tools (Zero fake data)
     quote_tool = GetTradingAssetQuoteTool()
     btc_quote = quote_tool.execute(asset="BTC")
-    assert btc_quote["status"] == "success"
-    assert btc_quote["asset"] == "BTC"
-    assert "price_usd" in btc_quote
-    assert btc_quote["price_usd"] > 0
+    assert btc_quote["status"] in ("success", "unavailable")
+    if btc_quote["status"] == "success":
+        assert btc_quote["price_usd"] is not None
+        assert btc_quote["price_usd"] > 0
+        assert btc_quote["freshness"] in ("realtime", "delayed", "stale")
+    else:
+        assert btc_quote["price_usd"] is None
+        assert btc_quote["freshness"] == "unavailable"
 
+    # Equities like AAPL must be rejected without authorized broker feed
+    aapl_quote = quote_tool.execute(asset="AAPL")
+    assert aapl_quote["status"] == "unsupported_asset"
+    assert aapl_quote["price_usd"] is None
+    assert "américaines" in aapl_quote["error"]
+
+    # Predictions must be unavailable until certified models are trained
     pred_tool = GetTradingPredictionsTool()
     btc_pred = pred_tool.execute(asset="BTC", horizon="24h")
-    assert btc_pred["status"] == "success"
-    assert btc_pred["asset"] == "BTC"
-    assert "models" in btc_pred
-    assert "GRU" in btc_pred["models"]
-    assert "XGBoost" in btc_pred["models"]
-    assert "Transformer" in btc_pred["models"]
-    assert "vocal_summary" in btc_pred
-    assert "Bitcoin" in btc_pred["vocal_summary"] or "BTC" in btc_pred["vocal_summary"]
+    assert btc_pred["status"] == "unavailable"
+    assert btc_pred["predicted_price"] is None
+    assert btc_pred["confidence"] is None
+    assert btc_pred["models"] == {}
+    assert "pas encore certifiés" in btc_pred["vocal_summary"].lower() or "aucune prédiction" in btc_pred["error"].lower()
 
+    # Risk metrics must be unavailable without audited trade history
     risk_tool = GetTradingPortfolioRiskTool()
-    risk_summary = risk_tool.execute()
-    assert risk_summary["status"] == "success"
-    assert "sharpe_ratio" in risk_summary
-    assert "max_drawdown" in risk_summary
+    risk_summary = risk_tool.execute(asset="BTC")
+    assert risk_summary["status"] == "unavailable"
+    assert risk_summary["sharpe_ratio"] is None
+    assert risk_summary["win_rate"] is None
+    assert risk_summary["max_drawdown"] is None
+
+
+def test_market_feed_failure_never_returns_fake_price() -> None:
+    """Verify that when market feed fails, status is unavailable with None price, never a hardcoded price."""
+    quote_tool = GetTradingAssetQuoteTool()
+    with patch("backend.app.ai.tools.business.trading_tools.live_quote", side_effect=MarketUnavailable("Feed offline")):
+        result = quote_tool.execute(asset="BTC")
+        assert result["status"] == "unavailable"
+        assert result["price_usd"] is None
+        assert result["freshness"] == "unavailable"
+        assert "temporairement indisponible" in result["error"]
+        assert "87985" not in str(result)
+        assert "87 985" not in str(result)
+
+
+def test_unsupported_equity_assets_rejected() -> None:
+    """Verify that equity stocks without licensed feeds (AAPL, TSLA, NVDA) are explicitly rejected."""
+    quote_tool = GetTradingAssetQuoteTool()
+    for stock in ("AAPL", "TSLA", "NVDA", "SPY"):
+        res = quote_tool.execute(asset=stock)
+        assert res["status"] == "unsupported_asset"
+        assert res["price_usd"] is None
+        assert res["freshness"] == "unavailable"
+        assert stock in res["error"]
+
+
+@pytest.mark.asyncio
+async def test_trading_tools_multi_tenant_and_permission_isolation() -> None:
+    """Verify server-side authorization: rejects missing trading:read and disabled module entitlement."""
+    company_id = uuid4()
+    user_id = uuid4()
+    mock_session = MagicMock()
+
+    quote_tool = GetTradingAssetQuoteTool(session=mock_session)
+
+    # 1. Missing permission -> rejected
+    ctx_unauthorized = ToolExecutionContext(
+        tenant=TenantContext(company_id=company_id),
+        user_id=user_id,
+        permissions=frozenset({"ai:use"}),  # No trading:read
+        request_id="req-1",
+    )
+    res_perm = await quote_tool.run(ctx_unauthorized, AssetQuoteArgs(symbol="BTC/USD"))
+    assert res_perm.success is False
+    assert "trading:read" in str(res_perm.error)
+
+    # 2. Has permission, but module not entitled for this tenant -> rejected
+    ctx_authorized_perm = ToolExecutionContext(
+        tenant=TenantContext(company_id=company_id),
+        user_id=user_id,
+        permissions=frozenset({"ai:use", "trading:read"}),
+        request_id="req-2",
+    )
+    with patch("backend.app.ai.tools.business.trading_tools.ModuleEntitlementService") as mock_ent_cls:
+        mock_ent_instance = MagicMock()
+        mock_ent_instance.can_use_module.return_value = False
+        mock_ent_cls.return_value = mock_ent_instance
+
+        res_ent = await quote_tool.run(ctx_authorized_perm, AssetQuoteArgs(symbol="BTC/USD"))
+        assert res_ent.success is False
+        assert "pas activé" in str(res_ent.error)
 
 
 def test_trilingual_ivr_greetings() -> None:
@@ -266,7 +370,6 @@ def test_codec_roundtrip_verification() -> None:
     b64_pcm = base64.b64encode(pcm_24k).decode("ascii")
     converted_ulaw = codec.outbound_pcm(b64_pcm)
     assert len(converted_ulaw) > 0
-    # Converted frame is valid μ-law bytes
     assert isinstance(converted_ulaw, bytes)
 
 
@@ -291,6 +394,7 @@ def test_safe_telemetry_no_leak() -> None:
         "first_audible_response_latency_ms": 820,
         "fallback_occurred": False,
         "fallback_reason": None,
+        "fallback_duration_ms": None,
         "crm_function_failures": 0,
         "vad_interruptions_count": 1,
     }

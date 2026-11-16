@@ -25,6 +25,7 @@ from enum import StrEnum
 import hashlib
 import json
 import logging
+import time
 from types import SimpleNamespace
 from typing import Any, AsyncIterator, Awaitable, Callable, Protocol
 from uuid import UUID, uuid4
@@ -914,6 +915,7 @@ class FallbackRealtimeAudioAdapter:
         self._active: RealtimeAudioAdapter | None = None
         self.used_fallback: bool = False
         self.fallback_reason: str | None = None
+        self.fallback_duration_ms: float | None = None
         self.last_diagnostics: VoiceRealtimeSessionDiagnostics | None = None
         self._locale: str = "fr-CA"
         self._fallback_lock: asyncio.Lock = asyncio.Lock()
@@ -953,6 +955,7 @@ class FallbackRealtimeAudioAdapter:
     async def _trigger_fallback(self, reason: str, error: Exception | None = None) -> None:
         if self.used_fallback or self._closed:
             return
+        fallback_start = time.perf_counter()
         async with self._fallback_lock:
             if self.used_fallback or self._closed:
                 return
@@ -977,6 +980,7 @@ class FallbackRealtimeAudioAdapter:
             self._active = fallback
             self.used_fallback = True
             self.fallback_reason = reason
+            self.fallback_duration_ms = round((time.perf_counter() - fallback_start) * 1000.0, 2)
             self.last_diagnostics = VoiceRealtimeSessionDiagnostics(
                 provider=str(getattr(fallback, "provider_id", "fallback")),
                 model=str(getattr(fallback, "_model", "") or "fallback"),
@@ -986,7 +990,11 @@ class FallbackRealtimeAudioAdapter:
                 fallback_reason=reason,
                 error_code=error_code,
             )
-            logger.info("voice_realtime_session %s", self.last_diagnostics.to_log_dict())
+            logger.info(
+                "voice_realtime_session %s fallback_duration_ms=%.2f",
+                self.last_diagnostics.to_log_dict(),
+                self.fallback_duration_ms,
+            )
 
     async def open(self, *, locale: str = "fr-CA") -> None:
         self._locale = locale
