@@ -1342,7 +1342,7 @@ def test_copilot_today_agenda_is_not_treated_as_create_intent(db_session, monkey
         crm_copilot_chat(
             CRMCopilotChatRequest(message="mes rendez-vous aujourd'hui", locale="fr"),
             TenantContext(company.id),
-            cast(CurrentIdentity, SimpleNamespace(user=SimpleNamespace(id=client.id))),
+            cast(CurrentIdentity, SimpleNamespace(user=SimpleNamespace(id=client.id, role=UserRole.OWNER))),
             SimpleNamespace(role=UserRole.OWNER),
             db_session,
             service,
