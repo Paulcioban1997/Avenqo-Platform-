@@ -690,7 +690,7 @@ def ai_credits_breakdown(
         module_counts[_ai_usage_module(
             att.operation,
             module_id=att.module_id,
-            entrypoint=entrypoints.get(att.conversation_id),
+            entrypoint=entrypoints.get(att.conversation_id) if att.conversation_id is not None else None,
         )] += creds
         total += creds
 
@@ -754,7 +754,7 @@ def ai_credits_history(
                 module=_ai_usage_module(
                     att.operation,
                     module_id=att.module_id,
-                    entrypoint=entrypoints.get(att.conversation_id),
+                    entrypoint=entrypoints.get(att.conversation_id) if att.conversation_id is not None else None,
                 ),
                 operation=op,
                 credits_used=debited[att.id],
