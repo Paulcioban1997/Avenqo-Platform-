@@ -860,8 +860,10 @@ class BillingService:
         if len(core_items)!=1:
             raise BillingConfigurationError("Exactly one known Avenqo core plan is required")
         core_item=core_items[0]
-        price_id=str(core_item["price"]["id"])
-        plan_code=self._settings.stripe_plan_code(price_id)
+        price_id = str(core_item["price"]["id"])
+        plan_code = self._settings.stripe_plan_code(price_id)
+        if not plan_code:
+            raise BillingConfigurationError("Exactly one known Avenqo core plan is required")
         account.stripe_customer_id = str(subscription["customer"])
         account.stripe_subscription_id = sub_id
         account.plan_code = plan_code
