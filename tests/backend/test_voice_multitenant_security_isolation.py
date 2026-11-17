@@ -207,8 +207,8 @@ def multi_tenant_env():
     }
 
 
-def test_leaked_pin_is_not_a_backdoor(multi_tenant_env):
-    """Le NIP divulgué dans le rapport précédent (839201) ne fonctionne sur aucun tenant par défaut."""
+def test_unconfigured_pin_is_rejected_on_all_tenants(multi_tenant_env):
+    """Un NIP arbitraire non configuré ne fonctionne sur aucun tenant par défaut."""
     env = multi_tenant_env
     db = env["db"]
     auth = VoiceCallerAuth(db, env["settings"])
@@ -224,8 +224,8 @@ def test_leaked_pin_is_not_a_backdoor(multi_tenant_env):
     db.add(call_alpha)
     db.flush()
 
-    # Tentative d'utilisation du NIP divulgué sans configuration préalable
-    res = auth.verify_gather(call_alpha, "839201")
+    # Tentative d'utilisation d'un NIP non configuré
+    res = auth.verify_gather(call_alpha, "381927")
     assert res["authenticated"] is False
     assert res["error"] == "caller_authentication_failed"
     assert call_alpha.authenticated_user_id is None

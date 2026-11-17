@@ -31,7 +31,7 @@ def test_normalized_phone():
 
 
 def test_validate_voice_pin():
-    assert validate_voice_pin("839201") == "839201"
+    assert validate_voice_pin("682491") == "682491"
     assert validate_voice_pin("948205183") == "948205183"
     with pytest.raises(ValueError):
         validate_voice_pin("123")  # Too short (< 6)
@@ -56,7 +56,7 @@ def test_voice_auth_set_pin_and_verify_gather_e2e(tmp_path):
     auth = VoiceCallerAuth(session, settings)
 
     # 1. Set PIN (6 digits)
-    cred = auth.set_pin(tenant, "USER", user_a.id, "839201", phone_number=phone)
+    cred = auth.set_pin(tenant, "USER", user_a.id, "682491", phone_number=phone)
     session.commit()
 
     assert cred.enabled is True
@@ -77,7 +77,7 @@ def test_voice_auth_set_pin_and_verify_gather_e2e(tmp_path):
     session.commit()
 
     # 3. Verify with correct PIN and # terminator
-    res = auth.verify_gather(call, "839201#")
+    res = auth.verify_gather(call, "682491#")
     assert res["success"] is True
     assert res["authenticated"] is True
     assert call.caller_type == "OWNER"
@@ -113,11 +113,11 @@ def test_voice_auth_set_pin_and_verify_gather_e2e(tmp_path):
     session.commit()
 
     # 5. Unknown caller without identifier is securely rejected (no brute force across accounts)
-    res_rejected = auth.verify_gather(call_unknown, "839201#")
+    res_rejected = auth.verify_gather(call_unknown, "682491#")
     assert res_rejected["authenticated"] is False
 
     # Explicit identification with registered employee phone succeeds
-    res_unknown = auth.verify_gather(call_unknown, "839201#", identifier=phone)
+    res_unknown = auth.verify_gather(call_unknown, "682491#", identifier=phone)
     assert res_unknown["success"] is True
     assert res_unknown["authenticated"] is True
     assert call_unknown.caller_type == "OWNER"

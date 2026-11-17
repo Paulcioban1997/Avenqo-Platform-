@@ -201,8 +201,8 @@ def test_multi_tenant_ivr_routing_three_tenants() -> None:
     """Verify Touche 1 (Staff/PIN) vs Touche 2 (Client/Public) across 3 distinct business types."""
     # Tenant 1: Automobile / Garage
     garage_id = uuid4()
-    staff_pin_garage = "839201"
-    assert validate_voice_pin(staff_pin_garage) == "839201"
+    staff_pin_garage = "941725"
+    assert validate_voice_pin(staff_pin_garage) == "941725"
 
     # Tenant 2: Medical Clinic (Confidentiality check)
     clinic_id = uuid4()

@@ -240,7 +240,7 @@ def test_scenario_c_invalid_pin_and_lockout():
         db.flush()
 
         auth = VoiceCallerAuth(db, Settings())
-        auth.set_pin(TenantContext(company.id, user.id), "USER", user.id, "839201")
+        auth.set_pin(TenantContext(company.id, user.id), "USER", user.id, "582914")
         db.commit()
 
         call = _create_test_call(db, company, config, caller_phone="+15145550222", caller_type="UNKNOWN")
@@ -263,7 +263,7 @@ def test_scenario_c_invalid_pin_and_lockout():
         assert cred.locked_until is not None
 
         # Subsequent attempt even with CORRECT PIN is blocked during lockout
-        post_lockout = auth.verify_gather(call, "839201", identifier="secops@produitsero.com")
+        post_lockout = auth.verify_gather(call, "582914", identifier="secops@produitsero.com")
         assert post_lockout["authenticated"] is False
 
 

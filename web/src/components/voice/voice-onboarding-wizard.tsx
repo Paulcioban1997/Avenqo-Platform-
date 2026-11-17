@@ -521,7 +521,7 @@ export function VoiceOnboardingWizard({
     if (!employeePin || employeePin.length < 6 || employeePin.length > 12) {
       setEmployeePinFeedback({
         type: "error",
-        message: fr ? "Le code NIP doit comporter de 6 à 12 chiffres (ex: 839201)." : "PIN must be between 6 and 12 digits.",
+        message: fr ? "Le code NIP doit comporter de 6 à 12 chiffres non triviaux." : "PIN must be between 6 and 12 non-trivial digits.",
       });
       return;
     }
@@ -1968,7 +1968,7 @@ export function VoiceOnboardingWizard({
                         type="password"
                         pattern="[0-9]*"
                         maxLength={12}
-                        placeholder="Ex: 839201"
+                        placeholder="••••••"
                         value={employeePin}
                         onChange={(e) => setEmployeePin(e.target.value.replace(/\D/g, ""))}
                         className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden focus:border-[#0076FF]"
@@ -1983,7 +1983,7 @@ export function VoiceOnboardingWizard({
                         type="password"
                         pattern="[0-9]*"
                         maxLength={12}
-                        placeholder="Ex: 839201"
+                        placeholder="••••••"
                         value={employeePinConfirm}
                         onChange={(e) => setEmployeePinConfirm(e.target.value.replace(/\D/g, ""))}
                         className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden focus:border-[#0076FF]"

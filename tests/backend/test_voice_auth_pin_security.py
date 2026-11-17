@@ -89,7 +89,7 @@ def test_1_voice_pin_validation_complexity_and_nontrivial():
     # NIP valides
     assert validate_voice_pin("907182") == "907182"
     assert validate_voice_pin("583921") == "583921"
-    assert validate_voice_pin("83920184") == "83920184"
+    assert validate_voice_pin("73910482") == "73910482"
 
     # NIP invalides : longueur incorrecte ou caractères non numériques
     with pytest.raises(ValueError, match="6 to 12 digits"):
@@ -156,7 +156,7 @@ def test_3_voice_pin_incorrect_attempts_and_verification_failure(tmp_path):
         call = orchestrator.record_inbound(config, {"call_control_id": "pin-call-1", "from": "+15145550123"})
 
         # Tentative avec un NIP incorrect
-        result = auth.verify_gather(call, "839201")
+        result = auth.verify_gather(call, "491827")
         assert result["authenticated"] is False
         assert result["error"] == "caller_authentication_failed"
         assert auth.valid_session(call) is None
@@ -241,7 +241,7 @@ def test_5_voice_pin_lockout_after_max_attempts(tmp_path):
         # Effectuer 5 tentatives erronées
         for attempt in range(5):
             call = orchestrator.record_inbound(config, {"call_control_id": f"call-attempt-{attempt}", "from": "+15145550155"})
-            res = auth.verify_gather(call, "839201")
+            res = auth.verify_gather(call, "491827")
             assert res["authenticated"] is False
 
         session.commit()
