@@ -157,9 +157,29 @@ def candles(symbol: str, interval: str = "1m", limit: int = 120, provider: str =
 def rankings(quote: str = "USDT") -> dict:
     quote = quote.upper()
     if quote != "USDT":
-        raise MarketUnavailable("Classement disponible en USDT via Binance public")
-    rows = _cached("rankings:USDT", 30, _binance_rankings)
-    return {"source": "binance-public", "transport": "rest", "freshness": "delayed", "currency": "USDT", "rows": rows}
+        return {
+            "source": "binance-public",
+            "transport": "rest",
+            "freshness": "unavailable",
+            "currency": quote,
+            "rows": [],
+            "error": "Classement disponible uniquement en USDT via Binance public",
+        }
+    found = _CACHE.get("rankings:USDT")
+    try:
+        rows = _cached("rankings:USDT", 30, _binance_rankings)
+        return {"source": "binance-public", "transport": "rest", "freshness": "delayed", "currency": "USDT", "rows": rows}
+    except MarketUnavailable as exc:
+        if found is not None:
+            return {"source": "binance-public", "transport": "rest", "freshness": "stale", "currency": "USDT", "rows": found[1]}
+        return {
+            "source": "binance-public",
+            "transport": "rest",
+            "freshness": "unavailable",
+            "currency": "USDT",
+            "rows": [],
+            "error": f"Données de marché indisponibles ({exc})",
+        }
 
 
 def asset_classes() -> dict:
@@ -525,9 +545,14 @@ def _cached(key: str, ttl: float, load: Callable[[], Any]) -> Any:
     now = time.monotonic()
     if found is not None and now - found[0] < ttl:
         return found[1]
-    value = load()
-    _CACHE[key] = (now, value)
-    return value
+    try:
+        value = load()
+        _CACHE[key] = (now, value)
+        return value
+    except Exception:
+        if found is not None:
+            return found[1]
+        raise
 
 
 def _get(url: str, query: dict | None = None) -> Any:

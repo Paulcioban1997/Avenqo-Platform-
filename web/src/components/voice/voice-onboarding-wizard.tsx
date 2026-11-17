@@ -630,16 +630,96 @@ export function VoiceOnboardingWizard({
     ];
 
     const premiumImprovements = [
-      { id: 1, icon: "⚡", title: "1. Ultra-Low Latency Voice", desc: fr ? "Réponses vocales plus rapides, interruptions naturelles, moins de silences" : "Faster vocal responses, natural interruptions, less silence" },
-      { id: 2, icon: "🔀", title: "2. Adaptive AI Router", desc: fr ? "Gemini Live pour les conversations, raisonnement avancé seulement quand nécessaire" : "Gemini Live for speech, advanced reasoning only when required" },
-      { id: 3, icon: "🧠", title: "3. Company Knowledge Brain", desc: fr ? "IA qui utilise les catalogues, politiques, données et documents autorisés de chaque entreprise" : "AI powered exclusively by verified company catalogs, policies and data" },
-      { id: 4, icon: "📈", title: "4. Revenue Growth Copilot", desc: fr ? "Détecte des opportunités de ventes supplémentaires avec des données vérifiées" : "Detects upsell and cross-sell opportunities with verified inventory" },
-      { id: 5, icon: "👥", title: "5. Employee Performance Coach", desc: fr ? "Objectifs, conseils quotidiens, progrès hebdomadaires et suivi personnalisé" : "Daily goals, personalized advice, weekly progress tracking" },
-      { id: 6, icon: "🔄", title: "6. Omnichannel Memory", desc: fr ? "Continuité autorisée entre téléphone, chatbot, CRM et courriels" : "Authorized continuity between phone, chat, CRM and emails" },
-      { id: 7, icon: "🌐", title: "7. Live Multilingual Assistant", desc: fr ? "Conversation multilingue et traduction vocale selon les capacités certifiées" : "Multilingual conversations and real-time speech translation" },
-      { id: 8, icon: "🤝", title: "8. Smart Human Handoff", desc: fr ? "Transfert à la bonne personne avec résumé et contexte autorisé" : "Seamless transfer to staff with real-time call summary" },
-      { id: 9, icon: "🛡️", title: "9. Self-Healing Voice", desc: fr ? "Détection d'incidents, circuit breakers et basculement sécurisé du fournisseur IA" : "Incident detection, circuit breakers and graceful provider failover" },
-      { id: 10, icon: "📊", title: "10. Voice ROI Analytics", desc: fr ? "Mesure des rendez-vous, conversions attribuables, coûts et qualité des appels" : "Track booked appointments, revenue conversions, costs and call quality" },
+      {
+        id: 1,
+        icon: "⚡",
+        title: "1. Ultra-Low Latency Voice",
+        desc: fr ? "Réponses vocales plus rapides, interruptions naturelles, moins de silences" : "Faster vocal responses, natural interruptions, less silence",
+        status: "available",
+        statusLabel: fr ? "Disponible" : "Available",
+        statusClass: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/60",
+      },
+      {
+        id: 2,
+        icon: "🔀",
+        title: "2. Adaptive AI Router",
+        desc: fr ? "Gemini Live pour les conversations, raisonnement avancé seulement quand nécessaire" : "Gemini Live for speech, advanced reasoning only when required",
+        status: "available",
+        statusLabel: fr ? "Disponible" : "Available",
+        statusClass: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/60",
+      },
+      {
+        id: 3,
+        icon: "🧠",
+        title: "3. Company Knowledge Brain",
+        desc: fr ? "IA qui utilise les catalogues, politiques, données et documents autorisés de chaque entreprise" : "AI powered exclusively by verified company catalogs, policies and data",
+        status: "available",
+        statusLabel: fr ? "Disponible" : "Available",
+        statusClass: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/60",
+      },
+      {
+        id: 4,
+        icon: "📈",
+        title: "4. Revenue Growth Copilot",
+        desc: fr ? "Détecte des opportunités de ventes supplémentaires avec des données vérifiées" : "Detects upsell and cross-sell opportunities with verified inventory",
+        status: "testing",
+        statusLabel: fr ? "En test" : "In testing",
+        statusClass: "bg-amber-50 text-amber-700 dark:bg-amber-950/70 dark:text-amber-400 border-amber-200 dark:border-amber-800/60",
+      },
+      {
+        id: 5,
+        icon: "👥",
+        title: "5. Employee Performance Coach",
+        desc: fr ? "Objectifs, conseils quotidiens, progrès hebdomadaires et suivi personnalisé" : "Daily goals, personalized advice, weekly progress tracking",
+        status: "upcoming",
+        statusLabel: fr ? "À venir" : "Upcoming",
+        statusClass: "bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-blue-400 border-blue-200 dark:border-blue-800/60",
+      },
+      {
+        id: 6,
+        icon: "🔄",
+        title: "6. Omnichannel Memory",
+        desc: fr ? "Continuité autorisée entre téléphone, chatbot, CRM et courriels" : "Authorized continuity between phone, chat, CRM and emails",
+        status: "testing",
+        statusLabel: fr ? "En test" : "In testing",
+        statusClass: "bg-amber-50 text-amber-700 dark:bg-amber-950/70 dark:text-amber-400 border-amber-200 dark:border-amber-800/60",
+      },
+      {
+        id: 7,
+        icon: "🌐",
+        title: "7. Live Multilingual Assistant",
+        desc: fr ? "Conversation multilingue et traduction vocale selon les capacités certifiées" : "Multilingual conversations and real-time speech translation",
+        status: "available",
+        statusLabel: fr ? "Disponible" : "Available",
+        statusClass: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/60",
+      },
+      {
+        id: 8,
+        icon: "🤝",
+        title: "8. Smart Human Handoff",
+        desc: fr ? "Transfert à la bonne personne avec résumé et contexte autorisé" : "Seamless transfer to staff with real-time call summary",
+        status: "available",
+        statusLabel: fr ? "Disponible" : "Available",
+        statusClass: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/60",
+      },
+      {
+        id: 9,
+        icon: "🛡️",
+        title: "9. Self-Healing Voice",
+        desc: fr ? "Détection d'incidents, circuit breakers et basculement sécurisé du fournisseur IA" : "Incident detection, circuit breakers and graceful provider failover",
+        status: "available",
+        statusLabel: fr ? "Disponible" : "Available",
+        statusClass: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/60",
+      },
+      {
+        id: 10,
+        icon: "📊",
+        title: "10. Voice ROI Analytics",
+        desc: fr ? "Mesure des rendez-vous, conversions attribuables, coûts et qualité des appels" : "Track booked appointments, revenue conversions, costs and call quality",
+        status: "testing",
+        statusLabel: fr ? "En test" : "In testing",
+        statusClass: "bg-amber-50 text-amber-700 dark:bg-amber-950/70 dark:text-amber-400 border-amber-200 dark:border-amber-800/60",
+      },
     ];
 
   return (
@@ -656,7 +736,7 @@ export function VoiceOnboardingWizard({
           </span>
         </div>
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          {fr ? "Configuration centralisée — aperçu conceptuel" : "Centralized configuration — conceptual overview"}
+          {fr ? "Configuration centralisée de votre réceptionniste" : "Centralized receptionist configuration"}
         </p>
       </div>
 
@@ -665,15 +745,21 @@ export function VoiceOnboardingWizard({
         <div className="space-y-1">
           <div className="flex items-center gap-2.5">
             <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
-              {profile.business_name || businessName || "Produits Ero"}
+              {profile.business_name || businessName || (fr ? "Entreprise non configurée" : "Unconfigured business")}
             </h3>
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span>{fr ? "Numéro connecté" : "Connected number"}</span>
-            </span>
+            {assignedNumber ? (
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>{fr ? "Numéro connecté" : "Connected number"}</span>
+              </span>
+            ) : (
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700 flex items-center gap-1.5">
+                <span>{fr ? "Non configuré" : "Not configured"}</span>
+              </span>
+            )}
           </div>
           <div className="text-xs font-mono font-bold text-slate-700 dark:text-slate-300">
-            {assignedNumber || "+1 438 953-6811"} · Gemini Live
+            {assignedNumber ? `${assignedNumber} · Gemini Live` : (fr ? "Numéro non configuré" : "Number not configured")}
           </div>
           <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 font-medium pt-0.5">
             <AlertCircle className="w-3.5 h-3.5 shrink-0" />
@@ -2159,13 +2245,6 @@ export function VoiceOnboardingWizard({
         )}
       </div>
 
-      {/* FOOTNOTE */}
-      <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
-        {fr
-          ? "Concept d'interface interactive : ce prototype ne modifie pas encore Avenqo."
-          : "Interactive interface concept: this prototype does not alter core settings without confirmation."}
-      </p>
-
       {/* SHOWCASE: 10 AMÉLIORATIONS PREMIUM */}
       <div className="space-y-4 pt-2">
         <div className="flex items-center gap-2">
@@ -2181,6 +2260,7 @@ export function VoiceOnboardingWizard({
               <tr className="border-b border-slate-100 dark:border-white/[0.06] bg-slate-50/70 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider text-[10px]">
                 <th className="p-3.5 w-1/3">{fr ? "Fonctionnalité" : "Feature"}</th>
                 <th className="p-3.5">{fr ? "Ce que ça apporte" : "What it delivers"}</th>
+                <th className="p-3.5 w-28 text-center">{fr ? "Statut" : "Status"}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
@@ -2192,6 +2272,11 @@ export function VoiceOnboardingWizard({
                   </td>
                   <td className="p-3.5 text-slate-600 dark:text-slate-300 leading-relaxed">
                     {item.desc}
+                  </td>
+                  <td className="p-3.5 text-center whitespace-nowrap">
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${item.statusClass}`}>
+                      {item.statusLabel}
+                    </span>
                   </td>
                 </tr>
               ))}

@@ -126,7 +126,14 @@ def trading_rankings(identity: CurrentIdentity = Depends(require_trading)) -> di
     try:
         return rankings()
     except MarketUnavailable as exc:
-        raise _market_error(exc) from exc
+        return {
+            "source": "binance-public",
+            "transport": "rest",
+            "freshness": "unavailable",
+            "currency": "USDT",
+            "rows": [],
+            "error": str(exc),
+        }
 
 
 @router.get("/asset-classes")
