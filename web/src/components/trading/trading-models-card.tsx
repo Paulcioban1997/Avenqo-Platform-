@@ -1,46 +1,75 @@
 "use client";
 
 import { useState } from "react";
+import { apiFetch } from "@/lib/api-request";
 import { TRADING_COPY } from "@/lib/i18n/trading-copy";
 import type { LocaleCode } from "@/lib/i18n/types";
 
 interface ModelItem {
   name: string;
   horizon: string;
-  precision: number;
-  directionAccuracy: number;
-  status: "active" | "evaluating" | "experimental";
+  precision: number | null;
+  directionAccuracy: number | null;
+  status: "evaluating" | "training" | "certified";
+}
+
+interface BacktestData {
+  status: string;
+  candles_count: number;
+  trades_count: number;
+  strategy_return: number | null;
+  holding_return: number | null;
+  max_drawdown: number | null;
+  win_rate: number | null;
+  sharpe_ratio: number | null;
+  disclaimer: string;
 }
 
 interface TradingModelsCardProps {
-  studyReturn?: number;
-  holdingReturn?: number;
+  symbol?: string;
+  interval?: string;
   locale: LocaleCode;
 }
 
 export function TradingModelsCard({
-  studyReturn = 0.427,
-  holdingReturn = 0.185,
+  symbol = "BTCUSDT",
+  interval = "1h",
   locale,
 }: TradingModelsCardProps) {
   const copy = TRADING_COPY[locale] || TRADING_COPY.fr;
   const [runningBacktest, setRunningBacktest] = useState(false);
-  const [backtestCompleted, setBacktestCompleted] = useState(false);
+  const [backtestResult, setBacktestResult] = useState<BacktestData | null>(null);
+  const [backtestError, setBacktestError] = useState("");
 
+  // Modèles prédictifs quantitatifs en cours d'évaluation hors-échantillon (zéro métrique inventée)
   const models: ModelItem[] = [
-    { name: "Tendance Court Terme (Intraday)", horizon: "1h", precision: 96.79, directionAccuracy: 63.54, status: "active" },
-    { name: "Analyse Séquentielle (Swing)", horizon: "4h", precision: 96.95, directionAccuracy: 65.12, status: "active" },
-    { name: "Niveaux Clés & Supports/Résistances", horizon: "24h", precision: 97.13, directionAccuracy: 66.71, status: "active" },
-    { name: "Régime de Marché & Volatilité", horizon: "7j", precision: 97.25, directionAccuracy: 67.77, status: "active" },
-    { name: "Consensus Avenqo AI (Multi-analyses)", horizon: "Global", precision: 97.39, directionAccuracy: 69.42, status: "active" },
+    { name: "Tendance Court Terme (Intraday)", horizon: "1h", precision: null, directionAccuracy: null, status: "evaluating" },
+    { name: "Analyse Séquentielle (Swing)", horizon: "4h", precision: null, directionAccuracy: null, status: "evaluating" },
+    { name: "Niveaux Clés & Supports/Résistances", horizon: "24h", precision: null, directionAccuracy: null, status: "evaluating" },
+    { name: "Régime de Marché & Volatilité", horizon: "7j", precision: null, directionAccuracy: null, status: "evaluating" },
+    { name: "Consensus Avenqo AI (Multi-analyses)", horizon: "Global", precision: null, directionAccuracy: null, status: "evaluating" },
   ];
 
-  const handleRunBacktest = () => {
+  const handleRunBacktest = async () => {
     setRunningBacktest(true);
-    setTimeout(() => {
+    setBacktestError("");
+    try {
+      const resp = await apiFetch("/api/v1/trading/backtest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol, interval, strategy: "crossover_sma" }),
+      });
+      if (!resp.ok) {
+        setBacktestError("Calcul du backtest indisponible pour cet actif");
+        return;
+      }
+      const data: BacktestData = await resp.json();
+      setBacktestResult(data);
+    } catch {
+      setBacktestError("Erreur réseau lors de l'exécution du backtest");
+    } finally {
       setRunningBacktest(false);
-      setBacktestCompleted(true);
-    }, 1200);
+    }
   };
 
   return (
@@ -51,8 +80,8 @@ export function TradingModelsCard({
           <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
             <span>⚙️</span> {copy.modelsPerformanceTitle}
           </h3>
-          <span className="rounded bg-slate-900 px-2 py-0.5 text-[10px] text-slate-400 border border-slate-800">
-            Hors-échantillon
+          <span className="rounded bg-slate-900 px-2 py-0.5 text-[10px] text-amber-400 border border-amber-800/40">
+            Évaluation en cours
           </span>
         </div>
 
@@ -72,11 +101,15 @@ export function TradingModelsCard({
                 <tr key={m.name} className="hover:bg-slate-900/40">
                   <td className="py-2 font-bold text-white font-sans">{m.name}</td>
                   <td className="py-2 text-right font-mono text-cyan-400 font-semibold">{m.horizon}</td>
-                  <td className="py-2 text-right text-slate-300 font-mono">{m.precision.toFixed(1)} %</td>
-                  <td className="py-2 text-right text-emerald-400 font-bold font-mono">{m.directionAccuracy.toFixed(1)} %</td>
+                  <td className="py-2 text-right text-slate-400 font-mono">
+                    {m.precision !== null ? `${m.precision.toFixed(1)} %` : "—"}
+                  </td>
+                  <td className="py-2 text-right text-slate-400 font-mono">
+                    {m.directionAccuracy !== null ? `${m.directionAccuracy.toFixed(1)} %` : "—"}
+                  </td>
                   <td className="py-2 text-right">
-                    <span className="rounded bg-cyan-950/80 px-1.5 py-0.5 text-[9px] font-sans font-bold text-cyan-400 border border-cyan-800/50">
-                      Actif
+                    <span className="rounded bg-amber-950/80 px-1.5 py-0.5 text-[9px] font-sans font-bold text-amber-400 border border-amber-800/50">
+                      {copy.modelStatusEvaluating}
                     </span>
                   </td>
                 </tr>
@@ -92,39 +125,65 @@ export function TradingModelsCard({
           <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
             <span>🧪</span> {copy.strategyLabTitle}
           </h3>
-          <span className="text-[10px] text-slate-400">Momentum RSI 30/70 & Crossover</span>
+          <span className="text-[10px] text-slate-400">Momentum SMA 10/30 · {symbol}</span>
         </div>
 
         <div className="grid grid-cols-2 gap-3 text-xs">
           <div className="rounded-xl border border-slate-800/80 bg-slate-900/40 p-2.5">
             <span className="text-slate-400">{copy.strategyReturn}</span>
             <div className="text-lg font-bold font-mono text-emerald-400">
-              +{(studyReturn * 100).toFixed(1)} %
+              {backtestResult?.strategy_return !== null && backtestResult?.strategy_return !== undefined
+                ? `${backtestResult.strategy_return >= 0 ? "+" : ""}${(backtestResult.strategy_return * 100).toFixed(1)} %`
+                : copy.backtestNotRun}
             </div>
-            <span className="text-[10px] text-slate-500">Backtest historique validé</span>
+            <span className="text-[10px] text-slate-500">
+              {backtestResult ? `${backtestResult.candles_count} bougies réelles` : "En attente d'exécution"}
+            </span>
           </div>
 
           <div className="rounded-xl border border-slate-800/80 bg-slate-900/40 p-2.5">
             <span className="text-slate-400">{copy.strategyHolding}</span>
             <div className="text-lg font-bold font-mono text-slate-300">
-              +{(holdingReturn * 100).toFixed(1)} %
+              {backtestResult?.holding_return !== null && backtestResult?.holding_return !== undefined
+                ? `${backtestResult.holding_return >= 0 ? "+" : ""}${(backtestResult.holding_return * 100).toFixed(1)} %`
+                : copy.backtestNotRun}
             </div>
-            <span className="text-[10px] text-slate-500">Benchmark passif</span>
+            <span className="text-[10px] text-slate-500">
+              {backtestResult ? "Benchmark Buy & Hold" : "Non calculé"}
+            </span>
           </div>
         </div>
 
         <div className="flex items-center justify-between text-xs rounded-xl border border-slate-800/80 bg-slate-900/40 p-2.5">
           <div>
             <span className="text-slate-400">{copy.strategySharpe}:</span>{" "}
-            <span className="font-mono font-bold text-cyan-400">1.38</span>
+            <span className="font-mono font-bold text-cyan-400">
+              {backtestResult?.sharpe_ratio !== null && backtestResult?.sharpe_ratio !== undefined
+                ? backtestResult.sharpe_ratio.toFixed(2)
+                : "—"}
+            </span>
           </div>
           <div>
-            <span className="text-slate-400">Max Drawdown:</span>{" "}
-            <span className="font-mono font-bold text-rose-400">-8.4 %</span>
+            <span className="text-slate-400">Max DD:</span>{" "}
+            <span className="font-mono font-bold text-rose-400">
+              {backtestResult?.max_drawdown !== null && backtestResult?.max_drawdown !== undefined
+                ? `${(backtestResult.max_drawdown * 100).toFixed(1)} %`
+                : "—"}
+            </span>
           </div>
           <div>
             <span className="text-slate-400">Win Rate:</span>{" "}
-            <span className="font-mono font-bold text-emerald-400">58.2 %</span>
+            <span className="font-mono font-bold text-emerald-400">
+              {backtestResult?.win_rate !== null && backtestResult?.win_rate !== undefined
+                ? `${backtestResult.win_rate.toFixed(1)} %`
+                : "—"}
+            </span>
+          </div>
+          <div>
+            <span className="text-slate-400">Ordres:</span>{" "}
+            <span className="font-mono font-bold text-slate-300">
+              {backtestResult ? `${backtestResult.trades_count}` : "—"}
+            </span>
           </div>
         </div>
 
@@ -134,11 +193,29 @@ export function TradingModelsCard({
           disabled={runningBacktest}
           className="w-full rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 py-2.5 text-xs font-bold text-white shadow-md hover:from-purple-500 hover:to-indigo-500 transition disabled:opacity-50"
         >
-          {runningBacktest ? "Exécution du backtest en cours..." : copy.strategyLabBacktest}
+          {runningBacktest ? copy.backtestExecuting : copy.strategyLabBacktest}
         </button>
-        {backtestCompleted && (
-          <p className="text-center text-[10px] text-emerald-400">
-            ✓ Backtest exécuté avec succès sur les données récentes de marché.
+
+        {backtestResult && (
+          <div className="space-y-1 text-center pt-1">
+            <p className="text-[10px] text-emerald-400 font-semibold">
+              ✓ Backtest déterministe validé sur {backtestResult.candles_count} bougies historiques ({symbol} · {interval}).
+            </p>
+            <p className="text-[9px] text-slate-500 leading-tight">
+              🛡️ {backtestResult.disclaimer}
+            </p>
+          </div>
+        )}
+
+        {backtestError && (
+          <p className="text-center text-[10px] text-rose-400 font-semibold">
+            {backtestError}
+          </p>
+        )}
+
+        {!backtestResult && !backtestError && (
+          <p className="text-center text-[10px] text-slate-500">
+            Aucun résultat fictif. Cliquez pour calculer sur données réelles de marché.
           </p>
         )}
       </div>

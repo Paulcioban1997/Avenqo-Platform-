@@ -90,3 +90,63 @@ async def test_trading_ask_with_question_calls_gemini(mock_identity):
 
         assert "RSI à 62.5" in result
         mock_gen.assert_called_once()
+
+
+def test_calculate_backtest_insufficient_history():
+    from backend.app.services.market_feed import calculate_backtest
+
+    res = calculate_backtest([100.0, 102.0, 101.0], strategy="crossover_sma")
+    assert res["status"] == "insufficient_history"
+    assert res["trades_count"] == 0
+    assert res["strategy_return"] is None
+    assert "insuffisant" in res["disclaimer"]
+
+
+def test_calculate_backtest_deterministic_values():
+    from backend.app.services.market_feed import calculate_backtest
+
+    # 100 prices with alternating trends
+    closes = [100.0 + (i % 20) * 1.5 - ((i // 20) * 2.0) for i in range(120)]
+    res = calculate_backtest(closes, fast_period=10, slow_period=30)
+    assert res["status"] == "calculated"
+    assert res["candles_count"] == 120
+    assert isinstance(res["strategy_return"], float)
+    assert isinstance(res["holding_return"], float)
+    assert isinstance(res["max_drawdown"], float)
+    assert res["max_drawdown"] <= 0.0
+    assert "déterministe" in res["disclaimer"]
+
+
+def test_trading_backtest_endpoint(mock_identity):
+    from backend.app.dependencies.auth import get_current_identity
+    from backend.app.dependencies.subscription import require_active_subscription
+    from backend.app.routers.trading import require_trading
+    from backend.main import create_application
+
+    app = create_application()
+    app.dependency_overrides[get_current_identity] = lambda: mock_identity
+    app.dependency_overrides[require_trading] = lambda: mock_identity
+    app.dependency_overrides[require_active_subscription] = lambda: None
+
+    try:
+        client = TestClient(app)
+        synthetic_candles = [{"close": 100.0 + (i % 15) * 2.0} for i in range(100)]
+        with patch("backend.app.routers.trading.candles") as mock_candles:
+            mock_candles.return_value = {"candles": synthetic_candles}
+
+            resp = client.post(
+                "/api/v1/trading/backtest",
+                json={"symbol": "BTCUSDT", "interval": "1h", "strategy": "crossover_sma"},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["symbol"] == "BTCUSDT"
+            assert data["interval"] == "1h"
+            assert data["status"] == "calculated"
+            assert data["candles_count"] == 100
+            assert "strategy_return" in data
+            assert "max_drawdown" in data
+            assert "disclaimer" in data
+    finally:
+        app.dependency_overrides.clear()
+

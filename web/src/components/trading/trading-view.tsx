@@ -465,8 +465,8 @@ export function TradingView() {
 
           {/* Cartes Modèles Quantitatifs & Strategy Lab Backtest */}
           <TradingModelsCard
-            studyReturn={studyReturn}
-            holdingReturn={holdingReturn}
+            symbol={symbol}
+            interval={interval}
             locale={locale}
           />
         </div>

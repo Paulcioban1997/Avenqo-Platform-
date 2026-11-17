@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { TRADING_COPY } from "../src/lib/i18n/trading-copy";
 import { CANONICAL_LOCALES } from "../src/lib/i18n/canonical-locales.generated";
 import { TradingTickerBand, type TickerItem } from "../src/components/trading/trading-ticker-band";
 import { PredictionPanel } from "../src/components/trading/prediction-panel";
+import { TradingModelsCard } from "../src/components/trading/trading-models-card";
 
 // Mock des composants dépendants de canvas/lightweight-charts pour tests jsdom
 vi.mock("lightweight-charts", () => ({
@@ -126,6 +127,51 @@ describe("Avenqo Trading AI 2.0 — I18n & Completeness", () => {
     expect(screen.getByText(/Prédictions IA Quantitatives/i)).toBeInTheDocument();
     expect(screen.getByText("En cours d'évaluation hors-échantillon")).toBeInTheDocument();
     expect(screen.getByText("Achat (Tendance haussière)")).toBeInTheDocument();
-    expect(screen.getByText(/Validation Active/i)).toBeInTheDocument();
+    expect(screen.getByText(/En développement/i)).toBeInTheDocument();
+  });
+
+  it("renders TradingModelsCard with honest status and executes real backtest endpoint", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            status: "calculated",
+            candles_count: 200,
+            trades_count: 8,
+            strategy_return: 0.052,
+            holding_return: 0.021,
+            max_drawdown: -0.045,
+            win_rate: 62.5,
+            sharpe_ratio: 1.15,
+            disclaimer: "Calcul mathématique déterministe sur bougies historiques.",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    );
+
+    render(<TradingModelsCard symbol="BTCUSDT" interval="1h" locale="fr" />);
+
+    // Vérifie que les badges "Actif" inventés sont absents et remplacés par "En développement"
+    const evaluatingBadges = screen.getAllByText("En développement");
+    expect(evaluatingBadges.length).toBeGreaterThanOrEqual(5);
+
+    // Initialement le backtest n'affiche aucun chiffre inventé
+    expect(screen.getAllByText(/Non calculé/i).length).toBeGreaterThanOrEqual(1);
+
+    // Déclenche le backtest
+    const button = screen.getByRole("button", { name: /Lancer un Backtest/i });
+    await act(async () => {
+      fireEvent.click(button);
+    });
+
+    // Attend la mise à jour après appel API réel
+    const successMsg = await screen.findByText(/Backtest déterministe validé sur 200 bougies/i);
+    expect(successMsg).toBeInTheDocument();
+    expect(screen.getByText("+5.2 %")).toBeInTheDocument();
+    expect(screen.getByText("+2.1 %")).toBeInTheDocument();
+    expect(screen.getByText("1.15")).toBeInTheDocument();
+    expect(screen.getByText("-4.5 %")).toBeInTheDocument();
+    expect(screen.getByText("62.5 %")).toBeInTheDocument();
   });
 });

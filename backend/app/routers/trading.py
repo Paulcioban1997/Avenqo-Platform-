@@ -12,6 +12,7 @@ from backend.app.services.fx_rates import convert_amount
 from backend.app.services.market_feed import (
     MarketUnavailable,
     asset_classes,
+    calculate_backtest,
     candles,
     experimental_study,
     factual_brief,
@@ -38,6 +39,14 @@ class AskRequest(BaseModel):
     interval: str = "1h"
     locale: str = "fr"
     question: str | None = Field(default=None, max_length=1000)
+
+
+class BacktestRequest(BaseModel):
+    symbol: str = Field(min_length=1, max_length=32)
+    interval: str = "1h"
+    strategy: str = "crossover_sma"
+    fast_period: int = 10
+    slow_period: int = 30
 
 
 def require_trading(
@@ -224,6 +233,29 @@ async def trading_ask(
                 settings,
             )
         return brief
+    except (KeyError, ValueError, MarketUnavailable) as exc:
+        raise _market_error(exc) from exc
+
+
+@router.post("/backtest")
+def trading_backtest(
+    payload: BacktestRequest,
+    identity: CurrentIdentity = Depends(require_trading),
+) -> dict:
+    del identity
+    try:
+        series = candles(payload.symbol, payload.interval, 200)
+        candle_list = series.get("candles") or []
+        closes = [float(row["close"]) for row in candle_list if isinstance(row, dict) and "close" in row]
+        result = calculate_backtest(
+            closes=closes,
+            strategy=payload.strategy,
+            fast_period=payload.fast_period,
+            slow_period=payload.slow_period,
+        )
+        result["symbol"] = payload.symbol
+        result["interval"] = payload.interval
+        return result
     except (KeyError, ValueError, MarketUnavailable) as exc:
         raise _market_error(exc) from exc
 

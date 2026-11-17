@@ -25,8 +25,7 @@ export function PredictionPanel({
   const copy = TRADING_COPY[locale] || TRADING_COPY.fr;
   const [selectedHorizon, setSelectedHorizon] = useState<(typeof HORIZONS)[number]>("24h");
 
-  // Analyse technique factuelle dérivée des indicateurs réels (sans faux prix inventé)
-  const rsi = indicators?.rsi_14 ?? 50;
+  // Analyse technique factuelle dérivée des indicateurs réels (aucun cours futur inventé)
   const macdHist = indicators?.macd?.histogram ?? 0;
   const ema12 = indicators?.ema_12 ?? currentPrice;
   const sma20 = indicators?.sma_20 ?? currentPrice;
@@ -38,7 +37,7 @@ export function PredictionPanel({
   const signalColor = isBullish ? "text-emerald-400" : isBearish ? "text-rose-400" : "text-amber-400";
   const signalBg = isBullish ? "bg-emerald-950/40 border-emerald-800/50" : isBearish ? "bg-rose-950/40 border-rose-800/50" : "bg-amber-950/40 border-amber-800/50";
 
-  // Volatilité basée sur l'écart des bandes de Bollinger
+  // Volatilité basée sur l'écartement réel des bandes de Bollinger (20, 2)
   const bbSpread =
     indicators?.bollinger?.upper && indicators?.bollinger?.lower && indicators.bollinger.middle
       ? ((indicators.bollinger.upper - indicators.bollinger.lower) / indicators.bollinger.middle) * 100
@@ -55,7 +54,7 @@ export function PredictionPanel({
             <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse"></span>
             {copy.predictionTitle} ({symbol})
           </h2>
-          <p className="text-[11px] text-slate-400">Moteurs d'analyse prédictive et détection de tendance Avenqo</p>
+          <p className="text-[11px] text-slate-400">Moteurs d'analyse quantitative et détection de tendance Avenqo</p>
         </div>
 
         {/* Sélecteur d'horizon */}
@@ -77,22 +76,22 @@ export function PredictionPanel({
         </div>
       </div>
 
-      {/* Cartouche Prix estimé & Évaluation Hors-Échantillon */}
+      {/* Cartouche Cours réel & Volatilité historique */}
       <div className="rounded-xl border border-slate-800/90 bg-slate-900/50 p-3 space-y-2">
         <div className="flex items-center justify-between text-xs">
           <span className="text-slate-400">{copy.predictionStatus}</span>
           <span className="rounded bg-amber-950/80 px-2 py-0.5 text-[10px] font-bold text-amber-400 border border-amber-800/60">
-            Validation Active
+            {copy.modelStatusEvaluating}
           </span>
         </div>
 
         <div className="flex items-baseline justify-between">
           <div>
-            <div className="text-xs text-slate-400">{copy.predictionEstimatedPrice} ({selectedHorizon})</div>
+            <div className="text-xs text-slate-400">{copy.predictionObservedPrice}</div>
             <div className="text-xl font-bold font-mono text-slate-200">
               {currentPrice > 0 ? (
                 <span>
-                  ~ {currentPrice.toLocaleString(locale, { maximumFractionDigits: 2 })} {currency}
+                  {currentPrice.toLocaleString(locale, { maximumFractionDigits: 2 })} {currency}
                 </span>
               ) : (
                 "—"
@@ -100,22 +99,24 @@ export function PredictionPanel({
             </div>
           </div>
           <div className="text-right">
-            <div className="text-xs text-slate-400">{copy.predictionUncertainty} (IC 95%)</div>
+            <div className="text-xs text-slate-400">{copy.bollingerSpread}</div>
             <div className="font-mono text-xs text-cyan-400">
-              {currentPrice > 0 ? `± ${bbSpread.toFixed(1)} % (${(currentPrice * (1 - bbSpread / 100)).toFixed(0)} - ${(currentPrice * (1 + bbSpread / 100)).toFixed(0)} ${currency})` : "—"}
+              {currentPrice > 0
+                ? `± ${bbSpread.toFixed(1)} % (${(currentPrice * (1 - bbSpread / 100)).toFixed(0)} - ${(currentPrice * (1 + bbSpread / 100)).toFixed(0)} ${currency})`
+                : "—"}
             </div>
           </div>
         </div>
 
-        {/* Barre de confiance / progression de l'évaluation */}
-        <div className="space-y-1 pt-1">
-          <div className="flex justify-between text-[11px] text-slate-400">
-            <span>Convergence des modèles</span>
-            <span className="font-mono font-bold text-slate-300">76 %</span>
+        {/* Statut d'évaluation honnête des modèles */}
+        <div className="space-y-1 pt-1 border-t border-slate-800/60 text-xs">
+          <div className="flex justify-between items-center text-[11px] text-slate-400">
+            <span>Cible prédictive ({selectedHorizon})</span>
+            <span className="font-mono text-[10px] text-amber-400 font-semibold">Non certifiée</span>
           </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
-            <div className="h-full bg-gradient-to-r from-cyan-500 to-emerald-400" style={{ width: "76%" }} />
-          </div>
+          <p className="text-[10px] text-slate-500 leading-tight">
+            Modèles en cours d'évaluation hors-échantillon. Aucun cours futur inventé sans validation statistique complète.
+          </p>
         </div>
       </div>
 
@@ -128,9 +129,9 @@ export function PredictionPanel({
 
         <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-slate-800/40">
           <div>
-            <span className="text-slate-400">Force du signal:</span>{" "}
+            <span className="text-slate-400">Condition :</span>{" "}
             <span className="font-mono font-semibold text-slate-200">
-              {isBullish || isBearish ? "72 %" : "50 %"}
+              {isBullish ? "EMA > SMA & MACD > 0" : isBearish ? "EMA < SMA & MACD < 0" : "Consolidation"}
             </span>
           </div>
           <div>

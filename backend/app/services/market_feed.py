@@ -247,6 +247,123 @@ def experimental_study(closes: list[float]) -> dict:
     }
 
 
+def calculate_backtest(
+    closes: list[float],
+    strategy: str = "crossover_sma",
+    fast_period: int = 10,
+    slow_period: int = 30,
+) -> dict:
+    """Calculates deterministic backtest performance metrics on chronological closing prices.
+    Returns real trades count, strategy return, holding return, max drawdown,
+    win rate, and Sharpe ratio.
+    """
+    min_length = max(slow_period + 10, 40)
+    if len(closes) < min_length:
+        return {
+            "status": "insufficient_history",
+            "reliable": False,
+            "strategy": strategy,
+            "fast_period": fast_period,
+            "slow_period": slow_period,
+            "candles_count": len(closes),
+            "trades_count": 0,
+            "strategy_return": None,
+            "holding_return": None,
+            "max_drawdown": None,
+            "win_rate": None,
+            "sharpe_ratio": None,
+            "disclaimer": "Historique de bougies insuffisant pour exécuter un backtest significatif.",
+        }
+
+    position = 0.0
+    equity = 1.0
+    peak_equity = 1.0
+    max_drawdown = 0.0
+    trades: list[dict] = []
+    current_entry_price: float | None = None
+    strategy_bar_returns: list[float] = []
+
+    for index in range(slow_period, len(closes)):
+        prev_close = closes[index - 1]
+        curr_close = closes[index]
+        if prev_close <= 0:
+            continue
+
+        fast = sum(closes[index - fast_period:index]) / fast_period
+        slow = sum(closes[index - slow_period:index]) / slow_period
+        desired = 1.0 if fast > slow else 0.0
+
+        if desired != position:
+            if desired == 1.0:
+                current_entry_price = curr_close
+            elif desired == 0.0 and current_entry_price is not None:
+                trade_ret = (curr_close / current_entry_price) - 1.0
+                trades.append({
+                    "entry_price": current_entry_price,
+                    "exit_price": curr_close,
+                    "return": trade_ret,
+                    "win": trade_ret > 0,
+                })
+                current_entry_price = None
+            position = desired
+
+        if position == 1.0:
+            bar_ret = (curr_close / prev_close) - 1.0
+            equity *= (1.0 + bar_ret)
+            strategy_bar_returns.append(bar_ret)
+        else:
+            strategy_bar_returns.append(0.0)
+
+        if equity > peak_equity:
+            peak_equity = equity
+        dd = (equity - peak_equity) / peak_equity if peak_equity > 0 else 0.0
+        if dd < max_drawdown:
+            max_drawdown = dd
+
+    if position == 1.0 and current_entry_price is not None and closes:
+        last_close = closes[-1]
+        trade_ret = (last_close / current_entry_price) - 1.0
+        trades.append({
+            "entry_price": current_entry_price,
+            "exit_price": last_close,
+            "return": trade_ret,
+            "win": trade_ret > 0,
+        })
+
+    holding_return = (closes[-1] / closes[0]) - 1.0 if closes[0] > 0 else 0.0
+    strategy_return = equity - 1.0
+
+    wins = [t for t in trades if t["win"]]
+    win_rate = (len(wins) / len(trades) * 100.0) if trades else None
+
+    sharpe_ratio: float | None = None
+    if strategy_bar_returns and len(strategy_bar_returns) > 1:
+        mean_ret = sum(strategy_bar_returns) / len(strategy_bar_returns)
+        var = sum((r - mean_ret) ** 2 for r in strategy_bar_returns) / (len(strategy_bar_returns) - 1)
+        std_dev = math.sqrt(var)
+        if std_dev > 1e-9:
+            # Annualized factor: sqrt(8760) ≈ 93.59
+            sharpe_ratio = round((mean_ret / std_dev) * math.sqrt(8760), 2)
+        else:
+            sharpe_ratio = 0.0
+
+    return {
+        "status": "calculated",
+        "reliable": False,
+        "strategy": strategy,
+        "fast_period": fast_period,
+        "slow_period": slow_period,
+        "candles_count": len(closes),
+        "trades_count": len(trades),
+        "strategy_return": round(strategy_return, 4),
+        "holding_return": round(holding_return, 4),
+        "max_drawdown": round(max_drawdown, 4),
+        "win_rate": round(win_rate, 1) if win_rate is not None else None,
+        "sharpe_ratio": sharpe_ratio,
+        "disclaimer": "Calcul mathématique déterministe sur bougies historiques réelles. Les performances passées ne préjugent pas des performances futures. Aucun conseil financier.",
+    }
+
+
 def resolve_quote(symbol: str, provider: str, fetchers: dict[str, Callable[[str], dict]], now_ms: int, stream: Callable[[str, str], dict | None] | None = None) -> dict:
     base, quote = split_symbol(symbol)
     key = f"{base}-{quote}"

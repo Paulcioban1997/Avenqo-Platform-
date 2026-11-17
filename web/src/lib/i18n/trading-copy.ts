@@ -76,6 +76,12 @@ export interface TradingI18nCopy {
   stocksUnavailableNotice: string;
   convertedTo: string;
   exchangeRateBasis: string;
+  modelStatusEvaluating: string;
+  backtestExecuting: string;
+  backtestNotRun: string;
+  backtestSuccessNotice: string;
+  predictionObservedPrice: string;
+  bollingerSpread: string;
 }
 
 export const TRADING_COPY: Record<LocaleCode, TradingI18nCopy> = completeLocaleMap({
@@ -154,6 +160,12 @@ export const TRADING_COPY: Record<LocaleCode, TradingI18nCopy> = completeLocaleM
     stocksUnavailableNotice: "Aucun flux actions/ETF autorisé sur ce forfait (Crypto publique uniquement).",
     convertedTo: "Converti en",
     exchangeRateBasis: "Taux FX officiel",
+    modelStatusEvaluating: "En développement",
+    backtestExecuting: "Calcul du backtest en cours...",
+    backtestNotRun: "Non calculé",
+    backtestSuccessNotice: "Calcul mathématique déterministe sur bougies historiques de marché.",
+    predictionObservedPrice: "Dernier cours (Clôture)",
+    bollingerSpread: "Bandes de Bollinger (Volatilité)",
   },
   "fr-FR": {
     title: "Avenqo Trading AI 2.0",
@@ -230,6 +242,12 @@ export const TRADING_COPY: Record<LocaleCode, TradingI18nCopy> = completeLocaleM
     stocksUnavailableNotice: "Aucun flux actions/ETF autorisé sur ce forfait (Crypto publique uniquement).",
     convertedTo: "Converti en",
     exchangeRateBasis: "Taux FX officiel",
+    modelStatusEvaluating: "En développement",
+    backtestExecuting: "Calcul du backtest en cours...",
+    backtestNotRun: "Non calculé",
+    backtestSuccessNotice: "Calcul mathématique déterministe sur bougies historiques de marché.",
+    predictionObservedPrice: "Dernier cours (Clôture)",
+    bollingerSpread: "Bandes de Bollinger (Volatilité)",
   },
   en: {
     title: "Avenqo Trading AI 2.0",
@@ -306,6 +324,12 @@ export const TRADING_COPY: Record<LocaleCode, TradingI18nCopy> = completeLocaleM
     stocksUnavailableNotice: "No stocks/ETF feed authorized on this plan (Public crypto only).",
     convertedTo: "Converted to",
     exchangeRateBasis: "Official FX Rate",
+    modelStatusEvaluating: "In development",
+    backtestExecuting: "Calculating backtest...",
+    backtestNotRun: "Not calculated",
+    backtestSuccessNotice: "Deterministic mathematical calculation on historical market candles.",
+    predictionObservedPrice: "Latest Close Price",
+    bollingerSpread: "Bollinger Bands (Volatility)",
   },
   "en-GB": {
     title: "Avenqo Trading AI 2.0",
@@ -382,6 +406,12 @@ export const TRADING_COPY: Record<LocaleCode, TradingI18nCopy> = completeLocaleM
     stocksUnavailableNotice: "No stocks/ETF feed authorised on this plan (Public crypto only).",
     convertedTo: "Converted to",
     exchangeRateBasis: "Official FX Rate",
+    modelStatusEvaluating: "In development",
+    backtestExecuting: "Calculating backtest...",
+    backtestNotRun: "Not calculated",
+    backtestSuccessNotice: "Deterministic mathematical calculation on historical market candles.",
+    predictionObservedPrice: "Latest Close Price",
+    bollingerSpread: "Bollinger Bands (Volatility)",
   },
   es: {
     title: "Avenqo Trading AI 2.0",
@@ -458,6 +488,12 @@ export const TRADING_COPY: Record<LocaleCode, TradingI18nCopy> = completeLocaleM
     stocksUnavailableNotice: "Sin flujo de acciones/ETF autorizado (solo Cripto pública).",
     convertedTo: "Convertido a",
     exchangeRateBasis: "Tipo FX oficial",
+    modelStatusEvaluating: "En desarrollo",
+    backtestExecuting: "Calculando backtest...",
+    backtestNotRun: "No calculado",
+    backtestSuccessNotice: "Cálculo matemático determinista sobre velas históricas del mercado.",
+    predictionObservedPrice: "Último precio de cierre",
+    bollingerSpread: "Bandas de Bollinger (Volatilidad)",
   },
   ro: {
     title: "Avenqo Trading AI 2.0",
@@ -534,6 +570,12 @@ export const TRADING_COPY: Record<LocaleCode, TradingI18nCopy> = completeLocaleM
     stocksUnavailableNotice: "Niciun flux de acțiuni/ETF autorizat (doar Crypto public).",
     convertedTo: "Convertit în",
     exchangeRateBasis: "Curs FX oficial",
+    modelStatusEvaluating: "În dezvoltare",
+    backtestExecuting: "Calculare backtest...",
+    backtestNotRun: "Necalculat",
+    backtestSuccessNotice: "Calcul matematic determinist pe lumânări istorice de piață.",
+    predictionObservedPrice: "Ultimul preț de închidere",
+    bollingerSpread: "Benzi Bollinger (Volatilitate)",
   },
   ar: {
     title: "Avenqo تداول الذكاء الاصطناعي 2.0",
@@ -610,5 +652,11 @@ export const TRADING_COPY: Record<LocaleCode, TradingI18nCopy> = completeLocaleM
     stocksUnavailableNotice: "لا يوجد تدفق لأسهم الشركات أو الصناديق مصرح به في هذه الباقة (العملات الرقمية العامة فقط).",
     convertedTo: "محول إلى",
     exchangeRateBasis: "سعر الصرف الرسمي",
+    modelStatusEvaluating: "قيد التطوير",
+    backtestExecuting: "جاري حساب الاختبار التاريخي...",
+    backtestNotRun: "غير محسوب",
+    backtestSuccessNotice: "حساب رياضي حتمي على بيانات الشموع التاريخية الحقيقية.",
+    predictionObservedPrice: "آخر سعر إغلاق",
+    bollingerSpread: "نطاقات بولينجر (التقلب)",
   },
 });
