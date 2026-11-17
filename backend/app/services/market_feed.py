@@ -265,6 +265,39 @@ INTERVAL_BARS_PER_YEAR: dict[str, int] = {
 }
 
 
+def compute_sma_series(prices: list[float], period: int) -> list[float | None]:
+    """Computes Simple Moving Average. Returns None for indices < period - 1."""
+    n = len(prices)
+    if period < 1 or n < period:
+        return [None] * n
+    res: list[float | None] = [None] * (period - 1)
+    rolling = sum(prices[:period])
+    res.append(rolling / period)
+    for i in range(period, n):
+        rolling += prices[i] - prices[i - period]
+        res.append(rolling / period)
+    return res
+
+
+def compute_ema_series(prices: list[float], period: int) -> list[float | None]:
+    """Computes true Exponential Moving Average (EMA) with multiplier alpha = 2 / (period + 1).
+    Initial value at index period-1 is seeded by the SMA of the first period elements.
+    Returns None for indices < period - 1.
+    """
+    n = len(prices)
+    if period < 1 or n < period:
+        return [None] * n
+    res: list[float | None] = [None] * (period - 1)
+    sma_seed = sum(prices[:period]) / period
+    res.append(sma_seed)
+    alpha = 2.0 / (period + 1.0)
+    current_ema = sma_seed
+    for i in range(period, n):
+        current_ema = (prices[i] * alpha) + (current_ema * (1.0 - alpha))
+        res.append(current_ema)
+    return res
+
+
 def calculate_backtest(
     closes: list[float],
     strategy: str = "crossover_sma",
@@ -280,27 +313,74 @@ def calculate_backtest(
     1. Zero lookahead / bar-timing bias: positions entered at bar t only participate in
        returns starting on bar t+1 (from close_t to close_t+1).
     2. Strict chronological order: fees and slippage applied at transaction moments.
-    3. Buy & Hold benchmark evaluated strictly over the same window (from bar slow_period to end).
-    4. Sharpe ratio dynamically annualized using the actual interval's annual bar frequency.
-    5. Clean distinction between closed completed trades and ongoing open position.
+       Equity curve and trade returns strictly match without double deduction or omissions.
+    3. True moving average implementation: separate mathematical calculations for SMA and EMA.
+    4. Buy & Hold benchmark evaluated strictly over the same window (from bar slow_period to end).
+    5. Sharpe ratio dynamically annualized using the actual interval's annual bar frequency.
+    6. Clean distinction between closed completed trades and ongoing open position.
+    7. No silent candle dropping: series with gaps or invalid prices are strictly rejected.
+    8. Honest structured validation states: distinguishes mathematical completion from statistical certification.
     """
     if fast_period < 2:
         raise ValueError(f"fast_period doit être >= 2 (reçu: {fast_period})")
     if slow_period <= fast_period:
         raise ValueError(f"slow_period ({slow_period}) doit être strictement supérieur à fast_period ({fast_period})")
+    if strategy not in ("crossover_sma", "crossover_ema"):
+        raise ValueError(f"Stratégie non supportée: '{strategy}'. Valeurs autorisées: crossover_sma, crossover_ema")
     if fee_rate < 0.0 or fee_rate > 0.05:
         raise ValueError(f"fee_rate doit être compris entre 0.0 et 0.05 (reçu: {fee_rate})")
     if slippage_rate < 0.0 or slippage_rate > 0.05:
         raise ValueError(f"slippage_rate doit être compris entre 0.0 et 0.05 (reçu: {slippage_rate})")
 
-    # Sanitize closing prices: strictly positive finite floats
-    valid_closes: list[float] = [
-        float(c) for c in closes
-        if isinstance(c, (int, float)) and math.isfinite(c) and c > 0
-    ]
-
     annual_bars = INTERVAL_BARS_PER_YEAR.get(interval, 8760)
     annual_factor = math.sqrt(annual_bars)
+
+    # 1. Verify temporal continuity: never silently drop invalid candles!
+    for idx, c in enumerate(closes):
+        if not isinstance(c, (int, float)) or not math.isfinite(c) or c <= 0:
+            return {
+                "status": "invalid_series",
+                "reliable": False,
+                "strategy": strategy,
+                "interval": interval,
+                "fast_period": fast_period,
+                "slow_period": slow_period,
+                "candles_count": len(closes),
+                "trades_count": 0,
+                "closed_trades_count": 0,
+                "open_position": None,
+                "strategy_return": None,
+                "holding_return": None,
+                "max_drawdown": None,
+                "win_rate": None,
+                "sharpe_ratio": None,
+                "data_integrity": {
+                    "status": "rejected",
+                    "continuous": False,
+                    "reason": f"Bougie invalide ou non-positive (valeur={c}) détectée à l'indice {idx}. Série rejetée pour préserver l'intégrité chronologique.",
+                    "corrupted_index": idx,
+                },
+                "execution": {
+                    "status": "rejected",
+                    "strategy": strategy,
+                },
+                "statistical_validation": {
+                    "status": "rejected",
+                    "certified_strategy": False,
+                },
+                "assumptions": {
+                    "fee_rate": fee_rate,
+                    "fee_rate_percent": round(fee_rate * 100, 3),
+                    "slippage_rate": slippage_rate,
+                    "slippage_rate_percent": round(slippage_rate * 100, 3),
+                    "annual_bars": annual_bars,
+                    "annual_factor": round(annual_factor, 2),
+                    "interval": interval,
+                },
+                "disclaimer": "Calcul impossible : série chronologique rejetée suite à une anomalie de données.",
+            }
+
+    valid_closes = [float(c) for c in closes]
 
     min_required = slow_period + 5
     if len(valid_closes) < min_required:
@@ -321,6 +401,21 @@ def calculate_backtest(
             "max_drawdown": None,
             "win_rate": None,
             "sharpe_ratio": None,
+            "data_integrity": {
+                "status": "insufficient_length",
+                "continuous": True,
+                "valid_candles": len(valid_closes),
+                "evaluation_candles": 0,
+                "reason": f"Historique insuffisant ({len(valid_closes)} < {min_required} bougies)",
+            },
+            "execution": {
+                "status": "aborted",
+                "strategy": strategy,
+            },
+            "statistical_validation": {
+                "status": "unverified",
+                "certified_strategy": False,
+            },
             "assumptions": {
                 "fee_rate": fee_rate,
                 "fee_rate_percent": round(fee_rate * 100, 3),
@@ -332,6 +427,14 @@ def calculate_backtest(
             },
             "disclaimer": "Historique de bougies insuffisant pour exécuter un backtest significatif.",
         }
+
+    # 2. Compute Moving Average indicators across the full valid price series
+    if strategy == "crossover_ema":
+        fast_series = compute_ema_series(valid_closes, fast_period)
+        slow_series = compute_ema_series(valid_closes, slow_period)
+    else:
+        fast_series = compute_sma_series(valid_closes, fast_period)
+        slow_series = compute_sma_series(valid_closes, slow_period)
 
     start_index = slow_period
     # Benchmark Buy & Hold evaluated on the exact same window [start_index, len(valid_closes) - 1]
@@ -366,18 +469,21 @@ def calculate_backtest(
                 max_drawdown = dd
 
         # 2. Compute signal at close of bar i using data up to index i
-        fast_window = valid_closes[i - fast_period + 1 : i + 1]
-        slow_window = valid_closes[i - slow_period + 1 : i + 1]
-        fast_val = sum(fast_window) / fast_period
-        slow_val = sum(slow_window) / slow_period
-        desired_position = 1.0 if fast_val > slow_val else 0.0
+        fast_val = fast_series[i]
+        slow_val = slow_series[i]
+        if fast_val is not None and slow_val is not None:
+            desired_position = 1.0 if fast_val > slow_val else 0.0
+        else:
+            desired_position = 0.0
 
         # 3. Execution on signal change at close of bar i
         if desired_position != position:
             if desired_position == 1.0:
-                # Enter Long at curr_close + slippage, pay entry fee
+                # Enter Long at curr_close * (1 + slippage_rate), pay entry fee
                 entry_exec_price = curr_close * (1.0 + slippage_rate)
-                equity *= (1.0 - fee_rate)
+                # Purchasing power reduced by entry fee and entry slippage:
+                # E_after = E_before * (1 - fee_rate) / (1 + slippage_rate)
+                equity *= (1.0 - fee_rate) / (1.0 + slippage_rate)
                 open_trade = {
                     "entry_price": entry_exec_price,
                     "entry_bar": i,
@@ -385,10 +491,13 @@ def calculate_backtest(
                 }
                 position = 1.0
             elif desired_position == 0.0 and open_trade is not None:
-                # Exit Long at curr_close - slippage, pay exit fee
+                # Exit Long at curr_close * (1 - slippage_rate), pay exit fee
                 exit_exec_price = curr_close * (1.0 - slippage_rate)
-                equity *= (1.0 - fee_rate)
-                net_trade_ret = (exit_exec_price / open_trade["entry_price"]) * (1.0 - fee_rate) - 1.0
+                # Proceeds reduced by exit slippage and exit fee:
+                # E_after = E_before * (1 - slippage_rate) * (1 - fee_rate)
+                equity *= (1.0 - slippage_rate) * (1.0 - fee_rate)
+                # Net trade return: P_exit / P_entry * (1 - fee_rate)^2 - 1.0
+                net_trade_ret = (exit_exec_price / open_trade["entry_price"]) * ((1.0 - fee_rate) ** 2) - 1.0
                 closed_trades.append({
                     "entry_price": round(open_trade["entry_price"], 6),
                     "exit_price": round(exit_exec_price, 6),
@@ -411,11 +520,13 @@ def calculate_backtest(
     open_position_info: dict | None = None
     if position == 1.0 and open_trade is not None:
         last_close = valid_closes[-1]
+        # Open position unrealized return accounts for entry slippage & entry fee
+        unrealized = (last_close / open_trade["entry_price"]) * (1.0 - fee_rate) - 1.0
         open_position_info = {
             "entry_price": round(open_trade["entry_price"], 6),
             "entry_bar": open_trade["entry_bar"],
             "current_price": round(last_close, 6),
-            "unrealized_return": round((last_close / open_trade["entry_price"]) - 1.0, 6),
+            "unrealized_return": round(unrealized, 6),
             "bars_held": (len(valid_closes) - 1) - open_trade["entry_bar"],
         }
 
@@ -440,7 +551,29 @@ def calculate_backtest(
 
     return {
         "status": "calculated",
-        "reliable": True,
+        "data_integrity": {
+            "status": "verified",
+            "continuous": True,
+            "valid_candles": len(valid_closes),
+            "evaluation_candles": len(valid_closes) - start_index,
+            "corrupted_candles": 0,
+            "anomalies_detected": False,
+        },
+        "execution": {
+            "status": "deterministic_completed",
+            "lookahead_bias_eliminated": True,
+            "slippage_accounted": True,
+            "fees_accounted": True,
+            "strategy": strategy,
+        },
+        "statistical_validation": {
+            "status": "unverified",
+            "certified_strategy": False,
+            "sample_adequate": len(closed_trades) >= 30,
+            "closed_trades_count": len(closed_trades),
+            "disclaimer": "Calcul déterministe sur données passées. Non certifié pour des performances futures.",
+        },
+        "reliable": False,  # Mathematical completion != certified financial performance
         "strategy": strategy,
         "interval": interval,
         "fast_period": fast_period,
@@ -467,7 +600,7 @@ def calculate_backtest(
             "annual_factor": round(annual_factor, 2),
             "interval": interval,
         },
-        "disclaimer": "Calcul mathématique déterministe sur bougies historiques réelles. Frais et slippage inclus. Les performances passées ne préjugent pas des performances futures. Aucun conseil financier.",
+        "disclaimer": "Calcul mathématique déterministe sur bougies historiques réelles. Frais et glissement de prix inclus. Les performances passées ne préjugent pas des performances futures. Aucun conseil financier.",
     }
 
 

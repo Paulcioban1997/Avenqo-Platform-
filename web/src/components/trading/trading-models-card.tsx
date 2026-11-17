@@ -244,10 +244,18 @@ export function TradingModelsCard({
         </button>
 
         {backtestResult && (
-          <div className="space-y-1 text-center pt-1">
+          <div className="space-y-1.5 text-center pt-1">
             <p className="text-[10px] text-emerald-400 font-semibold">
-              ✓ Backtest déterministe validé sur {backtestResult.candles_count} bougies historiques ({symbol} · {interval}).
+              ✓ Calcul déterministe terminé sur {backtestResult.candles_count} bougies historiques ({symbol} · {interval}).
             </p>
+            <div className="flex flex-wrap items-center justify-center gap-1.5 text-[9px]">
+              <span className="rounded bg-slate-900 border border-emerald-800/40 px-2 py-0.5 text-emerald-300">
+                Intégrité : Série continue ({backtestResult.candles_count} bougies)
+              </span>
+              <span className="rounded bg-slate-900 border border-amber-800/40 px-2 py-0.5 text-amber-300">
+                Validation statistique : Non certifiée (historique déterministe)
+              </span>
+            </div>
             <p className="text-[9px] text-slate-500 leading-tight">
               🛡️ {backtestResult.disclaimer}
             </p>

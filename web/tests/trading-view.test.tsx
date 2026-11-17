@@ -185,8 +185,11 @@ describe("Avenqo Trading AI 2.0 — I18n & Completeness", () => {
     });
 
     // Attend la mise à jour après appel API réel
-    const successMsg = await screen.findByText(/Backtest déterministe validé sur 200 bougies/i);
+    const successMsg = await screen.findByText(/Calcul déterministe terminé sur 200 bougies/i);
     expect(successMsg).toBeInTheDocument();
+    // Ne jamais afficher "validé" comme si la rentabilité future était garantie
+    expect(screen.queryByText(/Backtest déterministe validé/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Validation statistique : Non certifiée/i)).toBeInTheDocument();
     expect(screen.getByText("+5.2 %")).toBeInTheDocument();
     expect(screen.getByText("+2.1 %")).toBeInTheDocument();
     expect(screen.getByText("1.15")).toBeInTheDocument();

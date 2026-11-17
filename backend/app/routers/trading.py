@@ -1,5 +1,6 @@
 """Trading crypto public, module optionnel dans la limite du forfait."""
 
+import math
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -266,11 +267,50 @@ def trading_backtest(
         query_interval = "1d" if payload.interval == "1j" else payload.interval
         series = candles(payload.symbol, query_interval, payload.candle_limit)
         candle_list = series.get("candles") or []
-        closes = [
-            float(row["close"])
-            for row in candle_list
-            if isinstance(row, dict) and "close" in row and isinstance(row["close"], (int, float)) and row["close"] > 0
-        ]
+        closes: list[float] = []
+        corrupted = False
+        for row in candle_list:
+            if not isinstance(row, dict) or "close" not in row or not isinstance(row["close"], (int, float)) or not math.isfinite(row["close"]) or row["close"] <= 0:
+                corrupted = True
+                break
+            closes.append(float(row["close"]))
+
+        if corrupted:
+            return {
+                "status": "invalid_series",
+                "reliable": False,
+                "symbol": payload.symbol,
+                "interval": payload.interval,
+                "strategy": payload.strategy,
+                "fast_period": payload.fast_period,
+                "slow_period": payload.slow_period,
+                "data_integrity": {
+                    "status": "rejected",
+                    "continuous": False,
+                    "reason": "Série temporelle corrompue ou interrompue (cours manquant, non-fini ou négatif). Rejetée pour préserver l'intégrité chronologique.",
+                },
+                "execution": {
+                    "status": "rejected",
+                    "strategy": payload.strategy,
+                },
+                "statistical_validation": {
+                    "status": "rejected",
+                    "certified_strategy": False,
+                },
+                "candles_count": len(candle_list),
+                "trades_count": 0,
+                "closed_trades_count": 0,
+                "open_position": None,
+                "strategy_return": None,
+                "holding_return": None,
+                "max_drawdown": None,
+                "win_rate": None,
+                "sharpe_ratio": None,
+                "freshness": series.get("freshness", "delayed"),
+                "source": series.get("source", "public"),
+                "disclaimer": "Calcul impossible : série chronologique rejetée pour préserver l'intégrité temporelle.",
+            }
+
         result = calculate_backtest(
             closes=closes,
             strategy=payload.strategy,

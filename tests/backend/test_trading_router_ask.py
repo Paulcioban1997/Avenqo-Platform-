@@ -118,7 +118,12 @@ def test_calculate_backtest_independent_numerical_benchmark():
     )
 
     assert res["status"] == "calculated"
-    assert res["reliable"] is True
+    # Reliable is False: mathematical calculation finished != certified financial advice
+    assert res["reliable"] is False
+    assert res["data_integrity"]["status"] == "verified"
+    assert res["data_integrity"]["continuous"] is True
+    assert res["execution"]["status"] == "deterministic_completed"
+    assert res["statistical_validation"]["status"] == "unverified"
     assert res["candles_count"] == 9
     assert res["evaluation_candles"] == 6  # bars 3 to 8
     assert res["start_price"] == 100.0
@@ -138,14 +143,80 @@ def test_calculate_backtest_independent_numerical_benchmark():
     assert trade["exit_bar"] == 6
     assert trade["bars_held"] == 2
     assert trade["win"] is False
+    assert trade["net_return"] == -0.097949  # Exact net trade return
     assert res["open_position"] is None
     assert res["win_rate"] == 0.0
 
-    # Final equity: strategy_return rounded to 4 decimals: -0.0970 (-9.70%)
-    assert res["strategy_return"] == -0.097
+    # Final equity: strategy_return rounded to 4 decimals: -0.0979 (-9.79%)
+    # Accurately penalizes entry and exit slippage on equity
+    assert res["strategy_return"] == -0.0979
 
-    # Max Drawdown occurred when equity dipped
-    assert res["max_drawdown"] == -0.1372
+    # Max Drawdown occurred when equity dipped at bar 6
+    assert res["max_drawdown"] == -0.1377
+
+
+def test_calculate_backtest_equity_with_and_without_slippage():
+    from backend.app.services.market_feed import calculate_backtest
+
+    closes = [100.0, 100.0, 100.0, 100.0, 105.0, 110.0, 95.0, 90.0, 90.0]
+    
+    # Run without slippage
+    res_no_slip = calculate_backtest(
+        closes=closes,
+        fast_period=2,
+        slow_period=3,
+        fee_rate=0.001,
+        slippage_rate=0.0,
+        interval="1h",
+    )
+    # Run with 0.1% slippage
+    res_with_slip = calculate_backtest(
+        closes=closes,
+        fast_period=2,
+        slow_period=3,
+        fee_rate=0.001,
+        slippage_rate=0.001,
+        interval="1h",
+    )
+
+    # Slippage must strictly degrade equity and increase drawdown
+    assert res_with_slip["strategy_return"] < res_no_slip["strategy_return"]
+    assert res_with_slip["max_drawdown"] < res_no_slip["max_drawdown"]
+    # Closed trade return rounded to 4 decimals must match equity return exactly
+    assert round(res_with_slip["closed_trades"][0]["net_return"], 4) == res_with_slip["strategy_return"]
+
+
+def test_calculate_backtest_crossover_sma_vs_crossover_ema():
+    import math
+    from backend.app.services.market_feed import calculate_backtest
+
+    # 50-bar fluctuating series where EMA responds faster than SMA
+    closes = [100.0 + 10.0 * math.sin(i * 0.4) for i in range(50)]
+    
+    res_sma = calculate_backtest(closes, strategy="crossover_sma", fast_period=4, slow_period=10)
+    res_ema = calculate_backtest(closes, strategy="crossover_ema", fast_period=4, slow_period=10)
+
+    assert res_sma["status"] == "calculated"
+    assert res_ema["status"] == "calculated"
+    assert res_sma["strategy"] == "crossover_sma"
+    assert res_ema["strategy"] == "crossover_ema"
+
+    # EMA weights recent prices more heavily, producing distinct execution and returns
+    assert res_sma["strategy_return"] != res_ema["strategy_return"]
+
+
+def test_calculate_backtest_invalid_series_rejection():
+    from backend.app.services.market_feed import calculate_backtest
+
+    # Series contains a non-positive / corrupted candle at index 3
+    closes = [100.0, 102.0, 101.0, -10.0, 105.0, 108.0, 110.0, 112.0]
+    res = calculate_backtest(closes, fast_period=2, slow_period=3)
+
+    assert res["status"] == "invalid_series"
+    assert res["reliable"] is False
+    assert res["data_integrity"]["continuous"] is False
+    assert "corrompue" in res["data_integrity"]["reason"] or "invalide" in res["data_integrity"]["reason"]
+    assert res["strategy_return"] is None
 
 
 def test_calculate_backtest_open_position():
@@ -163,7 +234,8 @@ def test_calculate_backtest_open_position():
     )
 
     assert res["status"] == "calculated"
-    assert res["reliable"] is True
+    assert res["reliable"] is False
+    assert res["data_integrity"]["status"] == "verified"
     assert len(res["closed_trades"]) == 0
     assert res["open_position"] is not None
     open_pos = res["open_position"]
