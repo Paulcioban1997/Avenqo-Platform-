@@ -997,24 +997,40 @@ def test_22_stale_data_coverage_never_returns_zero_orders():
     Le 8 octobre 2026, si les données s'arrêtent au 5 octobre, répondre que les données s'arrêtent au 5 octobre.
     """
     from backend.app.services.business_metrics_service import BusinessMetricsService
+    from shared.ai_engine.dataset_ingestion.cleaning import CleaningReport
     from shared.ai_engine.dataset_ingestion.prepared_dataset import PreparedCompanyDataset
+    from shared.ai_engine.dataset_ingestion.profiling import CompanyDatasetProfile
+    from shared.ai_engine.dataset_ingestion.quality import assess_quality
+    from shared.ai_engine.dataset_ingestion.readiness import assess_capability_readiness
     from unittest.mock import MagicMock
 
     now_oct_8 = datetime(2026, 10, 8, 14, 0, 0, tzinfo=timezone.utc)
+    canonical = {"date": "order_timestamp", "total": "total_amount", "id": "order_id"}
+    rows = (
+        {"date": "2026-10-05T10:00:00Z", "total": 120.0, "id": "ORD-1"},
+        {"date": "2026-10-05T15:00:00Z", "total": 85.0, "id": "ORD-2"},
+    )
+    report = CleaningReport(
+        rows_before=len(rows),
+        rows_after=len(rows),
+        duplicates_removed=0,
+        numeric_conversions=0,
+        date_conversions=0,
+        null_cells_detected=0,
+        invalid_rows=0,
+        column_count=len(canonical),
+    )
     dataset = PreparedCompanyDataset(
         company_id=uuid4(),
         dataset_id=uuid4(),
         version=1,
-        canonical_columns={"date": "order_timestamp", "total": "total_amount", "id": "order_id"},
-        rows=(
-            {"date": "2026-10-05T10:00:00Z", "total": 120.0, "id": "ORD-1"},
-            {"date": "2026-10-05T15:00:00Z", "total": 85.0, "id": "ORD-2"},
-        ),
-        profile={},
-        mapping={},
-        cleaning_report={},
-        quality={},
-        capability_readiness={},
+        canonical_columns=canonical,
+        rows=rows,
+        profile=CompanyDatasetProfile(row_count=len(rows), column_count=len(canonical)),
+        mapping=(),
+        cleaning_report=report,
+        quality=assess_quality(report),
+        capability_readiness=assess_capability_readiness(set(canonical.values())),
     )
     snapshot = MagicMock()
     snapshot.company.timezone = "America/Montreal"
