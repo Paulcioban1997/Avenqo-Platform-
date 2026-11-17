@@ -6,7 +6,15 @@ from uuid import uuid4
 
 from sqlalchemy import DateTime, func
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+@compiles(UUID, "sqlite")
+def _compile_uuid_sqlite(_type, _compiler, **_kw):
+    # Le type "UUID" donne une affinité NUMERIC à SQLite : un identifiant hexadécimal
+    # comme "123e4567..." serait converti en nombre flottant. CHAR(32) garde le texte.
+    return "CHAR(32)"
 
 
 class Base(DeclarativeBase):
