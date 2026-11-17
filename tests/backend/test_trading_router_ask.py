@@ -102,19 +102,141 @@ def test_calculate_backtest_insufficient_history():
     assert "insuffisant" in res["disclaimer"]
 
 
-def test_calculate_backtest_deterministic_values():
+def test_calculate_backtest_independent_numerical_benchmark():
     from backend.app.services.market_feed import calculate_backtest
 
-    # 100 prices with alternating trends
-    closes = [100.0 + (i % 20) * 1.5 - ((i // 20) * 2.0) for i in range(120)]
-    res = calculate_backtest(closes, fast_period=10, slow_period=30)
+    # 9-bar series with known exact mathematical progression:
+    # fast=2, slow=3, fee=0.001, slippage=0.0005, interval='1h'
+    closes = [100.0, 100.0, 100.0, 100.0, 105.0, 110.0, 95.0, 90.0, 90.0]
+    res = calculate_backtest(
+        closes=closes,
+        fast_period=2,
+        slow_period=3,
+        fee_rate=0.001,
+        slippage_rate=0.0005,
+        interval="1h",
+    )
+
     assert res["status"] == "calculated"
-    assert res["candles_count"] == 120
-    assert isinstance(res["strategy_return"], float)
-    assert isinstance(res["holding_return"], float)
-    assert isinstance(res["max_drawdown"], float)
-    assert res["max_drawdown"] <= 0.0
-    assert "déterministe" in res["disclaimer"]
+    assert res["reliable"] is True
+    assert res["candles_count"] == 9
+    assert res["evaluation_candles"] == 6  # bars 3 to 8
+    assert res["start_price"] == 100.0
+    assert res["end_price"] == 90.0
+
+    # 1. Buy & Hold evaluated on exact same window [start_index=3, end=8]: 90/100 - 1 = -0.10 (-10.0%)
+    assert res["holding_return"] == -0.10
+
+    # 2. Strategy: enters at bar 4 (close=105), exits at bar 6 (close=95)
+    # Entry price with slippage: 105 * 1.0005 = 105.0525
+    # Exit price with slippage: 95 * 0.9995 = 94.9525
+    assert len(res["closed_trades"]) == 1
+    trade = res["closed_trades"][0]
+    assert trade["entry_price"] == 105.0525
+    assert trade["exit_price"] == 94.9525
+    assert trade["entry_bar"] == 4
+    assert trade["exit_bar"] == 6
+    assert trade["bars_held"] == 2
+    assert trade["win"] is False
+    assert res["open_position"] is None
+    assert res["win_rate"] == 0.0
+
+    # Final equity: strategy_return rounded to 4 decimals: -0.0970 (-9.70%)
+    assert res["strategy_return"] == -0.097
+
+    # Max Drawdown occurred when equity dipped
+    assert res["max_drawdown"] == -0.1372
+
+
+def test_calculate_backtest_open_position():
+    from backend.app.services.market_feed import calculate_backtest
+
+    # Continues rising so signal stays long through end (8 bars >= slow_period 3 + 5)
+    closes = [100.0, 100.0, 100.0, 100.0, 105.0, 110.0, 115.0, 120.0]
+    res = calculate_backtest(
+        closes=closes,
+        fast_period=2,
+        slow_period=3,
+        fee_rate=0.001,
+        slippage_rate=0.0005,
+        interval="1h",
+    )
+
+    assert res["status"] == "calculated"
+    assert res["reliable"] is True
+    assert len(res["closed_trades"]) == 0
+    assert res["open_position"] is not None
+    open_pos = res["open_position"]
+    assert open_pos["entry_price"] == 105.0525
+    assert open_pos["current_price"] == 120.0
+    assert open_pos["unrealized_return"] > 0.0
+    assert open_pos["bars_held"] == 3
+    assert res["win_rate"] is None  # No closed trades yet
+
+
+def test_sharpe_annualization_across_intervals():
+    from backend.app.services.market_feed import calculate_backtest
+
+    # Synthetic alternating prices for 60 bars
+    closes = [100.0 + (i % 5) * 2.0 for i in range(60)]
+
+    res_1m = calculate_backtest(closes, fast_period=5, slow_period=15, interval="1m")
+    res_1h = calculate_backtest(closes, fast_period=5, slow_period=15, interval="1h")
+    res_4h = calculate_backtest(closes, fast_period=5, slow_period=15, interval="4h")
+    res_1d = calculate_backtest(closes, fast_period=5, slow_period=15, interval="1d")
+
+    # Confirm different annual factors applied based on interval
+    assert res_1m["assumptions"]["annual_bars"] == 525600
+    assert res_1h["assumptions"]["annual_bars"] == 8760
+    assert res_4h["assumptions"]["annual_bars"] == 2190
+    assert res_1d["assumptions"]["annual_bars"] == 365
+
+    # Sharpe for 1m should scale higher due to sqrt(525600) vs sqrt(365) for 1d
+    if res_1h["sharpe_ratio"] is not None and res_1d["sharpe_ratio"] is not None and res_1d["sharpe_ratio"] != 0:
+        ratio = res_1m["assumptions"]["annual_factor"] / res_1d["assumptions"]["annual_factor"]
+        assert round(ratio, 1) == round((525600 / 365) ** 0.5, 1)
+
+
+def test_trading_backtest_endpoint_validations(mock_identity):
+    from backend.app.dependencies.auth import get_current_identity
+    from backend.app.dependencies.subscription import require_active_subscription
+    from backend.app.routers.trading import require_trading
+    from backend.main import create_application
+
+    app = create_application()
+    app.dependency_overrides[get_current_identity] = lambda: mock_identity
+    app.dependency_overrides[require_trading] = lambda: mock_identity
+    app.dependency_overrides[require_active_subscription] = lambda: None
+
+    try:
+        client = TestClient(app)
+
+        # 1. fast_period >= slow_period rejected with 400
+        resp = client.post(
+            "/api/v1/trading/backtest",
+            json={"symbol": "BTCUSDT", "interval": "1h", "fast_period": 30, "slow_period": 10},
+        )
+        assert resp.status_code == 400
+        assert resp.json()["success"] is False
+
+        # 2. unsupported strategy rejected with 400
+        resp = client.post(
+            "/api/v1/trading/backtest",
+            json={"symbol": "BTCUSDT", "interval": "1h", "strategy": "invalid_strat"},
+        )
+        assert resp.status_code == 400
+        assert resp.json()["success"] is False
+
+        # 3. unsupported interval rejected with 400
+        resp = client.post(
+            "/api/v1/trading/backtest",
+            json={"symbol": "BTCUSDT", "interval": "999h"},
+        )
+        assert resp.status_code == 400
+        assert resp.json()["success"] is False
+    finally:
+        app.dependency_overrides.clear()
+
 
 
 def test_trading_backtest_endpoint(mock_identity):

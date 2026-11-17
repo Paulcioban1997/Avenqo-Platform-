@@ -45,8 +45,11 @@ class BacktestRequest(BaseModel):
     symbol: str = Field(min_length=1, max_length=32)
     interval: str = "1h"
     strategy: str = "crossover_sma"
-    fast_period: int = 10
-    slow_period: int = 30
+    fast_period: int = Field(default=10, ge=2, le=100)
+    slow_period: int = Field(default=30, ge=3, le=200)
+    fee_rate: float = Field(default=0.001, ge=0.0, le=0.05)
+    slippage_rate: float = Field(default=0.0005, ge=0.0, le=0.05)
+    candle_limit: int = Field(default=200, ge=50, le=500)
 
 
 def require_trading(
@@ -243,18 +246,44 @@ def trading_backtest(
     identity: CurrentIdentity = Depends(require_trading),
 ) -> dict:
     del identity
+    if payload.fast_period >= payload.slow_period:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"fast_period ({payload.fast_period}) doit être strictement inférieur à slow_period ({payload.slow_period})",
+        )
+    if payload.strategy not in ("crossover_sma", "crossover_ema"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Stratégie non supportée: '{payload.strategy}'. Valeurs autorisées: crossover_sma, crossover_ema",
+        )
+    supported_intervals = ("1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d", "1j", "1w")
+    if payload.interval not in supported_intervals:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Intervalle non supporté: '{payload.interval}'. Valeurs autorisées: {', '.join(supported_intervals)}",
+        )
     try:
-        series = candles(payload.symbol, payload.interval, 200)
+        query_interval = "1d" if payload.interval == "1j" else payload.interval
+        series = candles(payload.symbol, query_interval, payload.candle_limit)
         candle_list = series.get("candles") or []
-        closes = [float(row["close"]) for row in candle_list if isinstance(row, dict) and "close" in row]
+        closes = [
+            float(row["close"])
+            for row in candle_list
+            if isinstance(row, dict) and "close" in row and isinstance(row["close"], (int, float)) and row["close"] > 0
+        ]
         result = calculate_backtest(
             closes=closes,
             strategy=payload.strategy,
             fast_period=payload.fast_period,
             slow_period=payload.slow_period,
+            fee_rate=payload.fee_rate,
+            slippage_rate=payload.slippage_rate,
+            interval=payload.interval,
         )
         result["symbol"] = payload.symbol
         result["interval"] = payload.interval
+        result["freshness"] = series.get("freshness", "delayed")
+        result["source"] = series.get("source", "public")
         return result
     except (KeyError, ValueError, MarketUnavailable) as exc:
         raise _market_error(exc) from exc

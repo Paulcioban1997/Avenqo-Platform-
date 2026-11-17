@@ -30,20 +30,36 @@ export function PredictionPanel({
   const ema12 = indicators?.ema_12 ?? currentPrice;
   const sma20 = indicators?.sma_20 ?? currentPrice;
 
-  // Signal dérivé rigoureusement
+  // Signal dérivé rigoureusement (observation factuelle de tendance sans injonction d'achat/vente)
   const isBullish = ema12 > sma20 && macdHist > 0;
   const isBearish = ema12 < sma20 && macdHist < 0;
-  const signalText = isBullish ? "Achat (Tendance haussière)" : isBearish ? "Vente (Pression baissière)" : "Neutre / Consolidation";
+  const signalText = isBullish
+    ? copy.trendBullishObserved
+    : isBearish
+    ? copy.trendBearishObserved
+    : copy.trendNeutralObserved;
   const signalColor = isBullish ? "text-emerald-400" : isBearish ? "text-rose-400" : "text-amber-400";
   const signalBg = isBullish ? "bg-emerald-950/40 border-emerald-800/50" : isBearish ? "bg-rose-950/40 border-rose-800/50" : "bg-amber-950/40 border-amber-800/50";
 
-  // Volatilité basée sur l'écartement réel des bandes de Bollinger (20, 2)
+  // Volatilité basée sur l'écartement réel des bandes de Bollinger (20, 2) - Aucun pourcentage de secours inventé
+  const b = indicators?.bollinger;
   const bbSpread =
-    indicators?.bollinger?.upper && indicators?.bollinger?.lower && indicators.bollinger.middle
-      ? ((indicators.bollinger.upper - indicators.bollinger.lower) / indicators.bollinger.middle) * 100
-      : 3.5;
+    b &&
+    typeof b.upper === "number" &&
+    typeof b.lower === "number" &&
+    typeof b.middle === "number" &&
+    b.middle > 0
+      ? ((b.upper - b.lower) / b.middle) * 100
+      : null;
 
-  const riskLevel = bbSpread > 6 ? "Élevé (Haute volatilité)" : bbSpread < 2.5 ? "Faible (Compression)" : "Moyen";
+  const riskLevel =
+    bbSpread !== null
+      ? bbSpread > 6
+        ? copy.riskHigh
+        : bbSpread < 2.5
+        ? copy.riskLow
+        : copy.riskMedium
+      : copy.insufficientData;
 
   return (
     <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-950/80 p-4 backdrop-blur-xl">
@@ -101,9 +117,11 @@ export function PredictionPanel({
           <div className="text-right">
             <div className="text-xs text-slate-400">{copy.bollingerSpread}</div>
             <div className="font-mono text-xs text-cyan-400">
-              {currentPrice > 0
-                ? `± ${bbSpread.toFixed(1)} % (${(currentPrice * (1 - bbSpread / 100)).toFixed(0)} - ${(currentPrice * (1 + bbSpread / 100)).toFixed(0)} ${currency})`
-                : "—"}
+              {bbSpread !== null && currentPrice > 0 ? (
+                `± ${bbSpread.toFixed(1)} % (${(currentPrice * (1 - bbSpread / 100)).toFixed(0)} - ${(currentPrice * (1 + bbSpread / 100)).toFixed(0)} ${currency})`
+              ) : (
+                <span className="text-amber-400 font-sans text-[11px]">{copy.insufficientData}</span>
+              )}
             </div>
           </div>
         </div>

@@ -126,8 +126,27 @@ describe("Avenqo Trading AI 2.0 — I18n & Completeness", () => {
 
     expect(screen.getByText(/Prédictions IA Quantitatives/i)).toBeInTheDocument();
     expect(screen.getByText("En cours d'évaluation hors-échantillon")).toBeInTheDocument();
-    expect(screen.getByText("Achat (Tendance haussière)")).toBeInTheDocument();
+    expect(screen.getByText("Tendance haussière observée")).toBeInTheDocument();
     expect(screen.getByText(/En développement/i)).toBeInTheDocument();
+  });
+
+  it("renders PredictionPanel with 'Données insuffisantes' when Bollinger indicators are missing (no fake 3.5% fallback)", () => {
+    render(
+      <PredictionPanel
+        symbol="ETHUSDT"
+        currentPrice={3120.0}
+        indicators={null}
+        locale="fr"
+        currency="USDT"
+      />
+    );
+
+    // Vérifie qu'aucun 3.5 % n'apparaît
+    expect(screen.queryByText(/3\.5\s*%/)).not.toBeInTheDocument();
+    // Affiche explicitement Données insuffisantes
+    const insufficientBadges = screen.getAllByText("Données insuffisantes");
+    expect(insufficientBadges.length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Consolidation / Tendance neutre")).toBeInTheDocument();
   });
 
   it("renders TradingModelsCard with honest status and executes real backtest endpoint", async () => {

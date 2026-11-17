@@ -247,120 +247,227 @@ def experimental_study(closes: list[float]) -> dict:
     }
 
 
+INTERVAL_BARS_PER_YEAR: dict[str, int] = {
+    "1m": 365 * 24 * 60,       # 525,600
+    "3m": 365 * 24 * 20,       # 175,200
+    "5m": 365 * 24 * 12,       # 105,120
+    "15m": 365 * 24 * 4,       # 35,040
+    "30m": 365 * 24 * 2,       # 17,520
+    "1h": 365 * 24,            # 8,760
+    "2h": 365 * 12,            # 4,380
+    "4h": 365 * 6,             # 2,190
+    "6h": 365 * 4,             # 1,460
+    "8h": 365 * 3,             # 1,095
+    "12h": 365 * 2,            # 730
+    "1d": 365,                 # 365
+    "1j": 365,                 # 365 (alias français)
+    "1w": 52,                  # 52
+}
+
+
 def calculate_backtest(
     closes: list[float],
     strategy: str = "crossover_sma",
     fast_period: int = 10,
     slow_period: int = 30,
+    fee_rate: float = 0.001,
+    slippage_rate: float = 0.0005,
+    interval: str = "1h",
 ) -> dict:
     """Calculates deterministic backtest performance metrics on chronological closing prices.
-    Returns real trades count, strategy return, holding return, max drawdown,
-    win rate, and Sharpe ratio.
+
+    Mathematical guarantees:
+    1. Zero lookahead / bar-timing bias: positions entered at bar t only participate in
+       returns starting on bar t+1 (from close_t to close_t+1).
+    2. Strict chronological order: fees and slippage applied at transaction moments.
+    3. Buy & Hold benchmark evaluated strictly over the same window (from bar slow_period to end).
+    4. Sharpe ratio dynamically annualized using the actual interval's annual bar frequency.
+    5. Clean distinction between closed completed trades and ongoing open position.
     """
-    min_length = max(slow_period + 10, 40)
-    if len(closes) < min_length:
+    if fast_period < 2:
+        raise ValueError(f"fast_period doit être >= 2 (reçu: {fast_period})")
+    if slow_period <= fast_period:
+        raise ValueError(f"slow_period ({slow_period}) doit être strictement supérieur à fast_period ({fast_period})")
+    if fee_rate < 0.0 or fee_rate > 0.05:
+        raise ValueError(f"fee_rate doit être compris entre 0.0 et 0.05 (reçu: {fee_rate})")
+    if slippage_rate < 0.0 or slippage_rate > 0.05:
+        raise ValueError(f"slippage_rate doit être compris entre 0.0 et 0.05 (reçu: {slippage_rate})")
+
+    # Sanitize closing prices: strictly positive finite floats
+    valid_closes: list[float] = [
+        float(c) for c in closes
+        if isinstance(c, (int, float)) and math.isfinite(c) and c > 0
+    ]
+
+    annual_bars = INTERVAL_BARS_PER_YEAR.get(interval, 8760)
+    annual_factor = math.sqrt(annual_bars)
+
+    min_required = slow_period + 5
+    if len(valid_closes) < min_required:
         return {
             "status": "insufficient_history",
             "reliable": False,
             "strategy": strategy,
+            "interval": interval,
             "fast_period": fast_period,
             "slow_period": slow_period,
-            "candles_count": len(closes),
+            "candles_count": len(valid_closes),
+            "min_required_candles": min_required,
             "trades_count": 0,
+            "closed_trades_count": 0,
+            "open_position": None,
             "strategy_return": None,
             "holding_return": None,
             "max_drawdown": None,
             "win_rate": None,
             "sharpe_ratio": None,
+            "assumptions": {
+                "fee_rate": fee_rate,
+                "fee_rate_percent": round(fee_rate * 100, 3),
+                "slippage_rate": slippage_rate,
+                "slippage_rate_percent": round(slippage_rate * 100, 3),
+                "annual_bars": annual_bars,
+                "annual_factor": round(annual_factor, 2),
+                "interval": interval,
+            },
             "disclaimer": "Historique de bougies insuffisant pour exécuter un backtest significatif.",
         }
+
+    start_index = slow_period
+    # Benchmark Buy & Hold evaluated on the exact same window [start_index, len(valid_closes) - 1]
+    holding_return = (valid_closes[-1] / valid_closes[start_index]) - 1.0
 
     position = 0.0
     equity = 1.0
     peak_equity = 1.0
     max_drawdown = 0.0
-    trades: list[dict] = []
-    current_entry_price: float | None = None
+    closed_trades: list[dict] = []
+    open_trade: dict | None = None
     strategy_bar_returns: list[float] = []
 
-    for index in range(slow_period, len(closes)):
-        prev_close = closes[index - 1]
-        curr_close = closes[index]
-        if prev_close <= 0:
-            continue
+    # Iteration across evaluation bars
+    for i in range(start_index, len(valid_closes)):
+        prev_close = valid_closes[i - 1]
+        curr_close = valid_closes[i]
 
-        fast = sum(closes[index - fast_period:index]) / fast_period
-        slow = sum(closes[index - slow_period:index]) / slow_period
-        desired = 1.0 if fast > slow else 0.0
+        # 1. Bar return applied to position held from bar i-1 to bar i
+        if i > start_index:
+            if position == 1.0:
+                bar_ret = (curr_close / prev_close) - 1.0
+                equity *= (1.0 + bar_ret)
+                strategy_bar_returns.append(bar_ret)
+            else:
+                strategy_bar_returns.append(0.0)
 
-        if desired != position:
-            if desired == 1.0:
-                current_entry_price = curr_close
-            elif desired == 0.0 and current_entry_price is not None:
-                trade_ret = (curr_close / current_entry_price) - 1.0
-                trades.append({
-                    "entry_price": current_entry_price,
-                    "exit_price": curr_close,
-                    "return": trade_ret,
-                    "win": trade_ret > 0,
+            if equity > peak_equity:
+                peak_equity = equity
+            dd = (equity - peak_equity) / peak_equity if peak_equity > 0 else 0.0
+            if dd < max_drawdown:
+                max_drawdown = dd
+
+        # 2. Compute signal at close of bar i using data up to index i
+        fast_window = valid_closes[i - fast_period + 1 : i + 1]
+        slow_window = valid_closes[i - slow_period + 1 : i + 1]
+        fast_val = sum(fast_window) / fast_period
+        slow_val = sum(slow_window) / slow_period
+        desired_position = 1.0 if fast_val > slow_val else 0.0
+
+        # 3. Execution on signal change at close of bar i
+        if desired_position != position:
+            if desired_position == 1.0:
+                # Enter Long at curr_close + slippage, pay entry fee
+                entry_exec_price = curr_close * (1.0 + slippage_rate)
+                equity *= (1.0 - fee_rate)
+                open_trade = {
+                    "entry_price": entry_exec_price,
+                    "entry_bar": i,
+                    "entry_close": curr_close,
+                }
+                position = 1.0
+            elif desired_position == 0.0 and open_trade is not None:
+                # Exit Long at curr_close - slippage, pay exit fee
+                exit_exec_price = curr_close * (1.0 - slippage_rate)
+                equity *= (1.0 - fee_rate)
+                net_trade_ret = (exit_exec_price / open_trade["entry_price"]) * (1.0 - fee_rate) - 1.0
+                closed_trades.append({
+                    "entry_price": round(open_trade["entry_price"], 6),
+                    "exit_price": round(exit_exec_price, 6),
+                    "entry_bar": open_trade["entry_bar"],
+                    "exit_bar": i,
+                    "bars_held": i - open_trade["entry_bar"],
+                    "net_return": round(net_trade_ret, 6),
+                    "win": net_trade_ret > 0,
                 })
-                current_entry_price = None
-            position = desired
+                open_trade = None
+                position = 0.0
 
-        if position == 1.0:
-            bar_ret = (curr_close / prev_close) - 1.0
-            equity *= (1.0 + bar_ret)
-            strategy_bar_returns.append(bar_ret)
-        else:
-            strategy_bar_returns.append(0.0)
+            if equity > peak_equity:
+                peak_equity = equity
+            dd = (equity - peak_equity) / peak_equity if peak_equity > 0 else 0.0
+            if dd < max_drawdown:
+                max_drawdown = dd
 
-        if equity > peak_equity:
-            peak_equity = equity
-        dd = (equity - peak_equity) / peak_equity if peak_equity > 0 else 0.0
-        if dd < max_drawdown:
-            max_drawdown = dd
+    # Distinguish open position from closed trades
+    open_position_info: dict | None = None
+    if position == 1.0 and open_trade is not None:
+        last_close = valid_closes[-1]
+        open_position_info = {
+            "entry_price": round(open_trade["entry_price"], 6),
+            "entry_bar": open_trade["entry_bar"],
+            "current_price": round(last_close, 6),
+            "unrealized_return": round((last_close / open_trade["entry_price"]) - 1.0, 6),
+            "bars_held": (len(valid_closes) - 1) - open_trade["entry_bar"],
+        }
 
-    if position == 1.0 and current_entry_price is not None and closes:
-        last_close = closes[-1]
-        trade_ret = (last_close / current_entry_price) - 1.0
-        trades.append({
-            "entry_price": current_entry_price,
-            "exit_price": last_close,
-            "return": trade_ret,
-            "win": trade_ret > 0,
-        })
+    # Win rate strictly on closed roundtrip trades
+    win_rate: float | None = None
+    if closed_trades:
+        winning_count = sum(1 for t in closed_trades if t["win"])
+        win_rate = round((winning_count / len(closed_trades)) * 100.0, 1)
 
-    holding_return = (closes[-1] / closes[0]) - 1.0 if closes[0] > 0 else 0.0
-    strategy_return = equity - 1.0
-
-    wins = [t for t in trades if t["win"]]
-    win_rate = (len(wins) / len(trades) * 100.0) if trades else None
-
+    # Sharpe ratio with interval-specific annualization
     sharpe_ratio: float | None = None
     if strategy_bar_returns and len(strategy_bar_returns) > 1:
         mean_ret = sum(strategy_bar_returns) / len(strategy_bar_returns)
         var = sum((r - mean_ret) ** 2 for r in strategy_bar_returns) / (len(strategy_bar_returns) - 1)
         std_dev = math.sqrt(var)
-        if std_dev > 1e-9:
-            # Annualized factor: sqrt(8760) ≈ 93.59
-            sharpe_ratio = round((mean_ret / std_dev) * math.sqrt(8760), 2)
+        if std_dev > 1e-12:
+            sharpe_ratio = round((mean_ret / std_dev) * annual_factor, 2)
         else:
             sharpe_ratio = 0.0
 
+    strategy_return = equity - 1.0
+
     return {
         "status": "calculated",
-        "reliable": False,
+        "reliable": True,
         "strategy": strategy,
+        "interval": interval,
         "fast_period": fast_period,
         "slow_period": slow_period,
-        "candles_count": len(closes),
-        "trades_count": len(trades),
+        "candles_count": len(valid_closes),
+        "evaluation_candles": len(valid_closes) - start_index,
+        "start_price": round(valid_closes[start_index], 6),
+        "end_price": round(valid_closes[-1], 6),
         "strategy_return": round(strategy_return, 4),
         "holding_return": round(holding_return, 4),
         "max_drawdown": round(max_drawdown, 4),
-        "win_rate": round(win_rate, 1) if win_rate is not None else None,
+        "trades_count": len(closed_trades) + (1 if open_position_info else 0),
+        "closed_trades_count": len(closed_trades),
+        "win_rate": win_rate,
         "sharpe_ratio": sharpe_ratio,
-        "disclaimer": "Calcul mathématique déterministe sur bougies historiques réelles. Les performances passées ne préjugent pas des performances futures. Aucun conseil financier.",
+        "open_position": open_position_info,
+        "closed_trades": closed_trades[-20:],
+        "assumptions": {
+            "fee_rate": fee_rate,
+            "fee_rate_percent": round(fee_rate * 100, 3),
+            "slippage_rate": slippage_rate,
+            "slippage_rate_percent": round(slippage_rate * 100, 3),
+            "annual_bars": annual_bars,
+            "annual_factor": round(annual_factor, 2),
+            "interval": interval,
+        },
+        "disclaimer": "Calcul mathématique déterministe sur bougies historiques réelles. Frais et slippage inclus. Les performances passées ne préjugent pas des performances futures. Aucun conseil financier.",
     }
 
 

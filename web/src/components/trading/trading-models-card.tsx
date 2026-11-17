@@ -15,13 +15,32 @@ interface ModelItem {
 
 interface BacktestData {
   status: string;
+  reliable: boolean;
   candles_count: number;
+  evaluation_candles?: number;
   trades_count: number;
+  closed_trades_count?: number;
   strategy_return: number | null;
   holding_return: number | null;
   max_drawdown: number | null;
   win_rate: number | null;
   sharpe_ratio: number | null;
+  open_position?: {
+    entry_price: number;
+    entry_bar: number;
+    current_price: number;
+    unrealized_return: number;
+    bars_held: number;
+  } | null;
+  assumptions?: {
+    fee_rate: number;
+    fee_rate_percent: number;
+    slippage_rate: number;
+    slippage_rate_percent: number;
+    annual_bars: number;
+    annual_factor: number;
+    interval: string;
+  };
   disclaimer: string;
 }
 
@@ -41,7 +60,7 @@ export function TradingModelsCard({
   const [backtestResult, setBacktestResult] = useState<BacktestData | null>(null);
   const [backtestError, setBacktestError] = useState("");
 
-  // Modèles prédictifs quantitatifs en cours d'évaluation hors-échantillon (zéro métrique inventée)
+  // Modèles quantitatifs en cours d'évaluation hors-échantillon (aucun chiffre inventé)
   const models: ModelItem[] = [
     { name: "Tendance Court Terme (Intraday)", horizon: "1h", precision: null, directionAccuracy: null, status: "evaluating" },
     { name: "Analyse Séquentielle (Swing)", horizon: "4h", precision: null, directionAccuracy: null, status: "evaluating" },
@@ -57,7 +76,15 @@ export function TradingModelsCard({
       const resp = await apiFetch("/api/v1/trading/backtest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ symbol, interval, strategy: "crossover_sma" }),
+        body: JSON.stringify({
+          symbol,
+          interval,
+          strategy: "crossover_sma",
+          fast_period: 10,
+          slow_period: 30,
+          fee_rate: 0.001,
+          slippage_rate: 0.0005,
+        }),
       });
       if (!resp.ok) {
         setBacktestError("Calcul du backtest indisponible pour cet actif");
@@ -81,7 +108,7 @@ export function TradingModelsCard({
             <span>⚙️</span> {copy.modelsPerformanceTitle}
           </h3>
           <span className="rounded bg-slate-900 px-2 py-0.5 text-[10px] text-amber-400 border border-amber-800/40">
-            Évaluation en cours
+            {copy.modelStatusEvaluating}
           </span>
         </div>
 
@@ -125,7 +152,17 @@ export function TradingModelsCard({
           <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
             <span>🧪</span> {copy.strategyLabTitle}
           </h3>
-          <span className="text-[10px] text-slate-400">Momentum SMA 10/30 · {symbol}</span>
+          <span className="text-[10px] text-slate-400 font-mono">SMA 10/30 · {symbol}</span>
+        </div>
+
+        {/* Hypothèses du modèle (frais, slippage, annualisation) */}
+        <div className="flex items-center justify-between text-[11px] text-slate-400 bg-slate-900/40 border border-slate-800/60 rounded-lg px-2.5 py-1">
+          <span>{copy.backtestAssumptions}</span>
+          <span className="font-mono text-cyan-300">
+            {backtestResult?.assumptions
+              ? `Frais: ${backtestResult.assumptions.fee_rate_percent} % · Slippage: ${backtestResult.assumptions.slippage_rate_percent} %`
+              : copy.backtestFeesSlippage}
+          </span>
         </div>
 
         <div className="grid grid-cols-2 gap-3 text-xs">
@@ -149,7 +186,7 @@ export function TradingModelsCard({
                 : copy.backtestNotRun}
             </div>
             <span className="text-[10px] text-slate-500">
-              {backtestResult ? "Benchmark Buy & Hold" : "Non calculé"}
+              {backtestResult ? "Même fenêtre temporelle" : "Non calculé"}
             </span>
           </div>
         </div>
@@ -182,10 +219,20 @@ export function TradingModelsCard({
           <div>
             <span className="text-slate-400">Ordres:</span>{" "}
             <span className="font-mono font-bold text-slate-300">
-              {backtestResult ? `${backtestResult.trades_count}` : "—"}
+              {backtestResult ? `${backtestResult.closed_trades_count ?? backtestResult.trades_count}` : "—"}
             </span>
           </div>
         </div>
+
+        {/* Position en cours (distinction claire des ordres clos) */}
+        {backtestResult?.open_position && (
+          <div className="text-[10px] text-cyan-300 bg-cyan-950/40 border border-cyan-800/40 rounded-lg px-2.5 py-1 flex items-center justify-between">
+            <span className="font-semibold">{copy.backtestOpenPosition} :</span>
+            <span className="font-mono">
+              P&L latent : {backtestResult.open_position.unrealized_return >= 0 ? "+" : ""}{(backtestResult.open_position.unrealized_return * 100).toFixed(1)} % ({backtestResult.open_position.bars_held} bougies)
+            </span>
+          </div>
+        )}
 
         <button
           type="button"

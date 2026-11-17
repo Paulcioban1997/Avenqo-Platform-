@@ -82,6 +82,17 @@ export interface TradingI18nCopy {
   backtestSuccessNotice: string;
   predictionObservedPrice: string;
   bollingerSpread: string;
+  trendBullishObserved: string;
+  trendBearishObserved: string;
+  trendNeutralObserved: string;
+  insufficientData: string;
+  riskLow: string;
+  riskMedium: string;
+  riskHigh: string;
+  backtestAssumptions: string;
+  backtestFeesSlippage: string;
+  backtestOpenPosition: string;
+  backtestNoOpenPosition: string;
 }
 
 export const TRADING_COPY: Record<LocaleCode, TradingI18nCopy> = completeLocaleMap({
@@ -166,6 +177,17 @@ export const TRADING_COPY: Record<LocaleCode, TradingI18nCopy> = completeLocaleM
     backtestSuccessNotice: "Calcul mathématique déterministe sur bougies historiques de marché.",
     predictionObservedPrice: "Dernier cours (Clôture)",
     bollingerSpread: "Bandes de Bollinger (Volatilité)",
+    trendBullishObserved: "Tendance haussière observée",
+    trendBearishObserved: "Tendance baissière observée",
+    trendNeutralObserved: "Consolidation / Tendance neutre",
+    insufficientData: "Données insuffisantes",
+    riskLow: "Faible (Compression)",
+    riskMedium: "Moyen",
+    riskHigh: "Élevé (Haute volatilité)",
+    backtestAssumptions: "Hypothèses du modèle",
+    backtestFeesSlippage: "Frais : 0.10 % · Slippage : 0.05 %",
+    backtestOpenPosition: "Position en cours",
+    backtestNoOpenPosition: "Aucune position ouverte",
   },
   "fr-FR": {
     title: "Avenqo Trading AI 2.0",
@@ -248,6 +270,17 @@ export const TRADING_COPY: Record<LocaleCode, TradingI18nCopy> = completeLocaleM
     backtestSuccessNotice: "Calcul mathématique déterministe sur bougies historiques de marché.",
     predictionObservedPrice: "Dernier cours (Clôture)",
     bollingerSpread: "Bandes de Bollinger (Volatilité)",
+    trendBullishObserved: "Tendance haussière observée",
+    trendBearishObserved: "Tendance baissière observée",
+    trendNeutralObserved: "Consolidation / Tendance neutre",
+    insufficientData: "Données insuffisantes",
+    riskLow: "Faible (Compression)",
+    riskMedium: "Moyen",
+    riskHigh: "Élevé (Haute volatilité)",
+    backtestAssumptions: "Hypothèses du modèle",
+    backtestFeesSlippage: "Frais : 0.10 % · Slippage : 0.05 %",
+    backtestOpenPosition: "Position en cours",
+    backtestNoOpenPosition: "Aucune position ouverte",
   },
   en: {
     title: "Avenqo Trading AI 2.0",
@@ -330,6 +363,17 @@ export const TRADING_COPY: Record<LocaleCode, TradingI18nCopy> = completeLocaleM
     backtestSuccessNotice: "Deterministic mathematical calculation on historical market candles.",
     predictionObservedPrice: "Latest Close Price",
     bollingerSpread: "Bollinger Bands (Volatility)",
+    trendBullishObserved: "Observed bullish trend",
+    trendBearishObserved: "Observed bearish trend",
+    trendNeutralObserved: "Consolidation / Neutral trend",
+    insufficientData: "Insufficient data",
+    riskLow: "Low (Compression)",
+    riskMedium: "Medium",
+    riskHigh: "High (High volatility)",
+    backtestAssumptions: "Model Assumptions",
+    backtestFeesSlippage: "Fees: 0.10% · Slippage: 0.05%",
+    backtestOpenPosition: "Open Position",
+    backtestNoOpenPosition: "No open position",
   },
   "en-GB": {
     title: "Avenqo Trading AI 2.0",
@@ -412,6 +456,17 @@ export const TRADING_COPY: Record<LocaleCode, TradingI18nCopy> = completeLocaleM
     backtestSuccessNotice: "Deterministic mathematical calculation on historical market candles.",
     predictionObservedPrice: "Latest Close Price",
     bollingerSpread: "Bollinger Bands (Volatility)",
+    trendBullishObserved: "Observed bullish trend",
+    trendBearishObserved: "Observed bearish trend",
+    trendNeutralObserved: "Consolidation / Neutral trend",
+    insufficientData: "Insufficient data",
+    riskLow: "Low (Compression)",
+    riskMedium: "Medium",
+    riskHigh: "High (High volatility)",
+    backtestAssumptions: "Model Assumptions",
+    backtestFeesSlippage: "Fees: 0.10% · Slippage: 0.05%",
+    backtestOpenPosition: "Open Position",
+    backtestNoOpenPosition: "No open position",
   },
   es: {
     title: "Avenqo Trading AI 2.0",
@@ -494,6 +549,17 @@ export const TRADING_COPY: Record<LocaleCode, TradingI18nCopy> = completeLocaleM
     backtestSuccessNotice: "Cálculo matemático determinista sobre velas históricas del mercado.",
     predictionObservedPrice: "Último precio de cierre",
     bollingerSpread: "Bandas de Bollinger (Volatilidad)",
+    trendBullishObserved: "Tendencia alcista observada",
+    trendBearishObserved: "Tendencia bajista observada",
+    trendNeutralObserved: "Consolidación / Tendencia neutral",
+    insufficientData: "Datos insuficientes",
+    riskLow: "Bajo (Compresión)",
+    riskMedium: "Medio",
+    riskHigh: "Alto (Alta volatilidad)",
+    backtestAssumptions: "Supuestos del modelo",
+    backtestFeesSlippage: "Comisión: 0.10% · Slippage: 0.05%",
+    backtestOpenPosition: "Posición abierta",
+    backtestNoOpenPosition: "Sin posición abierta",
   },
   ro: {
     title: "Avenqo Trading AI 2.0",
@@ -576,6 +642,17 @@ export const TRADING_COPY: Record<LocaleCode, TradingI18nCopy> = completeLocaleM
     backtestSuccessNotice: "Calcul matematic determinist pe lumânări istorice de piață.",
     predictionObservedPrice: "Ultimul preț de închidere",
     bollingerSpread: "Benzi Bollinger (Volatilitate)",
+    trendBullishObserved: "Tendință ascendentă observată",
+    trendBearishObserved: "Tendință descendentă observată",
+    trendNeutralObserved: "Consolidare / Tendință neutră",
+    insufficientData: "Date insuficiente",
+    riskLow: "Scăzut (Compresie)",
+    riskMedium: "Mediu",
+    riskHigh: "Ridicat (Volatilitate mare)",
+    backtestAssumptions: "Ipotezele modelului",
+    backtestFeesSlippage: "Comision: 0.10% · Slippage: 0.05%",
+    backtestOpenPosition: "Poziție deschisă",
+    backtestNoOpenPosition: "Nicio poziție deschisă",
   },
   ar: {
     title: "Avenqo تداول الذكاء الاصطناعي 2.0",
@@ -658,5 +735,16 @@ export const TRADING_COPY: Record<LocaleCode, TradingI18nCopy> = completeLocaleM
     backtestSuccessNotice: "حساب رياضي حتمي على بيانات الشموع التاريخية الحقيقية.",
     predictionObservedPrice: "آخر سعر إغلاق",
     bollingerSpread: "نطاقات بولينجر (التقلب)",
+    trendBullishObserved: "اتجاه صعودي مرصود",
+    trendBearishObserved: "اتجاه هبوطي مرصود",
+    trendNeutralObserved: "تذبذب / اتجاه محايد",
+    insufficientData: "بيانات غير كافية",
+    riskLow: "منخفض (انضغاط)",
+    riskMedium: "متوسط",
+    riskHigh: "مرتفع (تقلب عالي)",
+    backtestAssumptions: "افتراضات النموذج",
+    backtestFeesSlippage: "الرسوم: 0.10% · الانزلاق: 0.05%",
+    backtestOpenPosition: "مركز مفتوح",
+    backtestNoOpenPosition: "لا يوجد مركز مفتوح",
   },
 });
