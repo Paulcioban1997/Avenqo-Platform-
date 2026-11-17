@@ -19,6 +19,8 @@ from backend.app.config.settings import Settings
 from backend.app.core.permissions import permissions_for
 from backend.app.core.security import hash_password, verify_password
 from backend.app.models import CompanyMembership, CRMClient, User, UserRole, VoiceAuthSession, VoiceCall, VoiceCallerCredential, VoiceBusinessConfig, VoiceToolAction
+from shared.ai_engine.contracts import TenantContext
+from backend.app.services.audit_log_service import AuditLogService
 
 
 def utc(value):
@@ -58,15 +60,15 @@ def validate_voice_pin(pin: str) -> str:
 
 
 class VoiceCallerAuth:
-    def __init__(self, db: Session, settings: Settings):
+    def __init__(self, db: Session, settings: Settings) -> None:
         self.db = db
         self.settings = settings
 
-    def _peppered(self, company_id, principal_id, pin):
+    def _peppered(self, company_id: UUID | str, principal_id: UUID | str, pin: str) -> str:
         value = f"voice-pin:{company_id}:{principal_id}:{pin}".encode()
         return hmac.new(self.settings.auth_jwt_secret.encode(), value, hashlib.sha256).hexdigest()
 
-    def challenge(self, call):
+    def challenge(self, call: VoiceCall) -> str:
         if call.ended_at is not None or call.status not in {"routed", "in_progress"}:
             raise PermissionError("Active answered call required")
         token = secrets.token_urlsafe(32)
@@ -75,7 +77,7 @@ class VoiceCallerAuth:
         self.db.flush()
         return base64.b64encode(json.dumps({"voice_pin_challenge": token}).encode()).decode()
 
-    def valid_challenge(self, call, client_state):
+    def valid_challenge(self, call: VoiceCall, client_state: str) -> bool:
         if not call.pin_challenge_hash or call.pin_challenge_expires_at is None or utc(call.pin_challenge_expires_at) <= datetime.now(timezone.utc):
             return False
         if not isinstance(client_state, str) or len(client_state) > 1024:
@@ -91,15 +93,24 @@ class VoiceCallerAuth:
             return False
         return hmac.compare_digest(hashlib.sha256(candidate.encode()).hexdigest(), call.pin_challenge_hash)
 
-    def set_pin(self, tenant, principal_type, principal_id, pin, phone_number: str | None = None):
+    def set_pin(
+        self,
+        tenant: TenantContext,
+        principal_type: str,
+        principal_id: UUID | str,
+        pin: str,
+        phone_number: str | None = None,
+    ) -> VoiceCallerCredential:
         validate_voice_pin(pin)
+        principal_uuid = principal_id if isinstance(principal_id, UUID) else UUID(str(principal_id))
+        company_uuid = tenant.company_id if isinstance(tenant.company_id, UUID) else UUID(str(tenant.company_id))
         if principal_type == "USER":
-            principal = self.db.scalar(select(User).where(User.id == principal_id, User.company_id == tenant.company_id, User.is_active.is_(True)))
-            membership = self.db.scalar(select(CompanyMembership).where(CompanyMembership.user_id == principal_id, CompanyMembership.company_id == tenant.company_id, CompanyMembership.is_active.is_(True)))
+            principal = self.db.scalar(select(User).where(User.id == principal_uuid, User.company_id == company_uuid, User.is_active.is_(True)))
+            membership = self.db.scalar(select(CompanyMembership).where(CompanyMembership.user_id == principal_uuid, CompanyMembership.company_id == company_uuid, CompanyMembership.is_active.is_(True)))
             if membership is None:
                 raise PermissionError("Principal is not an active tenant member")
         elif principal_type == "CUSTOMER":
-            principal = self.db.scalar(select(CRMClient).where(CRMClient.id == principal_id, CRMClient.company_id == tenant.company_id, CRMClient.is_deleted.is_(False)))
+            principal = self.db.scalar(select(CRMClient).where(CRMClient.id == principal_uuid, CRMClient.company_id == company_uuid, CRMClient.is_deleted.is_(False)))
         else:
             raise ValueError("Unsupported principal type")
         raw_phone = phone_number or (principal.phone if principal is not None else None)
@@ -117,34 +128,34 @@ class VoiceCallerAuth:
             principal.phone = phone
         if self.db.get_bind().dialect.name == "postgresql":
             self.db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
-                {"lock_key": f"voice_pin:{tenant.company_id}:{phone}"})
+                {"lock_key": f"voice_pin:{company_uuid}:{phone}"})
         existing = self.db.scalar(
             select(VoiceCallerCredential).where(
-                VoiceCallerCredential.company_id == tenant.company_id,
-                VoiceCallerCredential.principal_id == principal_id,
+                VoiceCallerCredential.company_id == company_uuid,
+                VoiceCallerCredential.principal_id == principal_uuid,
             )
         )
         shared = self.db.scalar(
             select(VoiceCallerCredential).where(
-                VoiceCallerCredential.company_id == tenant.company_id,
+                VoiceCallerCredential.company_id == company_uuid,
                 VoiceCallerCredential.phone_number == phone,
             )
         )
-        if shared is not None and str(shared.principal_id) == str(principal_id):
+        if shared is not None and str(shared.principal_id) == str(principal_uuid):
             shared.principal_type = principal_type
             existing = shared
-        elif shared is not None and str(shared.principal_id) != str(principal_id):
+        elif shared is not None and str(shared.principal_id) != str(principal_uuid):
             # Check if the number is currently claimed by another user in this tenant
             other_user = self.db.scalar(
                 select(User).where(
                     User.id == shared.principal_id,
-                    User.company_id == tenant.company_id,
+                    User.company_id == company_uuid,
                 )
             )
 
             # P0 Security Rule: NEVER automatically steal or reassign the phone number of an ACTIVE user,
             # even if the requester is OWNER or ADMIN.
-            if other_user is not None and str(other_user.id) != str(principal_id) and other_user.is_active:
+            if other_user is not None and str(other_user.id) != str(principal_uuid) and other_user.is_active:
                 raise PermissionError("Ce numéro de téléphone est déjà associé à un autre collaborateur actif de l'entreprise.")
 
             # If the phone was assigned to an inactive/deactivated account, only OWNER or ADMIN may reassign it
@@ -155,8 +166,8 @@ class VoiceCallerAuth:
                 else:
                     membership = self.db.scalar(
                         select(CompanyMembership).where(
-                            CompanyMembership.company_id == tenant.company_id,
-                            CompanyMembership.user_id == principal_id,
+                            CompanyMembership.company_id == company_uuid,
+                            CompanyMembership.user_id == principal_uuid,
                             CompanyMembership.is_active.is_(True),
                         )
                     )
@@ -171,7 +182,7 @@ class VoiceCallerAuth:
             now = datetime.now(timezone.utc)
             for old_session in self.db.scalars(
                 select(VoiceAuthSession).where(
-                    VoiceAuthSession.company_id == tenant.company_id,
+                    VoiceAuthSession.company_id == company_uuid,
                     VoiceAuthSession.principal_id == shared.principal_id,
                     VoiceAuthSession.revoked_at.is_(None),
                 )
@@ -179,16 +190,15 @@ class VoiceCallerAuth:
                 old_session.revoked_at = now
 
             # 2. Record explicit audit log of the reassignment
-            from backend.app.services.audit_log_service import AuditLogService
             AuditLogService(self.db).record(
-                actor_user_id=principal_id,
+                actor_user_id=principal_uuid,
                 action="voice_nip_reassigned_from_inactive",
                 target_type="voice_credential",
                 target_id=str(shared.id),
-                company_id=tenant.company_id,
+                company_id=company_uuid,
                 metadata={
                     "reassigned_from_user_id": str(shared.principal_id),
-                    "reassigned_to_user_id": str(principal_id),
+                    "reassigned_to_user_id": str(principal_uuid),
                     "phone_number": phone,
                 },
                 commit=False,
@@ -200,21 +210,21 @@ class VoiceCallerAuth:
                 self.db.flush()
 
             # 4. Reassign credential
-            shared.principal_id = principal_id
+            shared.principal_id = principal_uuid
             shared.principal_type = principal_type
             existing = shared
 
         if existing is None:
             existing = VoiceCallerCredential(
-                company_id=tenant.company_id,
+                company_id=company_uuid,
                 principal_type=principal_type,
-                principal_id=principal_id,
+                principal_id=principal_uuid,
                 phone_number=phone,
             )
             self.db.add(existing)
         existing.principal_type = principal_type
         existing.phone_number = phone
-        existing.pin_hash = hash_password(self._peppered(tenant.company_id, principal_id, pin))
+        existing.pin_hash = hash_password(self._peppered(company_uuid, principal_uuid, pin))
         existing.enabled = True
         existing.failed_attempts = 0
         existing.locked_until = None
@@ -226,14 +236,14 @@ class VoiceCallerAuth:
         self.db.flush()
         return existing
 
-    def has_owner_credential(self, company_id) -> bool:
+    def has_owner_credential(self, company_id: UUID | str) -> bool:
         return self.db.scalar(select(VoiceCallerCredential.id).where(
             VoiceCallerCredential.company_id == company_id,
             VoiceCallerCredential.principal_type == "USER",
             VoiceCallerCredential.enabled.is_(True),
         )) is not None
 
-    def generate_owner_bootstrap_code(self, company_id, user_id) -> tuple[str, datetime]:
+    def generate_owner_bootstrap_code(self, company_id: UUID | str, user_id: UUID | str) -> tuple[str, datetime]:
         membership = self.db.scalar(select(CompanyMembership).where(
             CompanyMembership.company_id == company_id,
             CompanyMembership.user_id == user_id,
@@ -267,7 +277,7 @@ class VoiceCallerAuth:
         self.db.flush()
         return code, expires_at
 
-    def verify_owner_bootstrap_code(self, company_id, candidate_code: str) -> UUID | None:
+    def verify_owner_bootstrap_code(self, company_id: UUID | str, candidate_code: str) -> UUID | None:
         if not candidate_code or not re.fullmatch(r"[0-9]{6}", candidate_code):
             return None
         config = self.db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_id))
@@ -300,7 +310,7 @@ class VoiceCallerAuth:
         except Exception:
             return None
 
-    def consume_owner_bootstrap_code(self, company_id) -> None:
+    def consume_owner_bootstrap_code(self, company_id: UUID | str) -> None:
         config = self.db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_id))
         if config is not None:
             receipt = self.db.scalar(select(VoiceToolAction).where(
@@ -312,15 +322,15 @@ class VoiceCallerAuth:
                 receipt.result = {"consumed": True, "consumed_at": datetime.now(timezone.utc).isoformat()}
                 self.db.flush()
 
-    def enroll_first_call_owner_pin(self, call: VoiceCall, pin: str, owner_user_id: UUID) -> bool:
+    def enroll_first_call_owner_pin(self, call: VoiceCall, pin: str, owner_user_id: UUID | str) -> bool:
         validate_voice_pin(pin)
-        owner_user = self.db.get(User, owner_user_id)
+        owner_uid = owner_user_id if isinstance(owner_user_id, UUID) else UUID(str(owner_user_id))
+        owner_user = self.db.get(User, owner_uid)
         if owner_user is None or owner_user.company_id != call.company_id or not owner_user.is_active:
             return False
         caller_phone = normalized_phone(call.caller_phone)
         if not caller_phone:
             return False
-        from shared.ai_engine.contracts import TenantContext
         tenant = TenantContext(company_id=call.company_id, user_id=owner_user.id)
         self.set_pin(tenant, "USER", owner_user.id, pin, phone_number=caller_phone)
         self.consume_owner_bootstrap_code(call.company_id)
@@ -331,8 +341,7 @@ class VoiceCallerAuth:
         self.db.flush()
         return True
 
-
-    def establish(self, call):
+    def establish(self, call: VoiceCall) -> VoiceAuthSession:
         now = datetime.now(timezone.utc)
         if call.ended_at is not None:
             raise PermissionError("Call has ended")
@@ -373,7 +382,7 @@ class VoiceCallerAuth:
         self.db.flush()
         return session
 
-    def valid_session(self, call):
+    def valid_session(self, call: VoiceCall) -> VoiceAuthSession | None:
         now = datetime.now(timezone.utc)
         session = self.db.scalar(select(VoiceAuthSession).where(VoiceAuthSession.call_id == call.id, VoiceAuthSession.company_id == call.company_id))
         if session is None or session.revoked_at is not None or utc(session.expires_at) <= now or call.ended_at is not None:
@@ -395,7 +404,7 @@ class VoiceCallerAuth:
             return None
         return session
 
-    def verify_gather(self, call, pin, identifier: str | None = None):
+    def verify_gather(self, call: VoiceCall, pin: str, identifier: str | None = None) -> dict[str, Any]:
         failed = {"success": False, "authenticated": False, "error": "caller_authentication_failed"}
         maximum = getattr(self.settings, "voice_pin_max_attempts", 5)
         now = datetime.now(timezone.utc)
@@ -533,7 +542,7 @@ class VoiceCallerAuth:
         )
         return {"success": True, "authenticated": True}
 
-    def logout_session(self, call) -> dict[str, Any]:
+    def logout_session(self, call: VoiceCall) -> dict[str, Any]:
         """Revoke active private voice session and return call to public mode."""
         now = datetime.now(timezone.utc)
         session = self.db.scalar(

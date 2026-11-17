@@ -1764,6 +1764,9 @@ def set_voice_auth_pin(
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    if credential is None:
+        raise HTTPException(status_code=500, detail="Voice credential could not be initialized")
+
     return VoiceAuthPinStatusResponse(
         configured=True,
         enabled=credential.enabled,
