@@ -105,7 +105,7 @@ export function TradingPortfolioCard({
                 <span className="text-xs font-bold text-white">{opp.name}</span>{" "}
                 <span className="text-[10px] text-slate-500 font-mono">({opp.symbol})</span>
                 <div className="text-[11px] font-mono text-slate-300">
-                  {opp.price.toLocaleString(locale, { maximumFractionDigits: 2 })} {opp.currency}
+                  {typeof opp.price === "number" ? opp.price.toLocaleString(locale, { maximumFractionDigits: 2 }) : "—"} {opp.currency}
                 </div>
               </div>
 

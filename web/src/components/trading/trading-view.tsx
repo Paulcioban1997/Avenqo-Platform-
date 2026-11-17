@@ -219,7 +219,7 @@ export function TradingView() {
         );
         if (!response.ok || cancelled) return;
         const body = await response.json();
-        setQuotes(body.quotes ?? []);
+        setQuotes(Array.isArray(body?.quotes) ? body.quotes : []);
       } catch {
         // Ignorer
       }
@@ -242,7 +242,7 @@ export function TradingView() {
         const response = await apiFetch("/api/v1/trading/rankings");
         if (!response.ok || cancelled) return;
         const body = await response.json();
-        setRankings(body.rows ?? []);
+        setRankings(Array.isArray(body?.rows) ? body.rows : []);
       } catch {
         // Ignorer
       }
@@ -258,7 +258,8 @@ export function TradingView() {
   }, []);
 
   const compact = (value: string) => value.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
-  const selectedQuote = quotes.find((item) => compact(item.symbol) === compact(symbol));
+  const quotesList = Array.isArray(quotes) ? quotes : [];
+  const selectedQuote = quotesList.find((item) => compact(item.symbol) === compact(symbol));
   const activePrice = selectedQuote?.price ?? (candles.length ? candles[candles.length - 1].close : 0);
   const activeChange = selectedQuote?.change_percent ?? 0;
   const currentFreshness = selectedQuote?.freshness || candleFreshness;
@@ -268,7 +269,7 @@ export function TradingView() {
     const list: TickerItem[] = [];
 
     // Cotations crypto suivies
-    const btc = quotes.find((q) => q.symbol.includes("BTC"));
+    const btc = quotesList.find((q) => q.symbol.includes("BTC"));
     list.push({
       symbol: "BTCUSDT",
       label: "BTC/USDT",
@@ -279,7 +280,7 @@ export function TradingView() {
       status: (btc?.freshness as any) || "delayed",
     });
 
-    const eth = quotes.find((q) => q.symbol.includes("ETH"));
+    const eth = quotesList.find((q) => q.symbol.includes("ETH"));
     list.push({
       symbol: "ETHUSDT",
       label: "ETH/USDT",
@@ -290,7 +291,7 @@ export function TradingView() {
       status: (eth?.freshness as any) || "delayed",
     });
 
-    const sol = quotes.find((q) => q.symbol.includes("SOL"));
+    const sol = quotesList.find((q) => q.symbol.includes("SOL"));
     list.push({
       symbol: "SOLUSDT",
       label: "SOL/USDT",
@@ -632,24 +633,25 @@ function QuoteTable({
             >
               <td className="py-2 font-bold text-white font-sans">{item.symbol}</td>
               <td className="py-2 text-right text-slate-200">
-                {item.price.toLocaleString(locale, { maximumFractionDigits: 4 })}
+                {typeof item.price === "number" ? item.price.toLocaleString(locale, { maximumFractionDigits: 4 }) : "—"}
               </td>
               <td
                 className={`py-2 text-right font-bold ${
-                  item.change_percent >= 0 ? "text-emerald-400" : "text-rose-400"
+                  typeof item.change_percent === "number" && item.change_percent >= 0 ? "text-emerald-400" : "text-rose-400"
                 }`}
               >
-                {item.change_percent >= 0 ? "+" : ""}
-                {item.change_percent.toFixed(2)} %
+                {typeof item.change_percent === "number"
+                  ? `${item.change_percent >= 0 ? "+" : ""}${item.change_percent.toFixed(2)} %`
+                  : "—"}
               </td>
               <td className="py-2 text-right text-slate-400">
-                {item.high.toLocaleString(locale, { maximumFractionDigits: 4 })}
+                {typeof item.high === "number" ? item.high.toLocaleString(locale, { maximumFractionDigits: 4 }) : "—"}
               </td>
               <td className="py-2 text-right text-slate-400">
-                {item.low.toLocaleString(locale, { maximumFractionDigits: 4 })}
+                {typeof item.low === "number" ? item.low.toLocaleString(locale, { maximumFractionDigits: 4 }) : "—"}
               </td>
               <td className="py-2 text-right text-slate-400">
-                {item.volume.toLocaleString(locale, { maximumFractionDigits: 0 })}
+                {typeof item.volume === "number" ? item.volume.toLocaleString(locale, { maximumFractionDigits: 0 }) : "—"}
               </td>
             </tr>
           ))}
