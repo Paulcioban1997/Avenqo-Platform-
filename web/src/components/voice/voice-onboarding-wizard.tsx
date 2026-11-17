@@ -30,6 +30,7 @@ import {
   Sliders,
   ExternalLink,
   Clock,
+  Bookmark,
 } from "lucide-react";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { apiFetch } from "@/lib/api-request";
@@ -98,6 +99,9 @@ export function VoiceOnboardingWizard({
   const fr = locale.startsWith("fr");
 
   const [currentStep, setCurrentStep] = useState<number>(1);
+  const [openSection, setOpenSection] = useState<number | null>(1);
+  const [showAdvancedParams, setShowAdvancedParams] = useState<boolean>(false);
+  const [selectedIndustry, setSelectedIndustry] = useState<string>("retail");
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [saveFeedback, setSaveFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -594,117 +598,163 @@ export function VoiceOnboardingWizard({
     }
   };
 
-  const steps = [
-    { id: 1, title: fr ? "1. Mon entreprise" : "1. My Business", icon: Building2, desc: fr ? "Identité & coordonnées" : "Identity & details" },
-    { id: 2, title: fr ? "2. Ma réceptionniste" : "2. My Receptionist", icon: Bot, desc: fr ? "Voix, timbre & accueil" : "Voice, tone & greeting" },
-    { id: 3, title: fr ? "3. Connaissances & modules" : "3. Knowledge & Modules", icon: Layers, desc: fr ? "Retail, CRM & règles" : "Retail, CRM & bounds" },
-    { id: 4, title: fr ? "4. Téléphone & employés" : "4. Phone & Employees", icon: PhoneCall, desc: fr ? "Routage IVR & NIP privé" : "IVR routing & private PIN" },
-    { id: 5, title: fr ? "5. Tester et activer" : "5. Test & Activate", icon: CheckCircle2, desc: fr ? "Checklist & mise en ligne" : "Checklist & activation" },
-  ];
+    const industryPresets = [
+      {
+        id: "auto",
+        title: fr ? "Automobile / Pièces" : "Automotive / Parts",
+        desc: fr ? "Pièces compatibles, stocks, devis, rendez-vous mécaniques." : "Compatible parts, inventory, quotes, mechanical bookings.",
+        image: "https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?auto=format&fit=crop&w=600&q=80",
+        industryName: "Automobile / Pièces",
+      },
+      {
+        id: "medical",
+        title: fr ? "Médical / Clinique" : "Medical / Clinic",
+        desc: fr ? "Accueil, horaires, rendez-vous, informations administratives et transfert clinique." : "Welcome, hours, appointments, administrative info and clinic routing.",
+        image: "https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&w=600&q=80",
+        industryName: "Médical / Clinique",
+      },
+      {
+        id: "restaurant",
+        title: fr ? "Restauration" : "Restaurant",
+        desc: fr ? "Réservations, menus, allergènes, horaires et demandes spéciales." : "Reservations, menus, allergens, opening hours and special requests.",
+        image: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=600&q=80",
+        industryName: "Restauration",
+      },
+      {
+        id: "retail",
+        title: fr ? "Commerce / Retail" : "Retail / Store",
+        desc: fr ? "Catalogue, commandes, produits populaires et opportunités de vente." : "Catalog, orders, popular products and sales opportunities.",
+        image: "https://images.unsplash.com/photo-1556742049-0a67c5574f73?auto=format&fit=crop&w=600&q=80",
+        industryName: "Commerce / Retail",
+      },
+    ];
+
+    const premiumImprovements = [
+      { id: 1, icon: "⚡", title: "1. Ultra-Low Latency Voice", desc: fr ? "Réponses vocales plus rapides, interruptions naturelles, moins de silences" : "Faster vocal responses, natural interruptions, less silence" },
+      { id: 2, icon: "🔀", title: "2. Adaptive AI Router", desc: fr ? "Gemini Live pour les conversations, raisonnement avancé seulement quand nécessaire" : "Gemini Live for speech, advanced reasoning only when required" },
+      { id: 3, icon: "🧠", title: "3. Company Knowledge Brain", desc: fr ? "IA qui utilise les catalogues, politiques, données et documents autorisés de chaque entreprise" : "AI powered exclusively by verified company catalogs, policies and data" },
+      { id: 4, icon: "📈", title: "4. Revenue Growth Copilot", desc: fr ? "Détecte des opportunités de ventes supplémentaires avec des données vérifiées" : "Detects upsell and cross-sell opportunities with verified inventory" },
+      { id: 5, icon: "👥", title: "5. Employee Performance Coach", desc: fr ? "Objectifs, conseils quotidiens, progrès hebdomadaires et suivi personnalisé" : "Daily goals, personalized advice, weekly progress tracking" },
+      { id: 6, icon: "🔄", title: "6. Omnichannel Memory", desc: fr ? "Continuité autorisée entre téléphone, chatbot, CRM et courriels" : "Authorized continuity between phone, chat, CRM and emails" },
+      { id: 7, icon: "🌐", title: "7. Live Multilingual Assistant", desc: fr ? "Conversation multilingue et traduction vocale selon les capacités certifiées" : "Multilingual conversations and real-time speech translation" },
+      { id: 8, icon: "🤝", title: "8. Smart Human Handoff", desc: fr ? "Transfert à la bonne personne avec résumé et contexte autorisé" : "Seamless transfer to staff with real-time call summary" },
+      { id: 9, icon: "🛡️", title: "9. Self-Healing Voice", desc: fr ? "Détection d'incidents, circuit breakers et basculement sécurisé du fournisseur IA" : "Incident detection, circuit breakers and graceful provider failover" },
+      { id: 10, icon: "📊", title: "10. Voice ROI Analytics", desc: fr ? "Mesure des rendez-vous, conversions attribuables, coûts et qualité des appels" : "Track booked appointments, revenue conversions, costs and call quality" },
+    ];
 
   return (
     <div className="space-y-6">
-      {/* 5-STEP NAVIGATION HEADER */}
-      <div className="rounded-3xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#0B132B] shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-slate-100 dark:border-white/[0.06] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2.5">
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-blue-50 text-[#0076FF] dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/40">
-                {fr ? "Assistant Vocal Avenqo" : "Avenqo Voice Assistant"}
-              </span>
-              <span className="text-xs font-mono font-bold text-slate-400">
-                {businessName}
-              </span>
-            </div>
-            <h2 className="text-xl font-extrabold text-slate-900 dark:text-white mt-1">
-              {fr ? "Configuration simple de votre réceptionniste" : "Simple Receptionist Setup"}
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              {fr
-                ? "Configurez votre ligne téléphonique en 5 étapes claires. Vos réglages sont validés côté serveur."
-                : "Set up your phone line in 5 clear steps. Every setting is server-verified."}
-            </p>
-          </div>
+      {/* HEADER */}
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-2">
+          <span className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+            <span>🎙️</span>
+            <span>Avenqo Voice AI</span>
+          </span>
+          <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold tracking-wider uppercase bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+            Sandbox
+          </span>
+        </div>
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          {fr ? "Configuration centralisée — aperçu conceptuel" : "Centralized configuration — conceptual overview"}
+        </p>
+      </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-500">
-              {fr ? `Étape ${currentStep} sur 5` : `Step ${currentStep} of 5`}
+      {/* HERO STATUS CARD */}
+      <div className="p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0B132B] shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2.5">
+            <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
+              {profile.business_name || businessName || "Produits Ero"}
+            </h3>
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>{fr ? "Numéro connecté" : "Connected number"}</span>
             </span>
           </div>
-        </div>
-
-        {/* STEP TABS */}
-        <div className="flex border-b border-slate-100 dark:border-white/[0.06] overflow-x-auto scrollbar-none bg-slate-50/50 dark:bg-slate-900/40 p-2 gap-1.5">
-          {steps.map((st) => {
-            const Icon = st.icon;
-            const isActive = currentStep === st.id;
-            const isCompleted = currentStep > st.id;
-            return (
-              <button
-                key={st.id}
-                onClick={() => {
-                  setSaveFeedback(null);
-                  setCurrentStep(st.id);
-                }}
-                className={`flex-1 min-w-[140px] px-3.5 py-2.5 rounded-2xl text-left transition flex items-center gap-2.5 ${
-                  isActive
-                    ? "bg-[#0076FF] text-white shadow-md shadow-blue-500/20"
-                    : isCompleted
-                    ? "bg-blue-50/60 dark:bg-blue-950/30 text-blue-800 dark:text-blue-300 hover:bg-blue-100/60"
-                    : "text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800"
-                }`}
-              >
-                <div
-                  className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 ${
-                    isActive
-                      ? "bg-white/20 text-white"
-                      : isCompleted
-                      ? "bg-blue-200/60 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300"
-                      : "bg-slate-200 dark:bg-slate-800 text-slate-500"
-                  }`}
-                >
-                  {isCompleted ? <Check className="w-3.5 h-3.5" /> : <Icon className="w-3.5 h-3.5" />}
-                </div>
-                <div className="min-w-0">
-                  <div className="text-xs font-bold truncate leading-tight">{st.title}</div>
-                  <div
-                    className={`text-[10px] truncate leading-tight mt-0.5 ${
-                      isActive ? "text-blue-100" : "text-slate-400 dark:text-slate-500"
-                    }`}
-                  >
-                    {st.desc}
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* FEEDBACK BANNER */}
-        {saveFeedback && (
-          <div
-            className={`mx-6 mt-4 p-3.5 rounded-2xl text-xs font-semibold flex items-center gap-2.5 animate-in fade-in ${
-              saveFeedback.type === "success"
-                ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60"
-                : "bg-rose-50 text-rose-800 dark:bg-rose-950/50 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60"
-            }`}
-          >
-            {saveFeedback.type === "success" ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            ) : (
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-            )}
-            <span>{saveFeedback.message}</span>
+          <div className="text-xs font-mono font-bold text-slate-700 dark:text-slate-300">
+            {assignedNumber || "+1 438 953-6811"} · Gemini Live
           </div>
-        )}
+          <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 font-medium pt-0.5">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+            <span>{fr ? "Appels réels : validation de fiabilité en cours" : "Real calls: reliability validation in progress"}</span>
+          </div>
+        </div>
+      </div>
 
-        {/* STEP CONTENT BODY */}
-        <div className="p-6 sm:p-7">
-          {/* ========================================================
-              STEP 1: MON ENTREPRISE
-              ======================================================== */}
-          {currentStep === 1 && (
-            <div className="space-y-6 animate-in fade-in duration-200">
+      {/* FEEDBACK BANNER */}
+      {saveFeedback && (
+        <div
+          className={`p-3.5 rounded-2xl text-xs font-semibold flex items-center gap-2.5 animate-in fade-in ${
+            saveFeedback.type === "success"
+              ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60"
+              : "bg-rose-50 text-rose-800 dark:bg-rose-950/50 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60"
+          }`}
+        >
+          {saveFeedback.type === "success" ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          ) : (
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          )}
+          <span>{saveFeedback.message}</span>
+        </div>
+      )}
+
+      {/* 5 ACCORDION CARDS */}
+      <div className="space-y-3">
+        {/* ========================================================
+            ACCORDION 1: MON ENTREPRISE
+            ======================================================== */}
+        <div className="rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#0B132B] shadow-sm overflow-hidden transition-all">
+          <button
+            type="button"
+            onClick={() => {
+              setSaveFeedback(null);
+              setOpenSection(openSection === 1 ? null : 1);
+              setCurrentStep(1);
+            }}
+            className="w-full p-4 sm:p-5 flex items-center justify-between text-left hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition cursor-pointer select-none"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center shrink-0">
+                <Building2 className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-sm font-extrabold text-slate-900 dark:text-white">
+                  {fr ? "1. Mon entreprise" : "1. My Business"}
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  {fr ? "Identité, site web, horaires et langues" : "Identity, website, hours & languages"}
+                </p>
+              </div>
+            </div>
+            <div className="text-slate-400">
+              {openSection === 1 ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+            </div>
+          </button>
+
+          {openSection === 1 && (
+            <div className="p-5 sm:p-6 border-t border-slate-100 dark:border-white/[0.06] space-y-6 animate-in fade-in duration-200">
+              {/* SUMMARY BULLETS */}
+              <div className="space-y-1.5 pb-3 border-b border-slate-100 dark:border-white/[0.06] text-xs text-slate-600 dark:text-slate-300 font-medium">
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-500" />
+                  <span>{fr ? "Nom commercial et prononciation" : "Business name & pronunciation"}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-500" />
+                  <span>{fr ? "Description, secteur et site web vérifié" : "Description, industry & verified website"}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-500" />
+                  <span>{fr ? "Horaires synchronisés avec le CRM" : "CRM-synchronized business hours"}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-500" />
+                  <span>{fr ? "Langues et fuseau horaire" : "Languages & timezone"}</span>
+                </div>
+              </div>
+
               <div className="border-b border-slate-100 dark:border-white/[0.06] pb-4">
                 <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">
                   {fr ? "Étape 1 : Identité et informations de l'entreprise" : "Step 1: Business Identity & Details"}
@@ -994,7 +1044,10 @@ export function VoiceOnboardingWizard({
                   disabled={saving}
                   onClick={async () => {
                     const ok = await saveBusinessProfile();
-                    if (ok) setCurrentStep(2);
+                    if (ok) {
+                      setOpenSection(2);
+                      setCurrentStep(2);
+                    }
                   }}
                   className="px-5 py-2.5 rounded-xl bg-[#0076FF] hover:bg-blue-600 text-white font-bold text-xs shadow-md transition flex items-center gap-2 disabled:opacity-50"
                 >
@@ -1005,12 +1058,90 @@ export function VoiceOnboardingWizard({
               </div>
             </div>
           )}
+        </div>
 
-          {/* ========================================================
-              STEP 2: MA RÉCEPTIONNISTE
-              ======================================================== */}
-          {currentStep === 2 && (
-            <div className="space-y-6 animate-in fade-in duration-200">
+        {/* ========================================================
+            ACCORDION 2: MA RÉCEPTIONNISTE IA
+            ======================================================== */}
+        <div className="rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#0B132B] shadow-sm overflow-hidden transition-all">
+          <button
+            type="button"
+            onClick={() => {
+              setSaveFeedback(null);
+              setOpenSection(openSection === 2 ? null : 2);
+              setCurrentStep(2);
+            }}
+            className="w-full p-4 sm:p-5 flex items-center justify-between text-left hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition cursor-pointer select-none"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center shrink-0">
+                <Bot className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-sm font-extrabold text-slate-900 dark:text-white">
+                  {fr ? "2. Ma réceptionniste IA" : "2. My AI Receptionist"}
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  {fr ? "Voix, personnalité et conversations" : "Voice, personality & conversations"}
+                </p>
+              </div>
+            </div>
+            <div className="text-slate-400">
+              {openSection === 2 ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+            </div>
+          </button>
+
+          {openSection === 2 && (
+            <div className="p-5 sm:p-6 border-t border-slate-100 dark:border-white/[0.06] space-y-6 animate-in fade-in duration-200">
+              {/* UNE IA ADAPTÉE À CHAQUE INDUSTRIE */}
+              <div className="space-y-3 pb-4 border-b border-slate-100 dark:border-white/[0.06]">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">🏢</span>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
+                    {fr ? "Une IA adaptée à chaque industrie" : "AI Tailored to Each Industry"}
+                  </h4>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  {industryPresets.map((ind) => {
+                    const isSelected = profile.industry?.toLowerCase().includes(ind.id) || selectedIndustry === ind.id;
+                    return (
+                      <div
+                        key={ind.id}
+                        onClick={() => {
+                          setSelectedIndustry(ind.id);
+                          setProfile((p) => ({ ...p, industry: ind.industryName }));
+                        }}
+                        className={`group relative rounded-2xl overflow-hidden border cursor-pointer transition flex flex-col justify-between ${
+                          isSelected
+                            ? "border-[#0076FF] ring-2 ring-blue-500/30 bg-slate-50 dark:bg-slate-900"
+                            : "border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0F172A] hover:border-slate-300 dark:hover:border-slate-700"
+                        }`}
+                      >
+                        <div className="relative h-32 w-full overflow-hidden bg-slate-100 dark:bg-slate-800">
+                          <img
+                            src={ind.image}
+                            alt={ind.title}
+                            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                          <div className="absolute top-2.5 right-2.5 p-1 rounded-md bg-black/50 text-white/90">
+                            <Bookmark className="w-3.5 h-3.5" />
+                          </div>
+                        </div>
+                        <div className="p-3.5 space-y-1">
+                          <h5 className="font-extrabold text-xs text-slate-900 dark:text-white">
+                            {ind.title}
+                          </h5>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
+                            {ind.desc}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="border-b border-slate-100 dark:border-white/[0.06] pb-4">
                 <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">
                   {fr ? "Étape 2 : Voix, timbre et message d'accueil" : "Step 2: Voice, Tone & Greeting"}
@@ -1254,7 +1385,10 @@ export function VoiceOnboardingWizard({
               <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-white/[0.06]">
                 <button
                   type="button"
-                  onClick={() => setCurrentStep(1)}
+                  onClick={() => {
+                    setOpenSection(1);
+                    setCurrentStep(1);
+                  }}
                   className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 transition flex items-center gap-1.5"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
@@ -1265,7 +1399,10 @@ export function VoiceOnboardingWizard({
                   disabled={saving}
                   onClick={async () => {
                     const ok = await saveReceptionistCustomization();
-                    if (ok) setCurrentStep(3);
+                    if (ok) {
+                      setOpenSection(3);
+                      setCurrentStep(3);
+                    }
                   }}
                   className="px-5 py-2.5 rounded-xl bg-[#0076FF] hover:bg-blue-600 text-white font-bold text-xs shadow-md transition flex items-center gap-2 disabled:opacity-50"
                 >
@@ -1276,12 +1413,41 @@ export function VoiceOnboardingWizard({
               </div>
             </div>
           )}
+        </div>
 
-          {/* ========================================================
-              STEP 3: SES CONNAISSANCES ET SES MODULES
-              ======================================================== */}
-          {currentStep === 3 && (
-            <div className="space-y-6 animate-in fade-in duration-200">
+        {/* ========================================================
+            ACCORDION 3: CONNAISSANCES ET PERMISSIONS
+            ======================================================== */}
+        <div className="rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#0B132B] shadow-sm overflow-hidden transition-all">
+          <button
+            type="button"
+            onClick={() => {
+              setSaveFeedback(null);
+              setOpenSection(openSection === 3 ? null : 3);
+              setCurrentStep(3);
+            }}
+            className="w-full p-4 sm:p-5 flex items-center justify-between text-left hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition cursor-pointer select-none"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center shrink-0">
+                <Layers className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-sm font-extrabold text-slate-900 dark:text-white">
+                  {fr ? "3. Connaissances et permissions" : "3. Knowledge & Permissions"}
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  {fr ? "Modules autorisés, données et actions" : "Authorized modules, data & actions"}
+                </p>
+              </div>
+            </div>
+            <div className="text-slate-400">
+              {openSection === 3 ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+            </div>
+          </button>
+
+          {openSection === 3 && (
+            <div className="p-5 sm:p-6 border-t border-slate-100 dark:border-white/[0.06] space-y-6 animate-in fade-in duration-200">
               <div className="border-b border-slate-100 dark:border-white/[0.06] pb-4">
                 <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">
                   {fr ? "Étape 3 : Connaissances et modules autorisés" : "Step 3: Knowledge & Allowed Modules"}
@@ -1508,7 +1674,10 @@ export function VoiceOnboardingWizard({
               <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-white/[0.06]">
                 <button
                   type="button"
-                  onClick={() => setCurrentStep(2)}
+                  onClick={() => {
+                    setOpenSection(2);
+                    setCurrentStep(2);
+                  }}
                   className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 transition flex items-center gap-1.5"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
@@ -1519,7 +1688,10 @@ export function VoiceOnboardingWizard({
                   disabled={saving}
                   onClick={async () => {
                     const ok = await saveBusinessProfile();
-                    if (ok) setCurrentStep(4);
+                    if (ok) {
+                      setOpenSection(4);
+                      setCurrentStep(4);
+                    }
                   }}
                   className="px-5 py-2.5 rounded-xl bg-[#0076FF] hover:bg-blue-600 text-white font-bold text-xs shadow-md transition flex items-center gap-2 disabled:opacity-50"
                 >
@@ -1530,12 +1702,41 @@ export function VoiceOnboardingWizard({
               </div>
             </div>
           )}
+        </div>
 
-          {/* ========================================================
-              STEP 4: MON TÉLÉPHONE ET MES EMPLOYÉS (UNIFIED TELEPHONY)
-              ======================================================== */}
-          {currentStep === 4 && (
-            <div className="space-y-6 animate-in fade-in duration-200">
+        {/* ========================================================
+            ACCORDION 4: TÉLÉPHONE ET EMPLOYÉS
+            ======================================================== */}
+        <div className="rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#0B132B] shadow-sm overflow-hidden transition-all">
+          <button
+            type="button"
+            onClick={() => {
+              setSaveFeedback(null);
+              setOpenSection(openSection === 4 ? null : 4);
+              setCurrentStep(4);
+            }}
+            className="w-full p-4 sm:p-5 flex items-center justify-between text-left hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition cursor-pointer select-none"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center shrink-0">
+                <PhoneCall className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-sm font-extrabold text-slate-900 dark:text-white">
+                  {fr ? "4. Téléphone et employés" : "4. Phone & Employees"}
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  {fr ? "Numéro, IVR, NIP et routage" : "Number, IVR, PIN & routing"}
+                </p>
+              </div>
+            </div>
+            <div className="text-slate-400">
+              {openSection === 4 ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+            </div>
+          </button>
+
+          {openSection === 4 && (
+            <div className="p-5 sm:p-6 border-t border-slate-100 dark:border-white/[0.06] space-y-6 animate-in fade-in duration-200">
               <div className="border-b border-slate-100 dark:border-white/[0.06] pb-4">
                 <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">
                   {fr ? "Étape 4 : Téléphone et gestion des employés" : "Step 4: Phone & Employee Security"}
@@ -1766,7 +1967,10 @@ export function VoiceOnboardingWizard({
               <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-white/[0.06]">
                 <button
                   type="button"
-                  onClick={() => setCurrentStep(3)}
+                  onClick={() => {
+                    setOpenSection(3);
+                    setCurrentStep(3);
+                  }}
                   className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 transition flex items-center gap-1.5"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
@@ -1774,7 +1978,10 @@ export function VoiceOnboardingWizard({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setCurrentStep(5)}
+                  onClick={() => {
+                    setOpenSection(5);
+                    setCurrentStep(5);
+                  }}
                   className="px-5 py-2.5 rounded-xl bg-[#0076FF] hover:bg-blue-600 text-white font-bold text-xs shadow-md transition flex items-center gap-2"
                 >
                   <span>{fr ? "Passer au test et activation" : "Proceed to Test & Activate"}</span>
@@ -1783,12 +1990,41 @@ export function VoiceOnboardingWizard({
               </div>
             </div>
           )}
+        </div>
 
-          {/* ========================================================
-              STEP 5: TESTER ET ACTIVER (REAL SERVER VALIDATION)
-              ======================================================== */}
-          {currentStep === 5 && (
-            <div className="space-y-6 animate-in fade-in duration-200">
+        {/* ========================================================
+            ACCORDION 5: TESTER ET ACTIVER
+            ======================================================== */}
+        <div className="rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#0B132B] shadow-sm overflow-hidden transition-all">
+          <button
+            type="button"
+            onClick={() => {
+              setSaveFeedback(null);
+              setOpenSection(openSection === 5 ? null : 5);
+              setCurrentStep(5);
+            }}
+            className="w-full p-4 sm:p-5 flex items-center justify-between text-left hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition cursor-pointer select-none"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-sm font-extrabold text-slate-900 dark:text-white">
+                  {fr ? "5. Tester et activer" : "5. Test & Activate"}
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  {fr ? "Diagnostic et mise en service" : "Diagnostics & activation"}
+                </p>
+              </div>
+            </div>
+            <div className="text-slate-400">
+              {openSection === 5 ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+            </div>
+          </button>
+
+          {openSection === 5 && (
+            <div className="p-5 sm:p-6 border-t border-slate-100 dark:border-white/[0.06] space-y-6 animate-in fade-in duration-200">
               <div className="border-b border-slate-100 dark:border-white/[0.06] pb-4">
                 <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">
                   {fr ? "Étape 5 : Vérification des prérequis et activation sécurisée" : "Step 5: Server Checklist & Fail-Closed Activation"}
@@ -1810,7 +2046,10 @@ export function VoiceOnboardingWizard({
               <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-white/[0.06]">
                 <button
                   type="button"
-                  onClick={() => setCurrentStep(4)}
+                  onClick={() => {
+                    setOpenSection(4);
+                    setCurrentStep(4);
+                  }}
                   className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 transition flex items-center gap-1.5"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
@@ -1823,6 +2062,158 @@ export function VoiceOnboardingWizard({
               </div>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* PARAMÈTRES AVANCÉS (FACULTATIF) */}
+      <div className="rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#0B132B] shadow-sm overflow-hidden transition-all">
+        <button
+          type="button"
+          onClick={() => setShowAdvancedParams(!showAdvancedParams)}
+          className="w-full p-4 sm:p-5 flex items-center justify-between text-left hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition cursor-pointer select-none"
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="w-8 h-8 rounded-xl bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+              <Sliders className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-extrabold text-slate-900 dark:text-white">
+                  {fr ? "Paramètres avancés" : "Advanced Settings"}
+                </h4>
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                  {fr ? "Facultatif" : "Optional"}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {fr
+                  ? "Budgets fournisseur, codecs, diagnostics, modèles de secours, latence, sécurité et télémétrie."
+                  : "Provider budgets, codecs, diagnostics, fallback models, latency, security and telemetry."}
+              </p>
+            </div>
+          </div>
+          <div className="text-slate-400">
+            {showAdvancedParams ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+          </div>
+        </button>
+        {showAdvancedParams && (
+          <div className="p-5 sm:p-6 border-t border-slate-100 dark:border-white/[0.06] space-y-4 text-xs text-slate-600 dark:text-slate-300 animate-in fade-in">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 space-y-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
+                  {fr ? "Fournisseur Realtime Actif" : "Active Realtime Provider"}
+                </span>
+                <p className="font-extrabold text-slate-900 dark:text-white text-sm">
+                  Gemini Live (gemini-3.8-live)
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {fr
+                    ? "Basculement automatique vers OpenAI Realtime en cas d'indisponibilité."
+                    : "Automated failover to OpenAI Realtime in case of outage."}
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 space-y-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                  {fr ? "Codecs & Traitement Audio" : "Audio Codecs & Processing"}
+                </span>
+                <p className="font-extrabold text-slate-900 dark:text-white text-sm">
+                  PCM 16 kHz / 24 kHz · G.711 μ-law
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {fr
+                    ? "Trames de 20 à 40 ms, buffering ultra-court et effacement immédiat sur interruption."
+                    : "20–40 ms frames, minimal buffering, immediate barge-in flush."}
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 space-y-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                  {fr ? "Budget de Latence & Fluidité" : "Latency Budget & Flow"}
+                </span>
+                <p className="font-extrabold text-slate-900 dark:text-white text-sm">
+                  {"< 1 500 ms · Message d'attente à 2,0s"}
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {fr
+                    ? "Annonce sonore « Un instant, je vérifie... » pour rassurer l'appelant dès 2 secondes."
+                    : "Audible thinking phrase prevents dead air during deep tool lookups."}
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 space-y-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                  {fr ? "Sécurité & Multi-Tenant" : "Security & Multi-Tenant"}
+                </span>
+                <p className="font-extrabold text-slate-900 dark:text-white text-sm">
+                  Argon2 · Fail-Closed · Zero Brute-Force
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {fr
+                    ? "Isolation stricte des données de l'entreprise et rejet par défaut sans autorisation."
+                    : "Strict company data isolation with fail-closed server authorization."}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* FOOTNOTE */}
+      <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
+        {fr
+          ? "Concept d'interface interactive : ce prototype ne modifie pas encore Avenqo."
+          : "Interactive interface concept: this prototype does not alter core settings without confirmation."}
+      </p>
+
+      {/* SHOWCASE: 10 AMÉLIORATIONS PREMIUM */}
+      <div className="space-y-4 pt-2">
+        <div className="flex items-center gap-2">
+          <span className="text-base">🌸</span>
+          <h3 className="font-extrabold text-sm text-slate-900 dark:text-white">
+            {fr ? "10 améliorations premium" : "10 Premium Improvements"}
+          </h3>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200/80 dark:border-white/[0.08] overflow-hidden bg-white dark:bg-[#0B132B] shadow-sm">
+          <table className="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr className="border-b border-slate-100 dark:border-white/[0.06] bg-slate-50/70 dark:bg-slate-900/50 text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                <th className="p-3.5 w-1/3">{fr ? "Fonctionnalité" : "Feature"}</th>
+                <th className="p-3.5">{fr ? "Ce que ça apporte" : "What it delivers"}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
+              {premiumImprovements.map((item) => (
+                <tr key={item.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition">
+                  <td className="p-3.5 font-bold text-slate-900 dark:text-white whitespace-nowrap">
+                    <span className="mr-1.5">{item.icon}</span>
+                    <span>{item.title}</span>
+                  </td>
+                  <td className="p-3.5 text-slate-600 dark:text-slate-300 leading-relaxed">
+                    {item.desc}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
+          <p className="leading-relaxed">
+            {fr
+              ? "Google recommande notamment des blocs audio de 20 à 40 ms, un buffering réduit et l'effacement immédiat du son en attente après une interruption. Ce sont des optimisations concrètes à appliquer à notre connexion Gemini Live—Telnyx."
+              : "Google specifically recommends 20–40 ms audio frames, reduced buffering, and immediate flush of queued audio upon interruption. These concrete optimizations are applied to our Gemini Live—Telnyx pipeline."}
+          </p>
+          <a
+            href="https://ai.google.dev"
+            target="_blank"
+            rel="noreferrer"
+            className="px-2.5 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-mono text-[11px] shrink-0 flex items-center gap-1 transition self-start sm:self-auto"
+          >
+            <span>ai.google.dev</span>
+            <ExternalLink className="w-3 h-3" />
+          </a>
         </div>
       </div>
     </div>

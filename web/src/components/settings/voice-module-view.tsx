@@ -538,8 +538,10 @@ export function VoiceModuleView() {
         onRefreshStatus={refreshVoiceStatus}
       />
 
-      {/* HUMAN BUSINESS CAPABILITIES (ZERO TECHNICAL CLUTTER) */}
+      {/* HUMAN BUSINESS CAPABILITIES */}
       {enabled && <VoiceModulePermissionsSection tenantId={tenantId} canManage={canManageVoice} />}
+
+
 
       {/* ADVANCED SETTINGS (COLLAPSIBLE FOR ADMINS) */}
       <details className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0B132B] shadow-xs overflow-hidden group">
@@ -758,11 +760,6 @@ export function VoiceModuleView() {
               </form>
             </section>
 
-            {/* CALL POLICY, PROVISIONING & PERMISSIONS */}
-            {enabled && <VoiceBusinessOnboarding key={`onboarding-${tenantId}`} tenantId={tenantId} canManage={canManageVoice} />}
-            {enabled && <VoiceCustomizationSection tenantId={tenantId} />}
-            {enabled && <VoiceProvisioningSection tenantId={tenantId} canManage={canManageVoice} crmEnabled={Boolean(context?.enabled_modules.includes("crm"))} />}
-            {enabled && <VoiceCallPolicy key={`call-policy-${tenantId}`} tenantId={tenantId} canManage={canManageVoice} />}
         </div>
       </details>
     </div>

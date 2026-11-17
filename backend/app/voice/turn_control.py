@@ -12,6 +12,7 @@ from difflib import SequenceMatcher
 
 _BACKCHANNELS = frozenset({
     "euh", "heu", "hum", "hm", "um", "uh", "ah", "oh", "ok", "okay", "hein",
+    "allo", "allô", "hello", "oui", "ouais", "yeah", "yes", "bon", "quoi", "pardon",
 })
 
 

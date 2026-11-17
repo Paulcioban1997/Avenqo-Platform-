@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -171,12 +172,27 @@ class GeminiProvider(LLMProvider):
         try:
             from google.genai import types
 
-            contents = []
+            contents: list[types.Content] = []
             for message in messages:
                 if message.role == "tool":
-                    contents.append(types.Content(role="user", parts=[
-                        types.Part.from_function_response(name=message.name or "", response={"result": message.content})
-                    ]))
+                    try:
+                        raw_content = message.content or ""
+                        parsed_resp = json.loads(raw_content) if isinstance(raw_content, str) else raw_content
+                        resp_dict = parsed_resp if isinstance(parsed_resp, dict) else {"result": parsed_resp}
+                    except Exception:
+                        resp_dict = {"result": message.content}
+                    part = types.Part.from_function_response(
+                        name=message.name or "",
+                        response=resp_dict,
+                    )
+                    # GenAI strictly requires all consecutive function responses following a model turn
+                    # to be grouped into a single types.Content(role="user", parts=[...])
+                    if contents and contents[-1].role == "user" and any(
+                        getattr(p, "function_response", None) is not None for p in contents[-1].parts
+                    ):
+                        contents[-1].parts.append(part)
+                    else:
+                        contents.append(types.Content(role="user", parts=[part]))
                 elif message.role == "assistant" and message.tool_calls:
                     parts = []
                     if message.content:

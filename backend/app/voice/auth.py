@@ -366,27 +366,9 @@ class VoiceCallerAuth:
                 VoiceCallerCredential.enabled.is_(True),
             ).with_for_update())
 
-        # Fallback: if caller phone did not match a credential, match PIN against active company credentials
+        # Insecure fallback iterating over all company credentials is intentionally removed.
+        # PIN authentication requires explicit caller identity matching (by registered caller phone or identifier).
         matched_in_fallback = False
-        if credential is None and not identifier:
-            company_creds = self.db.scalars(
-                select(VoiceCallerCredential).where(
-                    VoiceCallerCredential.company_id == call.company_id,
-                    VoiceCallerCredential.principal_type == "USER",
-                    VoiceCallerCredential.enabled.is_(True),
-                ).with_for_update()
-            ).all()
-            for cand_cred in company_creds:
-                if cand_cred.locked_until is not None and utc(cand_cred.locked_until) > now:
-                    continue
-                cand_candidate = self._peppered(call.company_id, cand_cred.principal_id, pin_clean)
-                try:
-                    if verify_password(cand_candidate, cand_cred.pin_hash):
-                        credential = cand_cred
-                        matched_in_fallback = True
-                        break
-                except (ValueError, UnknownHashError):
-                    continue
 
         call.verification_attempts += 1
         logger.info(

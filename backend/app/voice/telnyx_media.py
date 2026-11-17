@@ -881,6 +881,24 @@ class TelnyxMediaBridge:
             self.telemetry["central_ai_called"] = True
             self._executing_turn = True
             self._set_phase("THINKING")
+
+            filler_task = None
+            async def _play_thinking_filler() -> None:
+                try:
+                    await asyncio.sleep(2.0)
+                    if self._executing_turn and epoch == self.epoch and not self.input_paused:
+                        filler_phrase = (
+                            "Un instant, je vérifie..."
+                            if resolve_locale(self.locale).startswith("fr")
+                            else "One moment, checking that for you..."
+                        )
+                        await self._speak_system(f"filler:{item_id}", filler_phrase)
+                except asyncio.CancelledError:
+                    pass
+                except Exception as ex:
+                    logger.debug("Voice thinking filler prompt ignored: %s", ex)
+
+            filler_task = asyncio.create_task(_play_thinking_filler())
             try:
                 result = await asyncio.wait_for(
                     self.execute_turn(item_id, redact_voice_secrets(transcript)),
@@ -914,6 +932,9 @@ class TelnyxMediaBridge:
                     else "Sorry, a technical error occurred while processing your request. "
                          "Could you rephrase your question?"
                 )}
+            finally:
+                if filler_task is not None and not filler_task.done():
+                    filler_task.cancel()
             if epoch != self.epoch:
                 self.central_ai_discarded_epochs += 1
                 logger.info(

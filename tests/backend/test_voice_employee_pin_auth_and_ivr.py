@@ -112,7 +112,12 @@ def test_voice_auth_set_pin_and_verify_gather_e2e(tmp_path):
     session.add(call_unknown)
     session.commit()
 
-    res_unknown = auth.verify_gather(call_unknown, "839201#")
+    # 5. Unknown caller without identifier is securely rejected (no brute force across accounts)
+    res_rejected = auth.verify_gather(call_unknown, "839201#")
+    assert res_rejected["authenticated"] is False
+
+    # Explicit identification with registered employee phone succeeds
+    res_unknown = auth.verify_gather(call_unknown, "839201#", identifier=phone)
     assert res_unknown["success"] is True
     assert res_unknown["authenticated"] is True
     assert call_unknown.caller_type == "OWNER"

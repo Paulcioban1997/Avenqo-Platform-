@@ -180,8 +180,14 @@ class ToolOrchestrator:
             "reasoning_tokens": 0,
         }
 
+        # Pour les canaux vocaux (faible latence obligatoire), borner strictement
+        # le nombre d'itérations et d'outils pour éviter les silences prolongés.
+        is_voice = bool(getattr(context, "voice_path", False))
+        effective_max_iterations = min(self._max_iterations, 2) if is_voice else self._max_iterations
+        effective_max_tools = min(self._max_tools_per_request, 3) if is_voice else self._max_tools_per_request
+
         try:
-            for _iteration in range(self._max_iterations):
+            for _iteration in range(effective_max_iterations):
                 if await check_cancelled():
                     yield OrchestrationEvent(
                         kind="final",
@@ -253,7 +259,7 @@ class ToolOrchestrator:
                 status_events.append(STATUS_ANALYZING_BUSINESS_DATA)
                 yield OrchestrationEvent(kind="status", status=STATUS_ANALYZING_BUSINESS_DATA)
 
-                calls = response.tool_calls[: max(0, self._max_tools_per_request - tools_called)]
+                calls = response.tool_calls[: max(0, effective_max_tools - tools_called)]
                 # Rejoue le tour "assistant" tel que produit par le mod\u00e8le AVANT les
                 # r\u00e9sultats d'outils : les 3 fournisseurs (OpenAI/Anthropic/Gemini)
                 # rejettent un message role="tool" qui ne suit pas imm\u00e9diatement un
@@ -294,7 +300,7 @@ class ToolOrchestrator:
                             name=call.name,
                         )
                     )
-                    if tools_called >= self._max_tools_per_request:
+                    if tools_called >= effective_max_tools:
                         break
 
             yield OrchestrationEvent(

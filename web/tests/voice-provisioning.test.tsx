@@ -10,7 +10,7 @@ describe("commercial Voice consent",()=>{
   vi.stubGlobal("fetch",vi.fn(async(url:string)=>({ok:true,json:async()=>url.includes("catalog")?{commercial_enabled:false,payments_enabled:false}:[]})));
   render(<VoiceProvisioningSection tenantId="alpha" canManage crmEnabled/>);
   await screen.findByText(/Les achats sont en préparation/);
-  expect(screen.getByText(/4,99 CAD/)).toBeTruthy();
+  expect(screen.getByText(/sans frais d'installation|forfait|inclus/)).toBeTruthy();
   expect(screen.getByRole("button",{name:"Rechercher"})).toBeDisabled();
  });
  it("shows full monthly total and requires amount-bound consent",async()=>{

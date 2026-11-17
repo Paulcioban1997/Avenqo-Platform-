@@ -210,10 +210,13 @@ def apply_spoken_pronunciation(text: str, config) -> str:
     for attr in ("business_name", "voice_display_name"):
         raw = getattr(config, attr, None)
         if isinstance(raw, str) and raw.strip():
+            names.append(raw.strip())
             names.append(raw.strip().replace("_", " "))
     for name in sorted(set(names), key=len, reverse=True):
         if name.casefold() != spoken.casefold():
             rendered = re.sub(re.escape(name), spoken, rendered, flags=re.IGNORECASE)
+    # Also clean any leftover literal underscores in spoken brand text
+    rendered = re.sub(r"Produits_Ero", "Produits Éro", rendered, flags=re.IGNORECASE)
     return rendered
 
 
