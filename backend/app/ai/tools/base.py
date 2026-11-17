@@ -154,3 +154,10 @@ class BillingCreditsAITool(AITool):
     agent_ids = frozenset({"billing", "cross_agent"})
     read_only = True
     mutates = False
+
+
+class TradingAITool(AITool):
+    agent_ids = frozenset({"trading", "cross_agent"})
+    required_entitlements = frozenset({"trading"})
+    read_only = True
+    mutates = False

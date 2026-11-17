@@ -33,7 +33,7 @@ interface ActivationMilestone {
 
 export function FirstCustomerConcierge() {
   const { locale } = useLocale();
-  const isEn = locale === "en";
+  const isEn = !locale.startsWith("fr");
 
   const [milestones, setMilestones] = useState<ActivationMilestone[]>([
     {

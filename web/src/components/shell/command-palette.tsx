@@ -37,6 +37,9 @@ export interface CommandPaletteProps {
   onClose: () => void;
   t: AppTranslations;
   onTriggerAction?: (actionId: string) => void;
+  /** Null until the entitlement API answers. Unlisted modules stay hidden. */
+  authorizedModuleKeys?: string[] | null;
+  grantedPermissions?: string[] | null;
 }
 
 export function CommandPalette({
@@ -44,6 +47,8 @@ export function CommandPalette({
   onClose,
   t,
   onTriggerAction,
+  authorizedModuleKeys = null,
+  grantedPermissions = null,
 }: CommandPaletteProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -51,7 +56,8 @@ export function CommandPalette({
   const [crmResults, setCrmResults] = useState<any[]>([]);
 
   useEffect(() => {
-    if (!query.trim() || query.length < 2) {
+    const canSearchCrm = Boolean(grantedPermissions?.some((permission) => permission === "crm:clients:read" || permission === "crm:appointments:read"));
+    if (!canSearchCrm || !query.trim() || query.length < 2) {
       setCrmResults([]);
       return;
     }
@@ -191,12 +197,13 @@ export function CommandPalette({
     }, 180);
 
     return () => clearTimeout(timer);
-  }, [query, router, onClose]);
+  }, [query, router, onClose, grantedPermissions]);
 
   const items = useMemo(() => {
     const pages = [
       {
         id: "page-dashboard",
+        permissions: ["data:read"],
         title: t.navigation.dashboard,
         group: t.commandPalette.pagesGroup,
         icon: <LayoutDashboard className="w-4 h-4 text-[#0076FF]" />,
@@ -207,6 +214,8 @@ export function CommandPalette({
       },
       {
         id: "page-retail",
+        moduleKey: "retail",
+        permissions: ["retail:read"],
         title: t.navigation.retailAi,
         group: t.commandPalette.pagesGroup,
         icon: <ShoppingBag className="w-4 h-4 text-[#00D4FF]" />,
@@ -217,6 +226,8 @@ export function CommandPalette({
       },
       {
         id: "page-crm",
+        moduleKey: "crm",
+        permissions: ["crm:clients:read", "crm:appointments:read"],
         title: t.navigation.crmAi,
         group: t.commandPalette.pagesGroup,
         icon: <Network className="w-4 h-4 text-violet-400" />,
@@ -227,6 +238,8 @@ export function CommandPalette({
       },
       {
         id: "page-accounting",
+        moduleKey: "accounting",
+        permissions: ["accounting:read"],
         title: t.navigation.accountingAi,
         group: t.commandPalette.pagesGroup,
         icon: <ReceiptText className="w-4 h-4 text-emerald-400" />,
@@ -237,6 +250,7 @@ export function CommandPalette({
       },
       {
         id: "page-integrations",
+        permissions: ["data:manage"],
         title: t.navigation.integrations,
         group: t.commandPalette.pagesGroup,
         icon: <Plug className="w-4 h-4 text-amber-400" />,
@@ -247,6 +261,7 @@ export function CommandPalette({
       },
       {
         id: "page-data",
+        permissions: ["data:read"],
         title: t.navigation.dataHub,
         group: t.commandPalette.pagesGroup,
         icon: <Database className="w-4 h-4 text-cyan-400" />,
@@ -257,6 +272,7 @@ export function CommandPalette({
       },
       {
         id: "page-settings",
+        permissions: ["company:manage"],
         title: t.navigation.settings,
         group: t.commandPalette.pagesGroup,
         icon: <Settings className="w-4 h-4 text-slate-400" />,
@@ -266,6 +282,15 @@ export function CommandPalette({
         },
       },
     ];
+
+    const visiblePages = pages.filter((page) => {
+      const required = "permissions" in page ? page.permissions : undefined;
+      if (required && !required.some((permission) => grantedPermissions?.includes(permission))) return false;
+      const moduleKey = "moduleKey" in page ? page.moduleKey : undefined;
+      if (!moduleKey) return true;
+      return authorizedModuleKeys?.includes(moduleKey) ?? false;
+    });
+    const retailAuthorized = authorizedModuleKeys?.includes("retail") ?? false;
 
     const actions = [
       {
@@ -278,7 +303,8 @@ export function CommandPalette({
           onTriggerAction?.("sync");
         },
       },
-      {
+      ...(retailAuthorized
+        ? [{
         id: "action-clean-data",
         title: t.commandPalette.actionCleanData,
         group: t.commandPalette.actionsGroup,
@@ -288,7 +314,8 @@ export function CommandPalette({
           onClose();
           onTriggerAction?.("clean-data");
         },
-      },
+      }]
+        : []),
       {
         id: "action-generate-report",
         title: t.commandPalette.actionGenerateReport,
@@ -299,7 +326,8 @@ export function CommandPalette({
           onTriggerAction?.("report");
         },
       },
-      {
+      ...(grantedPermissions?.includes("ai:use")
+        ? [{
         id: "action-ask-copilot",
         title: t.commandPalette.actionAskCopilot,
         group: t.commandPalette.actionsGroup,
@@ -308,10 +336,11 @@ export function CommandPalette({
           onClose();
           onTriggerAction?.("open-copilot");
         },
-      },
+      }]
+        : []),
     ];
 
-    const integrations = [
+    const integrations = grantedPermissions?.includes("data:manage") ? [
       {
         id: "int-shopify",
         title: "Shopify (Commerce Sync)",
@@ -332,7 +361,8 @@ export function CommandPalette({
           onClose();
         },
       },
-      {
+      ...(grantedPermissions?.includes("billing:manage")
+        ? [{
         id: "int-stripe",
         title: "Stripe (Subscriptions & Payouts)",
         group: t.commandPalette.integrationsGroup,
@@ -341,10 +371,11 @@ export function CommandPalette({
           router.push("/billing");
           onClose();
         },
-      },
-    ];
+      }]
+        : []),
+    ] : [];
 
-    const all = [...pages, ...actions, ...integrations];
+    const all = [...visiblePages, ...actions, ...integrations];
 
     if (!query.trim()) return all;
     const lower = query.toLowerCase();
@@ -354,7 +385,7 @@ export function CommandPalette({
         item.group.toLowerCase().includes(lower)
     );
     return [...crmResults, ...filtered];
-  }, [query, router, onClose, onTriggerAction, t, crmResults]);
+  }, [query, router, onClose, onTriggerAction, t, crmResults, authorizedModuleKeys, grantedPermissions]);
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -399,11 +430,11 @@ export function CommandPalette({
       role="dialog"
       aria-modal="true"
       aria-label={t.commandPalette.title}
-      className="fixed inset-0 z-50 flex items-start justify-center pt-20 p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex bg-black/60 backdrop-blur-sm max-md:items-stretch max-md:p-0 md:items-start md:justify-center md:p-4 md:pt-20"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-xl rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.12] shadow-2xl overflow-hidden text-slate-900 dark:text-[#F4F7FB] animate-in zoom-in-95 duration-150"
+        className="flex w-full flex-col overflow-hidden bg-white text-slate-900 dark:bg-[#0B132B] dark:text-[#F4F7FB] max-md:h-full max-md:rounded-none md:max-w-xl md:rounded-2xl md:border md:border-slate-200/80 md:shadow-2xl dark:md:border-white/[0.12]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Search header */}
@@ -426,7 +457,7 @@ export function CommandPalette({
         </div>
 
         {/* Results list */}
-        <div className="max-h-80 overflow-y-auto p-2 divide-y divide-slate-100 dark:divide-white/[0.04]">
+        <div className="min-h-0 flex-1 overflow-y-auto p-2 divide-y divide-slate-100 dark:divide-white/[0.04] md:max-h-80 md:flex-none">
           {items.length === 0 ? (
             <div className="p-8 text-center text-sm text-slate-500 dark:text-[#94A3B8]">
               {t.commandPalette.noResults}

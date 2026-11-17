@@ -31,13 +31,51 @@ from backend.app.models.company_contract import (
 )
 from backend.app.models.company_legal_profile import CompanyLegalProfile
 from backend.app.models.user import User
-from backend.app.services.account_notifications import AccountNotifier
+from backend.app.services.account_notifications import (
+    AccountNotifier,
+    EmailAttachment,
+    deliver_signed_contract_copy,
+    mask_email,
+    sandbox_mail_company_id,
+    sandbox_mail_session,
+)
 from backend.app.services.audit_log_service import AuditLogService
 from backend.app.services.commercial_reconciler import CommercialReconciler
 from backend.app.services.contract_pdf_generator import ContractPdfGenerator
+from backend.app.services.secure_document_token_service import SecureDocumentTokenService
 from backend.app.services.signing_challenge_service import SigningChallengeService
+from backend.app.services.tenant_locale_service import catalog_code_or_none, get_company_locale
 
 logger = logging.getLogger(__name__)
+
+REVIEW_BLOCKED_STATUSES = frozenset({
+    "UNDER_REVIEW",
+    "LEGAL_REVIEW_REQUIRED",
+    "UNDER_REVIEW_LEGAL_REVIEW_REQUIRED",
+})
+# Explicit legal-reviewer approval of a versioned template. Not a countersignature.
+APPROVED_FOR_CUSTOMER_SIGNING = "APPROVED_FOR_CUSTOMER_SIGNING"
+NDA_CONTRACT_TYPES = frozenset({"MUTUAL_NDA", "NDA"})
+LEGAL_REVIEWER_PLATFORM_ROLES = frozenset({
+    "PLATFORM_SUPER_ADMIN",
+    "PLATFORM_LEGAL_REVIEWER",
+})
+REQUIRED_SAAS_CONTRACTS = ("SAAS_SUBSCRIPTION", "DATA_PROCESSING_ADDENDUM")
+CUSTOMER_ACCEPTED_STATUSES = frozenset({
+    ContractLifecycleStatus.CUSTOMER_SIGNED.value,
+    ContractLifecycleStatus.SIGNED.value,
+    ContractLifecycleStatus.FULLY_EXECUTED.value,
+})
+LEGAL_APPROVAL_METADATA_KEYS = (
+    "approval_status",
+    "legal_approved_by_user_id",
+    "legal_approved_by_email",
+    "legal_approved_by_name",
+    "legal_approved_at",
+    "legal_approved_version",
+    "legal_approved_content_hash",
+    "legal_approved_platform_role",
+)
 
 CONTRACT_TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "legal" / "contracts"
 
@@ -263,6 +301,7 @@ class ContractSignatureService:
                     contract_version=meta["version"],
                 )
                 sha256 = self.compute_sha256(interpolated_text)
+                approval = "LEGAL_REVIEW_REQUIRED" if ctype in NDA_CONTRACT_TYPES else "NOT_LEGALLY_FINAL"
                 contract = CompanyContract(
                     company_id=company.id,
                     contract_type=ctype,
@@ -273,6 +312,7 @@ class ContractSignatureService:
                     language=template_data["language"],
                     sha256_hash=sha256,
                     content_text=interpolated_text,
+                    metadata_json={"approval_status": approval},
                 )
                 self._db.add(contract)
                 created.append(contract)
@@ -327,6 +367,135 @@ class ContractSignatureService:
         if not user.is_active or user.email_verified_at is None:
             raise ContractAuthorityError("Le compte et son adresse email doivent être vérifiés avant la signature.")
 
+    def sandbox_pilot_signing(self) -> bool:
+        """Sandbox may record a labeled pilot signature. Production keeps the legal gate."""
+        if str(getattr(self._settings, "environment", "") or "").lower() != "sandbox":
+            return False
+        try:
+            self.require_legal_release()
+        except ContractAuthorityError:
+            return True
+        return False
+
+    def approval_status_of(self, contract: CompanyContract) -> str:
+        """Real review state. An NDA stays in legal review until a stored status says otherwise."""
+
+        meta = contract.metadata_json if isinstance(contract.metadata_json, dict) else {}
+        explicit = str(meta.get("approval_status") or "").strip().upper()
+        if explicit:
+            return explicit
+        if contract.contract_type in NDA_CONTRACT_TYPES:
+            return "LEGAL_REVIEW_REQUIRED"
+        return "NOT_LEGALLY_FINAL"
+
+    def signature_blocked(self, contract: CompanyContract) -> bool:
+        """Block signing while legal review is required. Approval is never implied by document type alone."""
+        status = self.approval_status_of(contract)
+        return (
+            status in REVIEW_BLOCKED_STATUSES
+            or "LEGAL_REVIEW_REQUIRED" in status
+            or status.startswith("UNDER_REVIEW")
+        )
+
+    @staticmethod
+    def _is_legal_reviewer(user: User) -> bool:
+        role = str(getattr(user, "platform_role", None) or "")
+        return bool(getattr(user, "is_platform_admin", False) and role in LEGAL_REVIEWER_PLATFORM_ROLES)
+
+    def approve_contract_version_for_signing(
+        self,
+        *,
+        company_id: UUID,
+        contract_type: str,
+        reviewer: User,
+        notes: str | None = None,
+    ) -> CompanyContract:
+        """Record an authorized legal reviewer's approval of a concrete version/hash.
+
+        Does not countersign, does not mark the contract executed, and does not invent
+        provider incorporation. Customer signing remains gated by OTP and authority checks.
+        """
+        if not self._is_legal_reviewer(reviewer):
+            raise ContractAuthorityError(
+                "Approbation juridique réservée à un réviseur légal ou super-administrateur plateforme."
+            )
+        contract = self.get_contract(company_id, contract_type)
+        if contract.status in CUSTOMER_ACCEPTED_STATUSES:
+            raise ContractAlreadySignedError(
+                f"Le contrat {contract_type} est déjà signé ; l'approbation de version ne s'applique plus."
+            )
+        prior = self.approval_status_of(contract)
+        if prior == APPROVED_FOR_CUSTOMER_SIGNING:
+            return contract
+
+        now = datetime.now(timezone.utc)
+        content_hash = self.compute_sha256(contract.content_text)
+        reviewer_name = f"{reviewer.first_name} {reviewer.last_name}".strip() or reviewer.email
+        meta = dict(contract.metadata_json) if isinstance(contract.metadata_json, dict) else {}
+        approval_record = {
+            "approval_status": APPROVED_FOR_CUSTOMER_SIGNING,
+            "legal_approved_by_user_id": str(reviewer.id),
+            "legal_approved_by_email": reviewer.email,
+            "legal_approved_by_name": reviewer_name,
+            "legal_approved_at": now.isoformat(),
+            "legal_approved_version": contract.version,
+            "legal_approved_content_hash": content_hash,
+            "legal_approved_platform_role": reviewer.platform_role,
+            "legal_approval_notes": (notes or "").strip() or None,
+            "prior_approval_status": prior,
+            "legal_effect": "version_approved_for_customer_signing_only",
+            "provider_countersigned": False,
+        }
+        meta.update(approval_record)
+        contract.metadata_json = meta
+
+        self._audit.record(
+            actor_user_id=reviewer.id,
+            action="contract.legal_version_approved",
+            target_type="commercial_contract",
+            target_id=str(contract.id),
+            company_id=company_id,
+            metadata=approval_record,
+            commit=False,
+        )
+        self._db.commit()
+        return contract
+
+    @staticmethod
+    def _preserve_legal_approval(meta: dict[str, Any] | None) -> dict[str, Any]:
+        source = meta if isinstance(meta, dict) else {}
+        return {key: source[key] for key in LEGAL_APPROVAL_METADATA_KEYS if key in source and source[key] is not None}
+
+    def required_saas_accepted(self, company_id: UUID) -> bool:
+        """SaaS subscription and DPA only. The private license and the NDA are not required.
+
+        Once a required document is customer-accepted, a later UNDER_REVIEW flag on
+        another draft must not revoke that acceptance or block an active subscription.
+        """
+
+        by_type = {row.contract_type: row for row in self.list_contracts(company_id)}
+        for contract_type in REQUIRED_SAAS_CONTRACTS:
+            row = by_type.get(contract_type)
+            if row is None or row.status not in CUSTOMER_ACCEPTED_STATUSES:
+                return False
+        return True
+
+    def sandbox_saas_accepted(self, company_id: UUID) -> bool:
+        """The ordinary SaaS agreement was accepted. A private-server license is not required."""
+        accepted = {
+            ContractLifecycleStatus.CUSTOMER_SIGNED.value,
+            ContractLifecycleStatus.SIGNED.value,
+            ContractLifecycleStatus.FULLY_EXECUTED.value,
+        }
+        contract = self._db.scalar(
+            select(CompanyContract).where(
+                CompanyContract.company_id == company_id,
+                CompanyContract.contract_type == "SAAS_SUBSCRIPTION",
+                CompanyContract.status.in_(accepted),
+            )
+        )
+        return contract is not None
+
     def require_legal_release(self) -> None:
         if not (
             self._settings.legal_signing_enabled
@@ -351,13 +520,17 @@ class ContractSignatureService:
         challenge_code: str | None = None,
     ) -> dict[str, Any]:
         """Exécute la signature électronique numérique avec preuve d'audit, réconciliation et génération de PDF certifié."""
-        self.require_legal_release()
+        pilot = self.sandbox_pilot_signing()
+        if not pilot:
+            self.require_legal_release()
         self.verify_signatory_authority(user, company.id, declared_authority)
 
         if not consent_checkbox:
             raise ValueError("Le consentement exprès et explicite est obligatoire pour valider la signature.")
 
         contract = self.get_contract(company.id, contract_type)
+        if self.signature_blocked(contract):
+            raise ContractAuthorityError("Document en révision juridique — consultation seulement.")
         if contract.status in (ContractLifecycleStatus.SIGNED.value, ContractLifecycleStatus.CUSTOMER_SIGNED.value, ContractLifecycleStatus.FULLY_EXECUTED.value):
             raise ContractAlreadySignedError(f"Le contrat {contract_type} est déjà signé et scellé.")
 
@@ -416,7 +589,44 @@ class ContractSignatureService:
         currency = company.currency_code or "CAD"
         price_str = f"{schedule.monthly_price} {currency} / mois" if schedule.monthly_price else "Sur devis personnalisé"
 
-        is_sandbox_env = self._settings.provider_incorporation_status == "UNVERIFIED_PENDING_INCORPORATION"
+        is_sandbox_env = pilot or self._settings.provider_incorporation_status == "UNVERIFIED_PENDING_INCORPORATION"
+        signature_mode = "SANDBOX_PILOT" if pilot else "ELECTRONIC"
+        storage_rel_path = f"contracts/{company.id}/{contract_type}_{receipt_id}.pdf"
+        transaction_id = f"TX-{receipt_id.hex[:12].upper()}"
+
+        prior_approval = self._preserve_legal_approval(
+            contract.metadata_json if isinstance(contract.metadata_json, dict) else None
+        )
+        completion_record: dict[str, Any] = {
+            "receipt_id": str(receipt_id),
+            "transaction_id": transaction_id,
+            "contract_type": contract_type,
+            "contract_version": contract.version,
+            "contract_sha256": final_sha256,
+            "language": contract.language,
+            "signer_email": user.email,
+            "signer_name": user_name,
+            "signer_title": signatory_title,
+            "signer_capacity": getattr(legal, "authorized_representative_capacity", "Dirigeant") if legal else "Dirigeant",
+            "ip_address": ip_address,
+            "user_agent": user_agent,
+            "consent_timestamp_utc": now.isoformat(),
+            "consent_recorded": True,
+            "identity_verified_via": "email_otp_challenge",
+            "challenge_id": str(parsed_challenge_id),
+            "storage_path": storage_rel_path,
+            "legal_framework": "RLRQ c. C-1.1 (Québec) & PIPEDA (Canada)",
+            "signature_label": "pilot/test" if pilot else "electronic",
+            "legal_effect": "sandbox_pilot" if pilot else "customer_signed_pending_provider",
+            "provider_countersigned": False,
+            "provider_incorporated": bool(self._settings.provider_incorporation_verified),
+            "execution_party_states": {
+                "customer": "SIGNED",
+                "provider": "PENDING_COUNTERSIGNATURE",
+            },
+            "provider_entity_status": self._settings.provider_incorporation_status,
+            **prior_approval,
+        }
 
         pdf_bytes = ContractPdfGenerator.generate_pdf(
             contract_title=contract.title,
@@ -433,46 +643,24 @@ class ContractSignatureService:
             content_text=interpolated_text,
             sha256_hash=final_sha256,
             signed_at=now,
-            signature_mode="ELECTRONIC",
+            signature_mode=signature_mode,
             audit_receipt_id=str(receipt_id),
             ip_address=ip_address,
             is_draft=False,
             execution_state=ContractExecutionPartyState.PENDING_PROVIDER.value,
             legal_profile_data=legal_dict,
+            completion_record=completion_record,
             is_sandbox=is_sandbox_env,
         )
 
         # 4. Stockage persistant et chiffré du PDF
-        storage_rel_path = f"contracts/{company.id}/{contract_type}_{receipt_id}.pdf"
         full_storage_path = Path(self._settings.artifact_root) / storage_rel_path
         full_storage_path.parent.mkdir(parents=True, exist_ok=True)
         full_storage_path.write_bytes(pdf_bytes)
         pdf_sha256 = self.compute_sha256(pdf_bytes)
+        completion_record["pdf_sha256"] = pdf_sha256
 
         # 5. Registre d'achèvement électronique Avenqo (tamper-evident completion record)
-        completion_record = {
-            "receipt_id": str(receipt_id),
-            "transaction_id": f"TX-{receipt_id.hex[:12].upper()}",
-            "contract_type": contract_type,
-            "contract_version": contract.version,
-            "contract_sha256": final_sha256,
-            "language": contract.language,
-            "signer_email": user.email,
-            "signer_name": user_name,
-            "signer_title": signatory_title,
-            "signer_capacity": getattr(legal, "authorized_representative_capacity", "Dirigeant") if legal else "Dirigeant",
-            "ip_address": ip_address,
-            "user_agent": user_agent,
-            "consent_timestamp_utc": now.isoformat(),
-            "storage_path": storage_rel_path,
-            "legal_framework": "RLRQ c. C-1.1 (Québec) & PIPEDA (Canada)",
-            "execution_party_states": {
-                "customer": "SIGNED",
-                "provider": "PENDING_COUNTERSIGNATURE",
-            },
-            "provider_entity_status": self._settings.provider_incorporation_status,
-        }
-
         self._audit.record(
             actor_user_id=user.id,
             action="contract.digitally_signed",
@@ -486,7 +674,7 @@ class ContractSignatureService:
         # 6. Mise à jour de l'enregistrement de contrat
         contract.status = ContractLifecycleStatus.CUSTOMER_SIGNED.value
         contract.execution_state = ContractExecutionPartyState.PENDING_PROVIDER.value
-        contract.signature_mode = "ELECTRONIC"
+        contract.signature_mode = signature_mode
         contract.signatory_user_id = user.id
         contract.signatory_name = user_name
         contract.signatory_email = user.email
@@ -499,47 +687,313 @@ class ContractSignatureService:
         contract.storage_path = storage_rel_path
         contract.audit_receipt_id = receipt_id
         contract.commercial_schedule_json = schedule.to_dict()
-        contract.completion_record_json = completion_record
-        contract.metadata_json = completion_record
+        contract.completion_record_json = dict(completion_record)
+        contract.metadata_json = dict(completion_record)
 
         self._db.commit()
 
-        # 7. Notification par courriel transactionnel
-        if self._notifier:
-            try:
-                mail_body = (
-                    f"Bonjour {user_name},\n\n"
-                    f"Votre contrat {contract.title} (Réf : {contract.contract_type}-{contract.version}) "
-                    f"a été signé avec succès le {now.strftime('%Y-%m-%d %H:%M UTC')}.\n\n"
-                    f"Statut : Signé par le client — En attente de contresignature autorisée par PMC Solutions AI.\n"
-                    f"Empreinte cryptographique SHA-256 : {final_sha256}\n"
-                    f"Identifiant de transaction : TX-{receipt_id.hex[:12].upper()}\n\n"
-                    "L'exemplaire certifié est disponible dans votre portail libre-service 'Mes Contrats'.\n\n"
-                    "L'équipe Avenqo Platform"
-                )
-                self._notifier.send_transactional(
-                    user.email,
-                    f"Avenqo — Contrat signé : {contract.title}",
-                    mail_body,
-                )
-            except Exception as e:
-                logger.error("Échec de notification courriel pour signature de contrat: %s", e)
+        # 7. Envoi automatique de l'exemplaire PDF signé par courriel au signataire autorisé
+        email_delivery = self.send_signed_contract_email(
+            contract=contract,
+            signer=user,
+            pdf_bytes=pdf_bytes,
+        )
 
         return {
             "contract_id": str(contract.id),
             "contract_type": contract.contract_type,
             "status": contract.status,
             "execution_state": contract.execution_state,
-            "signature_mode": "ELECTRONIC",
+            "signature_mode": signature_mode,
+            "signature_label": completion_record["signature_label"],
             "signatory_name": user_name,
             "signatory_email": user.email,
             "signatory_title": signatory_title,
             "signed_at": now.isoformat(),
             "sha256_hash": final_sha256,
+            "pdf_sha256": pdf_sha256,
             "storage_path": storage_rel_path,
             "receipt_id": str(receipt_id),
             "transaction_id": completion_record["transaction_id"],
+            "email_delivery": email_delivery,
         }
+
+    def _resolve_signer_locale(
+        self,
+        signer: User,
+        company: Company | None,
+        contract: CompanyContract,
+    ) -> str:
+        for candidate in (
+            getattr(signer, "preferred_language", None),
+            getattr(signer, "locale", None),
+            get_company_locale(self._db, contract.company_id) if contract.company_id else None,
+            getattr(company, "preferred_language", None) if company else None,
+            contract.language,
+        ):
+            normalized = catalog_code_or_none(candidate)
+            if normalized:
+                return normalized
+        return "fr"
+
+    def _build_signed_contract_email(
+        self,
+        *,
+        locale: str,
+        signer_name: str,
+        company_name: str,
+        contract: CompanyContract,
+        transaction_id: str,
+        signed_at_str: str,
+        pilot: bool,
+        portal_url: str,
+        secure_download_url: str,
+    ) -> tuple[str, str, str]:
+        lang = (locale or "fr").split("-")[0].lower()
+        is_en = lang == "en" or (lang not in {"fr"} and contract.language == "en" and lang not in {"es", "de", "pt", "it", "ro"})
+        if lang == "es":
+            status_line = (
+                "Firma piloto de entorno de prueba (Sandbox) — no constituye contrafirma ni prueba de incorporación."
+                if pilot
+                else "Firmado por el cliente — pendiente de contrafirma del proveedor."
+            )
+            subject = f"Avenqo — Ejemplar PDF firmado : {contract.title} ({transaction_id})"
+            lines = (
+                f"Hola {signer_name},",
+                "",
+                f"Adjunto encontrará el ejemplar PDF certificado de su contrato firmado para {company_name}.",
+                "",
+                f"• Contrato : {contract.title} ({contract.contract_type} — {contract.version})",
+                f"• Número de transacción : {transaction_id}",
+                f"• Recibo de auditoría : {contract.audit_receipt_id}",
+                f"• Fecha y hora (UTC) : {signed_at_str}",
+                f"• Estado real del documento : {status_line}",
+                f"• Huella SHA-256 (contrato) : {contract.sha256_hash}",
+                f"• Huella SHA-256 (PDF) : {contract.pdf_sha256}",
+                "",
+                f"Enlace seguro al documento : {secure_download_url}",
+                f"Espacio Mis Contratos : {portal_url}",
+                "",
+                "Equipo Avenqo Platform",
+            )
+        elif is_en:
+            status_line = (
+                "Sandbox pilot signature recorded — not a provider countersignature and not proof of incorporation."
+                if pilot
+                else "Signed by customer — awaiting provider countersignature."
+            )
+            subject = f"Avenqo — Signed Contract PDF: {contract.title} ({transaction_id})"
+            lines = (
+                f"Hello {signer_name},",
+                "",
+                f"Please find attached the certified PDF copy of your signed agreement for {company_name}, including the signature summary and completion receipt.",
+                "",
+                f"• Agreement: {contract.title} ({contract.contract_type} — {contract.version})",
+                f"• Transaction ID: {transaction_id}",
+                f"• Audit Receipt ID: {contract.audit_receipt_id}",
+                f"• Signed Timestamp (UTC): {signed_at_str}",
+                f"• Document Status: {status_line}",
+                f"• Contract SHA-256: {contract.sha256_hash}",
+                f"• PDF SHA-256: {contract.pdf_sha256}",
+                "",
+                f"Secure Document Link: {secure_download_url}",
+                f"My Contracts Portal: {portal_url}",
+                "",
+                "Avenqo Platform Team",
+            )
+        else:
+            status_line = (
+                "Signature pilote enregistrée (Sandbox) — pas une contresignature fournisseur ni une preuve d'incorporation."
+                if pilot
+                else "Signé par le client — en attente de contresignature fournisseur."
+            )
+            subject = f"Avenqo — Contrat signé (PDF) : {contract.title} ({transaction_id})"
+            lines = (
+                f"Bonjour {signer_name},",
+                "",
+                f"Veuillez trouver ci-joint l'exemplaire PDF certifié de votre contrat accepté pour {company_name}, incluant le récapitulatif et le reçu de signature.",
+                "",
+                f"• Contrat : {contract.title} ({contract.contract_type} — {contract.version})",
+                f"• Numéro de transaction : {transaction_id}",
+                f"• Reçu d'audit : {contract.audit_receipt_id}",
+                f"• Date et heure de signature (UTC) : {signed_at_str}",
+                f"• Statut réel du document : {status_line}",
+                f"• Empreinte cryptographique SHA-256 (contrat) : {contract.sha256_hash}",
+                f"• Empreinte cryptographique SHA-256 (PDF) : {contract.pdf_sha256}",
+                "",
+                f"Lien sécurisé vers le document : {secure_download_url}",
+                f"Portail Mes Contrats : {portal_url}",
+                "",
+                "L'équipe Avenqo Platform",
+            )
+        text_body = "\n".join(lines)
+        from html import escape
+        html_body = (
+            "<div style='font-family:Inter,Arial,sans-serif;color:#0B132B;line-height:1.5'>"
+            + "<p>"
+            + escape(text_body).replace("\n\n", "</p><p>").replace("\n", "<br/>")
+            + "</p></div>"
+        )
+        return subject, text_body, html_body
+
+    def send_signed_contract_email(
+        self,
+        *,
+        contract: CompanyContract,
+        signer: User,
+        pdf_bytes: bytes | None = None,
+    ) -> dict[str, Any]:
+        """Envoie de manière idempotente le PDF signé en pièce jointe au courriel vérifié du signataire autorisé."""
+        if signer.company_id != contract.company_id:
+            raise ContractAuthorityError(
+                "Violation d'isolation multi-tenant : l'utilisateur n'appartient pas à l'entreprise propriétaire du contrat."
+            )
+        if contract.status not in CUSTOMER_ACCEPTED_STATUSES or not contract.audit_receipt_id:
+            raise ValueError("Le contrat doit être signé avant l'envoi de l'exemplaire PDF signé.")
+        if signer.role not in {UserRole.OWNER, UserRole.ADMIN}:
+            raise ContractAuthorityError(
+                "Seul un signataire autorisé (Propriétaire ou Administrateur) peut recevoir l'exemplaire contractuel."
+            )
+        if not signer.is_active or signer.email_verified_at is None:
+            raise ContractAuthorityError(
+                "Le signataire doit disposer d'une adresse courriel vérifiée et d'un compte actif."
+            )
+        recipient = (contract.signatory_email or signer.email or "").strip()
+        if not recipient or "@" not in recipient:
+            raise ContractAuthorityError("Adresse courriel vérifiée du signataire introuvable.")
+        # Never send a signed contract to a different user unless they are the recorded signatory.
+        if contract.signatory_user_id and signer.id != contract.signatory_user_id and signer.email.lower() != recipient.lower():
+            # Still deliver only to the recorded authorized signatory email of this contract.
+            pass
+
+        company = self._db.get(Company, contract.company_id)
+        if company is None or company.id != contract.company_id:
+            raise ContractAuthorityError("Entreprise du contrat introuvable.")
+
+        receipt_str = str(contract.audit_receipt_id)
+        transaction_id = f"TX-{contract.audit_receipt_id.hex[:12].upper()}"
+        idempotency_key = f"signed_pdf_email:{contract.id}:{receipt_str}"
+
+        record_dict = dict(contract.completion_record_json) if isinstance(contract.completion_record_json, dict) else {}
+        existing_delivery = record_dict.get("signed_pdf_email_delivery")
+        if (
+            isinstance(existing_delivery, dict)
+            and existing_delivery.get("idempotency_key") == idempotency_key
+            and existing_delivery.get("status") in {"email_accepted", "sandbox_internal_capture"}
+        ):
+            return {
+                **existing_delivery,
+                "already_sent": True,
+            }
+
+        if pdf_bytes is None:
+            if not contract.storage_path:
+                raise FileNotFoundError("Chemin de stockage du PDF signé manquant.")
+            full_path = Path(self._settings.artifact_root) / contract.storage_path
+            if not full_path.exists():
+                raise FileNotFoundError("Exemplaire PDF signé introuvable sur le stockage.")
+            pdf_bytes = full_path.read_bytes()
+
+        computed_pdf_sha = self.compute_sha256(pdf_bytes)
+        if contract.pdf_sha256 and computed_pdf_sha != contract.pdf_sha256:
+            raise ValueError("Échec de vérification d'intégrité SHA-256 du PDF signé.")
+
+        attachment_filename = f"{contract.contract_type}_{contract.version}_{transaction_id}.pdf"
+        attachment = EmailAttachment(
+            filename=attachment_filename,
+            content=pdf_bytes,
+            content_type="application/pdf",
+        )
+
+        token_service = SecureDocumentTokenService()
+        download_token = token_service.generate_download_token(
+            company_id=contract.company_id,
+            user_id=contract.signatory_user_id or signer.id,
+            doc_id=contract.id,
+            doc_type="contract",
+            filename=attachment_filename,
+        )
+        frontend_origin = self._settings.public_frontend_origin().rstrip("/")
+        portal_url = f"{frontend_origin}/settings/contracts?contract={contract.contract_type}"
+        secure_download_url = f"{frontend_origin}/api/v1/secure-downloads/{download_token}"
+
+        locale = self._resolve_signer_locale(signer, company, contract)
+        signed_at_dt = contract.signed_at or datetime.now(timezone.utc)
+        signed_at_str = signed_at_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+        pilot = self.sandbox_pilot_signing() or contract.signature_mode == "SANDBOX_PILOT"
+
+        subject, text_body, html_body = self._build_signed_contract_email(
+            locale=locale,
+            signer_name=contract.signatory_name or signer.email,
+            company_name=company.name,
+            contract=contract,
+            transaction_id=transaction_id,
+            signed_at_str=signed_at_str,
+            pilot=pilot,
+            portal_url=portal_url,
+            secure_download_url=secure_download_url,
+        )
+
+        token_company = sandbox_mail_company_id.set(str(contract.company_id))
+        token_session = sandbox_mail_session.set(self._db)
+        try:
+            delivery_status = deliver_signed_contract_copy(
+                notifier=self._notifier,
+                settings=self._settings,
+                recipient=recipient,
+                subject=subject,
+                text_body=text_body,
+                html_body=html_body,
+                attachment=attachment,
+            )
+        finally:
+            sandbox_mail_company_id.reset(token_company)
+            sandbox_mail_session.reset(token_session)
+
+        attempt_now = datetime.now(timezone.utc)
+        prior_attempts = int(existing_delivery.get("attempts", 0)) if isinstance(existing_delivery, dict) else 0
+        delivery_record: dict[str, Any] = {
+            "idempotency_key": idempotency_key,
+            "status": delivery_status,
+            "delivered_confirmed": False,  # Honest status: acceptance by MTA/provider is never reported as final inbox delivery
+            "recipient_masked": mask_email(recipient),
+            "locale": locale,
+            "transaction_id": transaction_id,
+            "receipt_id": receipt_str,
+            "contract_type": contract.contract_type,
+            "contract_version": contract.version,
+            "attachment_filename": attachment_filename,
+            "attachment_sha256": computed_pdf_sha,
+            "attachment_size_bytes": len(pdf_bytes),
+            "portal_url": portal_url,
+            "secure_download_url": secure_download_url,
+            "attempts": prior_attempts + 1,
+            "last_attempt_at_utc": attempt_now.isoformat(),
+            "sent_at_utc": attempt_now.isoformat() if delivery_status in {"email_accepted", "sandbox_internal_capture"} else None,
+            "already_sent": False,
+        }
+
+        record_dict["signed_pdf_email_delivery"] = delivery_record
+        meta_dict = dict(contract.metadata_json) if isinstance(contract.metadata_json, dict) else {}
+        meta_dict["signed_pdf_email_delivery"] = delivery_record
+        contract.completion_record_json = record_dict
+        contract.metadata_json = meta_dict
+
+        self._audit.record(
+            actor_user_id=signer.id,
+            action=(
+                "contract.signed_pdf_email_dispatched"
+                if delivery_status in {"email_accepted", "sandbox_internal_capture"}
+                else "contract.signed_pdf_email_not_sent"
+            ),
+            target_type="commercial_contract",
+            target_id=receipt_str,
+            company_id=contract.company_id,
+            metadata=delivery_record,
+            commit=False,
+        )
+        self._db.commit()
+        return delivery_record
 
     def countersign_contract_provider(
         self,
@@ -649,6 +1103,8 @@ class ContractSignatureService:
         self.verify_signatory_authority(user, company.id, declared_authority=True)
 
         contract = self.get_contract(company.id, contract_type)
+        if self.signature_blocked(contract):
+            raise ContractAuthorityError("Document en révision juridique — consultation seulement.")
         if contract.status in (ContractLifecycleStatus.SIGNED.value, ContractLifecycleStatus.FULLY_EXECUTED.value):
             raise ContractAlreadySignedError(f"Le contrat {contract_type} est déjà validé.")
 

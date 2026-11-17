@@ -278,6 +278,69 @@ class CommerceConnectionService:
         except WooCommerceConnectorError as exc:
             raise CommerceAuthorizationError(self._woocommerce_auth_message(exc)) from exc
 
+    def store_unverified_api_credentials(
+        self,
+        tenant: TenantContext,
+        *,
+        provider: str,
+        account_id: str,
+        api_key: str,
+        api_secret: str | None,
+    ) -> CommerceConnection:
+        """Store a tenant-supplied key without marking the connector connected.
+
+        OAuth marketplace apps are refused here. A stored key stays CONNECTING
+        until a provider-specific verification exists.
+        """
+        allowed = {"adobe_commerce", "squarespace_commerce", "prestashop", "shipstation"}
+        if provider not in allowed:
+            raise CommerceAuthorizationError(
+                "This provider needs a Sandbox application credential before OAuth can start"
+            )
+        account = account_id.strip().lower()
+        secret = api_key.strip()
+        if len(account) < 3 or not secret:
+            raise CommerceAuthorizationError("Account identifier and API key are required")
+        existing = self._db.scalar(
+            select(CommerceConnection).where(
+                CommerceConnection.provider == provider,
+                CommerceConnection.external_account_id == account,
+            )
+        )
+        if existing is not None and existing.company_id != tenant.company_id:
+            raise CommerceAuthorizationError("This account already belongs to another company")
+        if (
+            existing is not None
+            and existing.status == CommerceConnectionStatus.CONNECTED.value
+            and existing.encrypted_credentials
+        ):
+            raise CommerceAuthorizationError("A verified connection already exists for this account")
+        payload: dict[str, Any] = {"api_key": secret}
+        if api_secret and api_secret.strip():
+            payload["api_secret"] = api_secret.strip()
+        encrypted = self._cipher.encrypt(payload)
+        if existing is None:
+            existing = CommerceConnection(
+                company_id=tenant.company_id,
+                provider=provider,
+                external_account_id=account,
+                display_name=account,
+                status=CommerceConnectionStatus.CONNECTING.value,
+                encrypted_credentials=encrypted,
+                granted_scopes=[],
+                capabilities=[],
+                sync_cursor={},
+                dataset_ids={},
+            )
+            self._db.add(existing)
+        else:
+            existing.encrypted_credentials = encrypted
+            existing.status = CommerceConnectionStatus.CONNECTING.value
+            existing.display_name = account
+        self._db.commit()
+        self._db.refresh(existing)
+        return existing
+
     async def complete_shopify_oauth(
         self,
         callback_parameters: Mapping[str, str],

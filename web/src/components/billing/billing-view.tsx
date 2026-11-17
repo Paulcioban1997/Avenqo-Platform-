@@ -68,6 +68,8 @@ interface SubscriptionInfo {
   billing_frequency?: string;
   currency?: string;
   stripe_subscription_linked?: boolean;
+  entitlement_status?: string | null;
+  stripe_payment_status?: string | null;
   company_name?: string;
   payment_method?: PaymentMethodSummary | null;
 }
@@ -125,6 +127,7 @@ interface InvoiceItem {
   period_end?: string;
   invoice_pdf?: string | null;
   hosted_invoice_url?: string | null;
+  stripe_confirmed?: boolean | null;
 }
 
 export function BillingView() {
@@ -381,17 +384,8 @@ export function BillingView() {
       setActionError(companyTranslations.billingUnavailable);
       return;
     }
-    const code = (subscription.plan_code || "").toLowerCase();
-    // Anti-double-subscription protection: an active Professional subscriber NEVER checks out again
-    if (code === "professional") {
-      void handleOpenStripePortal();
-      return;
-    }
-    if (code === "demo" || code === "base") {
-      setIsUpgradeModalOpen(true);
-    } else {
-      void handleOpenStripePortal();
-    }
+    // Real Stripe subscription → Customer Portal; otherwise sandbox Checkout via /portal.
+    void handleOpenStripePortal();
   };
 
   const handleSubscribeToBase = async () => {
@@ -561,26 +555,44 @@ export function BillingView() {
 
   const totalHistoryPages = Math.ceil(historyTotal / historyPageSize) || 1;
 
-  const statusLabel =
-    subscription.status === "active"
-      ? "Actif"
-      : subscription.status === "trialing"
+  const stripeLinked = Boolean(subscription.stripe_subscription_linked);
+  const paymentStatus = subscription.stripe_payment_status || (stripeLinked ? subscription.status : "unlinked");
+  const formatStripeDate = (value?: string | null) => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    // Stripe billing periods are UTC instants; render the UTC calendar day to match Stripe.
+    return parsed.toLocaleDateString(locale, {
+      timeZone: "UTC",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  };
+  const statusLabel = !stripeLinked
+    ? (locale.startsWith("fr") ? "Plan local — Stripe non lié" : "Local plan — Stripe unlinked")
+    : paymentStatus === "active"
+      ? (locale.startsWith("fr") ? "Actif (Stripe)" : "Active (Stripe)")
+      : paymentStatus === "trialing"
       ? "Essai"
-      : subscription.status === "past_due"
+      : paymentStatus === "past_due"
       ? "Paiement en retard"
-      : subscription.status === "canceled"
+      : paymentStatus === "canceled"
       ? "Annulé"
-      : subscription.status === "canceling_at_period_end" ? "Annulation en fin de période"
-      : subscription.status === "inactive" ? "Inactif" : "—";
+      : paymentStatus === "canceling_at_period_end"
+      ? "Annulation en fin de période"
+      : paymentStatus === "inactive"
+      ? "Inactif"
+      : "—";
 
   const statusColor =
-    subscription.status === "active"
+    stripeLinked && paymentStatus === "active"
       ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
-      : subscription.status === "trialing"
+      : stripeLinked && paymentStatus === "trialing"
       ? "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400"
-      : subscription.status === "past_due"
+      : paymentStatus === "past_due"
       ? "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400"
-      : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
+      : "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300";
 
   if (loadError) return <div role="alert" className="mx-auto max-w-6xl rounded-2xl border border-rose-400 p-6">
     <p>{companyTranslations.billingUnavailable}</p>
@@ -610,6 +622,16 @@ export function BillingView() {
       </div>
 
       {/* Notifications */}
+      {!stripeLinked && (
+        <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-200 dark:border-white/[0.08] flex items-center gap-2.5 text-xs text-slate-700 dark:text-slate-300">
+          <AlertCircle size={16} className="shrink-0 text-[#0076FF]" />
+          <span>
+            {locale.startsWith("fr")
+              ? "Le plan et les modules locaux restent actifs. Aucun abonnement Stripe test n’est lié : utilisez Gérer l’abonnement pour ouvrir Checkout (après acceptation SaaS) ou le portail client s’il existe déjà."
+              : "Local plan and modules stay active. No Stripe test subscription is linked: use Manage subscription to open Checkout (after SaaS acceptance) or the customer portal if one already exists."}
+          </span>
+        </div>
+      )}
       {actionError && (
         <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 flex items-center gap-2.5 text-xs text-amber-800 dark:text-amber-300">
           <AlertCircle size={16} className="shrink-0 text-amber-600 dark:text-amber-400" />
@@ -668,11 +690,7 @@ export function BillingView() {
               <Calendar size={14} className="text-slate-400" />
               <span>
                 {subscription.stripe_subscription_linked && subscription.current_period_end
-                  ? new Date(subscription.current_period_end).toLocaleDateString(locale, {
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                    })
+                  ? formatStripeDate(subscription.current_period_end)
                   : t.shell.stripeNotLinked}
               </span>
             </div>
@@ -689,6 +707,10 @@ export function BillingView() {
                 <span>
                   {subscription.payment_method.brand} •••• {subscription.payment_method.last4}
                 </span>
+              ) : stripeLinked ? (
+                <span className="text-slate-500 dark:text-slate-400 text-xs">
+                  {locale.startsWith("fr") ? "Carte gérée via Stripe" : "Card managed in Stripe"}
+                </span>
               ) : (
                 <span className="text-slate-400 dark:text-slate-500 text-xs">{companyTranslations.billingPortalButton}</span>
               )}
@@ -696,7 +718,9 @@ export function BillingView() {
             <div className="text-[11px] text-slate-400 mt-1">
               {subscription.payment_method
                 ? `Exp: ${String(subscription.payment_method.exp_month).padStart(2, "0")}/${subscription.payment_method.exp_year}`
-                : t.shell.stripeNotLinked}
+                : stripeLinked
+                  ? (locale.startsWith("fr") ? "Portail client disponible" : "Customer portal available")
+                  : t.shell.stripeNotLinked}
             </div>
           </div>
         </div>
@@ -818,7 +842,8 @@ export function BillingView() {
               </p>
             </div>
             <button
-              onClick={() => setIsEnterpriseModalOpen(true)}
+              type="button"
+              onClick={() => document.getElementById("tenant-invoices")?.scrollIntoView({ behavior: "smooth", block: "start" })}
               className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold shrink-0 transition-colors shadow-xs cursor-pointer flex items-center gap-1.5"
             >
               <span>{companyTranslations.billingInvoicesTitle}</span>
@@ -992,7 +1017,7 @@ export function BillingView() {
                     />
                   </div>
                   <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 text-right">
-                    {item.percentage}% {billingTranslations.totalRemaining}
+                    {item.percentage}% {locale.startsWith("fr") ? "de la consommation" : "of usage"}
                   </div>
                 </div>
               </div>
@@ -1137,7 +1162,7 @@ export function BillingView() {
       </div>
 
       {/* 6. FACTURES (Invoices Table & Real PDF Download) */}
-      <div className="space-y-3 pt-4">
+      <div id="tenant-invoices" className="space-y-3 pt-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h2 className="text-base font-extrabold text-slate-900 dark:text-[#F4F7FB]">
@@ -1154,7 +1179,6 @@ export function BillingView() {
                 "{count}",
                 invoices.length.toLocaleString(locale),
               )}
-              {testDocuments.length > 0 && ` · ${testDocuments.length} ${locale.startsWith("fr") ? "facture(s) de test" : "test invoice(s)"}`}
             </span>
           </div>
         </div>
@@ -1184,13 +1208,15 @@ export function BillingView() {
                 <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
                   {invoices.map((inv) => {
                     const invNumber = inv.number || "—";
-                    const dateStr = inv.issued_at ? inv.issued_at.slice(0, 10) : "—";
+                    const dateStr = formatStripeDate(inv.issued_at) || (inv.issued_at ? inv.issued_at.slice(0, 10) : "—");
                     const periodStr =
                       inv.period_start && inv.period_end
-                        ? `${inv.period_start.slice(0, 7)}`
+                        ? `${formatStripeDate(inv.period_start) || inv.period_start.slice(0, 10)} → ${formatStripeDate(inv.period_end) || inv.period_end.slice(0, 10)}`
                         : "Courante";
                     const amountStr = `${((inv.total || 0) / 100).toFixed(2)} ${(inv.currency || "CAD").toUpperCase()}`;
-                    const isPaid = (inv.status || "").toLowerCase() === "paid";
+                    const localPaid = (inv.status || "").toLowerCase() === "paid";
+                    const isPaid = inv.stripe_confirmed === true;
+                    const unconfirmed = localPaid && !isPaid;
 
                     return (
                       <tr
@@ -1223,7 +1249,7 @@ export function BillingView() {
                             }`}
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                            {isPaid ? invoiceTranslations.invoicePaid : inv.status === "open" ? invoiceTranslations.invoiceOpen : inv.status}
+                            {isPaid ? invoiceTranslations.invoicePaid : unconfirmed ? (locale.startsWith("fr") ? "Non confirmée par Stripe" : "Not confirmed by Stripe") : inv.status === "open" ? invoiceTranslations.invoiceOpen : inv.status}
                           </span>
                         </td>
                         <td className="py-3.5 px-4 text-right">

@@ -23,6 +23,8 @@ import type { AppTranslations } from "@/lib/i18n/app-dictionary";
 import { useLocale } from "@/lib/i18n/locale-context";
 import type { AppointmentItem } from "./appointment-details-drawer";
 import { validDate } from "./crm-format";
+import { HorizontalScroller } from "@/components/shell/horizontal-scroller";
+import { DisplayAmount } from "@/components/common/display-amount";
 
 export type CalendarMode = "month" | "week" | "day" | "agenda" | "list" | "kanban";
 
@@ -57,6 +59,11 @@ export function CRMCalendarView({
   t,
 }: CRMCalendarViewProps) {
   const { locale } = useLocale();
+  const appointmentMoney = (app: AppointmentItem) => (
+    typeof app.currency === "string" && /^[A-Z]{3}$/.test(app.currency)
+      ? <DisplayAmount amount={app.price} currency={app.currency} locale={locale} onDate={app.start_time ? app.start_time.slice(0, 10) : null} align="end" />
+      : <span>{app.price}</span>
+  );
   const isSpanish = locale === "es";
   const [viewMode, setViewMode] = useState<CalendarMode>("week");
   const [selectedServiceId, setSelectedServiceId] = useState<string>("all");
@@ -224,7 +231,8 @@ export function CRMCalendarView({
         </div>
 
         {/* View Mode Buttons */}
-        <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl overflow-x-auto">
+        <HorizontalScroller>
+          <div className="flex w-max items-center gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/80">
           {[
             { id: "day", label: t.crm.calendar.day, icon: CalendarIcon },
             { id: "week", label: t.crm.calendar.week, icon: CalendarDays },
@@ -239,18 +247,19 @@ export function CRMCalendarView({
               <button
                 key={mode.id}
                 onClick={() => setViewMode(mode.id as CalendarMode)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition ${
                   active
                     ? "bg-white dark:bg-slate-700 text-[#0076FF] dark:text-[#00D4FF] shadow-sm"
                     : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">{mode.label}</span>
+                <span>{mode.label}</span>
               </button>
             );
           })}
-        </div>
+          </div>
+        </HorizontalScroller>
       </div>
 
       {/* Secondary Filter Bar */}
@@ -464,7 +473,7 @@ export function CRMCalendarView({
 
                       <div className="text-right">
                         <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 block">
-                          {app.price} $
+                          {appointmentMoney(app)}
                         </span>
                         {app.employee_name && (
                           <span className="text-xs text-slate-400">{app.employee_name}</span>
@@ -577,7 +586,7 @@ export function CRMCalendarView({
                         </p>
                         <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between text-[10px]">
                           <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                            {app.price} $
+                            {appointmentMoney(app)}
                           </span>
                           <span className="text-slate-400">{app.employee_name || "Non assigné"}</span>
                         </div>
@@ -636,7 +645,7 @@ export function CRMCalendarView({
                         </td>
                         <td className="py-3.5 px-4">{getStatusBadge(app.status)}</td>
                         <td className="py-3.5 px-4 text-right font-bold text-emerald-600 dark:text-emerald-400">
-                          {app.price} $
+                          {appointmentMoney(app)}
                         </td>
                       </tr>
                     ))

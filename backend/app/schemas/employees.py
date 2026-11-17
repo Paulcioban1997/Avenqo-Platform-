@@ -29,6 +29,7 @@ class EmployeeUpdateRequest(BaseModel):
     is_active: bool | None = None
     job_title: str | None = Field(default=None, min_length=1, max_length=120)
     department: str | None = Field(default=None, max_length=120)
+    permissions: list[str] | None = None
 
     @model_validator(mode="after")
     def require_change(self) -> "EmployeeUpdateRequest":

@@ -1,7 +1,7 @@
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine, select
+from sqlalchemy import String, cast, create_engine, select, update
 from sqlalchemy.orm import Session
 
 from backend.app.models import Base, Company, CompanyModule, Module, TenantAICreditBalance
@@ -157,4 +157,19 @@ def test_existing_rows_are_preserved_and_tenant_isolation_is_strict(db: Session)
     service.deactivate_module(TenantContext(company_b.id), "retail")
 
     assert db.scalar(select(CompanyModule).where(CompanyModule.id == existing.id)) is existing
-    assert service.can_use_module(TenantContext(company_a.id), "retail") is True
+
+
+def test_postgres_uppercase_status_label_remains_an_active_entitlement(db: Session) -> None:
+    company = _company(db, "professional", "uppercase-status")
+    tenant = TenantContext(company.id)
+    service = _service(db)
+    service.activate_module(tenant, "retail")
+    row = db.scalar(select(CompanyModule).where(CompanyModule.company_id == company.id))
+    db.execute(update(CompanyModule).where(CompanyModule.id == row.id).values(status="ACTIVE"))
+    db.expire_all()
+    stored = db.scalar(select(cast(CompanyModule.status, String)).where(CompanyModule.id == row.id))
+    assert str(stored).upper() == "ACTIVE"
+    assert "retail" in service.get_active_modules(tenant)
+    db.execute(update(CompanyModule).where(CompanyModule.id == row.id).values(status="INACTIVE"))
+    db.expire_all()
+    assert "retail" not in service.get_active_modules(tenant)

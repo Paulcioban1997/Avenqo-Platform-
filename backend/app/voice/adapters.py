@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import base64
-from typing import Any, Protocol, cast
+from typing import Any, AsyncIterator, Protocol, cast
 
 from openai import AsyncOpenAI
 
@@ -24,9 +24,10 @@ class TextToSpeechAdapter(Protocol):
 
 
 class RealtimeAudioAdapter(Protocol):
-    provider_id: str
+    @property
+    def provider_id(self) -> str: ...
 
-    async def open(self, *, locale: str) -> None: ...
+    async def open(self, *, locale: str = "fr-CA") -> None: ...
 
     async def send_audio(self, audio: bytes) -> None: ...
 
@@ -38,7 +39,7 @@ class RealtimeAudioAdapter(Protocol):
 
     async def close(self) -> None: ...
 
-    async def events(self): ...
+    def events(self) -> AsyncIterator[Any]: ...
 
 
 class ExternalVoiceConfigurationRequired(RuntimeError):
@@ -102,7 +103,7 @@ class OpenAITextToSpeechAdapter:
 class UnconfiguredRealtimeAudioAdapter:
     provider_id = "none"
 
-    async def open(self, *, locale: str) -> None:
+    async def open(self, *, locale: str = "fr-CA") -> None:
         raise ExternalVoiceConfigurationRequired("VOICE_REALTIME_PROVIDER is required")
 
     async def send_audio(self, audio: bytes) -> None:
@@ -134,7 +135,7 @@ class OpenAIRealtimeAudioAdapter:
         self._manager = None
         self._connection = None
 
-    async def open(self, *, locale: str) -> None:
+    async def open(self, *, locale: str = "fr-CA") -> None:
         if not self._config.api_key or not self._model:
             raise ExternalVoiceConfigurationRequired("OPENAI_API_KEY and VOICE_REALTIME_MODEL are required")
         client = AsyncOpenAI(api_key=self._config.api_key, base_url=self._config.base_url)

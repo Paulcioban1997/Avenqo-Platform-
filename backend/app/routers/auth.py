@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.config.settings import get_settings
 from backend.app.core.error_localization import catalog_message, localized_api_message
-from backend.app.core.permissions import permissions_for
+from backend.app.core.permission_grants import effective_permissions
 from backend.app.core.rate_limit import rate_limit
 from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_account_notifier, get_auth_service, get_current_identity
@@ -25,6 +25,7 @@ from backend.app.schemas.auth import (
     LoginRequest,
     MessageResponse,
     OrganizationMembershipResponse,
+    DisplayCurrencyRequest,
     PreferredLanguageRequest,
     RefreshTokenRequest,
     RegisterRequest,
@@ -53,7 +54,7 @@ def _user_response(user: User) -> UserResponse:
         job_title=getattr(user, "job_title", "Owner"),
         email=user.email,
         role=user.role,
-        permissions=permissions_for(user.role),
+        permissions=effective_permissions(user),
         is_active=user.is_active,
         is_platform_admin=user.is_platform_admin,
         email_verified_at=user.email_verified_at,
@@ -73,6 +74,7 @@ def _company_response(company: Company) -> CompanyResponse:
         country=company.country,
         preferred_language=company.preferred_language,
         currency_code=getattr(company, "currency_code", None),
+        display_currency=getattr(company, "display_currency", None),
         timezone=company.timezone,
         logo_url=draft.get("company_logo_url"),
         brand_color=draft.get("brand_color"),
@@ -131,7 +133,7 @@ def _clear_auth_cookies(response: Response) -> None:
     "/register",
     response_model=MessageResponse,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(rate_limit("auth_register", "rate_limit_auth_per_minute"))],
+    dependencies=[Depends(rate_limit("auth_register", "rate_limit_auth_per_minute", by_email=True))],
 )
 def register(
     http_request: Request,
@@ -197,12 +199,12 @@ def verify_email(
 @router.post(
     "/resend-verification",
     response_model=MessageResponse,
-    dependencies=[Depends(rate_limit("auth_email_resend", "rate_limit_auth_per_minute"))],
+    dependencies=[Depends(rate_limit("auth_email_resend", "rate_limit_auth_per_minute", by_email=True))],
 )
 @router.post(
     "/email/resend",
     response_model=MessageResponse,
-    dependencies=[Depends(rate_limit("auth_email_resend", "rate_limit_auth_per_minute"))],
+    dependencies=[Depends(rate_limit("auth_email_resend", "rate_limit_auth_per_minute", by_email=True))],
 )
 def resend_verification(
     http_request: Request,
@@ -226,7 +228,7 @@ def resend_verification(
 @router.post(
     "/login",
     response_model=AuthResponse,
-    dependencies=[Depends(rate_limit("auth_login", "rate_limit_auth_per_minute"))],
+    dependencies=[Depends(rate_limit("auth_login", "rate_limit_auth_per_minute", by_email=True))],
 )
 def login(
     request: LoginRequest,
@@ -347,6 +349,27 @@ def update_preferred_language(
     return _company_response(company)
 
 
+@router.patch("/display-currency", response_model=CompanyResponse)
+def update_display_currency(
+    request: DisplayCurrencyRequest,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> CompanyResponse:
+    permissions = set(effective_permissions(identity.user))
+    if "company:manage" not in permissions and "billing:manage" not in permissions:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission insuffisante")
+    from backend.app.services.fx_rates import SUPPORTED
+
+    raw = (request.display_currency or "").strip().upper()
+    if raw and raw not in SUPPORTED:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Devise non convertible")
+    company = identity.user.company
+    company.display_currency = raw or None
+    db.commit()
+    db.refresh(company)
+    return _company_response(company)
+
+
 @router.get("/me", response_model=CurrentAccountResponse)
 def me(
     identity: CurrentIdentity = Depends(get_current_identity),
@@ -451,7 +474,7 @@ def logout(
 @router.post(
     "/password/forgot",
     response_model=MessageResponse,
-    dependencies=[Depends(rate_limit("auth_password_forgot", "rate_limit_auth_per_minute"))],
+    dependencies=[Depends(rate_limit("auth_password_forgot", "rate_limit_auth_per_minute", by_email=True))],
 )
 def forgot_password(
     http_request: Request,

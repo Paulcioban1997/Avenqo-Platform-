@@ -1,7 +1,11 @@
 import type { MetadataRoute } from "next";
+import { isSandboxFrontend, resolvePublicSiteUrl } from "@/lib/public-site";
 
 export default function robots(): MetadataRoute.Robots {
-  const baseUrl = "https://avenqo.ca";
+  if (isSandboxFrontend()) {
+    return { rules: [{ userAgent: "*", disallow: "/" }] };
+  }
+  const baseUrl = resolvePublicSiteUrl();
 
   return {
     rules: [

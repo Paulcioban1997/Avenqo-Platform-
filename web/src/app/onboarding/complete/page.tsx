@@ -28,6 +28,7 @@ export default function OnboardingCompletePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isActivating, setIsActivating] = useState(false);
   const [activationResult, setActivationResult] = useState<any>(null);
+  const [activationError, setActivationError] = useState<string | null>(null);
   const [state, setState] = useState<any>(null);
 
   useEffect(() => {
@@ -49,10 +50,13 @@ export default function OnboardingCompletePage() {
           if (finalizeRes.ok) {
             const finalData = await finalizeRes.json();
             setActivationResult(finalData);
+          } else {
+            const err = await finalizeRes.json().catch(() => ({}));
+            setActivationError(typeof err.detail === "string" ? err.detail : copy.contracts.subtitle);
           }
         }
-      } catch (err) {
-        console.error("Erreur de finalisation:", err);
+      } catch (err: any) {
+        setActivationError(err?.publicMessage || err?.message || copy.contracts.subtitle);
       } finally {
         setIsLoading(false);
         setIsActivating(false);
@@ -64,6 +68,14 @@ export default function OnboardingCompletePage() {
   const handleGoToDashboard = () => {
     router.push("/dashboard");
   };
+
+  if (!isLoading && activationError && !activationResult) {
+    return (
+      <OnboardingWizardLayout currentStepIndex={8} title={copy.complete.title} subtitle={activationError} onNext={() => router.push("/settings/contracts")} nextLabel={copy.preview.proceedToContracts}>
+        <p className="text-sm text-slate-300">{activationError}</p>
+      </OnboardingWizardLayout>
+    );
+  }
 
   if (isLoading || !state) {
     return (

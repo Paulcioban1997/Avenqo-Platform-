@@ -56,7 +56,7 @@ from backend.app.services.invoice_fiscal_service import (
     InvoiceFiscalService,
     InvoiceNotFoundError,
 )
-from backend.app.services.stripe_gateway import BillingProvider, StripeCustomerNotFoundError, StripePriceNotFoundError, StripeTaxConfigurationError
+from backend.app.services.stripe_gateway import BillingProvider, StripeCustomerNotFoundError, StripePriceNotFoundError, StripeTaxConfigurationError, StripeWebhookSignatureError
 from backend.app.services.stripe_invoice_sync import sync_customer_invoices
 from backend.app.models import BillingAccount, BillingInvoice, BillingTestDocument, Company, TenantAICreditBalance, TenantAICreditLedgerEntry, TenantAIProviderAttempt
 from payments import PLANS
@@ -66,6 +66,20 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 manage_billing = require_permission("billing:manage")
+
+
+def _stripe_paid_invoice_ids(provider: BillingProvider | None, customer_id: str | None) -> set[str] | None:
+    """Ids Stripe still reports as paid. None means Stripe could not be asked."""
+    if provider is None or not customer_id:
+        return None
+    try:
+        invoices = provider.list_customer_invoices(customer_id, limit=100)
+    except Exception as exc:
+        text = str(exc).lower()
+        if getattr(exc, "code", None) == "resource_missing" or "no such customer" in text or "no such invoice" in text:
+            return set()
+        return None
+    return {str(invoice.get("id")) for invoice in invoices if str(invoice.get("status") or "") == "paid"}
 
 
 def _credit_usage_period_start(period: str, identity: CurrentIdentity, db: Session) -> datetime:
@@ -91,7 +105,43 @@ def _credit_usage_period_start(period: str, identity: CurrentIdentity, db: Sessi
         return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
-def _ai_usage_module(operation: str | None) -> str:
+def _central_entrypoints(db: Session, company_id: UUID, attempts: Sequence[TenantAIProviderAttempt]) -> dict[UUID, str]:
+    """Spoken Avenqo IA sessions stay Copilot. Phone calls stay Voice AI."""
+    from backend.app.models import VoiceCentralSession
+
+    conversation_ids = list({attempt.conversation_id for attempt in attempts if attempt.conversation_id})
+    entrypoints: dict[UUID, str] = {}
+    for start in range(0, len(conversation_ids), 500):
+        rows = db.scalars(
+            select(VoiceCentralSession).where(
+                VoiceCentralSession.company_id == company_id,
+                VoiceCentralSession.conversation_id.in_(conversation_ids[start:start + 500]),
+            )
+        ).all()
+        for row in rows:
+            entrypoint = str((row.source_context or {}).get("entrypoint") or "")
+            if entrypoint:
+                entrypoints[row.conversation_id] = entrypoint
+    return entrypoints
+
+
+def _ai_usage_module(
+    operation: str | None,
+    *,
+    module_id: str | None = None,
+    entrypoint: str | None = None,
+) -> str:
+    if entrypoint == "central" or module_id in {"central", "copilot"}:
+        return "Copilot"
+    known_modules = {
+        "retail": "Retail AI",
+        "crm": "CRM AI",
+        "ocr": "OCR AI",
+        "marketing": "Marketing AI",
+        "voice": "Voice AI",
+    }
+    if module_id in known_modules:
+        return known_modules[module_id]
     normalized = (operation or "").lower()
     if "voice" in normalized:
         return "Voice AI"
@@ -144,22 +194,33 @@ def _plan_display_price(plan_obj: Any, currency: str) -> tuple[float | None, flo
     return usd, display
 
 
-def subscription_response(account: Any, company: Any = None) -> SubscriptionResponse:
+def subscription_response(
+    account: Any,
+    company: Any = None,
+    *,
+    payment_method: Any = None,
+) -> SubscriptionResponse:
     plan_obj = next((p for p in PLANS if p.code.value == account.plan_code), None)
     plan_name = plan_obj.name if plan_obj else account.plan_code.capitalize()
     currency = (company.currency_code or "CAD").upper() if company else "CAD"
     usd, price = _plan_display_price(plan_obj, currency)
     comp_name = company.name if company else None
     stripe_linked = bool(account.stripe_subscription_id)
+    entitlement_status = str(account.status or "inactive")
+    stripe_payment_status = (
+        "canceling_at_period_end"
+        if stripe_linked and account.cancel_at_period_end and account.status in {"active", "trialing"}
+        else (account.status if stripe_linked else "unlinked")
+    )
+    # Never present Stripe Active / Paid / renewal without a linked Stripe subscription id.
+    display_status = (
+        "inactive"
+        if not stripe_linked
+        else stripe_payment_status
+    )
     return SubscriptionResponse(
         plan_code=account.plan_code,
-        status=(
-            "inactive"
-            if not stripe_linked
-            else "canceling_at_period_end"
-            if account.cancel_at_period_end and account.status in {"active", "trialing"}
-            else account.status
-        ),
+        status=display_status,
         current_period_end=account.current_period_end if stripe_linked else None,
         cancel_at_period_end=account.cancel_at_period_end,
         plan_name=plan_name,
@@ -168,8 +229,10 @@ def subscription_response(account: Any, company: Any = None) -> SubscriptionResp
         billing_frequency="monthly",
         currency=currency,
         stripe_subscription_linked=stripe_linked,
+        entitlement_status=entitlement_status,
+        stripe_payment_status=stripe_payment_status,
         company_name=comp_name,
-        payment_method=None,
+        payment_method=payment_method,
     )
 
 
@@ -213,6 +276,7 @@ def plans() -> list[PlanResponse]:
 def subscription(
     identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
+    service: BillingService = Depends(get_billing_service),
 ) -> SubscriptionResponse:
     account = db.scalar(
         select(BillingAccount).where(
@@ -234,10 +298,33 @@ def subscription(
             billing_frequency="monthly",
             currency=currency,
             stripe_subscription_linked=False,
+            entitlement_status="inactive",
+            stripe_payment_status="unlinked",
             company_name=identity.user.company.name,
             payment_method=None,
         )
-    return subscription_response(account, company=identity.user.company)
+    try:
+        account = service.refresh_stripe_payment_evidence(identity.user.company)
+    except (BillingConfigurationError, StripeCustomerNotFoundError, StripePriceNotFoundError):
+        pass
+    except Exception:
+        logger.exception("Sandbox Stripe evidence refresh failed for tenant %s", identity.user.company_id)
+    payment_method = None
+    if account.stripe_subscription_id and account.stripe_customer_id:
+        card_lookup = getattr(service.provider, "get_customer_card_payment_method", None)
+        if callable(card_lookup):
+            try:
+                payment_method = card_lookup(account.stripe_customer_id)
+            except Exception:
+                logger.exception(
+                    "Stripe payment method lookup failed for tenant %s",
+                    identity.user.company_id,
+                )
+    return subscription_response(
+        account,
+        company=identity.user.company,
+        payment_method=payment_method,
+    )
 
 
 @router.get("/provider-status")
@@ -319,7 +406,7 @@ def portal(
 ) -> RedirectResponse:
     try:
         return RedirectResponse(url=service.create_portal(identity.user.company))
-    except StripeCustomerNotFoundError as exc:
+    except (StripeCustomerNotFoundError, StripePriceNotFoundError) as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except BillingConfigurationError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
@@ -379,10 +466,17 @@ def invoice_history(
         total = len(items)
 
     bounded_limit = min(max(limit, 1), 200)
+    account = db.scalar(select(BillingAccount).where(BillingAccount.company_id == identity.user.company_id))
+    confirmed_ids = _stripe_paid_invoice_ids(provider, account.stripe_customer_id if account is not None else None)
+    visible = []
+    for invoice in items:
+        payload = InvoiceResponse.model_validate(invoice)
+        confirmed = None if confirmed_ids is None else invoice.stripe_invoice_id in confirmed_ids
+        visible.append(payload.model_copy(update={"stripe_confirmed": confirmed}))
     return InvoiceHistoryResponse(
         environment="test" if (settings.stripe_secret_key or "").startswith("sk_test_") else "live",
         synchronization_status="ready" if synchronized else "unavailable",
-        items=[InvoiceResponse.model_validate(invoice) for invoice in items],
+        items=visible,
         total=total,
         offset=max(offset, 0),
         limit=bounded_limit,
@@ -590,9 +684,14 @@ def ai_credits_breakdown(
 
     total = 0
     debited = _debited_attempt_credits(db, identity.user.company_id, attempts)
+    entrypoints = _central_entrypoints(db, identity.user.company_id, attempts)
     for att in attempts:
         creds = debited[att.id]
-        module_counts[_ai_usage_module(att.operation)] += creds
+        module_counts[_ai_usage_module(
+            att.operation,
+            module_id=att.module_id,
+            entrypoint=entrypoints.get(att.conversation_id) if att.conversation_id is not None else None,
+        )] += creds
         total += creds
 
     items = []
@@ -642,6 +741,7 @@ def ai_credits_history(
     )} if actor_ids else {}
     items = []
     debited = _debited_attempt_credits(db, identity.user.company_id, attempts)
+    entrypoints = _central_entrypoints(db, identity.user.company_id, attempts)
     for att in attempts:
         op = (att.operation or "Requête IA").replace("_", " ").title()
         timestamp = att.created_at
@@ -651,7 +751,11 @@ def ai_credits_history(
             AICreditHistoryItem(
                 id=str(att.id),
                 date=timestamp.isoformat(),
-                module=_ai_usage_module(att.operation),
+                module=_ai_usage_module(
+                    att.operation,
+                    module_id=att.module_id,
+                    entrypoint=entrypoints.get(att.conversation_id) if att.conversation_id is not None else None,
+                ),
                 operation=op,
                 credits_used=debited[att.id],
                 user=actors.get(att.user_id, "—") if att.user_id is not None else "—",
@@ -820,12 +924,20 @@ def list_enterprise_quotes(
 @router.post("/webhook", include_in_schema=False)
 async def webhook(
     request: Request,
-    stripe_signature: str = Header(alias="Stripe-Signature"),
+    stripe_signature: str | None = Header(default=None, alias="Stripe-Signature"),
     service: BillingService = Depends(get_billing_service),
 ) -> dict[str, bool]:
+    if not stripe_signature:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Signature Stripe manquante")
     try:
         processed = service.process_webhook(await request.body(), stripe_signature)
-    except Exception:
-        logger.exception("Stripe webhook processing failed")
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Webhook Stripe invalide")
+    except (StripeWebhookSignatureError, ValueError, BillingOperationError) as exc:
+        logger.warning("Stripe webhook rejected: %s", exc)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Webhook Stripe invalide") from exc
+    except BillingConfigurationError as exc:
+        logger.error("Stripe webhook configuration error: %s", exc)
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Configuration webhook Stripe indisponible") from exc
+    except Exception as exc:
+        logger.exception("Stripe webhook internal processing error")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Erreur interne lors du traitement du webhook Stripe") from exc
     return {"processed": processed}

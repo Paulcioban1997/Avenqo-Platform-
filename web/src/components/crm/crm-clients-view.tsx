@@ -23,6 +23,7 @@ import type { AppTranslations } from "@/lib/i18n/app-dictionary";
 import { getAuthHeaders } from "@/lib/api-headers";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { dateText, metricText } from "./crm-format";
+import { DisplayAmount } from "@/components/common/display-amount";
 
 export interface ClientItem {
   id: string;
@@ -394,7 +395,11 @@ export function CRMClientsView({ t, onSelectClientAppointments }: CRMClientsView
                               </div>
                             </div>
                             <div className="text-right">
-                              <span className="font-bold text-emerald-600 block">{app.price} $</span>
+                              <span className="font-bold text-emerald-600 block">
+                                {typeof app.currency === "string" && /^[A-Z]{3}$/.test(app.currency)
+                                  ? <DisplayAmount amount={Number(app.price)} currency={app.currency} locale={locale} onDate={typeof app.start_time === "string" ? app.start_time.slice(0, 10) : null} align="end" />
+                                  : app.price}
+                              </span>
                               <span className="text-[10px] text-slate-400 capitalize">{app.status}</span>
                             </div>
                           </div>

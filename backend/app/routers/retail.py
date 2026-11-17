@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.database import get_db
 from backend.app.core.permissions import permissions_for
-from backend.app.dependencies.auth import get_tenant_context
+from backend.app.dependencies.auth import get_tenant_context, require_permission
 from backend.app.dependencies.ai_authorization import get_active_ai_membership
 from backend.app.dependencies.retail import get_retail_assistant
 from backend.app.dependencies.tenant_business import (
@@ -39,7 +39,11 @@ from modules.entitlements import ModuleAccessDenied
 from modules.retailsense.assistant import RetailAssistantService
 from shared.ai_engine.contracts import TenantContext
 
-router = APIRouter(prefix="/retail", tags=["retail"])
+router = APIRouter(
+    prefix="/retail",
+    tags=["retail"],
+    dependencies=[Depends(require_permission("retail:read"))],
+)
 _MIN_INVENTORY_ANOMALY_SAMPLE = 30
 _MAX_SALES_ANOMALIES = 20
 _SALES_DECLINE_THRESHOLD = -40.0

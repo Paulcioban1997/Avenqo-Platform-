@@ -23,7 +23,7 @@ type ModuleData = {
 
 export function ModuleDetailView({ slug, data }: { slug: string; data: ModuleData }) {
   const { locale } = useLocale();
-  const isEn = locale === "en";
+  const isEn = !locale.startsWith("fr");
   const t = useTranslations();
 
   const name = isEn ? data.nameEn : data.nameFr;

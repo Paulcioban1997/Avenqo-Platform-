@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { Wrench, Plus, CheckCircle2, Clock, DollarSign, AlertCircle, RefreshCw } from "lucide-react";
 import { getAuthHeaders } from "@/lib/api-headers";
 import { useLocale } from "@/lib/i18n/locale-context";
+import { DisplayAmount } from "@/components/common/display-amount";
 
 interface ServiceItem {
   id: string;
@@ -267,7 +268,7 @@ export function CRMServicesSettings() {
                         </span>
                       ) : (
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-800/60">
-                          {locale.startsWith("fr") ? "Non approuvé — Réservation bloquée" : "Unapproved — Booking Blocked"}
+                          {locale.startsWith("fr") ? "Non publié — réservation inactive jusqu’à votre approbation" : "Unpublished — bookings stay off until you approve"}
                         </span>
                       )}
                     </div>
@@ -282,7 +283,9 @@ export function CRMServicesSettings() {
                       <span className="flex items-center gap-1">
                         <DollarSign className="w-3 h-3 text-emerald-500" />
                         <span className="font-semibold text-slate-700 dark:text-slate-300">
-                          {Number(svc.price).toFixed(2)} CAD
+                          {typeof svc.currency === "string" && /^[A-Z]{3}$/.test(svc.currency)
+                            ? <DisplayAmount amount={Number(svc.price)} currency={svc.currency} locale={locale} />
+                            : Number(svc.price).toFixed(2)}
                         </span>
                       </span>
                     </div>

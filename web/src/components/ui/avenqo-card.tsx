@@ -47,7 +47,7 @@ export function AvenqoCard({
 
 export interface MetricCardProps {
   title: string;
-  value?: string | number | null;
+  value?: React.ReactNode;
   delta?: number | null; // e.g. +14.2 or -3.1
   period?: string; // e.g. "vs mois dernier"
   icon?: React.ReactNode;

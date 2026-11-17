@@ -62,7 +62,10 @@ class TelnyxAudioCodec:
         return out.tobytes()
 
     def outbound_pcm(self, payload: object) -> bytes:
-        pcm = self.decode_payload(payload, 48000)
+        # Gemini Live and OpenAI Realtime send 16-bit PCM at 24 kHz. A single
+        # model chunk can exceed one second; 48000 bytes rejected those chunks
+        # and aborted the media session before the caller heard them.
+        pcm = self.decode_payload(payload, 480_000)
         if len(pcm) % 2:
             raise InvalidMediaFrame("Invalid PCM frame")
         filtered = self._anti_alias_filter(pcm)

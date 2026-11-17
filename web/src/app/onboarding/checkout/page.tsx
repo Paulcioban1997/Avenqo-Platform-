@@ -36,9 +36,10 @@ export default function OnboardingCheckoutPage() {
       if (res.ok) {
         const data = await res.json();
         setState(data);
-        const subStatus = data.subscription?.status;
-        if (subStatus === "active" || subStatus === "trialing" || subStatus === "verified_test") {
-          setIsSubscriptionVerified(true);
+        const accessRes = await apiFetch("/api/v1/onboarding/workspace-access", { headers });
+        if (accessRes.ok) {
+          const access = await accessRes.json();
+          setIsSubscriptionVerified(Boolean(access.stripe_confirmed));
         }
       }
     } catch (err) {

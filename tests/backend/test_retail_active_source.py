@@ -906,7 +906,9 @@ def test_connector_initial_orders_generate_forecast_and_recommendations(source_e
     connection.provider = "shopify"
     connection.status = CommerceConnectionStatus.READY.value
 
-    # Insert products and 5 normalized orders within the same week
+    # Five orders in the previous completed ISO week. A rolling "now minus N
+    # days" span flips between one and two weeks, and the 4-week forecast then
+    # flips between 2000 and 1000.
     session.add_all(
         [
             NormalizedCommerceRecord(
@@ -945,6 +947,9 @@ def test_connector_initial_orders_generate_forecast_and_recommendations(source_e
     )
 
     now = datetime.now(timezone.utc)
+    week_start = (now - timedelta(days=now.weekday() + 7)).replace(
+        hour=12, minute=0, second=0, microsecond=0
+    )
     for index in range(5):
         session.add(
             NormalizedCommerceRecord(
@@ -956,7 +961,7 @@ def test_connector_initial_orders_generate_forecast_and_recommendations(source_e
                 normalized_data={
                     "order_id": f"test-ord-{index}",
                     "total_amount": 100.0,
-                    "order_timestamp": (now - timedelta(days=index)).isoformat(),
+                    "order_timestamp": (week_start + timedelta(days=index)).isoformat(),
                     "customer_id": f"cust-{index}",
                     "currency": "CAD",
                     "line_items": [{"product_id": "prod-1", "quantity": 1, "unit_price": 100.0}],
@@ -974,7 +979,7 @@ def test_connector_initial_orders_generate_forecast_and_recommendations(source_e
     sales_result = sales.build(tenant)
     assert sales_result["forecast"] is not None
     assert sales_result["forecast"]["horizon"] == 4
-    assert sales_result["forecast"]["forecasted_total"] == 1000.0
+    assert sales_result["forecast"]["forecasted_total"] == 2000.0
 
     products = TenantProductsService(analytics)
     recommendations = TenantRecommendationsService(analytics, products, None)

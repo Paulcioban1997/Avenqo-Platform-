@@ -105,7 +105,7 @@ jobs:
       - name: Run Calendar OAuth and cancellation regression suite
         timeout-minutes: 5
         run: |
-          python -m pytest tests/backend/test_google_calendar_integration.py tests/backend/test_error_localization.py -q
+          python -m pytest tests/backend/test_google_calendar_integration.py tests/backend/test_error_localization.py tests/backend/test_subscription_module_entitlements.py -q
           python -m pytest tests/backend/test_billing.py -k credit_balance_does_not_require_stripe -q
         env:
           PYTHONPATH: .
@@ -154,6 +154,7 @@ jobs:
           tests/backend/test_voice_ivr_staff_media_scope.py
           tests/backend/test_gemini_live_multi_turn_receive.py
           tests/backend/test_voice_ivr_spoken_name.py
+          tests/backend/test_sandbox_voice_tenant_ready.py
           tests/backend/test_voice_no_silent_central_turns.py
           tests/backend/test_voice_inbound_e2e.py
           tests/backend/test_pr33_pr37_integration.py

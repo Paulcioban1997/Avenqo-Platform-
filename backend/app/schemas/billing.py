@@ -78,6 +78,8 @@ class SubscriptionResponse(BaseModel):
     billing_frequency: str | None = "monthly"
     currency: str | None = "USD"
     stripe_subscription_linked: bool = False
+    entitlement_status: str | None = None
+    stripe_payment_status: str | None = None
     company_name: str | None = None
     payment_method: PaymentMethodSummary | None = None
 
@@ -135,6 +137,7 @@ class InvoiceResponse(BaseModel):
     issued_at: datetime
     paid_at: datetime | None
     due_at: datetime | None
+    stripe_confirmed: bool | None = None
 
     model_config = {"from_attributes": True}
 

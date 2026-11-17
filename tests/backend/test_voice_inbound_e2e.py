@@ -80,6 +80,8 @@ def _weekday_afternoon(hours_utc: int = 18) -> datetime:
 def _prepare_inbound_media_tenant(env) -> User:
     """Professional tenant with Voice + CRM only (two of five plan slots)."""
     configure_local_public_call(env)
+    # Isolate the end-to-end PCM/CRM scenario from the separately tested two-option IVR menu.
+    env.config.call_policy = {"ivr_enabled": False}
     env.company.business_hours = {
         "weekly": {
             "monday": [{"open": "09:00", "close": "17:00"}],
@@ -599,13 +601,16 @@ async def test_inbound_telnyx_realtime_barge_in_interrupt_then_hangup(signed_tel
     await eventually(lambda: adapter.opened)
     await eventually(lambda: len(adapter.spoken) >= 1)
     await adapter.incoming.put(SimpleNamespace(type="input_audio_buffer.speech_started"))
-    await eventually(lambda: adapter.interruptions >= 1)
-    assert any(item.get("event") == "clear" for item in socket.sent)
+    await asyncio.sleep(0.05)
+    assert adapter.interruptions == 0
+    assert not any(item.get("event") == "clear" for item in socket.sent)
     await adapter.incoming.put(SimpleNamespace(
         type="conversation.item.input_audio_transcription.completed",
         item_id="interrupt-turn-1",
         transcript="Allô, vous m'entendez ?",
     ))
+    await eventually(lambda: adapter.interruptions >= 1)
+    assert any(item.get("event") == "clear" for item in socket.sent)
     await eventually(lambda: captured == ["Allô, vous m'entendez ?"])
     await adapter.incoming.put(SimpleNamespace(
         type="conversation.item.input_audio_transcription.completed",

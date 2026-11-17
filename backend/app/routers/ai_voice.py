@@ -572,6 +572,7 @@ async def _stream_session(
                                 item_id,
                                 event,
                                 model=settings.voice_stt_model,
+                                module_id="central" if (session.source_context or {}).get("entrypoint") == "central" else None,
                             )
                         await execute_final(item_id, str(getattr(event, "transcript", "")), epoch)
                 elif event_type == "response.created" and speaking:
@@ -590,6 +591,7 @@ async def _stream_session(
                             item_id,
                             event,
                             model=settings.voice_realtime_model,
+                            module_id="central" if (session.source_context or {}).get("entrypoint") == "central" else None,
                         )
                         usage_ledger.settle(item_id)
                     if completed_response_id == response_id:

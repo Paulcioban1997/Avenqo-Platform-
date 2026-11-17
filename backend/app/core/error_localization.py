@@ -984,10 +984,36 @@ def http_error_message(
         return ERROR_MESSAGES[locale]["email_verification_required"]
     if "email ou mot de passe incorrect" in detail_text:
         return ERROR_MESSAGES[locale]["invalid_credentials"]
+    if "permission insuffisante" in detail_text or "permission refusée" in detail_text:
+        if locale.startswith("fr"):
+            return "Vous n'avez pas accès à cette partie de l'entreprise."
+        return "You do not have access to this part of the company."
+    if "invitation invalide" in detail_text or "jeton ou code d'invitation" in detail_text:
+        if locale.startswith("fr"):
+            return "Ce lien d'invitation est incomplet ou expiré. Entrez le code qui se trouve dans le courriel."
+        return "This invitation link is incomplete or expired. Enter the code from the email."
+    if (
+        "code d'invitation incorrect" in detail_text
+        or "aucune invitation active" in detail_text
+        or "autre entreprise" in detail_text
+        or "mot de passe de ce compte" in detail_text
+        or "déjà un accès" in detail_text
+        or "appartient déjà" in detail_text
+        or "code d'accès" in detail_text
+        or "autre compte" in detail_text
+        or "peut corriger" in detail_text
+        or "code de confirmation" in detail_text
+        or "confirmation" in detail_text
+        or "déjà utilisée" in detail_text
+        or "invitation introuvable" in detail_text
+    ):
+        return str(detail)
     if "crm schedule" in detail_text:
         return "Les horaires de cette entreprise sont configurés dans le module CRM. Modifiez-les dans le CRM." if locale.startswith("fr") else "Edit CRM schedules and dated exceptions in the CRM workspace."
     if isinstance(detail, dict) and detail.get("code") == "mfa_required":
         return "Un code d'authentification est requis." if locale.startswith("fr") else "An authentication code is required."
+    if isinstance(detail, str) and "signature pilote" in detail_text:
+        return detail
     if "stripe" in detail_text:
         if isinstance(detail, dict) and "message" in detail:
             return str(detail["message"])

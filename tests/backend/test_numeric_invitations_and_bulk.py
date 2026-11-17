@@ -10,6 +10,19 @@ from backend.app.models.user import User, UserRole
 from backend.app.models.workspace import EmployeeInvitation
 from backend.app.services.workspace_service import WorkspaceError, WorkspaceService
 
+
+class _FakeMail:
+    email_delivery_configured = True
+    delivers_to_mailbox = True
+    test_transport = True
+    sent: list[tuple[str, str, str]]
+
+    def __init__(self) -> None:
+        self.sent = []
+
+    def send_transactional(self, recipient: str, subject: str, body: str) -> None:
+        self.sent.append((recipient, subject, body))
+
 @pytest.fixture
 def db_session():
     engine = create_engine("sqlite:///:memory:")
@@ -47,7 +60,7 @@ def test_numeric_invitation_code_and_bulk(db_session: Session):
     db_session.add(owner)
     db_session.commit()
 
-    service = WorkspaceService(db_session)
+    service = WorkspaceService(db_session, _FakeMail())
 
     # 1. Single invite generates 8-digit CSPRNG code
     inv = service.invite(owner, "bob@testcorp.com", UserRole.USER, "Analyst", "Finance")

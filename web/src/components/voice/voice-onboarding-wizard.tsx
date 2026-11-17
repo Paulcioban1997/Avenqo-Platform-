@@ -140,8 +140,8 @@ export function VoiceOnboardingWizard({
     humor_level: 40,
     formality_level: 65,
     allow_natural_interruptions: true,
-    realtime_provider: "retell",
-    gemini_live_enabled: false,
+    realtime_provider: "gemini_live",
+    gemini_live_enabled: true,
   });
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState<boolean>(false);
@@ -238,8 +238,8 @@ export function VoiceOnboardingWizard({
             humor_level: typeof data.humor_level === "number" ? data.humor_level : prev.humor_level ?? 40,
             formality_level: typeof data.formality_level === "number" ? data.formality_level : prev.formality_level ?? 65,
             allow_natural_interruptions: typeof data.allow_natural_interruptions === "boolean" ? data.allow_natural_interruptions : prev.allow_natural_interruptions ?? true,
-            realtime_provider: data.realtime_provider || prev.realtime_provider || "retell",
-            gemini_live_enabled: typeof data.gemini_live_enabled === "boolean" ? data.gemini_live_enabled : prev.gemini_live_enabled ?? false,
+            realtime_provider: data.realtime_provider || prev.realtime_provider || "gemini_live",
+            gemini_live_enabled: typeof data.gemini_live_enabled === "boolean" ? data.gemini_live_enabled : prev.gemini_live_enabled ?? true,
           }));
         }
       }
@@ -480,8 +480,8 @@ export function VoiceOnboardingWizard({
         humor_level: customization.humor_level ?? 40,
         formality_level: customization.formality_level ?? 65,
         allow_natural_interruptions: customization.allow_natural_interruptions ?? true,
-        realtime_provider: customization.realtime_provider || "retell",
-        gemini_live_enabled: customization.gemini_live_enabled ?? false,
+        realtime_provider: customization.realtime_provider || "gemini_live",
+        gemini_live_enabled: customization.gemini_live_enabled ?? true,
       };
 
       const res = await apiFetch("/api/v1/voice/customization", {

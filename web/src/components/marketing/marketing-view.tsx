@@ -19,6 +19,7 @@ import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
 import { ApiRequestError, apiFetch } from "@/lib/api-request";
+import { HorizontalScroller } from "@/components/shell/horizontal-scroller";
 import { useSession } from "@/lib/session-context";
 import { MARKETING_SURFACE_COPY } from "@/lib/i18n/marketing-surface-copy";
 
@@ -286,9 +287,17 @@ export function MarketingView() {
       <p role="status" className="text-xs text-slate-500">{data ? (data.available
         ? `${data.source_context?.name || (locale.startsWith("fr") ? "Source sélectionnée" : "Selected source")} · ${locale.startsWith("fr") ? "Données de la période sélectionnée" : "Selected period data"}`
         : company.analyticsUnavailable) : (analysisError || (locale.startsWith("fr") ? "Chargement de l’analyse…" : "Loading analysis…"))}</p>
+      {data?.available && (
+        <p className="rounded-xl border border-purple-200 bg-purple-50 px-3 py-2 text-xs text-purple-900 dark:border-purple-900 dark:bg-purple-950/40 dark:text-purple-100">
+          {locale.startsWith("fr")
+            ? `Ces chiffres viennent du fichier « ${data.source_context?.name || "source sélectionnée"} ». Ils ne sont pas les clients du CRM.`
+            : `These figures come from “${data.source_context?.name || "the selected source"}”. They are not the CRM clients.`}
+        </p>
+      )}
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="p-5 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
+      <HorizontalScroller>
+      <div className="flex w-max gap-4">
+        <div className="w-[260px] shrink-0 p-5 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-[#94A3B8]">
             <span>{locale.startsWith("fr") ? "Clients identifiés (historique)" : "Identified customers (history)"}</span>
             <Users size={16} className="text-blue-500" />
@@ -297,11 +306,11 @@ export function MarketingView() {
             {number(data?.summary?.total_customers)}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            {data?.available ? (locale.startsWith("fr") ? "Calculé sur la source sélectionnée" : "Calculated from selected source") : company.analyticsUnavailable}
+            {data?.available ? (locale.startsWith("fr") ? `Fichier « ${data.source_context?.name || "source sélectionnée"} », pas les clients du CRM` : `File “${data.source_context?.name || "selected source"}”, not the CRM clients`) : company.analyticsUnavailable}
           </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
+        <div className="w-[260px] shrink-0 p-5 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-[#94A3B8]">
             <span>{locale.startsWith("fr") ? "Nouveaux clients sur la période" : "New customers in period"}</span>
             <Megaphone size={16} className="text-purple-500" />
@@ -310,11 +319,11 @@ export function MarketingView() {
             {number(data?.summary?.new_customers)}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            {data?.available ? (locale.startsWith("fr") ? "Calculé sur la source sélectionnée" : "Calculated from selected source") : company.analyticsUnavailable}
+            {data?.available ? (locale.startsWith("fr") ? `Fichier « ${data.source_context?.name || "source sélectionnée"} », pas les clients du CRM` : `File “${data.source_context?.name || "selected source"}”, not the CRM clients`) : company.analyticsUnavailable}
           </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
+        <div className="w-[260px] shrink-0 p-5 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-[#94A3B8]">
             <span>{company.customersFrequency} · {locale.startsWith("fr") ? "historique" : "history"}</span>
             <Target size={16} className="text-emerald-500" />
@@ -323,11 +332,11 @@ export function MarketingView() {
             {number(data?.summary?.purchase_frequency)}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            {data?.available ? (locale.startsWith("fr") ? "Calculé sur la source sélectionnée" : "Calculated from selected source") : company.analyticsUnavailable}
+            {data?.available ? (locale.startsWith("fr") ? `Fichier « ${data.source_context?.name || "source sélectionnée"} », pas les clients du CRM` : `File “${data.source_context?.name || "selected source"}”, not the CRM clients`) : company.analyticsUnavailable}
           </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
+        <div className="w-[260px] shrink-0 p-5 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-500 dark:text-[#94A3B8]">
             <span>{company.customersAverageValue} · {locale.startsWith("fr") ? "historique" : "history"}</span>
             <TrendingUp size={16} className="text-amber-500" />
@@ -336,10 +345,11 @@ export function MarketingView() {
             {number(data?.summary?.average_customer_value)} {data?.summary?.average_customer_value != null ? data.currency : ""}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            {data?.available ? (locale.startsWith("fr") ? "Calculé sur la source sélectionnée" : "Calculated from selected source") : company.analyticsUnavailable}
+            {data?.available ? (locale.startsWith("fr") ? `Fichier « ${data.source_context?.name || "source sélectionnée"} », pas les clients du CRM` : `File “${data.source_context?.name || "selected source"}”, not the CRM clients`) : company.analyticsUnavailable}
           </div>
         </div>
       </div>
+      </HorizontalScroller>
 
       {/* AI Campaign Generator */}
       <div className="p-6 rounded-2xl bg-white dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] shadow-xs space-y-4">
@@ -401,7 +411,7 @@ export function MarketingView() {
         <h2 className="text-base font-extrabold text-slate-900 dark:text-[#F4F7FB]">
           {company.customersSegment}
         </h2>
-        <p className="text-xs text-slate-500">{locale.startsWith("fr") ? "Segments calculés sur tout l’historique de la source sélectionnée." : "Segments calculated from the selected source’s full history."}</p>
+        <p className="text-xs text-slate-500">{locale.startsWith("fr") ? `Segments du fichier « ${data?.source_context?.name || "source sélectionnée"} », pas des clients du CRM.` : `Segments from “${data?.source_context?.name || "the selected source"}”, not the CRM clients.`}</p>
         <label className="text-sm">{locale.startsWith("fr") ? "Afficher un segment" : "Show a segment"}
           <select aria-label="Afficher un segment" value={segmentFilter} onChange={e => setSegmentFilter(e.target.value)} className="ml-2 rounded-lg border bg-white p-2 text-slate-900 dark:bg-slate-900 dark:text-white">
             <option value="">{locale.startsWith("fr") ? "Tous les segments" : "All segments"}</option>
@@ -413,9 +423,10 @@ export function MarketingView() {
           </select>
         </label>
         {data?.available && data.segments.length ? (
-          <ul className="grid gap-3 sm:grid-cols-3">
+          <HorizontalScroller>
+          <ul className="flex w-max gap-3">
             {data.segments.filter(segment => !segmentFilter || segment.label === segmentFilter).map(segment => (
-              <li key={segment.label} className="rounded-xl border p-4">
+              <li key={segment.label} className="w-[240px] shrink-0 rounded-xl border p-4">
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-slate-800 dark:text-slate-200">{formatSegmentLabel(segment.label)}</span>
                   <strong>{number(segment.count)}</strong>
@@ -426,6 +437,7 @@ export function MarketingView() {
               </li>
             ))}
           </ul>
+          </HorizontalScroller>
         )
           : <p className="text-sm text-slate-500">{company.analyticsUnavailable}</p>}
       </div>

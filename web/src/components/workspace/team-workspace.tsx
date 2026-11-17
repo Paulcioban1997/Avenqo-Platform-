@@ -5,6 +5,14 @@ import { apiFetch, ApiRequestError } from "@/lib/api-request";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { useSession } from "@/lib/session-context";
 import {
+  ACCESS_SUMMARY,
+  COMPANY_RESPONSIBILITIES,
+  COMPANY_SIZES,
+  DEFAULT_RESPONSIBILITY_ID,
+  invitationFromResponsibility,
+  responsibilityById,
+} from "@/lib/workspace/company-responsibilities";
+import {
   Users,
   UserPlus,
   CheckCircle,
@@ -32,7 +40,17 @@ type Member = {
   role: string;
   job_title: string;
   department: string | null;
+  is_active?: boolean;
   responsibilities: string[];
+};
+
+type PendingInvite = {
+  id: string;
+  email: string;
+  job_title: string;
+  department?: string | null;
+  expires_at: string;
+  member_name?: string;
 };
 
 type Task = {
@@ -56,6 +74,8 @@ export function TeamWorkspace() {
   const { locale } = useLocale();
   const fr = locale.startsWith("fr");
   const { identity } = useSession();
+  const canManage = Boolean(identity?.user.permissions?.includes("users:manage"));
+  const isOwner = identity?.user.role === "owner";
 
   const [team, setTeam] = useState<Member[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -63,23 +83,22 @@ export function TeamWorkspace() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [successNotice, setSuccessNotice] = useState("");
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
 
   // MODALS
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState("user");
-  const [inviteJobTitle, setInviteJobTitle] = useState("Employé");
-  const [inviteDepartment, setInviteDepartment] = useState("");
+  const [inviteResponsibilityId, setInviteResponsibilityId] = useState(DEFAULT_RESPONSIBILITY_ID);
   const [inviting, setInviting] = useState(false);
-  const [inviteSuccessToken, setInviteSuccessToken] = useState<string | null>(null);
-  const [generatedInvitations, setGeneratedInvitations] = useState<Array<{ email: string; invitation_code?: string; token?: string }>>([]);
-  const [copiedCodeIndex, setCopiedCodeIndex] = useState<number | null>(null);
-
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [taskTitle, setTaskTitle] = useState("");
   const [taskAssigneeId, setTaskAssigneeId] = useState("");
   const [taskPriority, setTaskPriority] = useState("medium");
   const [creatingTask, setCreatingTask] = useState(false);
+  const [correctionMember, setCorrectionMember] = useState<Member | null>(null);
+  const [newEmail, setNewEmail] = useState("");
+  const [confirmEmail, setConfirmEmail] = useState("");
+  const [correcting, setCorrecting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -92,6 +111,11 @@ export function TeamWorkspace() {
       if (teamRes.ok) setTeam(await teamRes.json());
       if (taskRes.ok) setTasks(await taskRes.json());
       if (guideRes.ok) setBriefing(await guideRes.json());
+      const inviteRes = await apiFetch("/api/v1/workspace/invitations");
+      if (inviteRes.ok) {
+        const payload = await inviteRes.json();
+        setPendingInvites(Array.isArray(payload?.invitations) ? payload.invitations : []);
+      }
       setError("");
     } catch {
       setError(fr ? "Impossible de charger l'espace équipe." : "Unable to load the team workspace.");
@@ -110,8 +134,6 @@ export function TeamWorkspace() {
     setInviting(true);
     setError("");
     setSuccessNotice("");
-    setInviteSuccessToken(null);
-    setGeneratedInvitations([]);
 
     try {
       const rawList = inviteEmail.split(/[\s,;]+/).map((s) => s.trim()).filter((s) => s.includes("@"));
@@ -121,6 +143,7 @@ export function TeamWorkspace() {
         return;
       }
 
+      const invitation = invitationFromResponsibility(inviteResponsibilityId, locale);
       let payload: any = null;
       if (rawList.length > 1) {
         const response = await apiFetch("/api/v1/workspace/invitations/bulk", {
@@ -128,23 +151,28 @@ export function TeamWorkspace() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             emails: rawList,
-            role: inviteRole,
-            job_title: inviteJobTitle.trim() || "Collaborateur",
-            department: inviteDepartment.trim() || undefined,
+            role: invitation.role,
+            job_title: invitation.job_title,
+            department: invitation.department,
           }),
         });
         if (response.ok) {
           payload = await response.json();
+          const deliveries = Array.isArray(payload?.invitations)
+            ? payload.invitations.map((item: { delivery?: string }) => item.delivery)
+            : [];
+          const emailed = deliveries.length > 0 && deliveries.every((item: string | undefined) => item === "email");
           setSuccessNotice(
-            fr
-              ? `${rawList.length} invitations créées avec succès.`
-              : `${rawList.length} invitations created successfully.`
+            emailed
+              ? (fr
+                ? `${rawList.length} invitations ont été envoyées par courriel.`
+                : `${rawList.length} invitations were sent by email.`)
+              : (fr
+                ? "L'invitation n'a pas été envoyée au destinataire."
+                : "The invitation was not emailed to the recipient.")
           );
-          if (Array.isArray(payload?.invitations)) {
-            setGeneratedInvitations(payload.invitations);
-          }
           setInviteEmail("");
-          setInviteDepartment("");
+          setInviteResponsibilityId(DEFAULT_RESPONSIBILITY_ID);
           await load();
         }
       } else {
@@ -153,31 +181,25 @@ export function TeamWorkspace() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             email: rawList[0],
-            role: inviteRole,
-            job_title: inviteJobTitle.trim() || "Collaborateur",
-            department: inviteDepartment.trim() || undefined,
+            role: invitation.role,
+            job_title: invitation.job_title,
+            department: invitation.department,
           }),
         });
 
         if (response.ok) {
           payload = await response.json();
           setSuccessNotice(
-            fr
-              ? `Invitation créée avec succès pour ${rawList[0]}`
-              : `Invitation created successfully for ${rawList[0]}`
+            payload?.delivery === "email"
+              ? (fr
+                ? `Invitation envoyée à ${rawList[0]}.`
+                : `Invitation emailed to ${rawList[0]}.`)
+              : (fr
+                ? "L'invitation n'a pas été envoyée au destinataire."
+                : "The invitation was not emailed to the recipient.")
           );
-          setGeneratedInvitations([
-            {
-              email: rawList[0],
-              invitation_code: payload.invitation_code,
-              token: payload.token,
-            },
-          ]);
-          if (payload?.token) {
-            setInviteSuccessToken(payload.token);
-          }
           setInviteEmail("");
-          setInviteDepartment("");
+          setInviteResponsibilityId(DEFAULT_RESPONSIBILITY_ID);
           await load();
         }
       }
@@ -266,9 +288,11 @@ export function TeamWorkspace() {
             {fr ? "Équipe & Responsabilités" : "Team & Responsibilities"}
           </h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            {fr
-              ? "Gestion des invitations, rôles, permissions et tâches assignées."
-              : "Employee invitations, roles, permissions, and assigned tasks."}
+            {identity?.company.name
+              ? `${identity.company.name}${identity.user.job_title ? ` · ${identity.user.job_title}` : ""}`
+              : (fr
+                ? "Gestion des invitations, rôles, permissions et tâches assignées."
+                : "Employee invitations, roles, permissions, and assigned tasks.")}
           </p>
         </div>
 
@@ -288,14 +312,14 @@ export function TeamWorkspace() {
             <Plus className="w-4 h-4" />
             <span>{fr ? "Nouvelle tâche" : "New Task"}</span>
           </button>
-          <button
+          {canManage && <button
             id="invite-member-button"
             onClick={() => setIsInviteModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-xl bg-gradient-to-r from-[#0076FF] to-[#00D4FF] text-white shadow-md hover:shadow-lg transition"
           >
             <UserPlus className="w-4 h-4" />
             <span>{fr ? "Inviter un collaborateur" : "Invite Employee"}</span>
-          </button>
+          </button>}
         </div>
       </header>
 
@@ -352,28 +376,103 @@ export function TeamWorkspace() {
 
           <div className="divide-y divide-slate-100 dark:divide-slate-800/80">
             {team.map((member) => (
-              <div key={member.id} className="py-3.5 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
+              <div key={member.id} className="py-3.5 space-y-2">
+                <div className="flex items-start gap-3">
                   <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-100 to-cyan-100 dark:from-blue-950 dark:to-slate-800 text-[#0076FF] dark:text-[#00D4FF] font-bold text-xs flex items-center justify-center shrink-0">
                     {`${member.first_name?.[0] || ""}${member.last_name?.[0] || ""}`.toUpperCase() || "U"}
                   </div>
-                  <div className="min-w-0">
-                    <p className="font-bold text-slate-900 dark:text-white text-sm truncate">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-slate-900 dark:text-white text-sm break-words">
                       {member.first_name} {member.last_name}
                     </p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 break-words mt-0.5">
                       {member.job_title} · {member.department || (fr ? "Général" : "General")}
                     </p>
+                    {canManage && member.email && (
+                      <p className="text-xs text-slate-500 dark:text-slate-400 break-all">{member.email}</p>
+                    )}
                   </div>
                 </div>
 
-                <div className="shrink-0 flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 pl-[52px]">
                   <span className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase">
-                    {member.role}
+                    {member.job_title || member.role}
                   </span>
+                  {isOwner && member.role !== "owner" && member.id !== identity?.user.id && (
+                    <button
+                      type="button"
+                      className="text-[10px] font-bold uppercase text-[#0076FF]"
+                      onClick={() => {
+                        setCorrectionMember(member);
+                        setNewEmail("");
+                        setConfirmEmail("");
+                        setError("");
+                      }}
+                    >
+                      {fr ? "Corriger l'adresse" : "Correct the address"}
+                    </button>
+                  )}
+                  {canManage && member.role !== "owner" && member.id !== identity?.user.id && (
+                    <button
+                      type="button"
+                      className="text-[10px] font-bold uppercase text-rose-600"
+                      onClick={() => {
+                        void apiFetch(`/api/v1/employees/${member.id}`, {
+                          method: "PATCH",
+                          body: JSON.stringify({ is_active: member.is_active === false }),
+                        }).then(() => load());
+                      }}
+                    >
+                      {member.is_active === false ? (fr ? "Réactiver" : "Restore") : (fr ? "Retirer l'accès" : "Remove access")}
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
+            {canManage && pendingInvites.map((invite) => {
+              const initials = invite.job_title
+                .split(/\s+/)
+                .slice(0, 2)
+                .map((word) => word[0] || "")
+                .join("")
+                .toUpperCase() || "E";
+              return (
+                <div key={invite.id} className="py-3.5 space-y-2">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-100 to-cyan-100 dark:from-blue-950 dark:to-slate-800 text-[#0076FF] dark:text-[#00D4FF] font-bold text-xs flex items-center justify-center shrink-0">
+                      {initials}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold text-slate-900 dark:text-white text-sm break-words">{invite.job_title}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 break-all mt-0.5">
+                        {invite.email}
+                      </p>
+                      {invite.member_name && (
+                        <p className="text-[11px] text-amber-700 dark:text-amber-300 break-words">
+                          {fr
+                            ? `Cette adresse appartient déjà à ${invite.member_name}. Corrigez d'abord son accès.`
+                            : `This address already belongs to ${invite.member_name}. Correct that access first.`}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 pl-[52px]">
+                    <span className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase">
+                      {invite.job_title}
+                    </span>
+                    <button
+                      type="button"
+                      className="text-[10px] font-bold uppercase text-rose-600"
+                      onClick={() => {
+                        void apiFetch(`/api/v1/workspace/invitations/${invite.id}/revoke`, { method: "POST" }).then(() => load());
+                      }}
+                    >
+                      {fr ? "Révoquer" : "Revoke"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </section>
 
@@ -435,6 +534,72 @@ export function TeamWorkspace() {
         </section>
       </div>
 
+      {correctionMember && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <form
+            className="w-full max-w-lg rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0B132B] shadow-2xl p-6 sm:p-7 space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (newEmail.trim().toLowerCase() !== confirmEmail.trim().toLowerCase()) {
+                setError(fr ? "Les deux adresses doivent être identiques." : "The two addresses must match.");
+                return;
+              }
+              setCorrecting(true);
+              setError("");
+              void apiFetch(`/api/v1/workspace/employees/${correctionMember.id}/email-correction`, {
+                method: "POST",
+                body: JSON.stringify({ new_email: newEmail.trim(), confirm_email: confirmEmail.trim() }),
+              })
+                .then(async (response) => {
+                  const payload = await response.json().catch(() => ({}));
+                  setSuccessNotice(
+                    payload.release_required
+                      ? (fr
+                        ? "Cette adresse est déjà un compte. Un message lui a été envoyé. Rien ne change tant qu'elle n'a pas confirmé et choisi une adresse de remplacement pour l'autre compte."
+                        : "This address is already an account. A message was sent to it. Nothing changes until that inbox confirms and chooses a replacement address for the other account.")
+                      : (fr
+                        ? "Confirmation envoyée à la nouvelle adresse. Le compte, le poste et les droits restent inchangés jusqu'à cette confirmation."
+                        : "Confirmation sent to the new address. The account, job and permissions stay unchanged until then."),
+                  );
+                  setCorrectionMember(null);
+                })
+                .catch((err: unknown) => {
+                  setError(err instanceof ApiRequestError && err.publicMessage
+                    ? err.publicMessage
+                    : (fr ? "Cette adresse ne peut pas être utilisée." : "This address cannot be used."));
+                })
+                .finally(() => setCorrecting(false));
+            }}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="font-extrabold text-slate-900 dark:text-white text-lg">
+                {fr ? "Corriger l'adresse" : "Correct the address"}
+              </h3>
+              <button type="button" onClick={() => setCorrectionMember(null)} className="p-2 text-slate-400">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-slate-500">
+              {fr
+                ? `${correctionMember.first_name} ${correctionMember.last_name} garde le même compte, le poste ${correctionMember.job_title} et ses droits. La nouvelle adresse doit confirmer. Une adresse déjà utilisée par un autre compte est refusée.`
+                : `${correctionMember.first_name} ${correctionMember.last_name} keeps the same account, the ${correctionMember.job_title} job and the same permissions. The new address must confirm. An address already used by another account is refused.`}
+            </p>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+              {fr ? "Nouvelle adresse" : "New address"}
+              <input required type="email" value={newEmail} onChange={(event) => setNewEmail(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-4 py-2.5 text-sm font-normal normal-case text-slate-900 dark:text-white" />
+            </label>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+              {fr ? "Confirmer la nouvelle adresse" : "Confirm the new address"}
+              <input required type="email" value={confirmEmail} onChange={(event) => setConfirmEmail(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-4 py-2.5 text-sm font-normal normal-case text-slate-900 dark:text-white" />
+            </label>
+            {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
+            <button type="submit" disabled={correcting} className="w-full rounded-xl bg-[#0076FF] px-4 py-3 text-sm font-bold text-white">
+              {correcting ? (fr ? "Envoi..." : "Sending...") : (fr ? "Envoyer la confirmation" : "Send the confirmation")}
+            </button>
+          </form>
+        </div>
+      )}
+
       {/* INVITE MODAL */}
       {isInviteModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
@@ -471,92 +636,37 @@ export function TeamWorkspace() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                    {fr ? "Rôle" : "Role"}
-                  </label>
-                  <select
-                    value={inviteRole}
-                    onChange={(e) => setInviteRole(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
-                  >
-                    <option value="user">{fr ? "Employé standard" : "Standard User"}</option>
-                    <option value="manager">{fr ? "Manager" : "Manager"}</option>
-                    <option value="admin">{fr ? "Administrateur" : "Admin"}</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                    {fr ? "Titre de poste" : "Job Title"}
-                  </label>
-                  <input
-                    type="text"
-                    value={inviteJobTitle}
-                    onChange={(e) => setInviteJobTitle(e.target.value)}
-                    placeholder={fr ? "ex: Réceptionniste" : "e.g. Receptionist"}
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
-                  />
-                </div>
-              </div>
-
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                  {fr ? "Département (optionnel)" : "Department (optional)"}
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5" htmlFor="invite-responsibility">
+                  {fr ? "Responsabilité" : "Responsibility"}
                 </label>
-                <input
-                  type="text"
-                  value={inviteDepartment}
-                  onChange={(e) => setInviteDepartment(e.target.value)}
-                  placeholder={fr ? "ex: Ventes, Clinique, Support" : "e.g. Sales, Clinic, Support"}
+                <select
+                  id="invite-responsibility"
+                  value={inviteResponsibilityId}
+                  onChange={(e) => setInviteResponsibilityId(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
-                />
+                >
+                  {COMPANY_SIZES.map((size) => (
+                    <optgroup key={size.id} label={fr ? size.fr : size.en}>
+                      {COMPANY_RESPONSIBILITIES.filter((item) => item.size === size.id).map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {fr ? item.title.fr : item.title.en}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                {(() => {
+                  const chosen = responsibilityById(inviteResponsibilityId);
+                  return (
+                    <p className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                      {fr
+                        ? `${chosen.department.fr}. ${ACCESS_SUMMARY[chosen.access].fr}. Le poste n'est saisi qu'une fois.`
+                        : `${chosen.department.en}. ${ACCESS_SUMMARY[chosen.access].en}. The position is entered once.`}
+                    </p>
+                  );
+                })()}
               </div>
-
-              {generatedInvitations.length > 0 && (
-                <div className="p-4 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-xs space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-blue-900 dark:text-blue-200">
-                      {fr ? "Codes d'invitation sécurisés (8 chiffres) :" : "Secure Invitation Codes (8-digit CSPRNG):"}
-                    </span>
-                    <span className="px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900 text-[10px] font-bold text-[#0076FF] dark:text-[#00D4FF]">
-                      {fr ? "Valable 24h · Usage unique" : "Valid 24h · Single Use"}
-                    </span>
-                  </div>
-                  <div className="space-y-2">
-                    {generatedInvitations.map((inv, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between p-2.5 rounded-xl bg-white dark:bg-[#0B132B] border border-blue-100 dark:border-white/[0.08]"
-                      >
-                        <div className="min-w-0 pr-2">
-                          <div className="text-[11px] font-medium text-slate-600 dark:text-slate-300 truncate">
-                            {inv.email}
-                          </div>
-                          {inv.invitation_code && (
-                            <div className="font-mono font-extrabold text-base tracking-widest text-[#0076FF] dark:text-[#00D4FF] mt-0.5">
-                              {inv.invitation_code}
-                            </div>
-                          )}
-                        </div>
-                        {inv.invitation_code && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              void navigator.clipboard?.writeText(inv.invitation_code || "");
-                              setCopiedCodeIndex(idx);
-                              setTimeout(() => setCopiedCodeIndex(null), 2500);
-                            }}
-                            className="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 dark:bg-white/[0.06] dark:hover:bg-white/[0.1] text-xs font-semibold text-[#0076FF] dark:text-[#00D4FF] transition-colors cursor-pointer shrink-0"
-                          >
-                            {copiedCodeIndex === idx ? (fr ? "Copié !" : "Copied!") : (fr ? "Copier code" : "Copy code")}
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               <div className="flex justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button

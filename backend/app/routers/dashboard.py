@@ -3,7 +3,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from backend.app.dependencies.auth import get_tenant_context
+from backend.app.dependencies.auth import get_tenant_context, require_permission
 from backend.app.dependencies.dashboard import get_tenant_dashboard_service
 from backend.app.schemas.tenant_dashboard import TenantDashboardResponse
 from backend.app.services.tenant_dashboard_service import TenantDashboardService
@@ -16,6 +16,7 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 @router.get("", response_model=TenantDashboardResponse)
 def get_dashboard(
     tenant: TenantContext = Depends(get_tenant_context),
+    _: object = Depends(require_permission("data:read")),
     service: TenantDashboardService = Depends(get_tenant_dashboard_service),
     period: Literal["all", "last_7_days", "last_30_days", "current_quarter"] = "last_30_days",
 ) -> TenantDashboardResponse:

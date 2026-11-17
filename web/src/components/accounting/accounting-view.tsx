@@ -20,6 +20,8 @@ import {
   Clock,
 } from "lucide-react";
 import { getAuthHeaders } from "@/lib/api-headers";
+import { HorizontalScroller } from "@/components/shell/horizontal-scroller";
+import { DisplayAmount } from "@/components/common/display-amount";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
 
@@ -30,6 +32,18 @@ interface FinancialOverview {
   profit_margin?: number;
   unpaid_invoices_count?: number;
   unpaid_invoices_amount?: number;
+  receivables?: {
+    unpaid_count?: number;
+    total_due?: number;
+    overdue_count?: number;
+    overdue_amount?: number;
+  };
+  payables?: {
+    unpaid_count?: number;
+    total_due?: number;
+    overdue_count?: number;
+    overdue_amount?: number;
+  };
   currency?: string;
   confirmed_transactions_count?: number;
 }
@@ -44,12 +58,24 @@ interface TransactionItem {
   currency: string;
   status: string;
   reference_id?: string;
+  extra_data?: Record<string, unknown>;
+}
+
+const EXTERNAL_SOURCE_KEYS = ["source", "connector", "provider", "import_source", "bank", "origin"];
+
+function externalSource(extra: Record<string, unknown> | undefined): string | null {
+  if (!extra) return null;
+  for (const key of EXTERNAL_SOURCE_KEYS) {
+    const value = extra[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
 }
 
 export function AccountingView() {
   const { locale } = useLocale();
   const t = getAppTranslations(locale);
-  const isFr = locale === "fr";
+  const isFr = locale.startsWith("fr");
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -73,7 +99,11 @@ export function AccountingView() {
       if (txRes && txRes.ok) {
         const txData = await txRes.json();
         if (Array.isArray(txData)) {
-          setTransactions(txData);
+          setTransactions(txData.map((row: TransactionItem & { date?: string }) => ({
+            ...row,
+            transaction_date: row.transaction_date || row.date || "",
+            extra_data: row.extra_data && typeof row.extra_data === "object" ? row.extra_data : {},
+          })));
         }
       }
     } catch {
@@ -103,6 +133,14 @@ export function AccountingView() {
   const expenses = overview?.total_expenses || 0;
   const netProfit = overview?.net_profit || revenue - expenses;
   const margin = overview?.profit_margin ?? (revenue > 0 ? ((netProfit / revenue) * 100).toFixed(1) : 0);
+  const unpaidInvoicesCount =
+    overview?.unpaid_invoices_count ??
+    ((overview?.receivables?.unpaid_count ?? 0) + (overview?.payables?.unpaid_count ?? 0));
+  const unpaidInvoicesAmount =
+    overview?.unpaid_invoices_amount ??
+    ((overview?.receivables?.total_due ?? 0) + (overview?.payables?.total_due ?? 0));
+  const unreconciled = transactions.length > 0 && transactions.every((tx) => !externalSource(tx.extra_data));
+  const recordedCaption = isFr ? "Somme des écritures, source non indiquée" : "Sum of entries, source not indicated";
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
@@ -118,9 +156,13 @@ export function AccountingView() {
                 {t.navigation.accountingAi || (isFr ? "Comptabilité IA" : "Accounting AI")}
               </h1>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-[#94A3B8]">
-                {isFr
-                  ? "Grand livre, suivi des flux de trésorerie, factures et performance financière en temps réel."
-                  : "General ledger, cash flow tracking, invoices, and real-time financial performance."}
+                {unreconciled
+                  ? (isFr
+                    ? "Totaux calculés sur les écritures de cette entreprise. Aucune source externe n’est jointe."
+                    : "Totals are calculated from this company’s entries. No external source is attached.")
+                  : (isFr
+                    ? "Grand livre, suivi des flux de trésorerie, factures et performance financière en temps réel."
+                    : "General ledger, cash flow tracking, invoices, and real-time financial performance.")}
               </p>
             </div>
           </div>
@@ -157,10 +199,10 @@ export function AccountingView() {
             </span>
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-2">
-            ${revenue.toLocaleString(isFr ? "fr-CA" : "en-US", { minimumFractionDigits: 2 })} {currency}
+            <DisplayAmount amount={revenue} currency={currency} locale={locale} />
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            {isFr ? "Flux entrants confirmés" : "Confirmed incoming revenue"}
+            {unreconciled ? recordedCaption : (isFr ? "Flux entrants confirmés" : "Confirmed incoming revenue")}
           </div>
         </div>
 
@@ -173,10 +215,10 @@ export function AccountingView() {
             </span>
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-2">
-            ${expenses.toLocaleString(isFr ? "fr-CA" : "en-US", { minimumFractionDigits: 2 })} {currency}
+            <DisplayAmount amount={expenses} currency={currency} locale={locale} />
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            {isFr ? "Flux sortants opérationnels" : "Operational expenses"}
+            {unreconciled ? recordedCaption : (isFr ? "Flux sortants opérationnels" : "Operational expenses")}
           </div>
         </div>
 
@@ -189,10 +231,10 @@ export function AccountingView() {
             </span>
           </div>
           <div className={`text-2xl font-extrabold mt-2 ${netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600"}`}>
-            ${netProfit.toLocaleString(isFr ? "fr-CA" : "en-US", { minimumFractionDigits: 2 })} {currency}
+            <DisplayAmount amount={netProfit} currency={currency} locale={locale} />
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            {isFr ? "Marge nette opérationnelle" : "Net operational margin"}
+            {unreconciled ? recordedCaption : (isFr ? "Marge nette opérationnelle" : "Net operational margin")}
           </div>
         </div>
 
@@ -205,10 +247,10 @@ export function AccountingView() {
             </span>
           </div>
           <div className="text-2xl font-extrabold text-slate-900 dark:text-[#F4F7FB] mt-2">
-            {overview?.unpaid_invoices_count || 0} {isFr ? "en attente" : "pending"}
+            {unpaidInvoicesCount} {isFr ? "en attente" : "pending"}
           </div>
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-            ${(overview?.unpaid_invoices_amount || 0).toLocaleString(isFr ? "fr-CA" : "en-US", { minimumFractionDigits: 2 })} {currency}
+            <DisplayAmount amount={unpaidInvoicesAmount} currency={currency} locale={locale} />
           </div>
         </div>
       </div>
@@ -222,12 +264,13 @@ export function AccountingView() {
             </h2>
             <p className="text-xs text-slate-500 dark:text-[#94A3B8]">
               {isFr
-                ? "Historique détaillé des transactions financières synchronisées et saisies."
-                : "Detailed history of synchronized and registered financial transactions."}
+                ? "Les totaux utilisent le cours du jour. Chaque écriture utilise le taux à sa date. La source externe est indiquée seulement lorsqu’elle existe."
+                : "Totals use today's rate. Each entry uses the rate on its date. An external source is shown only when one exists."}
             </p>
           </div>
 
-          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100 dark:bg-[#111D3D] text-xs font-medium">
+          <HorizontalScroller>
+          <div className="flex w-max items-center gap-1.5 rounded-xl bg-slate-100 p-1 text-xs font-medium dark:bg-[#111D3D]">
             <button
               onClick={() => setActiveFilter("all")}
               className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
@@ -259,7 +302,16 @@ export function AccountingView() {
               {isFr ? "Dépenses" : "Expenses"}
             </button>
           </div>
+          </HorizontalScroller>
         </div>
+
+        {transactions.length > 0 && transactions.every((tx) => !externalSource(tx.extra_data)) && (
+          <p role="status" className="text-xs text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 rounded-xl px-3 py-2">
+            {isFr
+              ? "Aucune source bancaire ou connecteur n’est indiqué sur ces écritures. Elles restent dans le journal de cette entreprise et ne constituent pas un état financier rapproché."
+              : "No bank or connector source is recorded on these entries. They stay in this company’s journal and are not a reconciled financial statement."}
+          </p>
+        )}
 
         {filteredTransactions.length === 0 ? (
           <div className="p-12 text-center rounded-2xl bg-slate-50/50 dark:bg-[#060B13]/30 border border-dashed border-slate-200 dark:border-white/[0.06] space-y-3">
@@ -285,8 +337,8 @@ export function AccountingView() {
             </Link>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
+          <HorizontalScroller>
+            <table className="w-max min-w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="border-b border-slate-200/80 dark:border-white/[0.08] bg-slate-50/70 dark:bg-[#060B13]/40 text-slate-500 dark:text-slate-400 font-semibold">
                   <th className="py-3 px-4">{isFr ? "Date" : "Date"}</th>
@@ -302,12 +354,14 @@ export function AccountingView() {
                 {filteredTransactions.map((tx) => {
                   const isRevenue = tx.transaction_type === "revenue";
                   const dateStr = tx.transaction_date ? tx.transaction_date.slice(0, 10) : "—";
-                  const statusLabel =
-                    tx.status === "confirmed"
-                      ? (isFr ? "Confirmé" : "Confirmed")
+                  const source = externalSource(tx.extra_data);
+                  const statusLabel = source
+                    ? (tx.status === "confirmed" ? (isFr ? `Confirmé · ${source}` : `Confirmed · ${source}`) : `${tx.status} · ${source}`)
+                    : tx.status === "confirmed"
+                      ? (isFr ? "Enregistré — source non indiquée" : "Recorded — source not indicated")
                       : tx.status === "pending"
-                      ? (isFr ? "En attente" : "Pending")
-                      : tx.status;
+                        ? (isFr ? "En attente" : "Pending")
+                        : tx.status;
 
                   return (
                     <tr key={tx.id} className="hover:bg-slate-50/80 dark:hover:bg-white/[0.02] transition-colors">
@@ -333,7 +387,13 @@ export function AccountingView() {
                         {tx.reference_id || "—"}
                       </td>
                       <td className={`py-3 px-4 font-mono font-bold text-right ${isRevenue ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600"}`}>
-                        {isRevenue ? "+" : "-"}${Number(tx.amount || 0).toFixed(2)} {tx.currency || currency}
+                        <DisplayAmount
+                          amount={(isRevenue ? 1 : -1) * Number(tx.amount || 0)}
+                          currency={tx.currency || currency}
+                          locale={locale}
+                          onDate={tx.transaction_date ? tx.transaction_date.slice(0, 10) : null}
+                          align="end"
+                        />
                       </td>
                       <td className="py-3 px-4 text-right">
                         <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
@@ -346,7 +406,7 @@ export function AccountingView() {
                 })}
               </tbody>
             </table>
-          </div>
+          </HorizontalScroller>
         )}
       </div>
     </div>

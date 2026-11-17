@@ -67,7 +67,7 @@ const MODULE_BADGES: Record<string, { labelFr: string; labelEn: string; color: s
 
 export function AvenqoLiveExperience() {
   const { locale } = useLocale();
-  const isEn = locale === "en";
+  const isEn = !locale.startsWith("fr");
 
   const [selectedSectorId, setSelectedSectorId] = useState<string>("retail_ecommerce");
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);

@@ -61,7 +61,7 @@ MODULE_TOPIC_KEYWORDS: dict[str, frozenset[str]] = {
     }),
     "legal": frozenset({
         "contrat", "contrats", "contract", "contracts", "accord", "accords", "agreement",
-        "nda", "clause", "clauses", "juridique", "legal", "avenqo", "signature", "signe",
+        "nda", "clause", "clauses", "juridique", "legal", "signature", "signe",
     }),
     "workflow": frozenset({
         "workflow", "workflows", "automation", "automations", "automatisation", "automatique",

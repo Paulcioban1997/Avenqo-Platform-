@@ -469,6 +469,10 @@ def test_unknown_to_verified_staff_full_signed_dtmf_path(signed_telnyx_webhook, 
     from backend.app.models import VoiceCall, VoiceAuthSession, VoiceCallerCredential, VoiceBusinessConfig
     env = signed_telnyx_webhook
     configure_local_public_call(env)
+    # Exercise the older public-to-verified-staff flow with an explicitly disabled IVR.
+    # The universal employee/customer keypad menu is covered by dedicated IVR tests.
+    env.config.call_policy = {"ivr_enabled": False}
+    env.session.commit()
     secret = "907182"
     user = User(company_id=env.company.id, first_name="Staff", last_name="Test", email="staff-inbound@example.com",
         password_hash="test", phone="+15145550123", role=role, is_active=True)
@@ -655,7 +659,8 @@ async def test_media_bridge_fails_closed_before_provider_open(invalid):
 
 
 @pytest.mark.asyncio
-async def test_media_bridge_background_central_failure_closes_provider():
+async def test_media_bridge_background_central_failure_speaks_safe_recovery_then_closes_on_stop():
+    """A transient Central AI failure must not strand callers in silence."""
     socket = FakeMediaSocket(); adapter = FakeAudioAdapter()
 
     async def validate(_event):
@@ -671,10 +676,17 @@ async def test_media_bridge_background_central_failure_closes_provider():
     await socket.incoming.put(start_event())
     running = asyncio.create_task(bridge.run())
     await until(lambda: adapter.opened)
-    await adapter.incoming.put(SimpleNamespace(type="conversation.item.input_audio_transcription.completed", item_id="failing-turn", transcript="Sales"))
-    with pytest.raises(RuntimeError, match="simulated-central-failure"):
-        await asyncio.wait_for(running, timeout=2)
-    assert adapter.closed and adapter.spoken == []
+    await adapter.incoming.put(SimpleNamespace(
+        type="conversation.item.input_audio_transcription.completed",
+        item_id="failing-turn", transcript="Sales",
+    ))
+    await eventually(lambda: bool(adapter.spoken))
+    assert "technical error" in adapter.spoken[0].lower()
+    assert "simulated-central-failure" not in adapter.spoken[0]
+    assert not adapter.closed
+    await socket.incoming.put({"event": "stop", "stream_id": "stream-test"})
+    await asyncio.wait_for(running, timeout=2)
+    assert adapter.closed
 
 
 @pytest.mark.asyncio
@@ -862,7 +874,7 @@ def test_media_endpoint_full_roundtrip_uses_phone_identity_and_existing_ledger(a
     assert "654321" not in str(central.calls) + str(central.usage_service.settlements)
 
 
-@pytest.mark.parametrize("denial", ["disabled", "invalid_ticket", "oversized", "central_error", "unsupported_locale", "quota"])
+@pytest.mark.parametrize("denial", ["disabled", "invalid_ticket", "oversized", "unsupported_locale", "quota"])
 def test_media_endpoint_closes_safely_on_denial(authorized_media_call, monkeypatch, denial):
     env = authorized_media_call
     state = issue_media_client_state(env.db, env.settings, env.call.id)
@@ -888,6 +900,28 @@ def test_media_endpoint_closes_safely_on_denial(authorized_media_call, monkeypat
         assert closed.value.code == {"disabled": 4403, "invalid_ticket": 4403, "oversized": 4400, "central_error": 1011, "unsupported_locale": 4403, "quota": 4403}[denial]
     if denial != "central_error":
         assert not adapter.opened and central.calls == []
+
+
+def test_media_endpoint_central_error_speaks_safe_recovery(authorized_media_call, monkeypatch):
+    """Server-side failures are spoken as a safe recovery prompt, not swallowed or leaked."""
+    env = authorized_media_call
+    state = issue_media_client_state(env.db, env.settings, env.call.id)
+    app, adapter, central = media_test_app(env, monkeypatch, fail_central=True)
+    event = start_event()
+    event["start"].update(to=env.config.telnyx_phone_number, client_state=state)
+    with TestClient(app) as client:
+        with client.websocket_connect(f"/api/v1/voice/telnyx/media/{env.call.id}") as socket:
+            socket.send_json(event)
+            socket.send_json({"event": "media", "stream_id": "stream-test", "media": {
+                "track": "inbound", "chunk": "1", "payload": base64.b64encode(b"\xff" * 160).decode()}})
+            response = socket.receive_json()
+            assert response["event"] == "media"
+            socket.send_json({"event": "stop", "stream_id": "stream-test"})
+            with pytest.raises(WebSocketDisconnect):
+                socket.receive_json()
+    assert adapter.spoken
+    assert "provider-secret-must-never-be-returned" not in adapter.spoken[0]
+    assert "technical error" in adapter.spoken[0].lower() or "erreur technique" in adapter.spoken[0].lower()
 
 
 # =====================================================================

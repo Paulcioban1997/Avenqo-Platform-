@@ -6,6 +6,12 @@ from uuid import UUID # UUID est utilisé pour les identifiants d'employés et d
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from backend.app.core.permission_grants import (
+    cap_grants,
+    effective_permissions,
+    encode_grants,
+    grants_for_responsibility,
+)
 from backend.app.core.security import generate_token, hash_password, hash_token
 from backend.app.models import AccountToken, AccountTokenPurpose, CompanyMembership, User, UserRole
 from backend.app.schemas.employees import EmployeeCreateRequest, EmployeeUpdateRequest
@@ -55,10 +61,22 @@ class EmployeeService:
             role=request.role,
             job_title=getattr(request, "job_title", None) or "Employee",
             department=getattr(request, "department", None),
+            permission_grants=encode_grants(
+                cap_grants(
+                    grants_for_responsibility(request.job_title, request.role),
+                    effective_permissions(actor),
+                )
+            ),
             is_active=True,
         )
         self._session.add(employee)
         self._session.flush()
+        self._session.add(CompanyMembership(
+            user_id=employee.id,
+            company_id=actor.company_id,
+            role=employee.role,
+            is_active=True,
+        ))
         raw_token = generate_token()
         now = datetime.now(timezone.utc)
         self._session.add(AccountToken(
@@ -94,6 +112,13 @@ class EmployeeService:
             employee.job_title = request.job_title.strip()
         if request.department is not None:
             employee.department = request.department.strip() or None
+        if request.permissions is not None or request.role is not None or request.job_title is not None:
+            requested = (
+                tuple(request.permissions)
+                if request.permissions is not None
+                else grants_for_responsibility(employee.job_title, employee.role)
+            )
+            employee.permission_grants = encode_grants(cap_grants(requested, effective_permissions(actor)))
         if request.is_active is not None:
             if employee.id == actor.id and not request.is_active:
                 raise EmployeePermissionError("Vous ne pouvez pas désactiver votre propre compte")

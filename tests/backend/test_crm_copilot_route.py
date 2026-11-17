@@ -34,3 +34,12 @@ def test_crm_copilot_chat_is_published_under_versioned_api() -> None:
     assert "/api/v1/crm/copilot/chat" == "/api/v1" + (
         copilot[0].path if copilot[0].path.startswith("/crm/") else crm_router.prefix + copilot[0].path
     )
+
+
+def test_reminder_chat_does_not_claim_messages_were_sent() -> None:
+    source = (Path(__file__).resolve().parents[2] / "backend" / "app" / "routers" / "crm.py").read_text(encoding="utf-8")
+    assert "sont actifs et prêts" not in source
+    assert "are active and operational" not in source
+    assert "Aucun rappel n'a été envoyé" in source
+    assert "reminders_sent" in source
+

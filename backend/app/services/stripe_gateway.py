@@ -1,4 +1,4 @@
-﻿"""Adaptateur Stripe isolÃ© des cas d'usage de facturation Avenqo."""
+"""Adaptateur Stripe isolÃ© des cas d'usage de facturation Avenqo."""
 
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -19,6 +19,10 @@ class StripeCustomerNotFoundError(StripeGatewayError, ValueError):
 
 class StripePriceNotFoundError(StripeGatewayError, ValueError):
     """Le tarif Stripe n'existe pas dans le compte Stripe configuré."""
+
+
+class StripeWebhookSignatureError(ValueError):
+    """La signature ou le payload du webhook Stripe est invalide."""
 
 
 
@@ -55,6 +59,7 @@ class BillingProvider(Protocol):
     def construct_event(self, payload: bytes, signature: str, secret: str) -> dict[str, Any]: ...
     def get_account_id(self) -> str: ...
     def get_active_subscription(self, customer_id: str) -> dict[str, Any] | None: ...
+    def get_customer_card_payment_method(self, customer_id: str) -> dict[str, Any] | None: ...
 
 
 class StripeGateway:
@@ -103,7 +108,7 @@ class StripeGateway:
         except stripe.InvalidRequestError as exc:
             if "No such price" in str(exc):
                 raise StripePriceNotFoundError(
-                    f"Le tarif Stripe '{price_id}' n'a pas été trouvé dans le compte Stripe configuré."
+                    "Stripe price not found in the configured Stripe account."
                 ) from exc
             raise
         # Stripe SDK resources expose to_dict(), but do not always expose get().
@@ -114,6 +119,24 @@ class StripeGateway:
             raise ValueError("Avenqo subscription prices must recur monthly")
         if self._automatic_tax_enabled and price.get("tax_behavior") == "inclusive":
             raise StripeTaxConfigurationError("Ce tarif Stripe inclut les taxes ; utilisez un nouveau tarif hors taxes.")
+
+    def find_customer_by_company(self, company_id: str) -> str | None:
+        """Reuse one test customer already tagged for this tenant."""
+        if not company_id or not all(char in "0123456789abcdef-" for char in company_id.lower()):
+            return None
+        try:
+            result = stripe.Customer.search(
+                query=f"metadata['avenqo_company_id']:'{company_id}'",
+                limit=1,
+                api_key=self._api_key,
+            )
+        except Exception:
+            return None
+        data = getattr(result, "data", None) or []
+        if not data:
+            return None
+        found = data[0]
+        return str(getattr(found, "id", "") or "") or None
 
     def create_customer(self, email: str, name: str, company_id: str) -> str:
         customer = stripe.Customer.create(
@@ -158,7 +181,7 @@ class StripeGateway:
                 ) from exc
             if "No such price" in str(exc):
                 raise StripePriceNotFoundError(
-                    f"Le tarif Stripe '{price_id}' n'a pas été trouvé dans le compte Stripe configuré."
+                    "Stripe price not found in the configured Stripe account."
                 ) from exc
             raise
         if not checkout.url:
@@ -273,6 +296,34 @@ class StripeGateway:
                 ) from exc
             raise
 
+    def get_customer_card_payment_method(self, customer_id: str) -> dict[str, Any] | None:
+        """Return the first card payment method summary for portal/status display."""
+        try:
+            methods = stripe.PaymentMethod.list(
+                customer=customer_id,
+                type="card",
+                limit=1,
+                api_key=self._api_key,
+            )
+        except stripe.InvalidRequestError as exc:
+            if "No such customer" in str(exc):
+                raise StripeCustomerNotFoundError(
+                    f"Le client Stripe '{customer_id}' n'a pas été trouvé dans le compte Stripe configuré."
+                ) from exc
+            raise
+        data = getattr(methods, "data", None) or []
+        if not data:
+            return None
+        method = data[0]
+        method_dict = method.to_dict() if hasattr(method, "to_dict") else dict(method)
+        card = method_dict.get("card") or {}
+        return {
+            "brand": card.get("brand"),
+            "last4": card.get("last4"),
+            "exp_month": card.get("exp_month"),
+            "exp_year": card.get("exp_year"),
+        }
+
     def create_portal(self, customer_id: str, return_url: str) -> str:
         try:
             portal = stripe.billing_portal.Session.create(
@@ -294,4 +345,7 @@ class StripeGateway:
             raise
 
     def construct_event(self, payload: bytes, signature: str, secret: str) -> dict[str, Any]:
-        return stripe.Webhook.construct_event(payload, signature, secret)
+        try:
+            return stripe.Webhook.construct_event(payload, signature, secret)
+        except (stripe.SignatureVerificationError, ValueError) as exc:
+            raise StripeWebhookSignatureError("Signature ou payload webhook Stripe invalide") from exc

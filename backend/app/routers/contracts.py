@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Resp
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from backend.app.core.permission_grants import effective_permissions
 from backend.app.database import get_db
 from backend.app.dependencies.auth import (
     CurrentIdentity,
@@ -24,7 +25,13 @@ from backend.app.models.company_contract import (
     ContractLifecycleStatus,
 )
 from backend.app.models.company_legal_profile import CompanyLegalProfile
-from backend.app.services.account_notifications import AccountNotifier
+from backend.app.config.settings import get_settings
+from backend.app.core.rate_limit import rate_limit
+from backend.app.services.account_notifications import (
+    AccountNotifier,
+    deliver_signature_otp,
+    mask_email,
+)
 from backend.app.services.audit_log_service import AuditLogService
 from backend.app.services.commercial_reconciler import CommercialReconciler
 from backend.app.services.company_legal_profile_service import (
@@ -111,6 +118,8 @@ class ContractItemResponse(BaseModel):
     provider_signed_at: str | None
     sha256_hash: str
     has_pdf: bool
+    approval_status: str = "NOT_LEGALLY_FINAL"
+    signable: bool = False
 
 
 def _get_service(
@@ -143,11 +152,11 @@ def get_wizard_status(
     step2_complete = not schedule.is_blocked
 
     contracts = service.ensure_contracts_for_company(company)
-    mandatory_signed = service.has_signed_mandatory_contracts(company.id)
-    all_signed = all(
-        c.status in (ContractLifecycleStatus.SIGNED.value, ContractLifecycleStatus.CUSTOMER_SIGNED.value, ContractLifecycleStatus.FULLY_EXECUTED.value)
-        for c in contracts
-    )
+    sandbox = str(service._settings.environment).lower() == "sandbox"
+    mandatory_signed = service.sandbox_saas_accepted(company.id) if sandbox else service.has_signed_mandatory_contracts(company.id)
+    applicable = [c for c in contracts if not (sandbox and c.contract_type == "PRIVATE_LICENSE")]
+    signed_states = (ContractLifecycleStatus.SIGNED.value, ContractLifecycleStatus.CUSTOMER_SIGNED.value, ContractLifecycleStatus.FULLY_EXECUTED.value)
+    all_signed = all(c.status in signed_states for c in applicable)
 
     current_step = 1
     if step1_complete:
@@ -189,6 +198,7 @@ def get_wizard_status(
                     "version": c.version,
                     "status": c.status,
                     "execution_state": c.execution_state,
+                    "optional": c.contract_type == "PRIVATE_LICENSE",
                     "draft_pdf_available": True,
                 }
                 for c in contracts
@@ -305,7 +315,10 @@ def get_commercial_order(
     return schedule.to_dict()
 
 
-@router.post("/signing-challenge")
+@router.post(
+    "/signing-challenge",
+    dependencies=[Depends(rate_limit("signing_challenge", "rate_limit_signing_challenge_per_minute"))],
+)
 def create_signing_challenge(
     contract_type: str,
     tenant: TenantContext = Depends(get_tenant_context),
@@ -314,17 +327,28 @@ def create_signing_challenge(
     notifier: AccountNotifier = Depends(get_account_notifier),
     service: ContractSignatureService = Depends(_get_service),
 ) -> dict[str, Any]:
-    """Envoie un code à l'adresse vérifiée du signataire sans l'exposer au navigateur."""
-    if not notifier.email_delivery_configured:
-        raise HTTPException(status_code=503, detail="Livraison sécurisée du code indisponible.")
+    """Send an 8-digit OTP to the authorized signer's verified email only."""
     company = db.get(Company, tenant.company_id)
     if company is None:
         raise HTTPException(status_code=404, detail="Entreprise introuvable")
+    # Recipient is always the authenticated signer's verified account email —
+    # never company.email, never an employee address, never a frontend-supplied recipient.
+    recipient = (identity.user.email or "").strip()
+    if "@" not in recipient:
+        raise HTTPException(
+            status_code=422,
+            detail="Aucune adresse email vérifiée n'est associée au compte signataire.",
+        )
+    masked = mask_email(recipient)
+    settings = getattr(service, "_settings", None) or get_settings()
     try:
-        service.require_legal_release()
+        if not service.sandbox_pilot_signing():
+            service.require_legal_release()
         service.verify_signatory_authority(identity.user, company.id, declared_authority=True)
         contract = service.get_contract(company.id, contract_type)
-        schedule = CommercialReconciler.reconcile(company, service._settings)
+        if service.signature_blocked(contract):
+            raise ContractAuthorityError("Document en révision juridique — consultation seulement.")
+        schedule = CommercialReconciler.reconcile(company, settings)
         if schedule.is_blocked:
             raise CommercialConfigMismatchError("Configuration commerciale divergente.")
         challenge, code = SigningChallengeService(db).create_challenge(
@@ -335,23 +359,49 @@ def create_signing_challenge(
             content_hash=service.compute_sha256(contract.content_text),
             commercial_hash=SigningChallengeService.snapshot_hash(schedule.to_dict()),
         )
-        notifier.send_transactional(
-            identity.user.email,
-            "Code de signature Avenqo",
-            f"Votre code de confirmation de signature est {code}. Il expire dans 15 minutes.",
-        )
-        db.commit()
+        from backend.app.services.account_notifications import sandbox_mail_company_id, sandbox_mail_session
+
+        company_token = sandbox_mail_company_id.set(str(company.id))
+        session_token = sandbox_mail_session.set(db)
+        try:
+            delivery = deliver_signature_otp(
+                notifier=notifier,
+                settings=settings,
+                recipient=recipient,
+                code=code,
+            )
+            if delivery == "failed":
+                db.rollback()
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "Le code n'a pas pu être livré à l'adresse du signataire. "
+                        "Aucun défi actif n'a été créé. Vérifiez la configuration d'envoi "
+                        "ou la liste des destinataires d'essai approuvés."
+                    ),
+                )
+            db.commit()
+        finally:
+            sandbox_mail_company_id.reset(company_token)
+            sandbox_mail_session.reset(session_token)
+    except HTTPException:
+        raise
     except (ContractAuthorityError, CommercialConfigMismatchError) as exc:
         db.rollback()
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except Exception:
         db.rollback()
-        raise HTTPException(status_code=503, detail="Livraison du code impossible; aucun défi actif créé.") from None
+        raise HTTPException(
+            status_code=503,
+            detail="Livraison du code impossible; aucun défi actif créé.",
+        ) from None
     return {
         "challenge_id": str(challenge.id),
         "contract_type": contract_type,
         "expires_at": challenge.expires_at.isoformat(),
-        "delivery": "email",
+        "delivery": delivery,
+        "recipient_masked": masked,
+        "ttl_minutes": SigningChallengeService.TTL_MINUTES,
     }
 
 
@@ -388,7 +438,13 @@ def list_company_contracts(
             signed_at=c.signed_at.isoformat() if c.signed_at else None,
             provider_signed_at=c.provider_signed_at.isoformat() if c.provider_signed_at else None,
             sha256_hash=c.sha256_hash,
-            has_pdf=bool(c.storage_path),
+            has_pdf=True,
+            approval_status=service.approval_status_of(c),
+            signable=not service.signature_blocked(c) and c.status not in {
+                ContractLifecycleStatus.SIGNED.value,
+                ContractLifecycleStatus.CUSTOMER_SIGNED.value,
+                ContractLifecycleStatus.FULLY_EXECUTED.value,
+            },
         )
         for c in contracts
     ]
@@ -439,7 +495,10 @@ def get_contract_detail(
         "provider_signed_at": contract.provider_signed_at.isoformat() if contract.provider_signed_at else None,
         "sha256_hash": contract.sha256_hash,
         "content_text": contract.content_text,
-        "has_pdf": bool(contract.storage_path),
+        "has_pdf": True,
+        "approval_status": service.approval_status_of(contract),
+        "signable": not service.signature_blocked(contract),
+        "language_notice": contract.language,
         "completion_record": contract.completion_record_json,
     }
 
@@ -573,12 +632,22 @@ async def upload_manuscript_signature(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-@router.get("/{contract_type}/download")
+def assert_contract_reader(identity: CurrentIdentity, tenant: TenantContext) -> None:
+    """The file is only returned to the tenant that owns it, and only to a permitted user."""
+
+    if identity.user.company_id != tenant.company_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Accès refusé pour cette entreprise.")
+    role = str(getattr(identity.user.role, "value", identity.user.role) or "").lower()
+    if role in {"owner", "admin"} or "billing:manage" in effective_permissions(identity.user):
+        return
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission insuffisante pour consulter ce contrat.")
+
+
 def download_contract_pdf(
     contract_type: str,
-    tenant: TenantContext = Depends(get_tenant_context),
-    db: Session = Depends(get_db),
-    service: ContractSignatureService = Depends(_get_service),
+    tenant: TenantContext,
+    db: Session,
+    service: ContractSignatureService,
 ) -> Response:
     """Télécharge le PDF certifié signé ou le PDF brouillon pré-rempli pour impression."""
     company = db.get(Company, tenant.company_id)
@@ -631,25 +700,106 @@ def download_contract_pdf(
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
-    # Document brouillon / vierge pré-rempli
-    if contract.status in (ContractLifecycleStatus.PENDING_SIGNATURE.value, ContractLifecycleStatus.DRAFT.value, ContractLifecycleStatus.READY_FOR_SIGNATURE.value):
-        pdf_bytes = service.generate_draft_pdf(company, contract_type)
-        filename = f"{contract_type}_Brouillon_{contract.version}.pdf"
-        return Response(
-            content=pdf_bytes,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-        )
-
-    raise HTTPException(
-        status_code=400,
-        detail=f"Statut contractuel invalide pour le téléchargement ({contract.status}).",
+    pdf_bytes = service.generate_draft_pdf(company, contract_type)
+    filename = f"{contract_type}_{contract.version}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "private, no-store",
+            "X-Contract-Version": contract.version,
+            "X-Approval-Status": service.approval_status_of(contract),
+        },
     )
+
+
+@router.get("/{contract_type}/download")
+def download_contract_pdf_route(
+    contract_type: str,
+    tenant: TenantContext = Depends(get_tenant_context),
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+    service: ContractSignatureService = Depends(_get_service),
+) -> Response:
+    """Authenticated download of the same version the reader displays. No public file URL."""
+
+    assert_contract_reader(identity, tenant)
+    return download_contract_pdf(contract_type, tenant, db, service)
+
+
+@router.post("/{contract_type}/resend-signed-copy")
+def resend_signed_contract_pdf_email(
+    contract_type: str,
+    tenant: TenantContext = Depends(get_tenant_context),
+    identity: CurrentIdentity = Depends(get_current_identity),
+    service: ContractSignatureService = Depends(_get_service),
+) -> dict[str, Any]:
+    """Safe idempotent retry for dispatching the signed contract PDF copy to the verified signatory."""
+    assert_contract_reader(identity, tenant)
+    try:
+        contract = service.get_contract(tenant.company_id, contract_type)
+        return service.send_signed_contract_email(
+            contract=contract,
+            signer=identity.user,
+        )
+    except ContractNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ContractAuthorityError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 class VerifyWetInkRequest(BaseModel):
     approved: bool
     rejection_reason: str | None = None
+
+
+class LegalVersionApprovalRequest(BaseModel):
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+@router.post("/{contract_type}/approve-legal-version")
+def approve_legal_contract_version(
+    contract_type: str,
+    company_id: UUID,
+    payload: LegalVersionApprovalRequest | None = None,
+    identity: CurrentIdentity = Depends(
+        require_platform_role("PLATFORM_SUPER_ADMIN", "PLATFORM_LEGAL_REVIEWER")
+    ),
+    service: ContractSignatureService = Depends(_get_service),
+) -> dict[str, Any]:
+    """Authorize customer signing for a reviewed version. Not a countersignature."""
+    try:
+        updated = service.approve_contract_version_for_signing(
+            company_id=company_id,
+            contract_type=contract_type,
+            reviewer=identity.user,
+            notes=(payload.notes if payload else None),
+        )
+        meta = updated.metadata_json if isinstance(updated.metadata_json, dict) else {}
+        return {
+            "success": True,
+            "contract_id": str(updated.id),
+            "company_id": str(updated.company_id),
+            "contract_type": updated.contract_type,
+            "version": updated.version,
+            "approval_status": service.approval_status_of(updated),
+            "signable": not service.signature_blocked(updated),
+            "legal_approved_by_email": meta.get("legal_approved_by_email"),
+            "legal_approved_at": meta.get("legal_approved_at"),
+            "legal_approved_version": meta.get("legal_approved_version"),
+            "legal_approved_content_hash": meta.get("legal_approved_content_hash"),
+            "provider_countersigned": False,
+            "legal_effect": "version_approved_for_customer_signing_only",
+        }
+    except ContractNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ContractAlreadySignedError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ContractAuthorityError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
 @router.post("/{contract_type}/verify-wet-ink")

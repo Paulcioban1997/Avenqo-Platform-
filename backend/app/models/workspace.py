@@ -12,6 +12,21 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.app.models.base import Base, TimestampMixin
 
 
+class SandboxMailboxMessage(Base):
+    """Message captured inside Sandbox. It never leaves the tenant database."""
+
+    __tablename__ = "sandbox_mailbox_messages"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    recipient: Mapped[str] = mapped_column(String(320), nullable=False)
+    subject: Mapped[str] = mapped_column(String(200), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class LoginEvent(Base):
     __tablename__ = "login_events"
 
@@ -43,6 +58,7 @@ class EmployeeInvitation(TimestampMixin, Base):
     role: Mapped[str] = mapped_column(String(32), nullable=False, default="user")
     job_title: Mapped[str] = mapped_column(String(120), nullable=False, default="Employee")
     department: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    permission_grants: Mapped[str | None] = mapped_column(Text, nullable=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -50,6 +66,35 @@ class EmployeeInvitation(TimestampMixin, Base):
     code_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     code_salt: Mapped[str | None] = mapped_column(String(32), nullable=True)
     failed_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+
+class EmployeeEmailCorrection(TimestampMixin, Base):
+    """Demande du propriétaire. L'adresse ne change qu'après confirmation du nouveau courriel."""
+
+    __tablename__ = "employee_email_corrections"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    requested_by_user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    releasing_user_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    old_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    new_email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    code_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    code_salt: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    failed_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class EmployeeResponsibility(TimestampMixin, Base):

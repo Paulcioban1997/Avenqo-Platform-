@@ -5,12 +5,14 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from backend.app.config.settings import get_settings
 from backend.app.database import get_db
-from backend.app.dependencies.auth import CurrentIdentity, get_account_notifier, get_current_identity
-from backend.app.models import UserRole
-from backend.app.core.permissions import permissions_for
+from backend.app.core.permission_grants import effective_permissions
+from backend.app.dependencies.auth import CurrentIdentity, get_account_notifier, get_auth_service, get_current_identity
+from backend.app.models import SandboxMailboxMessage, User, UserRole
 from backend.app.schemas.workspace_sources import (
     WorkspaceSourceSelectionRequest,
     WorkspaceSourceSelectionResponse,
@@ -23,15 +25,82 @@ from backend.app.services.retail_source_service import (
     RetailSourceNotFound,
     RetailSourceService,
 )
-from backend.app.services.workspace_service import WorkspaceError, WorkspaceService
+from backend.app.services.auth_service import AuthService
+from backend.app.services.workspace_service import MailNotConfigured, WorkspaceError, WorkspaceService
 from shared.ai_engine.contracts import TenantContext
 
 router = APIRouter(prefix="/workspace", tags=["workspace"])
 
 
+def _delivery_channel(service: WorkspaceService) -> str:
+    notifier = getattr(service, "_notifier", None)
+    if type(notifier).__name__ == "SandboxCaptureAccountNotifier":
+        return "sandbox_mailbox"
+    return "email"
+
+
+@router.get("/sandbox-mailbox")
+def sandbox_mailbox(
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Messages captured for this company. Production has no such mailbox."""
+    if get_settings().environment.lower() in {"production", "prod"}:
+        raise HTTPException(status_code=404, detail="Introuvable")
+    if "users:manage" not in effective_permissions(identity.user):
+        raise HTTPException(status_code=403, detail="Permission insuffisante")
+    import re
+
+    from backend.app.services.account_notifications import SIGNATURE_OTP_SUBJECT
+
+    rows = db.scalars(
+        select(SandboxMailboxMessage)
+        .where(SandboxMailboxMessage.company_id == identity.user.company_id)
+        .order_by(SandboxMailboxMessage.created_at.desc())
+        .limit(20)
+    ).all()
+    # Signature OTPs must never appear in Team. Invitation codes may still be shown in sandbox.
+    code_re = re.compile(r"\b\d{8}\b")
+    messages: list[dict] = []
+    for row in rows:
+        subject = row.subject or ""
+        body = row.body or ""
+        if subject == SIGNATURE_OTP_SUBJECT or "confirmation de signature" in body.lower():
+            body = code_re.sub("[code masqué]", body)
+            body = (
+                "Statut : code de signature demandé. "
+                "Le code n'est pas affiché ici — consultez le courriel du signataire."
+            )
+        messages.append(
+            {
+                "id": str(row.id),
+                "recipient": row.recipient,
+                "subject": subject,
+                "body": body,
+                "created_at": row.created_at.isoformat(),
+            }
+        )
+    return {
+        "external_delivery": False,
+        "messages": messages,
+    }
+
+
 class ProfileUpdate(BaseModel):
     job_title: str | None = Field(default=None, max_length=120)
     department: str | None = Field(default=None, max_length=120)
+
+
+class EmailCorrectionRequest(BaseModel):
+    new_email: EmailStr
+    confirm_email: EmailStr
+
+
+class EmailCorrectionConfirm(BaseModel):
+    token: str | None = Field(default=None, max_length=512)
+    code: str | None = Field(default=None, max_length=32)
+    email: EmailStr | None = None
+    replacement_email: EmailStr | None = None
 
 
 class ResponsibilityCreate(BaseModel):
@@ -103,6 +172,65 @@ def update_profile(
     except WorkspaceError as exc:
         raise _http(exc) from exc
     return {"id": str(user.id), "job_title": user.job_title, "department": user.department}
+
+
+@router.post("/employees/{employee_id}/email-correction")
+def request_email_correction(
+    employee_id: UUID,
+    payload: EmailCorrectionRequest,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    service: WorkspaceService = Depends(_service),
+) -> dict:
+    if str(payload.new_email).strip().lower() != str(payload.confirm_email).strip().lower():
+        raise HTTPException(400, "Les deux adresses doivent être identiques")
+    try:
+        row = service.request_email_correction(identity.user, employee_id, str(payload.new_email))
+    except MailNotConfigured as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except WorkspaceError as exc:
+        raise _http(exc) from exc
+    return {
+        "id": str(row.id),
+        "new_email": row.new_email,
+        "expires_at": row.expires_at.isoformat(),
+        "release_required": row.releasing_user_id is not None,
+    }
+
+
+@router.get("/email-corrections/preview")
+def preview_email_correction(
+    token: str,
+    service: WorkspaceService = Depends(_service),
+) -> dict:
+    try:
+        return service.preview_email_correction(token)
+    except WorkspaceError as exc:
+        raise _http(exc) from exc
+
+
+@router.post("/email-corrections/confirm")
+def confirm_email_correction(
+    payload: EmailCorrectionConfirm,
+    service: WorkspaceService = Depends(_service),
+) -> dict:
+    try:
+        user, reissued = service.confirm_email_correction(
+            payload.token,
+            code=payload.code,
+            email=str(payload.email) if payload.email else None,
+            replacement_email=str(payload.replacement_email) if payload.replacement_email else None,
+        )
+    except WorkspaceError as exc:
+        raise _http(exc) from exc
+    company = user.company
+    return {
+        "confirmed": True,
+        "email": user.email,
+        "company_id": str(user.company_id),
+        "company_name": company.name if company is not None else "",
+        "job_title": user.job_title,
+        "invitation_sent": reissued is not None,
+    }
 
 
 @router.get("/responsibilities")
@@ -178,6 +306,8 @@ def invite(
 ) -> dict:
     try:
         row = service.invite(identity.user, str(payload.email), payload.role, payload.job_title, payload.department)
+    except MailNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except WorkspaceError as exc:
         raise HTTPException(400, str(exc)) from exc
     except PlanLimitReached as exc:
@@ -185,9 +315,8 @@ def invite(
     return {
         "id": str(row.id),
         "email": row.email,
-        "token": getattr(row, "_raw_token", None),
-        "invitation_code": getattr(row, "_raw_code", None),
         "expires_at": row.expires_at.isoformat(),
+        "delivery": _delivery_channel(service),
     }
 
 
@@ -205,6 +334,8 @@ def invite_bulk(
             payload.job_title,
             payload.department,
         )
+    except MailNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except WorkspaceError as exc:
         raise HTTPException(400, str(exc)) from exc
     except PlanLimitReached as exc:
@@ -214,9 +345,8 @@ def invite_bulk(
             {
                 "id": str(r.id),
                 "email": r.email,
-                "token": getattr(r, "_raw_token", None),
-                "invitation_code": getattr(r, "_raw_code", None),
                 "expires_at": r.expires_at.isoformat(),
+                "delivery": _delivery_channel(service),
             }
             for r in rows
         ],
@@ -224,8 +354,67 @@ def invite_bulk(
     }
 
 
+@router.get("/invitations/preview")
+def preview_invitation(
+    token: str | None = None,
+    code: str | None = None,
+    email: str | None = None,
+    service: WorkspaceService = Depends(_service),
+) -> dict:
+    try:
+        return service.preview_invitation(token, code=code, email=email)
+    except WorkspaceError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.get("/invitations")
+def list_invitations(
+    identity: CurrentIdentity = Depends(get_current_identity),
+    service: WorkspaceService = Depends(_service),
+) -> dict:
+    rows = service.pending_invitations(identity.user)
+    known = {
+        user.email: user
+        for user in service._session.scalars(select(User).where(User.company_id == identity.user.company_id))
+    }
+    return {
+        "invitations": [
+            {
+                "id": str(row.id),
+                "email": row.email,
+                "job_title": row.job_title,
+                "department": row.department,
+                "expires_at": row.expires_at.isoformat(),
+                "member_name": (
+                    f"{known[row.email].first_name} {known[row.email].last_name}".strip()
+                    if row.email in known
+                    else ""
+                ),
+            }
+            for row in rows
+        ]
+    }
+
+
+@router.post("/invitations/{invitation_id}/revoke")
+def revoke_invitation(
+    invitation_id: UUID,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    service: WorkspaceService = Depends(_service),
+) -> dict:
+    try:
+        row = service.revoke_invitation(identity.user, invitation_id)
+    except WorkspaceError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"id": str(row.id), "revoked": True}
+
+
 @router.post("/invitations/accept", status_code=201)
-def accept_invitation(payload: InvitationAccept, service: WorkspaceService = Depends(_service)) -> dict:
+def accept_invitation(
+    payload: InvitationAccept,
+    service: WorkspaceService = Depends(_service),
+    auth: AuthService = Depends(get_auth_service),
+) -> dict:
     try:
         user = service.accept_invitation(
             payload.token,
@@ -239,7 +428,19 @@ def accept_invitation(payload: InvitationAccept, service: WorkspaceService = Dep
         raise HTTPException(400, str(exc)) from exc
     except PlanLimitReached as exc:
         raise plan_limit_exception(exc) from exc
-    return {"id": str(user.id), "email": user.email, "company_id": str(user.company_id)}
+    result = auth.create_auth_session(user)
+    permissions = set(effective_permissions(user))
+    company = user.company
+    return {
+        "id": str(user.id),
+        "email": user.email,
+        "company_id": str(user.company_id),
+        "company_name": company.name if company is not None else "",
+        "job_title": user.job_title,
+        "home": "/dashboard" if "data:read" in permissions else "/employees",
+        "access_token": result.access_token,
+        "refresh_token": result.refresh_token,
+    }
 
 
 class GuidanceAsk(BaseModel):
@@ -270,7 +471,7 @@ def get_sources_selection(
     db: Session = Depends(get_db),
 ) -> WorkspaceSourceSelectionResponse:
     """Retourne la configuration multi-sources actuelle de l'entreprise."""
-    if "data:read" not in permissions_for(identity.user.role):
+    if "data:read" not in effective_permissions(identity.user):
         raise HTTPException(status_code=403, detail="Permission refusée: data:read requise")
     tenant = TenantContext(company_id=identity.company_id, user_id=identity.user_id)
     service = RetailSourceService(db)
@@ -285,7 +486,7 @@ def set_sources_selection(
     db: Session = Depends(get_db),
 ) -> WorkspaceSourceSelectionResponse:
     """Met à jour le mode et la sélection multi-sources pour l'entreprise."""
-    if "data:manage" not in permissions_for(identity.user.role):
+    if "data:manage" not in effective_permissions(identity.user):
         raise HTTPException(status_code=403, detail="Permission refusée: data:manage requise")
     tenant = TenantContext(company_id=identity.company_id, user_id=identity.user_id)
     service = RetailSourceService(db)

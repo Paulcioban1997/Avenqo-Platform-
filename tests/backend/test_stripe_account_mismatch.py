@@ -72,7 +72,7 @@ def test_stripe_gateway_create_checkout_price_not_found():
                 success_url="https://example.com/success",
                 cancel_url="https://example.com/cancel",
             )
-        assert "price_missing_123" in str(exc_info.value)
+        assert "Stripe price not found in the configured Stripe account." in str(exc_info.value)
 
 
 def test_billing_service_create_portal_preserves_customer_id_on_mismatch(db_session_and_factory):

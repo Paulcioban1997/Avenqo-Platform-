@@ -43,6 +43,7 @@ class User(TimestampMixin, Base):
         nullable=False,
         default=UserRole.USER,
     )
+    permission_grants: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # Indépendant du rôle tenant (owner/admin/...) : jamais activé automatiquement,
     # doit être positionné explicitement (ex. script d'exploitation Avenqo).

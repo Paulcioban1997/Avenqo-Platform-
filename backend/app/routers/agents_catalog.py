@@ -6,11 +6,11 @@ from sqlalchemy.orm import Session
 from backend.app.assistants.registry import AssistantRegistry, agent_entitlements
 from backend.app.database import get_db
 from backend.app.dependencies.assistants import get_assistant_registry
-from backend.app.dependencies.auth import get_tenant_context
+from backend.app.dependencies.auth import get_tenant_context, require_permission
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from shared.ai_engine.contracts import TenantContext
 
-router = APIRouter(prefix="/agents", tags=["agents"])
+router = APIRouter(prefix="/agents", tags=["agents"], dependencies=[Depends(require_permission("ai:use"))])
 
 
 @router.get("")

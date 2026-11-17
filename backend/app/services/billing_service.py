@@ -1,6 +1,8 @@
+import logging
 import time
 """Cas d'usage de facturation Stripe limités au tenant authentifié."""
 
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_CEILING
 from typing import Any
@@ -24,11 +26,13 @@ from backend.app.models import (
 )
 from backend.app.services.account_notifications import AccountNotifier
 from backend.app.services.tenant_locale_service import get_company_locale
-from backend.app.services.stripe_gateway import BillingProvider
+from backend.app.services.stripe_gateway import BillingProvider, StripeCustomerNotFoundError
 from backend.app.services.invoice_tax import invoice_tax_snapshot
 from backend.app.services.tenant_rls import apply_tenant_rls
 from payments import PlanCode, get_plan
 from payments.plans import AI_CREDIT_PACKS, AICreditPack, get_ai_credit_pack
+
+logger = logging.getLogger(__name__)
 
 
 class BillingConfigurationError(RuntimeError):
@@ -62,6 +66,166 @@ class BillingService:
             raise BillingConfigurationError("Stripe n'est pas configuré")
         return self._provider
 
+    def _sandbox_test_stripe(self) -> bool:
+        environment = str(getattr(self._settings, "environment", "") or "").lower()
+        key = str(getattr(self._settings, "stripe_secret_key", "") or "")
+        return environment == "sandbox" and key.startswith("sk_test_")
+
+    def _customer_is_visible(self, customer_id: str) -> bool:
+        try:
+            self.provider.get_active_subscription(customer_id)
+        except StripeCustomerNotFoundError:
+            return False
+        return True
+
+    def _reconcile_sandbox_customer(self, account: BillingAccount, company: Company) -> BillingAccount:
+        """Replace a test customer this Stripe account cannot see. Production ids stay untouched."""
+        if not self._sandbox_test_stripe():
+            return account
+        previous = account.stripe_customer_id
+        if previous and self._customer_is_visible(previous):
+            return account
+        found: str | None = None
+        finder = getattr(self.provider, "find_customer_by_company", None)
+        if callable(finder):
+            raw_found = finder(str(company.id))
+            if isinstance(raw_found, str):
+                found = raw_found
+        if found and self._customer_is_visible(found):
+            account.stripe_customer_id = found
+        else:
+            account.stripe_customer_id = self.provider.create_customer(
+                company.email,
+                company.name,
+                str(company.id),
+            )
+        if previous and account.stripe_customer_id != previous:
+            account.stripe_subscription_id = None
+        self._session.commit()
+        return account
+
+    def _sandbox_saas_accepted(self, company: Company) -> bool:
+        from backend.app.services.contract_signature_service import ContractSignatureService
+
+        return ContractSignatureService(self._session, settings=self._settings).sandbox_saas_accepted(company.id)
+
+    @staticmethod
+    def _resource_dict(value: Any) -> dict[str, Any]:
+        if value is None:
+            return {}
+        if isinstance(value, dict):
+            return value
+        if hasattr(value, "to_dict_recursive"):
+            return value.to_dict_recursive()
+        if hasattr(value, "to_dict"):
+            return value.to_dict()
+        return dict(value)
+
+    @classmethod
+    def _subscription_period_end_ts(cls, subscription: dict[str, Any]) -> int | None:
+        """Stripe Billing moved current_period_end onto subscription items."""
+        root = subscription.get("current_period_end")
+        if root:
+            return int(root)
+        items = ((subscription.get("items") or {}).get("data") or [])
+        for item in items:
+            item_end = item.get("current_period_end") if isinstance(item, dict) else None
+            if item_end:
+                return int(item_end)
+        return None
+
+    def _apply_remote_subscription(self, account: BillingAccount, remote: Any) -> bool:
+        remote_dict = self._resource_dict(remote)
+        sub_id = remote_dict.get("id")
+        if not sub_id:
+            return False
+        account.stripe_subscription_id = str(sub_id)
+        if remote_dict.get("status"):
+            account.status = str(remote_dict["status"])
+        if "cancel_at_period_end" in remote_dict:
+            account.cancel_at_period_end = bool(remote_dict.get("cancel_at_period_end"))
+        period_end = self._subscription_period_end_ts(remote_dict)
+        if period_end:
+            # Always overwrite stale local period ends with Stripe's confirmed value.
+            account.current_period_end = datetime.fromtimestamp(period_end, timezone.utc)
+        return True
+
+    def _heal_paid_subscription_credits(self, company_id: UUID, customer_id: str) -> None:
+        """Apply missed invoice.paid renewals once; never invent tax or unpaid renewals."""
+        if self._usage_service is None:
+            return
+        list_invoices = getattr(self.provider, "list_customer_invoices", None)
+        if not callable(list_invoices):
+            return
+        try:
+            invoices = list_invoices(customer_id, limit=20)
+        except Exception:
+            logger.exception("Stripe invoice credit heal failed for tenant %s", company_id)
+            return
+        if not isinstance(invoices, Iterable):
+            return
+        for invoice in invoices:
+            if str(invoice.get("status") or "") != "paid":
+                continue
+            reason = str(invoice.get("billing_reason") or "")
+            parent = invoice.get("parent") or {}
+            subscription_details = parent.get("subscription_details") or {}
+            has_subscription = bool(
+                invoice.get("subscription")
+                or subscription_details.get("subscription")
+            )
+            if reason not in {"subscription_cycle", "subscription_create"}:
+                if reason or not has_subscription:
+                    continue
+            lines = (invoice.get("lines") or {}).get("data") or []
+            period = (lines[0].get("period") if lines else {}) or {}
+            period_start = self._stripe_datetime(period.get("start")) or self._stripe_datetime(
+                invoice.get("created")
+            )
+            if period_start is None:
+                continue
+            self._usage_service.reset_credits_for_renewal(
+                company_id,
+                period_start.strftime("%Y-%m"),
+            )
+
+    def refresh_stripe_payment_evidence(self, company: Company) -> BillingAccount:
+        """Keep local plan/entitlement; only claim Stripe payment when a test subscription is visible."""
+
+        account = self.get_account(company.id)
+        if not self._sandbox_test_stripe():
+            return account
+        account = self._reconcile_sandbox_customer(account, company)
+        remote = None
+        if account.stripe_customer_id:
+            try:
+                remote = self.provider.get_active_subscription(account.stripe_customer_id)
+            except StripeCustomerNotFoundError:
+                remote = None
+            if remote is None:
+                # Visible empty customer must not hide another company-tagged customer with an active sub.
+                finder = getattr(self.provider, "find_customer_by_company", None)
+                if callable(finder):
+                    alternate = finder(str(company.id))
+                    if isinstance(alternate, str) and alternate and alternate != account.stripe_customer_id:
+                        try:
+                            remote = self.provider.get_active_subscription(alternate)
+                        except StripeCustomerNotFoundError:
+                            remote = None
+                        if remote:
+                            account.stripe_customer_id = alternate
+        if remote and self._apply_remote_subscription(account, remote):
+            if account.stripe_customer_id:
+                self._heal_paid_subscription_credits(company.id, account.stripe_customer_id)
+            self._session.commit()
+            return account
+        if account.stripe_subscription_id:
+            account.stripe_subscription_id = None
+            account.current_period_end = None
+            # Preserve plan_code and local entitlement status for modules/credits.
+            self._session.commit()
+        return account
+
     def get_account(self, company_id: UUID) -> BillingAccount:
         account = self._session.scalar(select(BillingAccount).where(
             BillingAccount.company_id == company_id,
@@ -91,6 +255,35 @@ class BillingService:
         if account is None:
             account = self.get_account(company.id)
 
+        if self._sandbox_test_stripe():
+            account = self._reconcile_sandbox_customer(account, company)
+            remote = None
+            if account.stripe_customer_id:
+                remote = self.provider.get_active_subscription(account.stripe_customer_id)
+            if remote:
+                if self._apply_remote_subscription(account, remote):
+                    self._session.commit()
+                raise BillingOperationError(
+                    "Un abonnement test existe déjà sur ce client Stripe. "
+                    "Utilisez le portail Stripe pour le gérer sans créer de doublon."
+                )
+            if not account.stripe_customer_id:
+                account.stripe_customer_id = self.provider.create_customer(
+                    company.email, company.name, str(company.id),
+                )
+                self._session.commit()
+            price_id = self._required_price(plan.code, company.currency_code)
+            window_bucket = int(time.time() // 300)
+            idempotency_key = f"checkout_{company.id}_{price_id}_{window_bucket}"
+            return self.provider.create_checkout(
+                account.stripe_customer_id,
+                price_id,
+                str(company.id),
+                f"{self._settings.frontend_url.rstrip('/')}/billing?checkout=success",
+                f"{self._settings.frontend_url.rstrip('/')}/pricing?checkout=cancelled",
+                idempotency_key=idempotency_key,
+            )
+
         # 1. Vérification locale immédiate : abonnement déjà lié et actif
         if account.stripe_subscription_id and account.status not in {"canceled", "incomplete_expired"}:
             raise BillingOperationError("Un abonnement existe déjà; utilisez le portail client pour le gérer")
@@ -106,14 +299,12 @@ class BillingService:
         if account.stripe_customer_id:
             remote_sub = self.provider.get_active_subscription(account.stripe_customer_id)
             if remote_sub:
-                sub_id = remote_sub.get("id") if isinstance(remote_sub, dict) else getattr(remote_sub, "id", None)
-                sub_status = remote_sub.get("status") if isinstance(remote_sub, dict) else getattr(remote_sub, "status", "active")
-                if sub_id:
-                    account.stripe_subscription_id = sub_id
-                    account.status = sub_status
+                applied = self._apply_remote_subscription(account, remote_sub)
+                if applied:
                     self._session.commit()
+                linked_id = account.stripe_subscription_id or ""
                 raise BillingOperationError(
-                    f"Un abonnement actif ({sub_id or ''}) existe déjà sur votre compte Stripe. "
+                    f"Un abonnement actif ({linked_id}) existe déjà sur votre compte Stripe. "
                     "Votre compte a été synchronisé. Utilisez le portail Stripe pour le gérer sans créer de doublon."
                 )
 
@@ -160,8 +351,31 @@ class BillingService:
         return account
 
     def create_portal(self, company: Company) -> str:
-        """Ouvre le portail Stripe et réconcilie proactivement l'abonnement distant si nécessaire."""
+        """Checkout when no real Stripe subscription; Customer Portal when one exists."""
         account = self.get_account(company.id)
+        if self._sandbox_test_stripe():
+            account = self.refresh_stripe_payment_evidence(company)
+            remote = None
+            if account.stripe_customer_id:
+                try:
+                    remote = self.provider.get_active_subscription(account.stripe_customer_id)
+                except StripeCustomerNotFoundError:
+                    remote = None
+            if remote is None:
+                if self._sandbox_saas_accepted(company):
+                    return self.create_checkout(
+                        company,
+                        account.plan_code or company.subscription_plan or "professional",
+                    )
+                raise BillingOperationError(
+                    "Les accords SaaS requis doivent être acceptés avant le paiement test. "
+                    "Ouvrez Paramètres → Contrats, puis réessayez Gérer l'abonnement."
+                )
+            customer_id = account.stripe_customer_id
+            if not customer_id:
+                raise BillingOperationError("Compte client Stripe introuvable")
+            return_url = f"{self._settings.frontend_url.rstrip('/')}/billing"
+            return self.provider.create_portal(customer_id, return_url)
         if not account.stripe_customer_id:
             account.stripe_customer_id = self.provider.create_customer(
                 company.email,
@@ -172,20 +386,25 @@ class BillingService:
         if not account.stripe_subscription_id and account.stripe_customer_id:
             try:
                 remote_sub = self.provider.get_active_subscription(account.stripe_customer_id)
-                if remote_sub:
-                    sub_id = remote_sub.get("id") if isinstance(remote_sub, dict) else getattr(remote_sub, "id", None)
-                    sub_status = remote_sub.get("status") if isinstance(remote_sub, dict) else getattr(remote_sub, "status", "active")
-                    if sub_id:
-                        account.stripe_subscription_id = sub_id
-                        account.status = sub_status
-                        self._session.commit()
+                if remote_sub and self._apply_remote_subscription(account, remote_sub):
+                    self._session.commit()
             except Exception as e:
                 logger.warning("Impossible de synchroniser l'abonnement distant à l'ouverture du portail: %s", e)
 
-        return self.provider.create_portal(
-            account.stripe_customer_id,
-            f"{self._settings.frontend_url.rstrip('/')}/billing",
-        )
+        return_url = f"{self._settings.frontend_url.rstrip('/')}/billing"
+        customer_id = account.stripe_customer_id
+        if not customer_id:
+            raise BillingOperationError("Compte client Stripe introuvable")
+        try:
+            return self.provider.create_portal(customer_id, return_url)
+        except StripeCustomerNotFoundError:
+            if not self._sandbox_test_stripe():
+                raise
+            account = self._reconcile_sandbox_customer(account, company)
+            reconciled_customer_id = account.stripe_customer_id
+            if not reconciled_customer_id:
+                raise BillingOperationError("Compte client Stripe introuvable")
+            return self.provider.create_portal(reconciled_customer_id, return_url)
 
     def list_invoices(self, company_id: UUID) -> list[BillingInvoice]:
         return list(self._session.scalars(
@@ -342,18 +561,24 @@ class BillingService:
         elif hasattr(data, "to_dict"):
             data = data.to_dict()
         if event_type.startswith("customer.subscription."):
-            self._sync_subscription(data)
+            self._sync_subscription(data, event_type=event_type)
         elif event_type.startswith("invoice."):
             self._sync_invoice(data)
         elif event_type in {
             "checkout.session.completed",
             "checkout.session.async_payment_succeeded",
         }:
-            self._fulfill_credit_checkout(
-                data,
-                payment_confirmed=event_type == "checkout.session.async_payment_succeeded",
-            )
-        elif event_type == "checkout.session.async_payment_failed":
+            if str(data.get("mode") or "") == "subscription":
+                self._sync_subscription_checkout(data)
+            else:
+                self._fulfill_credit_checkout(
+                    data,
+                    payment_confirmed=event_type == "checkout.session.async_payment_succeeded",
+                )
+        elif event_type in {
+            "checkout.session.async_payment_failed",
+            "checkout.session.expired",
+        }:
             self._mark_credit_checkout_failed(data)
         elif event_type == "charge.refunded":
             self._refund_credit_purchase(data)
@@ -402,6 +627,8 @@ class BillingService:
     def _resolve_credit_purchase(
         self,
         checkout: dict[str, Any],
+        *,
+        require_payment_intent: bool = True,
     ) -> tuple[AICreditPurchase, AICreditPack] | None:
         metadata = checkout.get("metadata") or {}
         if metadata.get("avenqo_kind") != "ai_credit_pack":
@@ -426,7 +653,7 @@ class BillingService:
         payment_intent_id = str(checkout.get("payment_intent") or "")
         if not checkout_session_id:
             raise BillingOperationError("Session Checkout Stripe absente")
-        if not payment_intent_id:
+        if require_payment_intent and not payment_intent_id:
             raise BillingOperationError("PaymentIntent Stripe absent")
         amount_total = checkout.get("amount_total")
         currency = str(checkout.get("currency") or "").lower()
@@ -445,9 +672,13 @@ class BillingService:
         by_session = self._session.scalar(select(AICreditPurchase).where(
             AICreditPurchase.stripe_checkout_session_id == checkout_session_id
         ))
-        by_payment = self._session.scalar(select(AICreditPurchase).where(
-            AICreditPurchase.stripe_payment_intent_id == payment_intent_id
-        ))
+        by_payment = (
+            self._session.scalar(select(AICreditPurchase).where(
+                AICreditPurchase.stripe_payment_intent_id == payment_intent_id
+            ))
+            if payment_intent_id
+            else None
+        )
         matched = {item.id for item in (purchase, by_session, by_payment) if item is not None}
         if len(matched) > 1:
             raise BillingOperationError("Références Stripe associées à des achats différents")
@@ -486,16 +717,17 @@ class BillingService:
                 raise BillingOperationError("Montant ou quantité incompatible avec l'offre achetée")
         if purchase.stripe_checkout_session_id not in {None, checkout_session_id} and by_payment is None:
             raise BillingOperationError("Session Checkout incompatible avec l'achat de crédits")
-        if purchase.stripe_payment_intent_id not in {None, payment_intent_id}:
+        if payment_intent_id and purchase.stripe_payment_intent_id not in {None, payment_intent_id}:
             raise BillingOperationError("PaymentIntent incompatible avec l'achat de crédits")
         purchase.stripe_checkout_session_id = purchase.stripe_checkout_session_id or checkout_session_id
-        purchase.stripe_payment_intent_id = purchase.stripe_payment_intent_id or payment_intent_id
+        if payment_intent_id:
+            purchase.stripe_payment_intent_id = purchase.stripe_payment_intent_id or payment_intent_id
         purchase.amount_paid = amount_total
         purchase.currency = currency
         return purchase, pack
 
     def _mark_credit_checkout_failed(self, checkout: dict[str, Any]) -> None:
-        resolved = self._resolve_credit_purchase(checkout)
+        resolved = self._resolve_credit_purchase(checkout, require_payment_intent=False)
         if resolved is None:
             return
         purchase, _ = resolved
@@ -517,7 +749,12 @@ class BillingService:
             except ValueError as exc:
                 raise BillingOperationError("Référence de remboursement invalide") from exc
         if purchase is None:
-            raise BillingOperationError("Achat de crédits introuvable pour le remboursement")
+            if (
+                metadata.get("avenqo_kind") == "ai_credit_pack"
+                or metadata.get("avenqo_credit_purchase_id")
+            ):
+                raise BillingOperationError("Achat de crédits introuvable pour le remboursement")
+            return
         if payment_intent_id:
             if purchase.stripe_payment_intent_id not in {None, payment_intent_id}:
                 raise BillingOperationError("PaymentIntent incompatible avec le remboursement")
@@ -586,25 +823,85 @@ class BillingService:
         except ValueError as exc:
             raise BillingOperationError("Pack de crédits inconnu") from exc
 
-    def _sync_subscription(self, subscription: dict[str, Any]) -> None:
+    def _sync_subscription_checkout(self, checkout: dict[str, Any]) -> None:
+        """Reconcile a completed subscription checkout if subscription/invoice webhooks are delayed or missing."""
+        if str(checkout.get("payment_status") or "") not in {"paid", "no_payment_required"}:
+            return
+        company_id = self._resolve_stripe_company_id(
+            metadata_company_id=(checkout.get("metadata") or {}).get("avenqo_company_id"),
+            customer_id=str(checkout.get("customer") or ""),
+            missing_message="Tenant introuvable pour la session Checkout Stripe",
+        )
+        account = self.get_account(company_id)
+        customer_id = str(checkout.get("customer") or account.stripe_customer_id or "")
+        if customer_id and not account.stripe_customer_id:
+            account.stripe_customer_id = customer_id
+        sub_id = str(checkout.get("subscription") or "")
+        if sub_id and not account.stripe_subscription_id:
+            account.stripe_subscription_id = sub_id
+            account.status = "active"
+        get_sub = getattr(self.provider, "get_active_subscription", None)
+        if customer_id and callable(get_sub):
+            try:
+                remote = get_sub(customer_id)
+            except StripeCustomerNotFoundError:
+                remote = None
+            if remote:
+                self._apply_remote_subscription(account, remote)
+                remote_dict = self._resource_dict(remote)
+                items = ((remote_dict.get("items") or {}).get("data") or [])
+                for item in items:
+                    price_id = str((item.get("price") or {}).get("id") or "")
+                    mapped_plan = self._settings.stripe_plan_code(price_id)
+                    if mapped_plan:
+                        account.plan_code = mapped_plan
+                        account.company.subscription_plan = mapped_plan
+                        break
+        if customer_id:
+            self._heal_paid_subscription_credits(company_id, customer_id)
+
+    def _sync_subscription(self, subscription: dict[str, Any], *, event_type: str = "") -> None:
         company_id = self._company_id(subscription)
         account = self.get_account(company_id)
+        sub_id = str(subscription["id"])
+        incoming_status = str(subscription.get("status") or "")
+        # Ignore out-of-order deletion or terminal cancellation for a previously replaced subscription.
+        if (
+            account.stripe_subscription_id
+            and account.stripe_subscription_id != sub_id
+            and (
+                event_type == "customer.subscription.deleted"
+                or (
+                    incoming_status in {"canceled", "incomplete_expired"}
+                    and account.status in {"active", "trialing", "past_due"}
+                )
+            )
+        ):
+            return
         core_items=[x for x in subscription["items"]["data"] if self._settings.stripe_plan_code(str(x["price"]["id"]))]
         if len(core_items)!=1:
             raise BillingConfigurationError("Exactly one known Avenqo core plan is required")
         core_item=core_items[0]
-        price_id=str(core_item["price"]["id"])
-        plan_code=self._settings.stripe_plan_code(price_id)
+        price_id = str(core_item["price"]["id"])
+        plan_code = self._settings.stripe_plan_code(price_id)
+        if not plan_code:
+            raise BillingConfigurationError("Exactly one known Avenqo core plan is required")
         account.stripe_customer_id = str(subscription["customer"])
-        account.stripe_subscription_id = str(subscription["id"])
+        account.stripe_subscription_id = sub_id
         account.plan_code = plan_code
         account.status = str(subscription["status"])
         account.cancel_at_period_end = bool(subscription.get("cancel_at_period_end", False))
-        period_end = subscription.get("current_period_end") or core_item.get("current_period_end")
+        period_end = self._subscription_period_end_ts(subscription)
+        if period_end is None:
+            item_end = core_item.get("current_period_end")
+            period_end = int(item_end) if item_end else None
         account.current_period_end = (
-            datetime.fromtimestamp(int(period_end), timezone.utc) if period_end else None
+            datetime.fromtimestamp(period_end, timezone.utc) if period_end else None
         )
         account.company.subscription_plan = plan_code
+        customer_id = account.stripe_customer_id
+        if account.status in {"active", "trialing"} and customer_id:
+            self._heal_paid_subscription_credits(company_id, customer_id)
 
     def _sync_invoice(self, invoice: dict[str, Any]) -> None:
         company_id = self._invoice_company_id(invoice)
@@ -620,7 +917,9 @@ class BillingService:
         lines = (invoice.get("lines") or {}).get("data") or []
         line = lines[0] if lines else {}
         period = line.get("period") or {}
-        price_id = str((line.get("price") or {}).get("id") or "")
+        legacy_price = line.get("price") or {}
+        price_details = ((line.get("pricing") or {}).get("price_details")) or {}
+        price_id = str(legacy_price.get("id") or price_details.get("price") or "")
         plan_code = self._settings.stripe_plan_code(price_id) or account.plan_code
         parent = invoice.get("parent") or {}
         subscription_details = parent.get("subscription_details") or {}
@@ -678,6 +977,22 @@ class BillingService:
                 setattr(existing, field, value)
         if (
             invoice.get("status") == "paid"
+            and subscription_id
+            and (not account.stripe_subscription_id or account.stripe_subscription_id == str(subscription_id))
+        ):
+            if not account.stripe_customer_id and values["stripe_customer_id"]:
+                account.stripe_customer_id = values["stripe_customer_id"]
+            if not account.stripe_subscription_id:
+                account.stripe_subscription_id = str(subscription_id)
+            if account.status not in {"active", "trialing"}:
+                account.status = "active"
+            if plan_code:
+                account.plan_code = plan_code
+                account.company.subscription_plan = plan_code
+            if account.current_period_end is None and values["period_end"] is not None:
+                account.current_period_end = values["period_end"]
+        if (
+            invoice.get("status") == "paid"
             and invoice.get("billing_reason") in {"subscription_cycle", "subscription_create"}
         ):
             period_start = values["period_start"] or issued_at
@@ -687,26 +1002,45 @@ class BillingService:
             )
         if invoice.get("status") == "paid" and existing.email_sent_at is None:
             recipient = self._invoice_recipient(account.company, values["customer_email"])
-            if recipient and getattr(self._notifier, "email_delivery_configured", True):
+            if (
+                recipient
+                and getattr(self._notifier, "email_delivery_configured", True)
+                and self._allows_invoice_email(recipient)
+            ):
                 get_company_locale(self._session, company_id)
-                self._notifier.send_invoice_paid(recipient, account.company, existing)
-                existing.email_sent_at = datetime.now(timezone.utc)
+                try:
+                    self._notifier.send_invoice_paid(recipient, account.company, existing)
+                    existing.email_sent_at = datetime.now(timezone.utc)
+                except Exception:
+                    logger.warning(
+                        "Failed to deliver paid invoice email for invoice %s",
+                        existing.stripe_invoice_id,
+                        exc_info=True,
+                    )
+
+    def _allows_invoice_email(self, recipient: str) -> bool:
+        env = self._settings.environment.strip().lower()
+        notifier_cls = type(self._notifier).__name__
+        if env in {"sandbox", "staging"} and notifier_cls in {"HTTPSAccountNotifier", "SMTPAccountNotifier"}:
+            return self._settings.is_sandbox_email_recipient_approved(recipient)
+        return True
 
     @staticmethod
     def _line_item_snapshot(line: dict[str, Any]) -> dict[str, Any]:
         price = line.get("price") or {}
+        price_details = ((line.get("pricing") or {}).get("price_details")) or {}
         return {
             "description": line.get("description"),
             "quantity": line.get("quantity"),
             "amount": int(line.get("amount", 0)),
             "currency": line.get("currency"),
-            "price_id": price.get("id"),
-            "product_id": price.get("product"),
+            "price_id": price.get("id") or price_details.get("price"),
+            "product_id": price.get("product") or price_details.get("product"),
         }
 
     def _invoice_recipient(self, company: Company, stripe_email: object) -> str | None:
-        if company.billing_email.strip():
-            return company.billing_email.strip().lower()
+        if (company.billing_email or "").strip():
+            return (company.billing_email or "").strip().lower()
         if stripe_email:
             return str(stripe_email).strip().lower()
         owner = self._session.scalar(
@@ -721,7 +1055,9 @@ class BillingService:
 
     @staticmethod
     def _stripe_datetime(timestamp: object) -> datetime | None:
-        return datetime.fromtimestamp(int(timestamp), timezone.utc) if timestamp else None
+        if isinstance(timestamp, (int, float, str)) and not isinstance(timestamp, bool) and timestamp:
+            return datetime.fromtimestamp(int(timestamp), timezone.utc)
+        return None
 
     def _invoice_company_id(self, invoice: dict[str, Any]) -> UUID:
         parent = invoice.get("parent") or {}

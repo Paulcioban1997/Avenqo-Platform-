@@ -4,6 +4,7 @@ personnalisation visuelle (15 thèmes), contrats et validation multi-tenant.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Generator
 from pathlib import Path
 
@@ -17,7 +18,8 @@ from backend.app.dependencies.auth import get_account_notifier
 from backend.app.models import Base, Company, User, CompanyOnboarding
 from backend.main import create_application
 
-from tests.backend.test_auth import RecordingNotifier, registration_payload, verify_and_login
+from shared.themes.theme_catalog import ALL_30_THEMES
+from tests.backend.test_auth import NON_SENSITIVE_TEST_PASSWORD, RecordingNotifier, registration_payload, verify_and_login
 
 
 @pytest.fixture
@@ -352,3 +354,66 @@ def test_full_8_step_transactional_journey(multistep_env):
         json={"theme_id": "midnight_gold", "primary_color": "#F59E0B"},
     ).json()
     assert updated_branding["theme_id"] == "midnight_gold"
+
+
+def test_branding_save_accepts_plain_json_and_stays_on_the_tenant(multistep_env):
+    client, notifier, _ = multistep_env
+    owner_email = "owner-brand@entreprise-alpha.ca"
+    owner = register_user(client, notifier, owner_email, "Entreprise Alpha")
+    other = register_user(client, notifier, "owner-brand@entreprise-beta.ca", "Entreprise Beta")
+    owner_headers = {"Authorization": f"Bearer {owner}"}
+    other_headers = {"Authorization": f"Bearer {other}"}
+    client.cookies.clear()
+
+    for theme in ALL_30_THEMES:
+        body = {
+            "theme_id": theme.id,
+            "primary_color": theme.primary_color,
+            "secondary_color": theme.secondary_color,
+            "accent_color": theme.accent_color,
+            "mode": theme.mode,
+            "background_style": theme.background_style,
+            "company_logo_url": "",
+            "company_emblem_url": "",
+            "logo_placement": "both",
+            "display_name": "Entreprise Alpha",
+        }
+        saved = client.put(
+            "/api/v1/onboarding/branding",
+            headers={**owner_headers, "Content-Type": "text/plain;charset=UTF-8"},
+            content=json.dumps(body),
+        )
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["theme_id"] == theme.id
+        assert saved.json()["primary_color"] == theme.primary_color
+
+    refreshed = client.get("/api/v1/onboarding/branding", headers=owner_headers)
+    assert refreshed.status_code == 200
+    assert refreshed.json()["theme_id"] == ALL_30_THEMES[-1].id
+
+    relogin = client.post(
+        "/api/v1/auth/login",
+        json={"email": owner_email, "password": NON_SENSITIVE_TEST_PASSWORD},
+    )
+    assert relogin.status_code == 200, relogin.text
+    client.cookies.clear()
+    persisted = client.get(
+        "/api/v1/onboarding/branding",
+        headers={"Authorization": f"Bearer {relogin.json()['access_token']}"},
+    )
+    assert persisted.json()["theme_id"] == ALL_30_THEMES[-1].id
+    client.cookies.clear()
+    assert client.get("/api/v1/onboarding/branding", headers=other_headers).json()["theme_id"] == "avenqo_obsidian"
+
+    rejected = client.put(
+        "/api/v1/onboarding/branding",
+        headers={**owner_headers, "Content-Type": "text/plain"},
+        content="not-json",
+    )
+    assert rejected.status_code == 422
+    unknown = client.put(
+        "/api/v1/onboarding/branding",
+        headers=owner_headers,
+        json={"theme_id": "not_a_theme", "primary_color": "gold"},
+    )
+    assert unknown.status_code == 422

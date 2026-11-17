@@ -323,6 +323,7 @@ def get_contracts_queue(
     identity: CurrentIdentity = Depends(
         require_platform_role(
             "PLATFORM_SUPER_ADMIN",
+            "PLATFORM_LEGAL_REVIEWER",
             "PLATFORM_FINANCE",
             "PLATFORM_SUPPORT_READONLY",
         )
@@ -330,20 +331,26 @@ def get_contracts_queue(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    """File d'attente centralisée des contrats d'entreprise et tâches de contresignature."""
+    """File d'attente centralisée : revue juridique, signature client, contresignature."""
+    from backend.app.services.contract_signature_service import ContractSignatureService
+
     stmt = (
         select(CompanyContract)
         .order_by(CompanyContract.updated_at.desc())
         .limit(50)
     )
     contracts = list(db.scalars(stmt).all())
+    signature_service = ContractSignatureService(db, settings=settings)
 
     queue = []
     pending_countersign_tasks = []
+    pending_legal_review_tasks = []
 
     for c in contracts:
         comp = db.get(Company, c.company_id)
         comp_name = comp.name if comp else "Locataire inconnu"
+        approval_status = signature_service.approval_status_of(c)
+        needs_legal_review = signature_service.signature_blocked(c) and c.status == ContractLifecycleStatus.PENDING_SIGNATURE.value
 
         item = {
             "contract_id": str(c.id),
@@ -361,17 +368,23 @@ def get_contracts_queue(
             "provider_signed_at": c.provider_signed_at.isoformat() if c.provider_signed_at else None,
             "sha256_hash": c.sha256_hash,
             "has_pdf": bool(c.storage_path),
+            "approval_status": approval_status,
+            "is_legal_approval_ready": needs_legal_review,
             "is_countersign_ready": c.status == ContractLifecycleStatus.CUSTOMER_SIGNED.value and not c.provider_signed_at,
         }
         queue.append(item)
 
         if item["is_countersign_ready"]:
             pending_countersign_tasks.append(item)
+        if needs_legal_review:
+            pending_legal_review_tasks.append(item)
 
     return {
         "total_in_queue": len(queue),
         "pending_countersign_count": len(pending_countersign_tasks),
         "pending_countersign_tasks": pending_countersign_tasks,
+        "pending_legal_review_count": len(pending_legal_review_tasks),
+        "pending_legal_review_tasks": pending_legal_review_tasks,
         "contracts": queue,
     }
 

@@ -23,6 +23,7 @@ from backend.app.routers.dashboard import router as dashboard_router
 from backend.app.routers.dataset_archives import router as dataset_archives_router
 from backend.app.routers.datasets import router as datasets_router
 from backend.app.routers.employees import router as employees_router
+from backend.app.routers.fx_display import router as fx_display_router
 from backend.app.routers.health import router as health_router
 from backend.app.routers.internal_commerce import router as internal_commerce_router
 from backend.app.routers.internal_retraining import router as internal_retraining_router
@@ -36,6 +37,7 @@ from backend.app.routers.retail import router as retail_router
 from backend.app.routers.sectors import router as sectors_router
 from backend.app.routers.security import router as security_router
 from backend.app.routers.tenant_locale import router as tenant_locale_router
+from backend.app.routers.trading import router as trading_router
 from backend.app.routers.training import router as training_router
 from backend.app.routers.voice import router as voice_router
 from backend.app.routers.ai_voice import router as ai_voice_router
@@ -86,6 +88,7 @@ api_router.include_router(
 	dependencies=[Depends(require_active_subscription)],
 )
 api_router.include_router(auth_router, prefix="/api/v1")
+api_router.include_router(fx_display_router, prefix="/api/v1", dependencies=[Depends(require_active_subscription)])
 api_router.include_router(tenant_locale_router, prefix="/api/v1")
 api_router.include_router(billing_router, prefix="/api/v1")
 api_router.include_router(commerce_router, prefix="/api/v1")
@@ -120,6 +123,7 @@ api_router.include_router(
 # gate below. In particular, an active subscription must not block Base users
 # from uploading their own data.
 api_router.include_router(datasets_router, prefix="/api/v1")
+api_router.include_router(trading_router, prefix="/api/v1", dependencies=[Depends(require_active_subscription)])
 api_router.include_router(dataset_archives_router, prefix="/api/v1")
 api_router.include_router(onboarding_router, prefix="/api/v1")
 api_router.include_router(contracts_router, prefix="/api/v1")

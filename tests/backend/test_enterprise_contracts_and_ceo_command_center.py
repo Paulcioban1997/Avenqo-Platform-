@@ -11,6 +11,7 @@ Couvre :
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
@@ -343,6 +344,20 @@ def test_full_contract_lifecycle_customer_to_provider_countersign(db_session: Se
     assert contract.status == "PENDING_SIGNATURE"
     assert contract.execution_state == "PENDING_CUSTOMER"
     assert contract.provider_signed_at is None
+    assert service.approval_status_of(contract) == "LEGAL_REVIEW_REQUIRED"
+
+    legal_reviewer = _create_user(
+        db_session, company, role=UserRole.ADMIN, is_platform_admin=True,
+        platform_role="PLATFORM_LEGAL_REVIEWER",
+    )
+    service.approve_contract_version_for_signing(
+        company_id=company.id,
+        contract_type="MUTUAL_NDA",
+        reviewer=legal_reviewer,
+        notes="Synthetic legal approval for lifecycle test",
+    )
+    db_session.refresh(contract)
+    assert service.approval_status_of(contract) == "APPROVED_FOR_CUSTOMER_SIGNING"
 
     # Signature client
     schedule = CommercialReconciler.reconcile(company, settings)
@@ -466,9 +481,14 @@ def test_unpublished_provider_and_absent_challenge_fail_closed(db_session: Sessi
         "provider_incorporation_status": "VERIFIED",
     })
     service = ContractSignatureService(db_session, settings=approved_in_synthetic_test)
-    with pytest.raises(ValueError, match="défi de signature"):
+    with pytest.raises(ContractAuthorityError, match="révision juridique"):
         service.sign_contract_electronic(
             company=company, user=owner, contract_type="MUTUAL_NDA",
+            signatory_title="Président", declared_authority=True, consent_checkbox=True,
+        )
+    with pytest.raises(ValueError, match="défi de signature"):
+        service.sign_contract_electronic(
+            company=company, user=owner, contract_type="SAAS_SUBSCRIPTION",
             signatory_title="Président", declared_authority=True, consent_checkbox=True,
         )
 
@@ -479,12 +499,14 @@ def test_challenge_is_sent_out_of_band_and_not_returned_to_browser(db_session: S
     settings = get_settings().model_copy(update={
         "legal_signing_enabled": True, "provider_incorporation_verified": True, "provider_contracts_published": True,
         "provider_incorporation_status": "VERIFIED",
+        "environment": "test",
     })
     service = ContractSignatureService(db_session, settings=settings)
     service.ensure_contracts_for_company(company)
 
     class FakeNotifier:
         email_delivery_configured = True
+        delivers_to_mailbox = True
         deliveries: list[tuple[str, str, str]] = []
 
         def send_transactional(self, recipient: str, subject: str, body: str) -> None:
@@ -492,16 +514,21 @@ def test_challenge_is_sent_out_of_band_and_not_returned_to_browser(db_session: S
 
     notifier = FakeNotifier()
     result = create_signing_challenge(
-        contract_type="MUTUAL_NDA", tenant=TenantContext(company_id=company.id),
+        contract_type="SAAS_SUBSCRIPTION", tenant=TenantContext(company_id=company.id),
         identity=CurrentIdentity(auth_session=None, user=owner, raw_token="synthetic"),
         db=db_session, notifier=notifier, service=service,
     )
-    assert set(result) == {"challenge_id", "contract_type", "expires_at", "delivery"}
-    assert result["delivery"] == "email"
+    assert result["delivery"] == "email_accepted"
+    assert result["recipient_masked"].endswith("@example.com") or "***" in result["recipient_masked"]
+    assert "challenge_id" in result and "expires_at" in result and "ttl_minutes" in result
+    assert "code" not in result and "otp" not in result
     assert len(notifier.deliveries) == 1
     assert notifier.deliveries[0][0] == owner.email
+    assert notifier.deliveries[0][0] != company.email or owner.email == company.email
     challenge = db_session.get(ContractSigningChallenge, UUID(result["challenge_id"]))
     assert challenge is not None and challenge.code_hash not in notifier.deliveries[0][2]
+    assert re.search(r"\b\d{8}\b", notifier.deliveries[0][2])
+    assert not re.search(r"\b\d{8}\b", str(result))
 
 
 def test_ceo_financials_do_not_invent_paid_customers_or_mrr(db_session: Session):

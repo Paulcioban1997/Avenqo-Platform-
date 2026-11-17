@@ -8,11 +8,11 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.app.config.settings import Settings
+from backend.app.models.company_module import company_module_is_active
 from backend.app.models import (
     AIConversation,
     Company,
     CompanyModule,
-    CompanyModuleStatus,
     CommerceConnection,
     CommerceConnectionStatus,
     Dataset,
@@ -46,7 +46,7 @@ class VoiceHealthService:
         numbers = self._session.scalars(select(VoicePhoneNumber).where(VoicePhoneNumber.status == "ACTIVE")).all()
         entitled_ids = set(self._session.scalars(
             select(CompanyModule.company_id).join(Module, Module.id == CompanyModule.module_id).where(
-                Module.code == "voice", CompanyModule.status == CompanyModuleStatus.ACTIVE,
+                Module.code == "voice", company_module_is_active(),
             )
         ).all())
         tenant_ids = {item.company_id for item in configs} | {item.company_id for item in numbers} | entitled_ids

@@ -8,7 +8,7 @@ import { BookOpen, Shield, Cpu, Layers, Database, ArrowRight, CheckCircle2, Help
 
 export default function DocsPage() {
   const { locale } = useLocale();
-  const isEn = locale === "en";
+  const isEn = !locale.startsWith("fr");
 
   const sections = [
     {

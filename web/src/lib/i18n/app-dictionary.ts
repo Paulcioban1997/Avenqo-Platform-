@@ -135,6 +135,7 @@ export type AppTranslations = {
     conversionRate: string;
     trendTitle: string;
     trendSubtitle: string;
+    trendPointHint: string;
     categorySplitTitle: string;
     regionalSalesTitle: string;
     conversionUnavailable: string;
@@ -362,15 +363,15 @@ const frApp: AppTranslations = {
   },
   navigation: {
     dashboard: "Tableau de bord",
-    retailAi: "Retail IA",
-    crmAi: "CRM IA",
-    accountingAi: "Comptabilité IA",
-    marketingAi: "Marketing IA",
-    voiceAi: "Voice IA",
-    ocrAi: "OCR IA",
-    chatbotsAi: "Chatbots IA",
+    retailAi: "Retail",
+    crmAi: "CRM",
+    accountingAi: "Comptabilité",
+    marketingAi: "Marketing",
+    voiceAi: "Voice",
+    ocrAi: "Documents",
+    chatbotsAi: "Chatbots",
     automations: "Automations",
-    agentsAi: "Agents IA",
+    agentsAi: "Agents",
     integrations: "Intégrations",
     dataHub: "Données & Nettoyage",
     settings: "Paramètres",
@@ -462,6 +463,7 @@ const frApp: AppTranslations = {
     conversionRate: "Taux de conversion",
     trendTitle: "Tendance Combinée : Revenus & Commandes",
     trendSubtitle: "Évolution temporelle consolidée multi-sources",
+    trendPointHint: "Cliquez une barre pour afficher le chiffre d'affaires et le nombre de commandes.",
     categorySplitTitle: "Répartition des ventes par catégorie",
     regionalSalesTitle: "Performance des ventes régionales",
     conversionUnavailable: "Indisponible : cette source n’inclut pas les visites ou sessions.",
@@ -689,15 +691,15 @@ const enApp: AppTranslations = {
   },
   navigation: {
     dashboard: "Dashboard",
-    retailAi: "Retail AI",
-    crmAi: "CRM AI",
-    accountingAi: "Accounting AI",
-    marketingAi: "Marketing AI",
-    voiceAi: "Voice AI",
-    ocrAi: "OCR AI",
-    chatbotsAi: "AI Chatbots",
+    retailAi: "Retail",
+    crmAi: "CRM",
+    accountingAi: "Accounting",
+    marketingAi: "Marketing",
+    voiceAi: "Voice",
+    ocrAi: "Documents",
+    chatbotsAi: "Chatbots",
     automations: "Automations",
-    agentsAi: "AI Agents",
+    agentsAi: "Agents",
     integrations: "Integrations",
     dataHub: "Data & Cleaning",
     settings: "Settings",
@@ -789,6 +791,7 @@ const enApp: AppTranslations = {
     conversionRate: "Conversion Rate",
     trendTitle: "Combined Trend: Revenue & Orders",
     trendSubtitle: "Multi-source consolidated timeline",
+    trendPointHint: "Click a bar to show revenue and the number of orders.",
     categorySplitTitle: "Sales breakdown by category",
     regionalSalesTitle: "Regional sales distribution",
     conversionUnavailable: "Unavailable: this source has no visit or session data.",
@@ -1105,6 +1108,10 @@ const esApp: AppTranslations = {
   },
 };
 
+function withoutAiSuffix(value: string): string {
+  return value.replace(/\s+(AI|IA|KI|ИИ|ШІ)$/u, "").replace(/^(AI|IA)\s+/u, "").trim();
+}
+
 export function getAppTranslations(locale: LocaleCode | string): AppTranslations {
   const base = locale === "fr" || locale === "fr-FR"
     ? frApp
@@ -1136,7 +1143,7 @@ export function getAppTranslations(locale: LocaleCode | string): AppTranslations
       ...(APP_MARKETING_WORDS[locale as LocaleCode] ?? APP_MARKETING_WORDS.en),
       ...(APP_MARKETING_EXTRA_WORDS[locale as LocaleCode] ?? APP_MARKETING_EXTRA_WORDS.en),
     },
-    navigation: {
+    navigation: Object.fromEntries(Object.entries({
       ...base.navigation,
       dashboard: usesWebProductTerms ? base.navigation.dashboard : company.navOverviewLabel,
       retailAi: words.retail,
@@ -1148,7 +1155,7 @@ export function getAppTranslations(locale: LocaleCode | string): AppTranslations
       team: company.navTeamLabel,
       billing: usesWebProductTerms ? base.navigation.billing : company.navBillingLabel,
       connections: company.navConnectionsLabel,
-    },
+    }).map(([key, value]) => [key, typeof value === "string" ? withoutAiSuffix(value) : value])) as AppTranslations["navigation"],
     shell: {
       ...base.shell,
       themeToggle: company.settingsThemeLabel,

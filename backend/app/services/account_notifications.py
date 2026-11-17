@@ -1,7 +1,12 @@
+import base64
+from collections.abc import Sequence
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+import hashlib
 import re
 import threading
+from uuid import UUID
 """Frontière d'envoi des emails liés au compte."""
 
 from email.message import EmailMessage
@@ -10,7 +15,7 @@ from html import escape
 import json
 import logging
 import smtplib
-from typing import Protocol
+from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -20,6 +25,22 @@ from backend.app.config.settings import Settings
 from backend.app.services.tenant_locale_service import catalog_code_or_none, get_company_locale
 
 logger = logging.getLogger(__name__)
+
+SIGNATURE_OTP_SUBJECT = "Code de signature Avenqo"
+_SIGNATURE_OTP_BODY_RE = re.compile(
+    r"code de confirmation de signature|signature confirmation code|Code de signature",
+    re.IGNORECASE,
+)
+
+
+def mask_email(email: str) -> str:
+    """Mask a mailbox for UI/status only. Never reverse to recover the address."""
+    value = (email or "").strip()
+    local, sep, domain = value.partition("@")
+    if not sep or not domain:
+        return "***"
+    keep = min(2, len(local))
+    return f"{local[:keep]}***@{domain}"
 
 
 def _company_locale(company: object) -> str:
@@ -50,15 +71,33 @@ _HTTPS_CONNECTION_TIMEOUT_SECONDS = 10
 _RESEND_EMAIL_API_URL = "https://api.resend.com/emails"
 
 
+@dataclass(frozen=True, slots=True)
+class EmailAttachment:
+    filename: str
+    content: bytes
+    content_type: str = "application/pdf"
+
+    @property
+    def sha256(self) -> str:
+        return hashlib.sha256(self.content).hexdigest()
+
+
 class AccountNotifier(Protocol):
     email_delivery_configured: bool
 
     def send_email_verification(self, email: str, token: str) -> None: ...
     def send_password_reset(self, email: str, token: str) -> None: ...
 
-    def send_new_company(self, company: object, user: object, request: object) -> None: ...
-    def send_invoice_paid(self, recipient: str, company: object, invoice: object) -> None: ...
-    def send_transactional(self, recipient: str, subject: str, body: str) -> None: ...
+    def send_new_company(self, company: Any, user: Any, request: Any) -> None: ...
+    def send_invoice_paid(self, recipient: str, company: Any, invoice: Any) -> None: ...
+    def send_transactional(
+        self,
+        recipient: str,
+        subject: str,
+        body: str,
+        html_body: str | None = None,
+        attachments: Sequence[EmailAttachment] | None = None,
+    ) -> None: ...
 
 
 class EmailTransport(Protocol):
@@ -68,6 +107,7 @@ class EmailTransport(Protocol):
         subject: str,
         text_body: str,
         html_body: str,
+        attachments: Sequence[EmailAttachment] | None = None,
     ) -> None: ...
 
 
@@ -75,6 +115,7 @@ class LoggingAccountNotifier:
     """Adaptateur local lorsque la livraison d'email n'est pas configurée."""
 
     email_delivery_configured = False
+    delivers_to_mailbox = False
 
     def send_email_verification(self, email: str, token: str) -> None:
         logger.info("Email de vérification demandé")
@@ -82,20 +123,32 @@ class LoggingAccountNotifier:
     def send_password_reset(self, email: str, token: str) -> None:
         logger.info("Réinitialisation de mot de passe demandée")
 
-    def send_new_company(self, company: object, user: object, request: object) -> None:
+    def send_new_company(self, company: Any, user: Any, request: Any) -> None:
         logger.info("Nouvelle entreprise Avenqo enregistrée")
 
-    def send_invoice_paid(self, recipient: str, company: object, invoice: object) -> None:
-        logger.info("Notification de facture Avenqo demandée invoice_id=%s", invoice.id)
+    def send_invoice_paid(self, recipient: str, company: Any, invoice: Any) -> None:
+        logger.info("Notification de facture Avenqo demandée invoice_id=%s", getattr(invoice, "id", None))
 
-    def send_transactional(self, recipient: str, subject: str, body: str) -> None:
-        logger.info("Notification transactionnelle demandée subject=%s", subject)
+    def send_transactional(
+        self,
+        recipient: str,
+        subject: str,
+        body: str,
+        html_body: str | None = None,
+        attachments: Sequence[EmailAttachment] | None = None,
+    ) -> None:
+        logger.info(
+            "Notification transactionnelle demandée subject=%s attachments=%d",
+            subject,
+            len(attachments or ()),
+        )
 
 
 class AccountNotificationService:
     """Construit les notifications de compte indépendamment du transport."""
 
     email_delivery_configured = True
+    delivers_to_mailbox = True
 
     def __init__(self, settings: Settings, transport: EmailTransport) -> None:
         self._settings = settings
@@ -125,7 +178,7 @@ class AccountNotificationService:
             f"Utilisez ce lien pour choisir un nouveau mot de passe : {link}",
         )
 
-    def send_new_company(self, company: object, user: object, request: object) -> None:
+    def send_new_company(self, company: Any, user: Any, request: Any) -> None:
         recipient = self._settings.avenqo_owner_notification_email
         if not recipient:
             return
@@ -150,7 +203,7 @@ class AccountNotificationService:
         )
         self._send(recipient, f"New Avenqo Company — {company.name} — {company.subscription_plan}", body)
 
-    def send_invoice_paid(self, recipient: str, company: object, invoice: object) -> None:
+    def send_invoice_paid(self, recipient: str, company: Any, invoice: Any) -> None:
         labels = self._invoice_labels(_company_locale(company))
         amount = lambda value: f"{int(value) / 100:.2f} {invoice.currency.upper()}"
         period = "—"
@@ -178,8 +231,15 @@ class AccountNotificationService:
             body,
         )
 
-    def send_transactional(self, recipient: str, subject: str, body: str) -> None:
-        self._send(recipient, subject, body)
+    def send_transactional(
+        self,
+        recipient: str,
+        subject: str,
+        body: str,
+        html_body: str | None = None,
+        attachments: Sequence[EmailAttachment] | None = None,
+    ) -> None:
+        self._send(recipient, subject, body, html_body, attachments=attachments)
 
     @staticmethod
     def _invoice_labels(locale: str) -> dict[str, str]:
@@ -198,9 +258,21 @@ class AccountNotificationService:
         base_url = self._settings.public_frontend_origin()
         return f"{base_url}{path}?{urlencode(params)}"
 
-    def _send(self, recipient: str, subject: str, body: str) -> None:
-        html_body = "<p>" + escape(body).replace("\n\n", "</p><p>").replace("\n", "<br>") + "</p>"
-        self._transport.send(recipient, subject, body, html_body)
+    def _send(
+        self,
+        recipient: str,
+        subject: str,
+        body: str,
+        html_body: str | None = None,
+        *,
+        attachments: Sequence[EmailAttachment] | None = None,
+    ) -> None:
+        if not html_body:
+            html_body = "<p>" + escape(body).replace("\n\n", "</p><p>").replace("\n", "<br>") + "</p>"
+        try:
+            self._transport.send(recipient, subject, body, html_body, attachments=attachments)
+        except TypeError:
+            self._transport.send(recipient, subject, body, html_body)
 
 
 class SMTPEmailTransport:
@@ -215,6 +287,7 @@ class SMTPEmailTransport:
         subject: str,
         text_body: str,
         html_body: str,
+        attachments: Sequence[EmailAttachment] | None = None,
     ) -> None:
         if not getattr(self._settings, "is_external_email_allowed", True):
             raise RuntimeError(
@@ -227,10 +300,18 @@ class SMTPEmailTransport:
         message["Subject"] = subject
         message.set_content(text_body)
         message.add_alternative(html_body, subtype="html")
+        for attachment in attachments or ():
+            maintype, _, subtype = (attachment.content_type or "application/octet-stream").partition("/")
+            message.add_attachment(
+                attachment.content,
+                maintype=maintype or "application",
+                subtype=subtype or "octet-stream",
+                filename=attachment.filename,
+            )
 
         try:
             with smtplib.SMTP(
-                self._settings.smtp_host,
+                self._settings.smtp_host or "localhost",
                 self._settings.smtp_port,
                 timeout=_SMTP_CONNECTION_TIMEOUT_SECONDS,
             ) as server:
@@ -265,21 +346,30 @@ class ResendHTTPSEmailTransport:
         subject: str,
         text_body: str,
         html_body: str,
+        attachments: Sequence[EmailAttachment] | None = None,
     ) -> None:
         if not getattr(self._settings, "is_external_email_allowed", True):
             raise RuntimeError(
                 "External email dispatch blocked: live Resend transmission is prohibited in Sandbox environment. "
                 "Use EMAIL_PROVIDER=sandbox_capture for safe testing."
             )
-        payload = json.dumps(
-            {
-                "from": formataddr((self._from_name, self._from_email)),
-                "to": [recipient],
-                "subject": subject,
-                "text": text_body,
-                "html": html_body,
-            }
-        ).encode("utf-8")
+        body_dict: dict[str, object] = {
+            "from": formataddr((self._from_name, self._from_email)),
+            "to": [recipient],
+            "subject": subject,
+            "text": text_body,
+            "html": html_body,
+        }
+        if attachments:
+            body_dict["attachments"] = [
+                {
+                    "filename": att.filename,
+                    "content": base64.b64encode(att.content).decode("ascii"),
+                    "content_type": att.content_type,
+                }
+                for att in attachments
+            ]
+        payload = json.dumps(body_dict).encode("utf-8")
         request = Request(
             _RESEND_EMAIL_API_URL,
             data=payload,
@@ -374,6 +464,55 @@ class CapturedEmail:
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     verification_code: str | None = None
     company_id: str | None = None
+    attachments: tuple[EmailAttachment, ...] = ()
+
+
+def missing_mailbox_settings(settings: Settings) -> list[str]:
+    """Names of Sandbox mail settings that are absent. Values are never included."""
+    missing: list[str] = []
+    environment = settings.environment.lower()
+    if environment in {"sandbox", "staging"} and not settings.sandbox_allow_external_email:
+        missing.append("SANDBOX_ALLOW_EXTERNAL_EMAIL")
+    if settings.email_provider == "https_api":
+        if not settings.email_api_key:
+            missing.append("EMAIL_API_KEY")
+        if not settings.email_from_email:
+            missing.append("EMAIL_FROM_EMAIL")
+        return missing
+    if not settings.smtp_host:
+        missing.append("SMTP_HOST")
+    if not settings.smtp_username:
+        missing.append("SMTP_USERNAME")
+    if not settings.smtp_password:
+        missing.append("SMTP_PASSWORD")
+    if not settings.smtp_from_email:
+        missing.append("SMTP_FROM_EMAIL")
+    return missing
+
+
+def mailbox_delivery(notifier: object, settings: Settings) -> tuple[bool, list[str]]:
+    """True only when a message can leave this process for the recipient's mailbox.
+
+    A fake or capture transport used by tests is explicit. Sandbox capture and the
+    logging adapter never count as delivery to the client.
+    """
+    missing = missing_mailbox_settings(settings)
+    configured = bool(getattr(notifier, "email_delivery_configured", False))
+    delivers = bool(getattr(notifier, "delivers_to_mailbox", False))
+    if not configured or not delivers:
+        return False, missing
+    environment = settings.environment.lower()
+    if (
+        environment in {"sandbox", "staging"}
+        and not settings.is_external_email_allowed
+        and not getattr(notifier, "test_transport", False)
+    ):
+        return False, missing
+    return True, []
+
+
+sandbox_mail_company_id: ContextVar[str | None] = ContextVar("sandbox_mail_company_id", default=None)
+sandbox_mail_session: ContextVar[object | None] = ContextVar("sandbox_mail_session", default=None)
 
 
 class SandboxCaptureAccountNotifier:
@@ -387,6 +526,8 @@ class SandboxCaptureAccountNotifier:
     """
 
     email_delivery_configured = True
+    delivers_to_mailbox = True
+    test_transport = True
 
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings
@@ -399,31 +540,67 @@ class SandboxCaptureAccountNotifier:
     def send_password_reset(self, email: str, token: str) -> None:
         self._record(email, "Réinitialisez votre mot de passe Avenqo", f"Token: {token}", f"<p>Token: {token}</p>")
 
-    def send_new_company(self, company: object, user: object, request: object) -> None:
+    def send_new_company(self, company: Any, user: Any, request: Any) -> None:
         self._record(getattr(user, "email", "owner@avenqo.ca"), "New Avenqo Company", f"Company: {getattr(company, 'name', '')}", "")
 
-    def send_invoice_paid(self, recipient: str, company: object, invoice: object) -> None:
+    def send_invoice_paid(self, recipient: str, company: Any, invoice: Any) -> None:
         self._record(recipient, "Facture payée", f"Invoice: {getattr(invoice, 'id', '')}", "")
 
-    def send_transactional(self, recipient: str, subject: str, body: str) -> None:
-        self._record(recipient, subject, body, body)
+    def send_transactional(
+        self,
+        recipient: str,
+        subject: str,
+        body: str,
+        html_body: str | None = None,
+        attachments: Sequence[EmailAttachment] | None = None,
+    ) -> None:
+        self._record(recipient, subject, body, html_body or body, attachments=attachments)
 
-    def _record(self, recipient: str, subject: str, text_body: str, html_body: str, company_id: str | None = None) -> None:
+    def _record(
+        self,
+        recipient: str,
+        subject: str,
+        text_body: str,
+        html_body: str,
+        company_id: str | None = None,
+        attachments: Sequence[EmailAttachment] | None = None,
+    ) -> None:
         code = None
         match = re.search(r"\b(\d{8})\b", text_body)
         if match:
             code = match.group(1)
+        resolved_company_id = company_id or sandbox_mail_company_id.get()
         item = CapturedEmail(
             recipient=recipient,
             subject=subject,
             text_body=text_body,
             html_body=html_body,
             verification_code=code,
-            company_id=company_id,
+            company_id=resolved_company_id,
+            attachments=tuple(attachments or ()),
         )
         with self._lock:
             self._captured.append(item)
         logger.info("Sandbox captured email recipient=%s subject=%s code_present=%s", recipient, subject, bool(code))
+        # Signature OTPs must never appear in the shared Team mailbox.
+        if subject.strip() == SIGNATURE_OTP_SUBJECT or _SIGNATURE_OTP_BODY_RE.search(text_body or ""):
+            return
+        session = sandbox_mail_session.get()
+        company = sandbox_mail_company_id.get()
+        if session is None or not company:
+            return
+        from backend.app.models.workspace import SandboxMailboxMessage
+
+        session.add(  # type: ignore[attr-defined]
+            SandboxMailboxMessage(
+                company_id=UUID(company),
+                recipient=recipient[:320],
+                subject=subject[:200],
+                body=text_body,
+                created_at=item.timestamp,
+            )
+        )
+        session.flush()  # type: ignore[attr-defined]
 
     def get_captured_emails(self, recipient: str | None = None, company_id: str | None = None) -> list[CapturedEmail]:
         with self._lock:
@@ -454,3 +631,164 @@ def get_sandbox_capture_notifier(settings: Settings | None = None) -> SandboxCap
     if _sandbox_capture_notifier is None:
         _sandbox_capture_notifier = SandboxCaptureAccountNotifier(settings)
     return _sandbox_capture_notifier
+
+
+def _is_capture_notifier(notifier: object) -> bool:
+    return type(notifier).__name__ == "SandboxCaptureAccountNotifier"
+
+
+def _is_real_mailbox_notifier(notifier: object) -> bool:
+    if _is_capture_notifier(notifier):
+        return False
+    if type(notifier).__name__ == "LoggingAccountNotifier":
+        return False
+    return bool(getattr(notifier, "delivers_to_mailbox", False) or getattr(notifier, "email_delivery_configured", False))
+
+
+def deliver_signature_otp(
+    *,
+    notifier: object,
+    settings: Settings,
+    recipient: str,
+    code: str,
+) -> str:
+    """Send a signature OTP without exposing it in API/logs/Team.
+
+    Returns one of:
+    - email_accepted: provider accepted the message for the signer's mailbox
+    - sandbox_internal_capture: sandbox-only capture; no outbound email
+    - failed: nothing was delivered or captured safely
+    """
+    recipient = (recipient or "").strip()
+    if "@" not in recipient or not code or not code.isdigit() or len(code) != 8:
+        return "failed"
+    subject = SIGNATURE_OTP_SUBJECT
+    body = (
+        f"Votre code de confirmation de signature est {code}. "
+        "Il expire dans 15 minutes et ne peut être utilisé qu'une seule fois. "
+        "Ne le partagez pas. Avenqo ne l'affiche jamais dans Équipe."
+    )
+    environment = settings.environment.lower()
+    try:
+        if environment in {"sandbox", "staging"}:
+            if settings.is_sandbox_email_recipient_approved(recipient) and _is_real_mailbox_notifier(notifier):
+                notifier.send_transactional(recipient, subject, body)  # type: ignore[attr-defined]
+                logger.info(
+                    "Signature OTP accepted by provider recipient=%s delivery=email_accepted",
+                    mask_email(recipient),
+                )
+                return "email_accepted"
+            if _is_capture_notifier(notifier) or getattr(notifier, "test_transport", False):
+                notifier.send_transactional(recipient, subject, body)  # type: ignore[attr-defined]
+                logger.info(
+                    "Signature OTP sandbox-internal capture recipient=%s delivery=sandbox_internal_capture",
+                    mask_email(recipient),
+                )
+                return "sandbox_internal_capture"
+            logger.warning(
+                "Signature OTP blocked in sandbox recipient=%s approved=%s",
+                mask_email(recipient),
+                settings.is_sandbox_email_recipient_approved(recipient),
+            )
+            return "failed"
+        if not _is_real_mailbox_notifier(notifier):
+            return "failed"
+        notifier.send_transactional(recipient, subject, body)  # type: ignore[attr-defined]
+        logger.info(
+            "Signature OTP accepted by provider recipient=%s delivery=email_accepted",
+            mask_email(recipient),
+        )
+        return "email_accepted"
+    except Exception:
+        logger.warning(
+            "Signature OTP delivery failed recipient=%s",
+            mask_email(recipient),
+            exc_info=False,
+        )
+        return "failed"
+
+
+def _dispatch_transactional_with_attachment(
+    notifier: object,
+    recipient: str,
+    subject: str,
+    text_body: str,
+    html_body: str,
+    attachment: EmailAttachment,
+) -> None:
+    send_fn = getattr(notifier, "send_transactional", None)
+    if not callable(send_fn):
+        raise RuntimeError("Notifier does not implement send_transactional")
+    try:
+        send_fn(recipient, subject, text_body, html_body, attachments=[attachment])
+    except TypeError:
+        try:
+            send_fn(recipient, subject, text_body, attachments=[attachment])
+        except TypeError:
+            send_fn(recipient, subject, text_body)
+
+
+def deliver_signed_contract_copy(
+    *,
+    notifier: object | None,
+    settings: Settings,
+    recipient: str,
+    subject: str,
+    text_body: str,
+    html_body: str,
+    attachment: EmailAttachment,
+) -> str:
+    """Send a signed contract PDF copy to the verified signer.
+
+    Returns an honest delivery status:
+    - email_accepted: provider accepted the message for dispatch to the signer's mailbox
+      (never falsely claimed as 'delivered' since final mailbox delivery depends on the remote MTA)
+    - sandbox_internal_capture: captured in Sandbox test harness without external dispatch
+    - skipped_not_configured: no outbound email adapter configured or sandbox recipient not approved
+    - failed: transport error or invalid recipient/attachment
+    """
+    recipient = (recipient or "").strip()
+    if "@" not in recipient or not attachment.content or not attachment.content.startswith(b"%PDF"):
+        return "failed"
+    if notifier is None or type(notifier).__name__ == "LoggingAccountNotifier":
+        return "skipped_not_configured"
+    environment = settings.environment.lower()
+    try:
+        if environment in {"sandbox", "staging"}:
+            if settings.is_sandbox_email_recipient_approved(recipient) and _is_real_mailbox_notifier(notifier):
+                _dispatch_transactional_with_attachment(notifier, recipient, subject, text_body, html_body, attachment)
+                logger.info(
+                    "Signed contract PDF accepted by provider recipient=%s filename=%s delivery=email_accepted",
+                    mask_email(recipient),
+                    attachment.filename,
+                )
+                return "email_accepted"
+            if _is_capture_notifier(notifier) or getattr(notifier, "test_transport", False) or not hasattr(notifier, "email_delivery_configured"):
+                _dispatch_transactional_with_attachment(notifier, recipient, subject, text_body, html_body, attachment)
+                logger.info(
+                    "Signed contract PDF sandbox capture recipient=%s filename=%s delivery=sandbox_internal_capture",
+                    mask_email(recipient),
+                    attachment.filename,
+                )
+                return "sandbox_internal_capture"
+            return "skipped_not_configured"
+        if _is_real_mailbox_notifier(notifier) or not hasattr(notifier, "email_delivery_configured"):
+            _dispatch_transactional_with_attachment(notifier, recipient, subject, text_body, html_body, attachment)
+            logger.info(
+                "Signed contract PDF accepted by provider recipient=%s filename=%s delivery=email_accepted",
+                mask_email(recipient),
+                attachment.filename,
+            )
+            return "email_accepted"
+        if _is_capture_notifier(notifier):
+            _dispatch_transactional_with_attachment(notifier, recipient, subject, text_body, html_body, attachment)
+            return "sandbox_internal_capture"
+        return "skipped_not_configured"
+    except Exception:
+        logger.warning(
+            "Signed contract PDF delivery failed recipient=%s filename=%s",
+            mask_email(recipient),
+            attachment.filename,
+            exc_info=False,
+        )
+        return "failed"

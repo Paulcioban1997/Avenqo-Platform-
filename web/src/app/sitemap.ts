@@ -1,7 +1,9 @@
 import type { MetadataRoute } from "next";
+import { isSandboxFrontend, resolvePublicSiteUrl } from "@/lib/public-site";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = "https://avenqo.ca";
+  if (isSandboxFrontend()) return [];
+  const baseUrl = resolvePublicSiteUrl();
   const now = new Date();
 
   return [

@@ -189,12 +189,7 @@ export function SettingsView() {
         setCompany(userData.company);
         const role = String(userData.user?.role || "").toLowerCase();
         if (role === "owner" || role === "admin") {
-          const [voiceRes, membersRes] = await Promise.all([
-            fetch("/api/v1/voice/status", { headers, cache: "no-store" }).catch(() => null),
-            fetch("/api/v1/voice/auth/members", { headers, cache: "no-store" }).catch(() => null),
-          ]);
-          if (voiceRes?.ok) setVoiceStatus(await voiceRes.json());
-          else setVoiceStatus(null);
+          const membersRes = await fetch("/api/v1/voice/auth/members", { headers, cache: "no-store" }).catch(() => null);
           if (membersRes?.ok) {
             const memData = await membersRes.json();
             setVoiceMembers(memData.members || []);
@@ -561,127 +556,21 @@ export function SettingsView() {
       )}
 
       {(user?.role?.toLowerCase() === "owner" || user?.role?.toLowerCase() === "admin") && (
-        <section className="space-y-5 border-y border-slate-200/80 py-6 dark:border-white/[0.08]" aria-label={t.navigation.voiceAi}>
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h2 className="text-base font-bold text-slate-900 dark:text-white">{t.navigation.voiceAi}</h2>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{voiceHealthCopy.freshness}</p>
-            </div>
-            {voiceStatus && (
-              <details className="group cursor-pointer">
-                <summary className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 font-semibold select-none list-none">
-                  <Sliders className="w-3.5 h-3.5 text-slate-400 group-open:text-[#0076FF]" />
-                  <span>Diagnostics & Infrastructure</span>
-                  <ChevronDown className="w-3 h-3 text-slate-400 transition-transform group-open:rotate-180" />
-                </summary>
-                <div className="mt-2.5 p-3 rounded-xl bg-slate-50 dark:bg-[#060B13]/40 border border-slate-200/80 dark:border-white/[0.08] flex flex-wrap gap-3 text-[11px] font-mono">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-slate-400">Téléphonie:</span>
-                    <span className={`px-1.5 py-0.5 rounded font-semibold text-[10px] ${voiceStatus.telnyx_status === "CONFIGURED" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400" : "bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-400"}`}>
-                      {voiceStatus.telnyx_status}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-slate-400">Moteur Vocal:</span>
-                    <span className={`px-1.5 py-0.5 rounded font-semibold text-[10px] ${voiceStatus.retell_status === "CONFIGURED" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400" : "bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-400"}`}>
-                      {voiceStatus.retell_status}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-slate-400">STT:</span>
-                    <span className="px-1.5 py-0.5 rounded font-semibold text-[10px] bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-400">
-                      {voiceStatus.stt_status}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-slate-400">TTS:</span>
-                    <span className="px-1.5 py-0.5 rounded font-semibold text-[10px] bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-400">
-                      {voiceStatus.tts_status}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-slate-400">Temps Réel:</span>
-                    <span className="px-1.5 py-0.5 rounded font-semibold text-[10px] bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-400">
-                      {voiceStatus.realtime_status}
-                    </span>
-                  </div>
-                </div>
-              </details>
-            )}
+        <section className="flex flex-wrap items-center justify-between gap-3 border-y border-slate-200/80 py-6 dark:border-white/[0.08]" aria-label={t.navigation.voiceAi}>
+          <div>
+            <h2 className="text-base font-bold text-slate-900 dark:text-white">{t.navigation.voiceAi}</h2>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              {locale.startsWith("fr")
+                ? "Le numéro, les minutes et les enregistrements se consultent dans le module Voix. Cette page ne les répète pas."
+                : "The number, minutes, and recordings stay in the Voice module. This page does not repeat them."}
+            </p>
           </div>
-
-          {!voiceStatus ? (
-            <div role="status" className="text-xs text-slate-500">{companyTranslations.connectionsGenericError}</div>
-          ) : (
-            <>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="border-l-2 border-slate-300 pl-3 dark:border-white/20">
-                  <div className="text-[10px] uppercase text-slate-500">{voiceHealthCopy.phone}</div>
-                  <div className="mt-1 font-mono text-sm text-slate-900 dark:text-white">{voiceStatus.business_number || t.integrations.statusDisconnected}</div>
-                  <div className="mt-1 text-[10px] text-slate-500">{voiceStatus.country || "—"}{voiceStatus.region ? ` · ${voiceStatus.region}` : ""}{voiceStatus.locality ? ` · ${voiceStatus.locality}` : ""}</div>
-                </div>
-                <div className="border-l-2 border-slate-300 pl-3 dark:border-white/20">
-                  <div className="text-[10px] uppercase text-slate-500">{t.integrations.statusConnected}</div>
-                  <div className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">{voiceStatus.voice_status === "ENABLED" ? t.integrations.statusConnected : voiceStatus.voice_status === "NOT_CONFIGURED" ? t.integrations.statusDisconnected : t.integrations.statusNeedsAttention}</div>
-                  <div className="mt-1 text-[10px] text-slate-500">CRM: {voiceStatus.crm_status} · {t.integrations.googleCalendar}: {voiceStatus.calendar_status}</div>
-                </div>
-                <div className="border-l-2 border-slate-300 pl-3 dark:border-white/20">
-                  <div className="text-[10px] uppercase text-slate-500">{t.navigation.retailAi}</div>
-                  <div className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">{voiceStatus.retail_source_context?.name || t.common.insufficientData}</div>
-                  <div className="mt-1 font-mono text-[10px] text-slate-500">{voiceStatus.retail_source_context?.provider || voiceStatus.data_freshness?.freshness_status || "UNAVAILABLE"}</div>
-                </div>
-                <div className="border-l-2 border-slate-300 pl-3 dark:border-white/20">
-                  <div className="text-[10px] uppercase text-slate-500">{voiceHealthCopy.freshness}</div>
-                  <div className="mt-1 font-mono text-sm text-slate-900 dark:text-white">{voiceStatus.data_freshness?.freshness_status || "UNAVAILABLE"}</div>
-                  <div className="mt-1 text-[10px] text-slate-500">{voiceStatus.data_freshness?.last_updated_at ? new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" }).format(new Date(voiceStatus.data_freshness.last_updated_at)) : "—"}</div>
-                </div>
-                <div className="border-l-2 border-slate-300 pl-3 dark:border-white/20">
-                  <div className="text-[10px] uppercase text-slate-500">{voiceHealthCopy.calls} · {voiceHealthCopy.minutes}</div>
-                  <div className="mt-1 font-mono text-sm text-slate-900 dark:text-white">{voiceStatus.call_count} · {voiceStatus.call_minutes}</div>
-                  <div className="mt-1 text-[10px] text-slate-500">{voiceHealthCopy.credits}: {voiceStatus.voice_ai_credits_charged}</div>
-                </div>
-              </div>
-
-              {voiceStatus.telnyx_status === "CONFIGURED" && !voiceStatus.module_entitled && (
-                <p role="status" className="text-xs text-amber-700 dark:text-amber-300">{t.integrations.statusNeedsAttention}</p>
-              )}
-              {voiceStatus.telnyx_status === "CONFIGURED" && voiceStatus.module_entitled && !voiceStatus.business_number && (
-                <div className="space-y-3 border-t border-slate-200 pt-4 dark:border-white/10">
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[120px_1fr_1fr_auto]">
-                    <label className="space-y-1 text-[10px] text-slate-500">
-                      <span>{voiceNumberCopy.country}</span>
-                      <input value={voiceSearch.countryCode} onChange={(event) => setVoiceSearch({ ...voiceSearch, countryCode: event.target.value.toUpperCase() })} maxLength={2} placeholder="CA" className="w-full rounded border border-slate-300 bg-transparent px-2 py-2 text-xs text-slate-900 dark:border-white/10 dark:text-white" />
-                    </label>
-                    <label className="space-y-1 text-[10px] text-slate-500">
-                      <span>{voiceNumberCopy.region}</span>
-                      <input value={voiceSearch.region} onChange={(event) => setVoiceSearch({ ...voiceSearch, region: event.target.value })} className="w-full rounded border border-slate-300 bg-transparent px-2 py-2 text-xs text-slate-900 dark:border-white/10 dark:text-white" />
-                    </label>
-                    <label className="space-y-1 text-[10px] text-slate-500">
-                      <span>{voiceNumberCopy.locality}</span>
-                      <input value={voiceSearch.locality} onChange={(event) => setVoiceSearch({ ...voiceSearch, locality: event.target.value })} className="w-full rounded border border-slate-300 bg-transparent px-2 py-2 text-xs text-slate-900 dark:border-white/10 dark:text-white" />
-                    </label>
-                    <button type="button" onClick={() => void searchVoiceNumbers()} disabled={voiceNumberBusy || voiceSearch.countryCode.length !== 2} className="inline-flex items-center justify-center gap-2 self-end rounded border border-slate-300 px-3 py-2 text-xs font-semibold disabled:opacity-50 dark:border-white/10">
-                      <Search className="h-3.5 w-3.5" />{voiceNumberCopy.search}
-                    </button>
-                  </div>
-                  {voiceNumberNeedsAction && <p role="status" className="text-xs text-amber-700 dark:text-amber-300">{t.integrations.statusNeedsAttention}</p>}
-                  {voiceOffers.map((offer) => {
-                    const price = offer.monthly_cost == null ? t.common.insufficientData : new Intl.NumberFormat(locale, { style: "currency", currency: offer.monthly_cost_currency || "USD" }).format(offer.monthly_cost);
-                    return <div key={offer.phone_number} className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 py-3 dark:border-white/[0.06]">
-                      <div>
-                        <div className="font-mono text-sm font-semibold text-slate-900 dark:text-white">{offer.phone_number}</div>
-                        <div className="text-[10px] text-slate-500">{voiceNumberCopy.monthlyPrice}: {price}</div>
-                        {!!offer.regulatory_requirements?.length && <div className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">{voiceNumberCopy.regulatoryRequirements}: {offer.regulatory_requirements.join(", ")}</div>}
-                      </div>
-                      <Link href="/voice" className="rounded border border-slate-300 px-3 py-2 text-xs font-semibold dark:border-white/10">{t.navigation.voiceAi}</Link>
-                    </div>;
-                  })}
-                </div>
-              )}
-            </>
-          )}
+          <Link href="/voice" className="px-4 py-2 text-xs font-semibold rounded-xl bg-[#0076FF] text-white">
+            {locale.startsWith("fr") ? "Ouvrir le module Voix" : "Open the Voice module"}
+          </Link>
         </section>
       )}
+
 
       {/* Voice AI Security Section (NIP, Identités, Sessions & Accès) */}
       <section className="bg-white dark:bg-[#0B132B] rounded-2xl border border-slate-200/80 dark:border-white/[0.08] p-6 shadow-xs space-y-6" aria-label="Sécurité Voice AI">

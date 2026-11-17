@@ -70,12 +70,12 @@ export function CreditMeter({
       title={breakdownTooltip || undefined}
     >
       <div className="flex items-center justify-between text-xs mb-1.5">
-        <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-[#F4F7FB]">
-          <Sparkles className="w-3.5 h-3.5 text-[#0076FF]" />
+        <div className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-white">
+          <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-white" />
           <span>{label}</span>
         </div>
         <span
-          className="text-[11px] font-mono font-bold text-[#0076FF] dark:text-[#00D4FF]"
+          className="text-[11px] font-mono font-bold text-blue-600 dark:text-white"
         >
           {percentageDisplay === null || error ? loadingLabel : `${percentageDisplay} restants`}
         </span>
@@ -99,13 +99,13 @@ export function CreditMeter({
         </div>
       )}
 
-      <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500">
+      <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-white">
         <span className="font-mono">
           {remaining === null || limit === null
             ? "—"
             : `${remaining.toLocaleString()} / ${limit.toLocaleString()}`}
         </span>
-        <Link href="/billing" className="text-[#0076FF] hover:underline font-semibold">
+        <Link href="/billing" className="text-blue-600 dark:text-white hover:underline font-semibold">
           {upgradeLabel}
         </Link>
       </div>

@@ -173,7 +173,7 @@ export default function AdminPage() {
                 </div>
                 <div className="text-lg font-bold text-slate-900 dark:text-white mt-1 flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>api.avenqo.ca</span>
+                  <span>{process.env.NEXT_PUBLIC_AVENQO_ENVIRONMENT === "sandbox" ? "Sandbox API" : "api.avenqo.ca"}</span>
                 </div>
                 <div className="text-xs text-slate-400 mt-0.5">
                   {["FastAPI v1", "PostgreSQL", "Redis"].join(` ${String.fromCharCode(0xB7)} `)}
@@ -186,10 +186,10 @@ export default function AdminPage() {
                 </div>
                 <div className="text-lg font-bold text-slate-900 dark:text-white mt-1 flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                  <span>avenqo.ca</span>
+                  <span>{process.env.NEXT_PUBLIC_AVENQO_ENVIRONMENT === "sandbox" ? "Sandbox Web" : "avenqo.ca"}</span>
                 </div>
                 <div className="text-xs text-slate-400 mt-0.5">
-                  {["Next.js App Router", "Vercel Edge"].join(` ${String.fromCharCode(0xB7)} `)}
+                  {(process.env.NEXT_PUBLIC_AVENQO_ENVIRONMENT === "sandbox" ? ["Next.js App Router", "Render"] : ["Next.js App Router", "Vercel Edge"]).join(` ${String.fromCharCode(0xB7)} `)}
                 </div>
               </div>
             </div>

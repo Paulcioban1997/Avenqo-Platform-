@@ -12,8 +12,6 @@ import {
   AlertTriangle,
   Lightbulb,
   ArrowRight,
-  ChevronLeft,
-  ChevronRight,
   CheckCircle2,
   AlertCircle,
   Database,
@@ -37,6 +35,9 @@ import { SOURCE_SELECTOR_COPY } from "@/lib/i18n/source-selector-copy";
 import { RETAIL_ANOMALY_COPY } from "@/lib/i18n/retail-anomaly-copy";
 import { getAuthHeaders } from "@/lib/api-headers";
 import { apiFetch, ApiRequestError } from "@/lib/api-request";
+import { HorizontalScroller } from "@/components/shell/horizontal-scroller";
+import { DisplayAmount } from "@/components/common/display-amount";
+import { formatMoney } from "@/lib/money";
 
 export type RetailSubTab =
   | "overview"
@@ -183,7 +184,6 @@ export function RetailIntelligenceView({
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<ApiRequestError | null>(null);
   const loadRevision = useRef(0);
-  const tabScrollRef = useRef<HTMLDivElement>(null);
 
   // Live retail data
   const [retailStatus, setRetailStatus] = useState<RetailStatus | null>(null);
@@ -472,16 +472,18 @@ export function RetailIntelligenceView({
           : retailStatus?.source_context?.provider === "woocommerce" ? "WooCommerce" : null,
         retailStatus?.source_context?.name,
       ].filter(Boolean).join(" · ");
+  const sourceFileName = (retailStatus?.source_context?.name || "").toLowerCase();
+  const historicalFile = retailStatus?.source_context?.selection === "dataset"
+    || sourceFileName.endsWith(".csv")
+    || sourceFileName.includes("superstore");
   const formatStock = (value: number) =>
     new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value);
   const formatAnomalyValue = (value: number | null | undefined, metric?: string) => {
     if (value == null || !Number.isFinite(value)) return "—";
     if (metric === "product_revenue") {
-      return new Intl.NumberFormat(locale, {
-        style: "currency",
-        currency: salesSummary?.currency || recommendationsCurrency || "CAD",
-        maximumFractionDigits: 0,
-      }).format(value);
+      const code = salesSummary?.currency || recommendationsCurrency;
+      if (!code) return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(value);
+      return formatMoney(value, code, locale, 0);
     }
     return `${formatStock(value)}${metric === "inventory_stock_quantity" ? ` ${retail.unit}` : ""}`;
   };
@@ -500,11 +502,10 @@ export function RetailIntelligenceView({
       : forecast?.method === "historical_chronological_forecast"
         ? (locale.startsWith("fr") ? "Projection chronologique (historique importé)" : "Chronological projection (historical dataset)")
         : retail.forecasts;
-  const forecastCurrency = new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency: salesSummary?.currency || "USD",
-    maximumFractionDigits: 0,
-  });
+  const sourceCurrency = salesSummary?.currency || recommendationsCurrency || "";
+  const formatSourceMoney = (value: number) => sourceCurrency
+    ? formatMoney(value, sourceCurrency, locale, 0)
+    : value.toLocaleString(locale, { maximumFractionDigits: 0 });
   const retailCounts: Array<{ label: string; value: number }> = [
     { label: retail.products, value: retailStatus?.product_count ?? products.length },
     { label: retail.sales, value: retailStatus?.order_count ?? orders.length },
@@ -542,7 +543,15 @@ export function RetailIntelligenceView({
           {/* 5-State Clear Data Freshness & Connection Status Indicator */}
           {(() => {
             const freshnessStatus = retailStatus?.data_freshness?.freshness_status?.toUpperCase() || (retailStatus?.is_connected ? "LIVE" : "DISCONNECTED");
-            const isHistoricalDataset = retailStatus?.source_context?.name?.toLowerCase().includes("superstore") || retailStatus?.source_context?.selection === "dataset";
+
+            if (historicalFile) {
+              return (
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-900/60">
+                  <Database size={13} className="text-amber-600" />
+                  <span>{locale.startsWith("fr") ? `Fichier historique : ${selectedSourceName || "CSV sélectionné"}` : `Historical file: ${selectedSourceName || "selected CSV"}`}</span>
+                </div>
+              );
+            }
 
             if (freshnessStatus === "ERROR" || freshnessStatus === "FAILED") {
               return (
@@ -562,7 +571,7 @@ export function RetailIntelligenceView({
               );
             }
 
-            if (freshnessStatus === "STALE" || isHistoricalDataset) {
+            if (freshnessStatus === "STALE") {
               return (
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-900/60">
@@ -630,31 +639,8 @@ export function RetailIntelligenceView({
       </div>
 
       {/* 8-Tab Subnavigation Bar */}
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          aria-label={locale.startsWith("fr") ? "Onglets précédents" : "Previous tabs"}
-          onClick={() => tabScrollRef.current?.scrollBy({ left: -180, behavior: "smooth" })}
-          className="hidden sm:inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#0B132B] text-slate-600 dark:text-slate-300"
-        >
-          <ChevronLeft size={16} />
-        </button>
-      <div
-        ref={tabScrollRef}
-        className="overflow-x-auto pb-1 flex-1"
-        onKeyDown={(event) => {
-          const index = navTabs.findIndex((tab) => tab.id === activeTab);
-          if (event.key === "ArrowRight" && index < navTabs.length - 1) {
-            event.preventDefault();
-            setActiveTab(navTabs[index + 1].id as RetailSubTab);
-          }
-          if (event.key === "ArrowLeft" && index > 0) {
-            event.preventDefault();
-            setActiveTab(navTabs[index - 1].id as RetailSubTab);
-          }
-        }}
-      >
-        <nav className="flex items-center gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08] min-w-max">
+      <HorizontalScroller>
+        <nav className="flex w-max items-center gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-[#0B132B] border border-slate-200/80 dark:border-white/[0.08]">
           {navTabs.map((tab) => {
             const isActive = activeTab === tab.id;
             const Icon = tab.icon;
@@ -662,7 +648,7 @@ export function RetailIntelligenceView({
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as RetailSubTab)}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                className={`flex items-center gap-2 whitespace-nowrap px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   isActive
                     ? "bg-white dark:bg-[#172652] text-[#0076FF] dark:text-[#00D4FF] shadow-xs"
                     : "text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-[#F4F7FB] hover:bg-white/50 dark:hover:bg-white/[0.04]"
@@ -678,16 +664,7 @@ export function RetailIntelligenceView({
             );
           })}
         </nav>
-      </div>
-        <button
-          type="button"
-          aria-label={locale.startsWith("fr") ? "Onglets suivants" : "Next tabs"}
-          onClick={() => tabScrollRef.current?.scrollBy({ left: 180, behavior: "smooth" })}
-          className="hidden sm:inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#0B132B] text-slate-600 dark:text-slate-300"
-        >
-          <ChevronRight size={16} />
-        </button>
-      </div>
+      </HorizontalScroller>
 
       {/* Tab 1: Overview backed by tenant source data */}
       {activeTab === "overview" && (
@@ -701,7 +678,11 @@ export function RetailIntelligenceView({
                 <p className="mt-1 text-xs text-slate-500 dark:text-[#94A3B8]">
                   {isLoading
                     ? "—"
-                    : retailStatus?.is_connected
+                    : historicalFile
+                      ? (locale.startsWith("fr")
+                        ? `${(retailStatus?.records_count ?? 0).toLocaleString(locale)} enregistrements du fichier ${selectedSourceName || "sélectionné"}. Ce n’est pas une boutique en direct.`
+                        : `${(retailStatus?.records_count ?? 0).toLocaleString(locale)} records from ${selectedSourceName || "the selected file"}. This is not a live store.`)
+                      : retailStatus?.is_connected
                       ? `${(retailStatus.records_count ?? 0).toLocaleString(locale)} ${connector.records}`
                       : t.common.insufficientData}
                 </p>
@@ -797,7 +778,9 @@ export function RetailIntelligenceView({
                           {p.product_category}
                         </td>
                         <td className="py-3 px-4 text-right font-bold text-slate-900 dark:text-[#F4F7FB]">
-                          ${p.unit_price.toFixed(2)}
+                          {sourceCurrency
+                            ? <DisplayAmount amount={p.unit_price} currency={sourceCurrency} locale={locale} align="end" />
+                            : p.unit_price.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                         <td className="py-3 px-4 text-center">
                           <span
@@ -874,7 +857,7 @@ export function RetailIntelligenceView({
                           {o.customer_name}
                         </td>
                         <td className="py-3 px-4 text-right font-bold text-slate-900 dark:text-[#F4F7FB]">
-                          ${o.total_amount.toFixed(2)} {o.currency}
+                          <DisplayAmount amount={o.total_amount} currency={o.currency} locale={locale} onDate={o.created_at ? o.created_at.slice(0, 10) : null} align="end" />
                         </td>
                         <td className="py-3 px-4 text-center">
                           <StatusBadge status="connected" label={o.status} size="sm" />
@@ -934,7 +917,9 @@ export function RetailIntelligenceView({
                         </td>
                         <td className="py-3 px-4 font-mono text-slate-500">{c.email}</td>
                         <td className="py-3 px-4 text-right font-bold text-slate-900 dark:text-[#F4F7FB]">
-                          ${c.total_spent.toFixed(2)} CAD
+                          {sourceCurrency
+                            ? <DisplayAmount amount={c.total_spent} currency={sourceCurrency} locale={locale} align="end" />
+                            : c.total_spent.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                         <td className="py-3 px-4 text-center font-semibold text-slate-700 dark:text-slate-300">
                           {c.orders_count}
@@ -1094,7 +1079,9 @@ export function RetailIntelligenceView({
               <div className="flex items-center gap-6">
                 <div className="text-right">
                   <div className="text-xl font-bold text-slate-900 dark:text-[#F4F7FB]">
-                    {forecastCurrency.format(forecast.forecasted_total)}
+                    {sourceCurrency
+                      ? <DisplayAmount amount={forecast.forecasted_total} currency={sourceCurrency} locale={locale} align="end" />
+                      : formatSourceMoney(forecast.forecasted_total)}
                   </div>
                   <div className="text-xs text-slate-500 dark:text-[#94A3B8]">
                     {retail.sales}
@@ -1133,8 +1120,8 @@ export function RetailIntelligenceView({
                       : point.period;
                     const tooltipText = [
                       periodLabel,
-                      `Chiffre d'affaires prévu: ${forecastCurrency.format(point.value)}`,
-                      hasBounds ? `${locale.startsWith("fr") ? "Intervalle estimé (±1.96 σ)" : "Estimated interval (±1.96 σ)"}: [${forecastCurrency.format(point.lower_bound!)} – ${forecastCurrency.format(point.upper_bound!)}]` : null,
+                      `${locale.startsWith("fr") ? "Chiffre d'affaires prévu, devise d'origine" : "Forecast sales, original currency"}: ${formatSourceMoney(point.value)}`,
+                      hasBounds ? `${locale.startsWith("fr") ? "Intervalle estimé (±1.96 σ), devise d'origine" : "Estimated interval (±1.96 σ), original currency"}: [${formatSourceMoney(point.lower_bound!)} – ${formatSourceMoney(point.upper_bound!)}]` : null,
                       point.orders_volume != null ? `Volume: ${point.orders_volume} commandes` : null,
                     ].filter(Boolean).join("\n");
 
@@ -1156,7 +1143,7 @@ export function RetailIntelligenceView({
                         </span>
                         {hasBounds && (
                           <span className="text-[9px] text-slate-400 font-mono -mt-1 hidden sm:inline">
-                            ±{forecastCurrency.format(Math.round((point.upper_bound! - point.lower_bound!) / 2))}
+                            ±{formatSourceMoney(Math.round((point.upper_bound! - point.lower_bound!) / 2))}
                           </span>
                         )}
                       </div>
@@ -1235,13 +1222,19 @@ export function RetailIntelligenceView({
                     <div className="flex items-center gap-4 text-xs">
                       <div className="text-right">
                         <div className="font-bold text-slate-900 dark:text-[#F4F7FB]">
-                          {anomalyCopy.observed}: {formatAnomalyValue(anom.observed_value, anom.metric)}
+                          {anomalyCopy.observed}: {anom.metric === "product_revenue" && sourceCurrency && Number.isFinite(anom.observed_value)
+                            ? <DisplayAmount amount={anom.observed_value} currency={sourceCurrency} locale={locale} />
+                            : formatAnomalyValue(anom.observed_value, anom.metric)}
                         </div>
                         <div className="text-[10px] text-slate-400">
-                          {anomalyCopy.expectedRange}: {formatAnomalyValue(anom.expected_range.lower, anom.metric)}{anom.expected_range.upper == null ? "+" : `–${formatAnomalyValue(anom.expected_range.upper, anom.metric)}`}
+                          {anomalyCopy.expectedRange}: {anom.metric === "product_revenue" && sourceCurrency
+                            ? <><DisplayAmount amount={anom.expected_range.lower} currency={sourceCurrency} locale={locale} />{anom.expected_range.upper == null ? "+" : <>–<DisplayAmount amount={anom.expected_range.upper} currency={sourceCurrency} locale={locale} /></>}</>
+                            : <>{formatAnomalyValue(anom.expected_range.lower, anom.metric)}{anom.expected_range.upper == null ? "+" : `–${formatAnomalyValue(anom.expected_range.upper, anom.metric)}`}</>}
                         </div>
                         <div className="text-[10px] text-slate-400">
-                          {anomalyCopy.difference}: {formatAnomalyValue(anom.delta, anom.metric)}
+                          {anomalyCopy.difference}: {anom.metric === "product_revenue" && sourceCurrency && Number.isFinite(anom.delta)
+                            ? <DisplayAmount amount={anom.delta} currency={sourceCurrency} locale={locale} />
+                            : formatAnomalyValue(anom.delta, anom.metric)}
                         </div>
                       </div>
                       <button
@@ -1291,7 +1284,11 @@ export function RetailIntelligenceView({
                         {recommendationSource(recommendation)}
                       </p>
                     )}
-                    {recommendationEvidence(recommendation) && (
+                    {(recommendation.metric === "revenue" || recommendation.metric === "product_revenue") && sourceCurrency && typeof recommendation.evidence?.current === "number" ? (
+                      <p className="mt-1 text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                        <DisplayAmount amount={recommendation.evidence.current} currency={sourceCurrency} locale={locale} />
+                      </p>
+                    ) : recommendationEvidence(recommendation) && (
                       <p className="mt-1 text-[11px] font-medium text-slate-600 dark:text-slate-300">
                         {recommendationEvidence(recommendation)}
                       </p>

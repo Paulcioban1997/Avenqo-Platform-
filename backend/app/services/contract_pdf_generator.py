@@ -8,9 +8,14 @@ CUSTOMER_SIGNED de FULLY_EXECUTED.
 
 from __future__ import annotations
 
+import html
 import io
+import re
 from datetime import datetime, timezone
 from typing import Any
+
+_MARKDOWN_BOLD = re.compile(r"\*\*(.+?)\*\*|__(.+?)__")
+_MARKDOWN_HEADING = re.compile(r"^#{1,6}\s+")
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
@@ -27,16 +32,42 @@ from reportlab.platypus import (
 )
 
 
+def contract_markup(line: str) -> str:
+    """Turn stored Markdown into ReportLab markup without leaving ### or ** on the page."""
+
+    text = _MARKDOWN_HEADING.sub("", line.strip())
+    parts: list[str] = []
+    cursor = 0
+    for match in _MARKDOWN_BOLD.finditer(text):
+        parts.append(_escape_contract_text(text[cursor:match.start()]))
+        inner = match.group(1) if match.group(1) is not None else match.group(2)
+        parts.append(f"<b>{_escape_contract_text(inner)}</b>")
+        cursor = match.end()
+    parts.append(_escape_contract_text(text[cursor:]))
+    rendered = "".join(parts)
+    return rendered.replace("**", "").replace("###", "").replace("##", "")
+
+
+def _escape_contract_text(value: str) -> str:
+    return html.escape(value, quote=False).replace("**", "").replace("###", "").replace("##", "")
+
+
 class NumberedCanvas(canvas.Canvas):
     """Canvas avec numérotation 'Page X de Y' et registre d'intégrité en pied de page."""
 
+    _saved_page_states: list[dict[str, Any]]
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self._saved_page_states: list[dict[str, Any]] = []
+        self._saved_page_states = []
 
     def showPage(self) -> None:
         self._saved_page_states.append(dict(self.__dict__))
-        self._startPage()
+        start_page_fn = getattr(self, "_startPage", None)
+        if callable(start_page_fn):
+            start_page_fn()
+        else:
+            super().showPage()
 
     def save(self) -> None:
         num_pages = len(self._saved_page_states)
@@ -60,7 +91,8 @@ class NumberedCanvas(canvas.Canvas):
         self.drawString(40, 32, "Avenqo AI Enterprise Platform — Confidentiel & Opposable")
 
         # Pied de page centre / droite : Numéro de page
-        page_str = f"Page {self._pageNumber} sur {page_count}"
+        page_num = getattr(self, "_pageNumber", 1)
+        page_str = f"Page {page_num} sur {page_count}"
         self.drawRightString(572, 32, page_str)
         self.restoreState()
 
@@ -199,10 +231,17 @@ class ContractPdfGenerator:
 
         # 2. Avertissement Sandbox si applicable
         if is_sandbox or not provider_signed_at:
+            pilot_label = ""
+            if signature_mode == "SANDBOX_PILOT":
+                pilot_label = (
+                    " Signature pilote/test : elle enregistre le consentement du client, "
+                    "sans contresignature et sans attester l'incorporation de PMC Solutions AI."
+                )
             sandbox_note = (
                 "<b>ENVIRONNEMENT BAC À SABLE / SANDBOX :</b> Document généré pour revue et signature client. "
                 "En attente de contresignature autorisée par le Fournisseur (PMC Solutions AI). "
                 "Ne constitue pas un engagement pleinement exécuté tant que le fournisseur n'a pas formellement contresigné."
+                + pilot_label
             )
             sandbox_table = Table([[Paragraph(sandbox_note, ParagraphStyle("Sbx", parent=body_style, fontSize=8, leading=11, textColor=colors.HexColor("#92400E")))]], colWidths=[532])
             sandbox_table.setStyle(TableStyle([
@@ -284,21 +323,21 @@ class ContractPdfGenerator:
                 elements.append(Spacer(1, 4))
                 continue
             if line_s.startswith("### "):
-                elements.append(Paragraph(line_s[4:], section_heading))
+                elements.append(Paragraph(contract_markup(line_s), section_heading))
             elif line_s.startswith("## "):
-                elements.append(Paragraph(line_s[3:], title_style))
+                elements.append(Paragraph(contract_markup(line_s), title_style))
             elif line_s.startswith("# "):
-                pass
+                elements.append(Paragraph(contract_markup(line_s), title_style))
             elif line_s.startswith("---"):
                 elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#CBD5E1"), spaceBefore=4, spaceAfter=6))
             elif line_s.startswith("- ") or line_s.startswith("* "):
                 bullet_style = ParagraphStyle("Bullet", parent=body_style, leftIndent=12)
-                elements.append(Paragraph(f"• {line_s[2:]}", bullet_style))
-            elif line_s.startswith("1. ") or line_s.startswith("2. ") or line_s.startswith("3. ") or line_s.startswith("4. "):
+                elements.append(Paragraph(f"• {contract_markup(line_s[2:])}", bullet_style))
+            elif line_s[:3] in {"1. ", "2. ", "3. ", "4. ", "5. ", "6. ", "7. ", "8. ", "9. "}:
                 num_style = ParagraphStyle("Num", parent=body_style, leftIndent=12)
-                elements.append(Paragraph(line_s, num_style))
+                elements.append(Paragraph(contract_markup(line_s), num_style))
             else:
-                elements.append(Paragraph(line_s, body_style))
+                elements.append(Paragraph(contract_markup(line_s), body_style))
 
         # 6. Bloc de Signatures d'Engagement
         elements.append(Spacer(1, 12))
@@ -373,15 +412,29 @@ class ContractPdfGenerator:
         # 7. Registre d'Achèvement Avenqo (Avenqo Completion Record)
         if signed_at and not is_draft:
             elements.append(Spacer(1, 14))
-            cert_title = Paragraph("<b>REGISTRE D'ACHÈVEMENT ET D'INTÉGRITÉ AVENQO (COMPLETION RECORD)</b>", meta_label)
+            rec: dict[str, Any] = completion_record if isinstance(completion_record, dict) else {}
+            tx_id = rec.get("transaction_id") or (f"TX-{audit_receipt_id[:12].upper()}" if audit_receipt_id else "TX-AUTO")
+            sig_label = rec.get("signature_label") or ("pilot/test" if is_sandbox else "electronic")
+            legal_effect = rec.get("legal_effect") or ("sandbox_pilot" if is_sandbox else "customer_signed_pending_provider")
+            party_states_raw = rec.get("execution_party_states")
+            party_states: dict[str, Any] = party_states_raw if isinstance(party_states_raw, dict) else {}
+            customer_state = str(party_states.get("customer") or "SIGNED")
+            provider_state = str(party_states.get("provider") or ("COMPLETED" if execution_state == "COMPLETED" else "PENDING_COUNTERSIGNATURE"))
+            verify_via = rec.get("identity_verified_via") or "email_otp_challenge"
+            status_summary = (
+                "Signature pilote d'essai (Sandbox) — aucune contresignature fournisseur ni preuve d'incorporation"
+                if is_sandbox or legal_effect == "sandbox_pilot"
+                else "Signé par le client — en attente de contresignature fournisseur"
+            )
+            cert_title = Paragraph("<b>REGISTRE D'ACHÈVEMENT ET D'INTÉGRITÉ AVENQO (COMPLETION RECORD &amp; RECEIPT)</b>", meta_label)
             cert_body = Paragraph(
-                f"Ce registre atteste qu'un événement de signature électronique a été consigné par l'infrastructure Avenqo. "
-                f"Identifiant de transaction : <b>{audit_receipt_id or 'TX-AUTO'}</b>. "
-                f"Horodatage certifié : <b>{client_date_str}</b>. "
-                f"Empreinte cryptographique du document source (SHA-256) : <b>{sha256_hash}</b>. "
-                f"Adresse IP source : <b>{ip_address or '127.0.0.1'}</b>. "
-                "Ce document constitue une preuve d'engagement et de traçabilité d'entreprise.",
-                ParagraphStyle("Cert", parent=body_style, fontSize=7.5, leading=10, textColor=colors.HexColor("#475569")),
+                f"Ce registre atteste qu'un événement de signature électronique a été consigné par l'infrastructure Avenqo.<br/>"
+                f"Numéro de transaction : <b>{tx_id}</b> | Reçu d'audit : <b>{audit_receipt_id or 'N/A'}</b><br/>"
+                f"Statut réel du document : <b>{status_summary}</b> (Mode : <b>{signature_mode} / {sig_label}</b>)<br/>"
+                f"État des parties : Client = <b>{customer_state}</b> | Fournisseur = <b>{provider_state}</b><br/>"
+                f"Vérification d'identité : <b>{verify_via}</b> | Horodatage certifié UTC : <b>{client_date_str}</b><br/>"
+                f"Empreinte cryptographique du contrat (SHA-256) : <b>{sha256_hash}</b> | Adresse IP source : <b>{ip_address or '127.0.0.1'}</b>",
+                ParagraphStyle("Cert", parent=body_style, fontSize=7.5, leading=10.5, textColor=colors.HexColor("#475569")),
             )
             cert_table = Table([[cert_title], [cert_body]], colWidths=[532])
             cert_table.setStyle(TableStyle([

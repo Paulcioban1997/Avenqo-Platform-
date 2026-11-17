@@ -7,7 +7,7 @@ import { useLocale } from "@/lib/i18n/locale-context";
 
 export default function NotFound() {
   const { locale } = useLocale();
-  const isEn = locale === "en";
+  const isEn = !locale.startsWith("fr");
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background text-foreground relative overflow-hidden">

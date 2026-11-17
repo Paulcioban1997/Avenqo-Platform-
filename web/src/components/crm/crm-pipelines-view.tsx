@@ -16,6 +16,8 @@ import type { AppTranslations } from "@/lib/i18n/app-dictionary";
 import { getAuthHeaders } from "@/lib/api-headers";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { finiteMetric, metricText, validDate } from "./crm-format";
+import { HorizontalScroller } from "@/components/shell/horizontal-scroller";
+import { DisplayAmount } from "@/components/common/display-amount";
 
 interface OpportunityItem {
   id: string;
@@ -23,6 +25,7 @@ interface OpportunityItem {
   client_id?: string;
   client_name?: string;
   amount: number;
+  currency?: string;
   probability: number;
   expected_close_date?: string | null;
   stage_id: string;
@@ -184,17 +187,20 @@ export function CRMPipelinesView({ t }: CRMPipelinesViewProps) {
         </div>
       ) : !activePipeline || !activePipeline.stages || activePipeline.stages.length === 0 ? (
         <div className="p-8 text-center bg-white dark:bg-[#0B0F19] rounded-2xl border border-slate-200 dark:border-slate-800">
-          <p className="text-xs text-slate-400">{t.crm.calendar.noAppointments}</p>
+          <p className="text-xs text-slate-400">{locale.startsWith("fr") ? "Aucun pipeline configuré." : "No pipeline is configured."}</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 overflow-x-auto pb-4">
+        <HorizontalScroller>
+        <div className="flex w-max gap-4 pb-4">
           {activePipeline.stages.map((stage, sIdx) => {
             const opps = stage.opportunities || [];
             const totalStageValue = opps.every((item) => finiteMetric(item.amount) !== null) ? opps.reduce((sum, item) => sum + item.amount, 0) : null;
+            const stageCurrencies = [...new Set(opps.map((item) => item.currency).filter((code): code is string => typeof code === "string" && /^[A-Z]{3}$/.test(code)))];
+            const stageCurrency = stageCurrencies.length === 1 ? stageCurrencies[0] : null;
             return (
               <div
                 key={stage.id}
-                className="flex flex-col bg-slate-50 dark:bg-slate-900/40 rounded-2xl p-3 border border-slate-200 dark:border-slate-800 min-h-[500px]"
+                className="flex w-[260px] shrink-0 flex-col min-h-[500px] rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/40"
               >
                 {/* Column header */}
                 <div className="pb-3 mb-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
@@ -203,7 +209,9 @@ export function CRMPipelinesView({ t }: CRMPipelinesViewProps) {
                       {stage.name}
                     </span>
                     <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
-                      {metricText(totalStageValue, locale, t.common.insufficientData)}
+                      {stageCurrency && totalStageValue !== null
+                        ? <DisplayAmount amount={totalStageValue} currency={stageCurrency} locale={locale} />
+                        : metricText(totalStageValue, locale, t.common.insufficientData)}
                     </span>
                   </div>
                   <span className="text-xs px-2 py-0.5 rounded-full bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold border border-slate-200 dark:border-slate-700">
@@ -215,7 +223,7 @@ export function CRMPipelinesView({ t }: CRMPipelinesViewProps) {
                 <div className="flex-1 space-y-2.5 overflow-y-auto">
                   {opps.length === 0 ? (
                     <div className="py-8 text-center text-[11px] text-slate-400 italic">
-                      {t.crm.calendar.noAppointments}
+                      {locale.startsWith("fr") ? "Aucune affaire dans cette étape" : "No deals in this stage"}
                     </div>
                   ) : (
                     opps.map((opp) => (
@@ -228,7 +236,9 @@ export function CRMPipelinesView({ t }: CRMPipelinesViewProps) {
                             {opp.title}
                           </h4>
                           <span className="font-bold text-emerald-600 dark:text-emerald-400 shrink-0">
-                            {opp.amount} $
+                            {typeof opp.currency === "string" && /^[A-Z]{3}$/.test(opp.currency)
+                              ? <DisplayAmount amount={opp.amount} currency={opp.currency} locale={locale} align="end" />
+                              : opp.amount}
                           </span>
                         </div>
 
@@ -257,6 +267,7 @@ export function CRMPipelinesView({ t }: CRMPipelinesViewProps) {
             );
           })}
         </div>
+        </HorizontalScroller>
       )}
 
       {/* NEW OPPORTUNITY MODAL */}

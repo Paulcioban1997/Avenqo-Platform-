@@ -27,7 +27,7 @@ from backend.app.models import (
     User,
     VoiceBusinessConfig,
 )
-from backend.app.models.base import CompanyStatus, OnboardingStatus
+from backend.app.models.base import CompanyStatus, OnboardingStatus, UserRole
 from backend.app.schemas.onboarding import (
     FinalizeOnboardingResponse,
     MultiStepOnboardingStateResponse,
@@ -35,7 +35,7 @@ from backend.app.schemas.onboarding import (
     OnboardingStatusResponse,
     OnboardingSubmitRequest,
 )
-from .contract_signature_service import ContractSignatureService
+from .contract_signature_service import REQUIRED_SAAS_CONTRACTS, ContractSignatureService
 from backend.app.services.module_entitlement_service import (
     ModuleEntitlementError,
     ModuleEntitlementService,
@@ -163,6 +163,69 @@ class OnboardingService:
 
     def _active_module_codes(self, tenant: TenantContext) -> tuple[str, ...]:
         return ModuleEntitlementService(self._session).get_active_modules(tenant)
+
+    @staticmethod
+    def _stripe_confirmed(account: BillingAccount | None) -> bool:
+        """Payment counts only after Stripe has a subscription in an active state."""
+
+        if account is None or not account.stripe_subscription_id:
+            return False
+        return str(account.status or "").lower() in {"active", "trialing"}
+
+    def _stripe_confirmed_for(self, company_id: UUID) -> bool:
+        account = self._session.scalar(select(BillingAccount).where(BillingAccount.company_id == company_id))
+        return self._stripe_confirmed(account)
+
+    def _legacy_operating_session(self, tenant: TenantContext, company: Company) -> bool:
+        """An already-active workspace stays usable while a test customer is reconciled.
+
+        A new registration has no activated modules, so it cannot take this path.
+        """
+
+        if not self._active_module_codes(tenant):
+            return False
+        account = self._session.scalar(select(BillingAccount).where(BillingAccount.company_id == company.id))
+        return account is not None and str(account.status or "").lower() in {"active", "trialing"}
+
+    def workspace_access(self, tenant: TenantContext) -> dict[str, Any]:
+        record = self._get_or_create(tenant)
+        company = self._session.get(Company, tenant.company_id)
+        if company is None:
+            raise ValueError("Entreprise introuvable")
+        actor = self._session.get(User, tenant.user_id) if tenant.user_id else None
+        # Invited employees join via invitation only — no commercial contract or Checkout.
+        invited_member = actor is not None and actor.role != UserRole.OWNER
+        draft = dict(record.draft_payload or {})
+        service = ContractSignatureService(self._session)
+        service.ensure_contracts_for_company(company)
+        saas_accepted = service.required_saas_accepted(company.id)
+        stripe_confirmed = self._stripe_confirmed_for(company.id)
+        legacy = self._legacy_operating_session(tenant, company)
+        selected = draft.get("selected_modules") or list(self._active_module_codes(tenant))
+        if invited_member or legacy or (saas_accepted and stripe_confirmed):
+            next_path = "/dashboard"
+            workspace_open = True
+        elif not selected:
+            next_path = "/onboarding/modules"
+            workspace_open = False
+        elif not saas_accepted:
+            next_path = "/settings/contracts"
+            workspace_open = False
+        else:
+            next_path = "/onboarding/checkout"
+            workspace_open = False
+        return {
+            "workspace_open": workspace_open,
+            "saas_accepted": saas_accepted,
+            "stripe_confirmed": stripe_confirmed,
+            "private_license_required": False,
+            "legacy_session": legacy,
+            "invited_member": invited_member,
+            "required_contract_types": list(REQUIRED_SAAS_CONTRACTS),
+            "next_path": next_path,
+            "contracts_path": "/settings/contracts",
+            "checkout_path": "/onboarding/checkout",
+        }
 
     def _to_response(
         self,
@@ -314,19 +377,27 @@ class OnboardingService:
         contracts_rows = self._session.scalars(
             select(CompanyContract).where(CompanyContract.company_id == tenant.company_id)
         ).all()
+        contract_service = ContractSignatureService(self._session)
+        accepted_states = {"SIGNED", "CUSTOMER_SIGNED", "FULLY_EXECUTED"}
         mandatory_contracts = [
             {
                 "contract_type": c.contract_type,
                 "title": c.title,
                 "version": c.version,
-                "is_mandatory": True,
+                "is_mandatory": c.contract_type in {"SAAS_SUBSCRIPTION", "DATA_PROCESSING_ADDENDUM"},
+                "optional": c.contract_type == "PRIVATE_LICENSE",
                 "status": c.status,
-                "is_signed": c.status == "SIGNED",
+                "approval_status": contract_service.approval_status_of(c),
+                "signable": not contract_service.signature_blocked(c) and c.status not in accepted_states,
+                "is_signed": c.status in accepted_states,
             }
             for c in contracts_rows
         ]
         stored_contracts = draft.get("contracts", {})
-        accepted_contract_types = stored_contracts.get("accepted_contract_types", [])
+        accepted_contract_types = [
+            c["contract_type"] for c in mandatory_contracts if c["is_signed"] and c["is_mandatory"]
+        ]
+        saas_accepted = contract_service.required_saas_accepted(tenant.company_id)
 
         # 5. Subscription info
         plan_code = draft.get("selected_plan", {}).get("plan_code") or (company.subscription_plan if company else "base")
@@ -334,8 +405,7 @@ class OnboardingService:
             select(BillingAccount).where(BillingAccount.company_id == tenant.company_id)
         )
         subscription_status = subscription_account.status if subscription_account else "inactive"
-        if company and company.status == CompanyStatus.ACTIVE and subscription_status == "inactive":
-            subscription_status = "active"
+        stripe_confirmed = self._stripe_confirmed(subscription_account)
 
         # Check completed steps
         completed_steps = []
@@ -346,11 +416,11 @@ class OnboardingService:
         if design.get("theme_id"):
             completed_steps.append("design")
             completed_steps.append("preview")
-        if any(c["is_signed"] for c in mandatory_contracts) or len(accepted_contract_types) >= 1:
+        if saas_accepted:
             completed_steps.append("contracts")
         if plan_code:
             completed_steps.append("subscription")
-        if subscription_status in ("active", "trialing", "verified_test"):
+        if stripe_confirmed:
             completed_steps.append("checkout")
         if record.status == OnboardingStatus.COMPLETED:
             completed_steps.append("complete")
@@ -370,7 +440,7 @@ class OnboardingService:
             missing_requirements.append("design_theme_missing")
         if "contracts" not in completed_steps:
             missing_requirements.append("contracts_not_accepted")
-        if subscription_status not in ("active", "trialing", "verified_test"):
+        if not stripe_confirmed:
             missing_requirements.append("subscription_not_active")
 
         can_finalize = len(missing_requirements) == 0
@@ -403,11 +473,13 @@ class OnboardingService:
                 "accepted_contract_types": accepted_contract_types,
                 "accepted_by_name": stored_contracts.get("accepted_by_name"),
                 "accepted_by_title": stored_contracts.get("accepted_by_title"),
-                "all_mandatory_signed": any(c["is_signed"] for c in mandatory_contracts) or len(accepted_contract_types) >= 1,
+                "all_mandatory_signed": saas_accepted,
+                "private_license_required": False,
             },
             subscription={
                 "selected_plan": plan_code,
                 "status": subscription_status,
+                "stripe_confirmed": stripe_confirmed,
                 "plans": [
                     {
                         "code": p.code.value,
@@ -490,23 +562,14 @@ class OnboardingService:
                 draft["theme_id"] = design_data["theme_id"]
 
         elif step_id == "contracts":
+            # A checkbox on this step is not a signature. The sign endpoint records consent.
             contracts_data = data.get("contracts") or data
-            draft["contracts"] = contracts_data
-            # Sign any pending contracts in the system
-            if company:
-                sig_service = ContractSignatureService(self._session)
-                sig_service.ensure_contracts_for_company(company)
-                pending = self._session.scalars(
-                    select(CompanyContract).where(
-                        CompanyContract.company_id == tenant.company_id,
-                        CompanyContract.status != "SIGNED",
-                    )
-                ).all()
-                for c in pending:
-                    c.status = "SIGNED"
-                    c.signed_at = datetime.now(timezone.utc)
-                    c.signatory_name = str(contracts_data.get("accepted_by_name") or "Dirigeant")
-                    c.signatory_title = str(contracts_data.get("accepted_by_title") or "Représentant")
+            draft["contracts_visit"] = {
+                "visited_at": datetime.now(timezone.utc).isoformat(),
+                "note": "visit_only",
+            }
+            if isinstance(contracts_data, dict):
+                draft["contracts_visit"]["requested_types"] = list(contracts_data.get("accepted_contract_types") or [])
 
         elif step_id == "subscription":
             sub_data = data.get("subscription") or data
@@ -532,27 +595,24 @@ class OnboardingService:
         draft = dict(record.draft_payload or {})
         selected_modules = draft.get("selected_modules") or []
         plan_code = (draft.get("selected_plan", {}).get("plan_code") or company.subscription_plan or "base").lower()
+        legacy = self._legacy_operating_session(tenant, company)
+        contract_service = ContractSignatureService(self._session)
+        if not legacy:
+            if not contract_service.required_saas_accepted(company.id):
+                raise ValueError(
+                    "Les accords SaaS requis doivent être signés avant l'ouverture de l'espace. "
+                    "La licence privée n'est pas exigée. L'accord de confidentialité en révision ne se signe pas."
+                )
+            if not self._stripe_confirmed_for(company.id):
+                raise ValueError("Le paiement n'est enregistré que lorsque Stripe confirme l'abonnement d'essai.")
 
         # Reconcile modules with plan limit
         plan_def = PLANS_BY_CODE.get(PlanCode(plan_code)) if plan_code in [p.value for p in PlanCode] else None
         if plan_def and plan_def.max_selectable_modules:
             selected_modules = selected_modules[:plan_def.max_selectable_modules]
 
-        # Activate selected modules
-        activated = self.activate_selected_modules(tenant, tuple(selected_modules))
-
-        # Sign contracts if not already signed
-        pending_contracts = self._session.scalars(
-            select(CompanyContract).where(
-                CompanyContract.company_id == tenant.company_id,
-                CompanyContract.status != "SIGNED",
-            )
-        ).all()
-        rep_name = draft.get("company_info", {}).get("authorized_rep_first_name", "Authorized")
-        for c in pending_contracts:
-            c.status = "SIGNED"
-            c.signed_at = datetime.now(timezone.utc)
-            c.signatory_name = str(rep_name or "Authorized")
+        if not legacy:
+            self.activate_selected_modules(tenant, tuple(selected_modules))
 
         # Mark onboarding completed
         record.status = OnboardingStatus.COMPLETED
@@ -590,6 +650,7 @@ class OnboardingService:
             "background_style": stored_design.get("background_style") or default_theme.background_style,
             "company_logo_url": stored_design.get("company_logo_url") or draft.get("company_logo_url") or "",
             "company_emblem_url": stored_design.get("company_emblem_url") or "",
+            "logo_placement": stored_design.get("logo_placement") or "both",
             "display_name": stored_design.get("display_name") or (company.name if company else ""),
             "candidate_themes": get_all_candidate_themes(),
         }
@@ -611,10 +672,13 @@ class OnboardingService:
                 "background_style": default_theme.background_style,
                 "company_logo_url": "",
                 "company_emblem_url": "",
+                "logo_placement": "both",
                 "display_name": company.name if company else "",
             }
         else:
             current_design = draft.get("design", {})
+            requested_placement = data.get("logo_placement") or current_design.get("logo_placement") or "both"
+            logo_placement = requested_placement if requested_placement in {"header", "sidebar", "both"} else "both"
             design_data = {
                 "theme_id": data.get("theme_id") or current_design.get("theme_id") or DEFAULT_THEME_ID,
                 "primary_color": data.get("primary_color") or current_design.get("primary_color") or "#0076FF",
@@ -624,6 +688,7 @@ class OnboardingService:
                 "background_style": data.get("background_style") or current_design.get("background_style") or "mesh_dark",
                 "company_logo_url": data.get("company_logo_url", current_design.get("company_logo_url")),
                 "company_emblem_url": data.get("company_emblem_url", current_design.get("company_emblem_url")),
+                "logo_placement": logo_placement,
                 "display_name": data.get("display_name", current_design.get("display_name")),
             }
 

@@ -10,7 +10,7 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from backend.app.core.permissions import permissions_for
+from backend.app.core.permission_grants import effective_permissions
 from backend.app.core.request_context import request_id_var
 from backend.app.core.tenant_execution import TenantExecutionContext, bind_tenant_execution
 from backend.app.config.settings import get_settings
@@ -36,7 +36,7 @@ logger = logging.getLogger("avenqo.auth")
 class CurrentIdentity:
     """Identité vérifiée utilisée par les routes protégées."""
 
-    auth_session: AuthSession
+    auth_session: AuthSession | None
     user: User
     raw_token: str
 
@@ -159,12 +159,11 @@ def get_current_identity(
     # Platform admins keep their tenant GUC. Cross-tenant support must go
     # through admin dependencies that re-check access, then set bypass.
     apply_tenant_rls(db, user.company_id, bypass=False)
-    role = getattr(user, "role", None)
     bind_tenant_execution(
         TenantExecutionContext(
             tenant=TenantContext(company_id=user.company_id, user_id=user.id),
             user_id=user.id,
-            permissions=frozenset(permissions_for(role)) if role is not None else frozenset(),
+            permissions=frozenset(effective_permissions(user)),
             request_id=request_id_var.get() or "",
             rls_bound=True,
             source="session",
@@ -189,7 +188,7 @@ def require_permission(permission: str) -> Callable[..., CurrentIdentity]:
     def dependency(
         identity: CurrentIdentity = Depends(get_current_identity),
     ) -> CurrentIdentity:
-        if permission not in permissions_for(identity.user.role):
+        if permission not in effective_permissions(identity.user):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Permission insuffisante",
@@ -222,6 +221,7 @@ def require_platform_role(*allowed_roles: str):
 
     Rôles supportés :
     - PLATFORM_SUPER_ADMIN : accès complet à tous les modules et actions sensibles (contreseing, configuration)
+    - PLATFORM_LEGAL_REVIEWER : approbation de versions contractuelles avant signature client (pas de contresignature)
     - PLATFORM_FINANCE : vue d'ensemble, entreprises, revenus/Stripe, métriques IA, contrats (lecture)
     - PLATFORM_SUPPORT_READONLY : vue d'ensemble, entreprises (lecture), connecteurs, santé, messages support
     - PLATFORM_SECURITY_AUDITOR : sécurité, logs d'audit, connecteurs, santé, statut de configuration
@@ -239,6 +239,7 @@ def require_platform_role(*allowed_roles: str):
         current_role = identity.user.platform_role
         if current_role not in {
             "PLATFORM_SUPER_ADMIN",
+            "PLATFORM_LEGAL_REVIEWER",
             "PLATFORM_FINANCE",
             "PLATFORM_SUPPORT_READONLY",
             "PLATFORM_SECURITY_AUDITOR",

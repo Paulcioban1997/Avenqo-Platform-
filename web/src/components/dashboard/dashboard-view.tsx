@@ -27,6 +27,8 @@ import { getApplicationCatalog } from "@/lib/i18n/generated-app-catalogs";
 import { apiFetch, ApiRequestError } from "@/lib/api-request";
 import { useSession } from "@/lib/session-context";
 import { RequestFailure } from "@/components/ui/request-failure";
+import { HorizontalScroller } from "@/components/shell/horizontal-scroller";
+import { DisplayAmount } from "@/components/common/display-amount";
 import { getAuthHeaders } from "@/lib/api-headers";
 
 export interface DashboardViewProps {
@@ -101,7 +103,7 @@ export function DashboardView({
   const [regionalSplit, setRegionalSplit] = useState<DashboardSplit>({ available: false, items: [] });
   const [conversion, setConversion] = useState<DashboardConversion>({ available: false, value: null });
   const [currency, setCurrency] = useState("CAD");
-  const [hoveredTrendIdx, setHoveredTrendIdx] = useState<number | null>(null);
+  const [selectedTrendIdx, setSelectedTrendIdx] = useState<number | null>(null);
   const [calendarReconnectNeeded, setCalendarReconnectNeeded] = useState(false);
   const session = useSession();
   const loadRevision = useRef(0);
@@ -126,6 +128,7 @@ export function DashboardView({
     setKpis({});
     setPriorities([]);
     setTrendPoints([]);
+    setSelectedTrendIdx(null);
     setCategorySplit({ available: false, items: [] });
     setRegionalSplit({ available: false, items: [] });
     setConversion({ available: false, value: null });
@@ -236,7 +239,8 @@ export function DashboardView({
 
         {/* Date Range Picker Controls */}
         <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-xl p-1 bg-slate-100 dark:bg-[#111D3D] border border-slate-200/80 dark:border-white/[0.08] text-xs">
+        <HorizontalScroller>
+          <div className="inline-flex w-max rounded-xl p-1 bg-slate-100 dark:bg-[#111D3D] border border-slate-200/80 dark:border-white/[0.08] text-xs">
             <button
               onClick={() => setDateRange("all")}
               className={`px-3 py-1.5 rounded-lg font-semibold transition-colors ${
@@ -278,6 +282,7 @@ export function DashboardView({
               {t.dashboard.dateRangeQuarter}
             </button>
           </div>
+        </HorizontalScroller>
 
           <button
             onClick={fetchDashboardData}
@@ -320,7 +325,8 @@ export function DashboardView({
       )}
 
       {/* KPI Grid (5 Metrics) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <HorizontalScroller>
+      <div className="flex w-max gap-4 [&>*]:w-[220px] [&>*]:shrink-0">
         {isLoading ? (
           <>
             <KPISkeleton />
@@ -334,7 +340,7 @@ export function DashboardView({
             {/* Chiffre d'affaires / Revenue */}
             <MetricCard
               title={t.dashboard.revenue}
-              value={kpis.revenue?.available ? formatMoney(kpis.revenue.value) : "—"}
+              value={kpis.revenue?.available ? <DisplayAmount amount={kpis.revenue.value} currency={currency} locale={locale === "fr" ? "fr-CA" : "en-CA"} /> : "—"}
               delta={
                 (kpis.orders?.value ?? 0) === 0 || (kpis.revenue?.value ?? 0) === 0
                   ? null
@@ -373,7 +379,7 @@ export function DashboardView({
             {/* Panier moyen / AOV */}
             <MetricCard
               title={t.dashboard.aov}
-              value={kpis.aov?.available ? formatMoney(kpis.aov.value) : "—"}
+              value={kpis.aov?.available ? <DisplayAmount amount={kpis.aov.value} currency={currency} locale={locale === "fr" ? "fr-CA" : "en-CA"} /> : "—"}
               delta={
                 (kpis.orders?.value ?? 0) === 0 || (kpis.aov?.value ?? 0) === 0
                   ? null
@@ -386,30 +392,20 @@ export function DashboardView({
             {/* Taux de conversion / Ratio Transactions */}
             {(() => {
               const ordersCount = Number(kpis.orders?.value ?? 0);
-              const customersCount = Number(kpis.customers?.value ?? 0);
-              const estRate = ordersCount > 0 && customersCount > 0
-                ? Math.round(Math.min(8.5, Math.max(1.8, (customersCount / ordersCount) * 18.0)) * 10) / 10
-                : null;
               const hasConversion = Boolean(conversion.available && conversion.value != null);
               const displayVal = conversion.available && conversion.value != null
                 ? `${conversion.value.toFixed(1)}%`
-                : estRate != null
-                  ? `${estRate.toFixed(1)}%`
-                  : "—";
-              const displayTitle = hasConversion
-                ? t.dashboard.conversionRate
-                : "Ratio Indicatif Client / Vente";
+                : "—";
+              const displayTitle = t.dashboard.conversionRate;
               const displaySub = hasConversion
                 ? periodLabel
-                : estRate != null
-                  ? "Ratio indicatif (visites non trackées)"
-                  : t.dashboard.conversionUnavailable;
+                : t.dashboard.conversionUnavailable;
               return (
                 <MetricCard
                   title={displayTitle}
                   value={displayVal}
                   delta={
-                    ordersCount === 0 || (!hasConversion && !estRate)
+                    ordersCount === 0 || !hasConversion
                       ? null
                       : (kpis.conversion_rate?.change_percent ?? null)
                   }
@@ -421,6 +417,7 @@ export function DashboardView({
           </>
         )}
       </div>
+      </HorizontalScroller>
 
       {!isLoading && dateRange !== "all" && (kpis.orders?.value ?? 0) === 0 && (
         <div role="status" className="border-l-4 border-amber-500 bg-amber-50 dark:bg-amber-950/20 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
@@ -454,47 +451,83 @@ export function DashboardView({
               </div>
             </div>
 
-            {/* Interactive SVG Chart or Empty State */}
+            {/* Interactive chart. Values stay outside the scroller so overflow cannot hide them. */}
             {isLoading ? (
               <ChartSkeleton height={240} />
             ) : hasData && trendPoints.length > 0 ? (
-              <div className="relative pt-4 overflow-x-auto">
-                <div className="h-60 flex items-end gap-3 pt-4" style={{ minWidth: `${Math.max(trendPoints.length * 28, 100)}%` }}>
-                  {trendPoints.map((point, idx) => {
-                    const maxRevenue = Math.max(...trendPoints.map((item) => item.revenue), 1);
-                    const maxOrders = Math.max(...trendPoints.map((item) => item.orders), 1);
-                    const revenueHeight = (point.revenue / maxRevenue) * 100;
-                    const ordersHeight = (point.orders / maxOrders) * 100;
-                    return (
-                    <div
-                      key={point.period}
-                      onMouseEnter={() => setHoveredTrendIdx(idx)}
-                      onMouseLeave={() => setHoveredTrendIdx(null)}
-                      className="flex-1 flex flex-col items-center h-full justify-end group cursor-pointer"
-                    >
-                      {hoveredTrendIdx === idx && (
-                        <div className="absolute top-0 px-2.5 py-1 rounded-lg bg-slate-900 text-white dark:bg-white dark:text-slate-900 text-[10px] font-bold shadow-md animate-in fade-in">
-                          {point.period}: {formatMoney(point.revenue)} / {point.orders.toLocaleString()} {t.dashboard.orders.toLowerCase()}
-                        </div>
-                      )}
-                      <div className="w-full max-w-[28px] flex items-end gap-1 h-full justify-center">
-                        <div
-                          className="w-1/2 rounded-t-md bg-[#0076FF] group-hover:bg-[#158bff] transition-all duration-300"
-                          style={{ height: `${revenueHeight}%` }}
-                        />
-                        <div
-                          className="w-1/2 rounded-t-md bg-[#00D4FF] group-hover:bg-cyan-300 transition-all duration-300"
-                          style={{ height: `${ordersHeight}%` }}
-                        />
-                      </div>
-                      <span className="mt-2 text-[11px] font-medium text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white">
-                        {point.period}
-                      </span>
+              <>
+                <p className="mb-3 text-[11px] text-slate-500 dark:text-[#94A3B8]">
+                  {locale.startsWith("fr")
+                    ? "Le graphique reste dans la devise d'origine. Le montant sélectionné est un cours du jour, pas le taux de chaque vente."
+                    : "The chart stays in the original currency. The selected amount uses today's rate, not each sale's rate."}
+                </p>
+                {selectedTrendIdx !== null && trendPoints[selectedTrendIdx] ? (
+                  <div
+                    role="status"
+                    className="mb-4 grid grid-cols-2 gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-white/[0.08] dark:bg-white/[0.04]"
+                  >
+                    <p className="col-span-2 text-xs font-semibold text-slate-500 dark:text-[#94A3B8]">
+                      {trendPoints[selectedTrendIdx].period}
+                    </p>
+                    <div>
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-[#94A3B8]">
+                        {t.dashboard.revenue}
+                      </p>
+                      <p className="text-lg font-bold tabular-nums text-slate-900 dark:text-[#F4F7FB]">
+                        <DisplayAmount amount={trendPoints[selectedTrendIdx].revenue} currency={currency} locale={locale === "fr" ? "fr-CA" : "en-CA"} />
+                      </p>
                     </div>
-                    );
-                  })}
-                </div>
-              </div>
+                    <div>
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-[#94A3B8]">
+                        {t.dashboard.orders}
+                      </p>
+                      <p className="text-lg font-bold tabular-nums text-slate-900 dark:text-[#F4F7FB]">
+                        {trendPoints[selectedTrendIdx].orders.toLocaleString(locale === "fr" ? "fr-CA" : "en-CA")}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mb-4 text-xs text-slate-500 dark:text-[#94A3B8]">
+                    {t.dashboard.trendPointHint}
+                  </p>
+                )}
+                <HorizontalScroller>
+                  <div className="h-60 flex items-end gap-3 pt-4" style={{ minWidth: `${Math.max(trendPoints.length * 48, 320)}px` }}>
+                    {trendPoints.map((point, idx) => {
+                      const maxRevenue = Math.max(...trendPoints.map((item) => item.revenue), 1);
+                      const maxOrders = Math.max(...trendPoints.map((item) => item.orders), 1);
+                      const revenueHeight = (point.revenue / maxRevenue) * 100;
+                      const ordersHeight = (point.orders / maxOrders) * 100;
+                      const selected = selectedTrendIdx === idx;
+                      const numberLocale = locale === "fr" ? "fr-CA" : "en-CA";
+                      return (
+                      <button
+                        key={point.period}
+                        type="button"
+                        aria-pressed={selected}
+                        aria-label={`${point.period}. ${t.dashboard.revenue} ${formatMoney(point.revenue)}. ${t.dashboard.orders} ${point.orders.toLocaleString(numberLocale)}`}
+                        onClick={() => setSelectedTrendIdx(idx)}
+                        className={`flex-1 flex flex-col items-center h-full justify-end rounded-lg px-0.5 group cursor-pointer ${selected ? "ring-2 ring-[#0076FF]" : ""}`}
+                      >
+                        <div className="w-full max-w-[28px] flex items-end gap-1 h-full justify-center">
+                          <div
+                            className="w-1/2 rounded-t-md bg-[#0076FF] group-hover:bg-[#158bff] transition-all duration-300"
+                            style={{ height: `${revenueHeight}%` }}
+                          />
+                          <div
+                            className="w-1/2 rounded-t-md bg-[#00D4FF] group-hover:bg-cyan-300 transition-all duration-300"
+                            style={{ height: `${ordersHeight}%` }}
+                          />
+                        </div>
+                        <span className={`mt-2 text-[11px] font-medium ${selected ? "text-slate-900 dark:text-white" : "text-slate-400 group-hover:text-slate-700 dark:group-hover:text-white"}`}>
+                          {point.period}
+                        </span>
+                      </button>
+                      );
+                    })}
+                  </div>
+                </HorizontalScroller>
+              </>
             ) : (
               <EmptyState
                 title={t.dashboard.noTransactionsForPeriod.replace("{period}", periodLabel)}
@@ -520,7 +553,7 @@ export function DashboardView({
               {isLoading ? (
                 <ChartSkeleton height={120} />
               ) : categorySplit.available && categorySplit.items.length > 0 ? (
-                <DashboardSplitList items={categorySplit.items} formatMoney={formatMoney} />
+                <DashboardSplitList items={categorySplit.items} currency={currency} locale={locale === "fr" ? "fr-CA" : "en-CA"} />
               ) : (
                 <div className="py-6 text-center text-xs text-slate-400 dark:text-slate-500">
                   {t.dashboard.categorySplitUnavailable}
@@ -542,7 +575,7 @@ export function DashboardView({
               {isLoading ? (
                 <ChartSkeleton height={120} />
               ) : regionalSplit.available && regionalSplit.items.length > 0 ? (
-                <DashboardSplitList items={regionalSplit.items} formatMoney={formatMoney} />
+                <DashboardSplitList items={regionalSplit.items} currency={currency} locale={locale === "fr" ? "fr-CA" : "en-CA"} />
               ) : (
                 <div className="py-6 text-center text-xs text-slate-400 dark:text-slate-500">
                   {t.dashboard.regionalSalesUnavailable}
@@ -642,10 +675,12 @@ export function DashboardView({
 
 function DashboardSplitList({
   items,
-  formatMoney,
+  currency,
+  locale,
 }: {
   items: DashboardSplitItem[];
-  formatMoney: (val: number | null | undefined) => string;
+  currency: string;
+  locale: string;
 }) {
   const max = Math.max(...items.map((item) => item.revenue), 1);
   return (
@@ -655,7 +690,8 @@ function DashboardSplitList({
           <div className="flex items-center justify-between gap-2 text-xs">
             <span className="font-semibold text-slate-800 dark:text-[#F4F7FB] truncate">{item.label}</span>
             <span className="shrink-0 text-slate-500 dark:text-[#94A3B8]">
-              {formatMoney(item.revenue)} · {item.share.toFixed(1)}%
+              <DisplayAmount amount={item.revenue} currency={currency} locale={locale} align="end" />
+              <span> · {item.share.toFixed(1)}%</span>
             </span>
           </div>
           <div className="h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.06]">

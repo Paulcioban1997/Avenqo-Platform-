@@ -97,13 +97,19 @@ async def message(
             if len(enabled_sources) == 1:
                 active_source_id_str = str(enabled_sources[0].source_id)
 
+    from backend.app.core.permission_grants import effective_permissions
+    effective_user_perms = (
+        frozenset(effective_permissions(identity.user))
+        if identity.user.company_id == tenant.company_id and identity.user.permission_grants is not None
+        else frozenset(permissions_for(membership.role))
+    )
     try:
         result = await service.execute(
             tenant,
             identity.user.id,
             conversation_id,
             request.content,
-            permissions=frozenset(permissions_for(membership.role)),
+            permissions=effective_user_perms,
             capabilities=resolve_tenant_capabilities(db, tenant, prediction_service),
             request_id=request_id,
             user_language=resolve_locale(

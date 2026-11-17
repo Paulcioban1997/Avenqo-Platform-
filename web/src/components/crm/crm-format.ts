@@ -18,8 +18,31 @@ export function dateText(value: unknown, locale: string, unavailable: string, op
   return parsed ? new Intl.DateTimeFormat(locale, options).format(parsed) : unavailable;
 }
 
+export function attendanceLabel(
+  kpis: {
+    appointments_this_month?: number | null;
+    attendance_rate_percent?: number | null;
+    attendance_tracked_count?: number | null;
+  },
+  locale: string,
+): string | null {
+  const appointments = finiteMetric(kpis.appointments_this_month);
+  const tracked = finiteMetric(kpis.attendance_tracked_count);
+  const rate = finiteMetric(kpis.attendance_rate_percent);
+  const french = locale.startsWith("fr");
+  if (appointments === 0) {
+    return french ? "Aucun rendez-vous ce mois-ci." : "No appointments this month.";
+  }
+  if (appointments === null || rate === null) return null;
+  if (tracked === 0) {
+    return french ? "Aucune présence n’est encore enregistrée." : "No attendance has been recorded yet.";
+  }
+  return `${new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(rate)}%`;
+}
+
 export function currencyText(value: unknown, currency: unknown, locale: string, unavailable: string): string {
   const number = finiteMetric(value);
   if (number === null || typeof currency !== "string" || !/^[A-Z]{3}$/.test(currency)) return unavailable;
-  return new Intl.NumberFormat(locale, { style: "currency", currency }).format(number);
+  const amount = new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(number);
+  return `${amount} ${currency}`;
 }

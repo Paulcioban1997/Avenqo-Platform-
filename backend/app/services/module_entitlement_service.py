@@ -11,6 +11,7 @@ from sqlalchemy import or_, select, text
 from sqlalchemy.orm import Session
 
 from backend.app.models import BillingAccount, Company, CompanyModule, CompanyModuleStatus, Module
+from backend.app.models.company_module import company_module_is_active
 from modules.registry import (
     BUSINESS_MODULE_REGISTRY,
     BusinessModuleDefinition,
@@ -210,7 +211,7 @@ class ModuleEntitlementService:
                 display_name=definition.display_name,
                 description=definition.description,
                 availability=definition.availability.value,
-                active=definition.key in active_set,
+                active=definition.included or definition.key in active_set,
                 state=self._calculate_state(definition, plan, active_set, remaining),
                 premium=definition.premium,
                 category=definition.category,
@@ -237,6 +238,8 @@ class ModuleEntitlementService:
     ) -> ModuleEntitlementState:
         if definition is None or definition.availability == ModuleAvailability.UNAVAILABLE:
             return ModuleEntitlementState.UNAVAILABLE
+        if definition.included and plan.allows_module(definition.key):
+            return ModuleEntitlementState.ACTIVE
         if definition.key in active_set:
             return ModuleEntitlementState.ACTIVE
         if definition.availability == ModuleAvailability.COMING_SOON:
@@ -261,7 +264,7 @@ class ModuleEntitlementService:
             .join(CompanyModule, CompanyModule.module_id == Module.id)
             .where(
                 CompanyModule.company_id == tenant.company_id,
-                CompanyModule.status == CompanyModuleStatus.ACTIVE,
+                company_module_is_active(),
                 CompanyModule.activated_at <= now,
                 or_(CompanyModule.expires_at.is_(None), CompanyModule.expires_at > now),
                 Module.is_active.is_(True),

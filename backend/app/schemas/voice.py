@@ -302,6 +302,7 @@ class VoiceCustomizationResponse(BaseModel):
     preferred_accent: str | None = None
     realtime_provider: str = "retell"
     gemini_live_enabled: bool = False
+    spoken_name_preview: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

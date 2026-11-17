@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.config.settings import Settings, get_settings
 from backend.app.connectors.ads.base import AdsConfigurationMissingError, AdsConnectorError
-from backend.app.core.permissions import permissions_for
+from backend.app.core.permission_grants import effective_permissions
 from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity
 from backend.app.dependencies.commerce import ConnectorSecretCipher, get_connector_secret_cipher
@@ -54,9 +54,9 @@ def require_marketing_entitlement(
 def require_marketing_read(
     identity: CurrentIdentity = Depends(get_current_identity),
 ) -> CurrentIdentity:
-    """Read access: Requires marketing:read or data:read permission."""
-    perms = permissions_for(identity.user.role)
-    if "marketing:read" in perms or "data:read" in perms:
+    """Read access requires the marketing permission itself."""
+    perms = set(effective_permissions(identity.user))
+    if "marketing:read" in perms:
         return identity
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
@@ -71,7 +71,7 @@ def require_marketing_connect(
     identity: CurrentIdentity = Depends(get_current_identity),
 ) -> CurrentIdentity:
     """Connect access: Requires marketing:connect permission (Owner, Admin, Manager)."""
-    perms = permissions_for(identity.user.role)
+    perms = set(effective_permissions(identity.user))
     if "marketing:connect" in perms:
         return identity
     raise HTTPException(
@@ -87,7 +87,7 @@ def require_marketing_disconnect(
     identity: CurrentIdentity = Depends(get_current_identity),
 ) -> CurrentIdentity:
     """Disconnect access: Requires marketing:disconnect permission (Owner, Admin only)."""
-    perms = permissions_for(identity.user.role)
+    perms = set(effective_permissions(identity.user))
     if "marketing:disconnect" in perms:
         return identity
     raise HTTPException(
@@ -103,7 +103,7 @@ def require_marketing_admin(
     identity: CurrentIdentity = Depends(get_current_identity),
 ) -> CurrentIdentity:
     """Admin access: Requires marketing:admin permission (Owner, Admin only)."""
-    perms = permissions_for(identity.user.role)
+    perms = set(effective_permissions(identity.user))
     if "marketing:admin" in perms:
         return identity
     raise HTTPException(

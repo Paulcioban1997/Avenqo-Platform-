@@ -78,6 +78,7 @@ from backend.app.models.prediction import Prediction
 from backend.app.models.product_reservation import ProductReservation, ReservationStatus
 from backend.app.models.retail_active_source import RetailActiveSource
 from backend.app.models.retail_source_state import RetailSourceState
+from backend.app.models.trading import TradingWatchItem
 from backend.app.models.training_job import TrainingJob
 from backend.app.models.user import User
 from backend.app.models.voice_provisioning import VoiceNumberTariff, VoiceProvisioningOrder, VoiceProvisioningClaim
@@ -86,8 +87,8 @@ from backend.app.models.voice import (
     VoiceCentralSession, VoiceModulePermission, VoicePhoneNumber, VoiceToolAction,
 )
 from backend.app.models.workspace import (
-    AutomationRun, AutomationWorkflow, EmployeeInvitation, EmployeeResponsibility,
-    EmployeeTask, LoginEvent, MediaGeneration, TenantDocument,
+    AutomationRun, AutomationWorkflow, EmployeeEmailCorrection, EmployeeInvitation, EmployeeResponsibility,
+    EmployeeTask, LoginEvent, MediaGeneration, SandboxMailboxMessage, TenantDocument,
 )
 from backend.app.models.secure_download_nonce import SecureDownloadNonce
 
@@ -182,7 +183,9 @@ __all__ = [
     "User",
     "UserRole",
     "LoginEvent",
+    "EmployeeEmailCorrection",
     "EmployeeInvitation",
+    "SandboxMailboxMessage",
     "EmployeeResponsibility",
     "EmployeeTask",
     "TenantDocument",

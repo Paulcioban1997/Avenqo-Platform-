@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, UniqueConstraint
+from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, String, UniqueConstraint, cast, func
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -48,3 +48,8 @@ class CompanyModule(Base):
 
     company: Mapped["Company"] = relationship(back_populates="company_modules")
     module: Mapped["Module"] = relationship(back_populates="company_modules")
+
+
+def company_module_is_active():
+    """Match both the Python value ``active`` and the PostgreSQL label ``ACTIVE``."""
+    return func.lower(cast(CompanyModule.status, String)) == CompanyModuleStatus.ACTIVE.value

@@ -58,9 +58,16 @@ async def lifespan(app: FastAPI):
     if getattr(settings, "backup_scheduled_enabled", False):
         from backend.app.services.scheduled_backup_worker import backup_loop
         backup_task=asyncio.create_task(backup_loop(settings,stop))
+    market_stream_enabled = settings.environment.lower() in {"sandbox", "development", "dev"}
+    if market_stream_enabled:
+        from backend.app.services.market_stream import start_market_stream
+        start_market_stream()
     try:
         yield
     finally:
+        if market_stream_enabled:
+            from backend.app.services.market_stream import stop_market_stream
+            stop_market_stream()
         stop.set()
         if task:
             try:await asyncio.wait_for(task,timeout=20)

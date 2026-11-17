@@ -32,9 +32,11 @@ class Company(TimestampMixin, Base):
     region: Mapped[str] = mapped_column(String(100), nullable=False, default="North America")
     company_size: Mapped[str] = mapped_column(String(50), nullable=False, default="1-10")
     preferred_language: Mapped[str] = mapped_column(String(10), nullable=False, default="fr")
-    # Devise ISO-4217 de l'entreprise (ex. CAD). Déduite du pays à la création,
-    # modifiable en settings, JAMAIS déduite de la langue ni convertie.
+    # Devise ISO-4217 de règlement (factures, Stripe). Ne jamais la remplacer
+    # par une conversion d'affichage.
     currency_code: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
+    # Devise de rapport choisie par l'entreprise. N'affecte pas les montants stockés.
+    display_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
     subscription_plan: Mapped[str] = mapped_column(String(100), nullable=False)
     status: Mapped[CompanyStatus] = mapped_column(
         SAEnum(CompanyStatus, name="company_status"),

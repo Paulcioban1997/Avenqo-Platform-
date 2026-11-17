@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from backend.app.core.permissions import permissions_for
+from backend.app.core.permission_grants import effective_permissions
 from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_account_notifier, require_permission
 from backend.app.models import User
@@ -52,7 +52,7 @@ def employee_response(user: User) -> UserResponse:
         job_title=user.job_title,
         email=user.email,
         role=user.role,
-        permissions=permissions_for(user.role),
+        permissions=effective_permissions(user),
         is_active=user.is_active,
         email_verified_at=user.email_verified_at,
     )
