@@ -34,12 +34,18 @@ class WatchRequest(BaseModel):
     symbol: str = Field(min_length=1, max_length=32)
 
 
+class ChatMessage(BaseModel):
+    role: str = Field(description="'user' ou 'assistant'")
+    content: str = Field(max_length=2000)
+
+
 class AskRequest(BaseModel):
     symbol: str = Field(min_length=1, max_length=32)
     compare: str | None = Field(default=None, max_length=32)
     interval: str = "1h"
     locale: str = "fr"
     question: str | None = Field(default=None, max_length=1000)
+    conversation_history: list[ChatMessage] = Field(default_factory=list)
 
 
 class BacktestRequest(BaseModel):
@@ -157,6 +163,90 @@ def trading_asset_classes(identity: CurrentIdentity = Depends(require_trading)) 
     return asset_classes()
 
 
+def _synthesize_fluid_trading_analysis(
+    question: str,
+    brief: dict,
+    symbol: str,
+    interval: str,
+    locale: str,
+) -> str:
+    indicators = brief.get("indicators") or {}
+    rsi = indicators.get("rsi_14")
+    macd = indicators.get("macd") or {}
+    hist = macd.get("histogram")
+    bollinger = indicators.get("bollinger") or {}
+    b_mid = bollinger.get("middle")
+    b_up = bollinger.get("upper")
+    b_low = bollinger.get("lower")
+    sma20 = indicators.get("sma_20")
+    ema12 = indicators.get("ema_12")
+    change = brief.get("change_percent", 0.0)
+
+    # RSI diagnostic
+    if rsi is not None and isinstance(rsi, (int, float)):
+        if rsi >= 70:
+            rsi_desc = f"**RSI 14 ({rsi:.1f})** : Zone de surachat. La dynamique acheteuse a été vigoureuse, signalant une surchauffe technique et un risque de consolidation ou de retour vers la moyenne."
+        elif rsi <= 30:
+            rsi_desc = f"**RSI 14 ({rsi:.1f})** : Zone de survente prononcée. Le flux vendeur domine actuellement, ouvrant la voie à une potentielle réaction technique ou absorption."
+        elif rsi >= 50:
+            rsi_desc = f"**RSI 14 ({rsi:.1f})** : Momentum modérément haussier, au-dessus du niveau pivot des 50 sans excès critique."
+        else:
+            rsi_desc = f"**RSI 14 ({rsi:.1f})** : Pression vendeuse sous le niveau médian 50, traduisant une dynamique encore hésitante."
+    else:
+        rsi_desc = "RSI 14 en cours de stabilisation."
+
+    # MACD momentum diagnostic
+    if hist is not None and isinstance(hist, (int, float)):
+        if hist > 0:
+            macd_desc = f"**MACD Histogramme ({hist:+.2f})** : Accélération haussière du momentum. L'écartement favorise les acheteurs sur l'intervalle {interval}."
+        else:
+            macd_desc = f"**MACD Histogramme ({hist:+.2f})** : Momentum baissier actif. La pression court terme demeure orientée à la baisse."
+    else:
+        macd_desc = "MACD en consolidation neutre."
+
+    # Bollinger Bands diagnostic
+    if b_mid and b_up and b_low and isinstance(b_mid, (int, float)) and b_mid > 0:
+        width = ((float(b_up) - float(b_low)) / float(b_mid)) * 100
+        if width < 3.0:
+            vol_desc = f"**Bandes de Bollinger (largeur {width:.1f}%)** : Forte contraction de volatilité (Squeeze). Une sortie de range explosive est historiquement fréquente suite à cette compression."
+        else:
+            vol_desc = f"**Bandes de Bollinger** : Canal ouvert ({float(b_low):,.2f} - {float(b_up):,.2f}), volatilité active de {width:.1f}%."
+    else:
+        vol_desc = "Bandes de Bollinger calculées sur la série disponible."
+
+    # Moving average trend
+    if ema12 and sma20 and isinstance(ema12, (int, float)) and isinstance(sma20, (int, float)):
+        if ema12 > sma20:
+            ma_desc = f"**Moyennes mobiles** : L'EMA 12 ({float(ema12):,.2f}) se maintient au-dessus de la SMA 20 ({float(sma20):,.2f}), confirmant une structure ascendante."
+        else:
+            ma_desc = f"**Moyennes mobiles** : L'EMA 12 ({float(ema12):,.2f}) est sous la SMA 20 ({float(sma20):,.2f}), formant une résistance dynamique."
+    else:
+        ma_desc = "Moyennes mobiles en cours d'actualisation."
+
+    is_french = locale.lower().startswith("fr")
+    if is_french:
+        return (
+            f"**Analyse technique en direct · {symbol} ({interval})**\n\n"
+            f"En réponse à votre question sur *« {question} »* :\n\n"
+            f"- {rsi_desc}\n"
+            f"- {macd_desc}\n"
+            f"- {vol_desc}\n"
+            f"- {ma_desc}\n\n"
+            f"💡 **Lecture de marché :** Avec une variation de {change:+.2f}% sur la période, le positionnement nécessite de surveiller précisément les niveaux d'invalidation et de respecter une stricte discipline de gestion du risque.\n\n"
+            f"*Avenqo Trading AI — Données factuelles de marché issues de sources publiques. Ne constitue pas un conseil financier.*"
+        )
+    return (
+        f"**Live Technical Analysis · {symbol} ({interval})**\n\n"
+        f"Regarding your query *\"{question}\"*:\n\n"
+        f"- {rsi_desc}\n"
+        f"- {macd_desc}\n"
+        f"- {vol_desc}\n"
+        f"- {ma_desc}\n\n"
+        f"💡 **Market Context:** At {change:+.2f}% over the period, technical positioning requires monitoring invalidation levels and applying disciplined risk management.\n\n"
+        f"*Avenqo Trading AI — Factual market data. Not financial advice.*"
+    )
+
+
 async def _explain_with_gemini(
     question: str,
     brief: dict,
@@ -164,37 +254,63 @@ async def _explain_with_gemini(
     interval: str,
     locale: str,
     settings: Settings,
+    conversation_history: list[ChatMessage] | None = None,
 ) -> str:
-    if not settings.google_ai_api_key:
-        return brief.get("text", "")
-
     indicators = brief.get("indicators", {})
     source = brief.get("source", "Binance/Coinbase")
     freshness = brief.get("freshness", "delayed")
     change = brief.get("change_percent", 0.0)
 
-    system_instruction = (
-        "Tu es l'analyste quantitatif de marché et assistant financier Avenqo Trading AI. "
-        "RÈGLES STRICTES :\n"
-        "1. N'invente AUCUN prix, aucun faux Sharpe ratio ni fausse statistique. Fonde-toi exclusivement sur les métriques factuelles fournies.\n"
-        "2. Explique avec clarté technique les concepts (RSI, MACD, moyennes mobiles, volatilité, supports/résistances).\n"
-        "3. Rappelle qu'Avenqo ne fournit pas de conseil en investissement ni d'ordres automatisés.\n"
-        f"4. Réponds dans la langue demandée ({locale})."
+    fallback_analysis = _synthesize_fluid_trading_analysis(
+        question=question,
+        brief=brief,
+        symbol=symbol,
+        interval=interval,
+        locale=locale,
     )
 
+    if not settings.google_ai_api_key:
+        return fallback_analysis
+
+    system_instruction = (
+        "Tu es l'analyste quantitatif de marché et mentor trading d'Avenqo Trading AI. "
+        "Ton rôle est d'avoir une conversation fluide, naturelle, vivante et hautement experte en trading "
+        "avec l'utilisateur.\n\n"
+        "DIRECTIVES STRICTES :\n"
+        "1. Adopte un ton direct, professionnel et pédagogique, comme un trader institutionnel chevronné qui échange en salle de marché.\n"
+        "2. Analyse avec précision les indicateurs réels transmis (RSI 14, histogramme MACD, SMA 20, EMA 12/26, Bandes de Bollinger, variation).\n"
+        "3. Réponds spécifiquement à la question posée : décris la dynamique de marché, la volatilité (compression vs expansion), le momentum, les confluences et les niveaux clés d'invalidation.\n"
+        "4. N'invente AUCUN cours fictif ni garantie de gain futur. Reste factuel, probabiliste et rigoureux.\n"
+        "5. Intègre le contexte des messages précédents pour maintenir une conversation continue et naturelle.\n"
+        "6. Structure ta réponse avec clarté (notations en gras, puces de synthèse).\n"
+        "7. Rappelle brièvement qu'il s'agit d'une lecture technique objective et non d'une incitation financière.\n"
+        f"8. Réponds impérativement dans la langue demandée ({locale})."
+    )
+
+    history_section = ""
+    if conversation_history:
+        formatted_history = []
+        for msg in conversation_history[-6:]:
+            role = "Trader" if msg.role == "user" else "Avenqo AI"
+            formatted_history.append(f"{role}: {msg.content}")
+        history_section = "Historique récent de l'échange :\n" + "\n".join(formatted_history) + "\n\n"
+
     prompt = (
-        f"Actif : {symbol}\n"
-        f"Intervalle : {interval}\n"
-        f"Source : {source} ({freshness})\n"
-        f"Variation : {change:.2f}%\n"
-        f"Indicateurs :\n"
-        f"- SMA 20 : {indicators.get('sma_20')}\n"
-        f"- EMA 12 : {indicators.get('ema_12')}\n"
-        f"- RSI 14 : {indicators.get('rsi_14')}\n"
-        f"- MACD Histogramme : {indicators.get('macd', {}).get('histogram')}\n"
-        f"- Bandes de Bollinger : {indicators.get('bollinger', {}).get('middle')} "
-        f"(haute: {indicators.get('bollinger', {}).get('upper')}, basse: {indicators.get('bollinger', {}).get('lower')})\n\n"
-        f"Question : {question}\n"
+        f"Actif analysé : {symbol}\n"
+        f"Unité de temps : {interval}\n"
+        f"Source flux : {source} ({freshness})\n"
+        f"Variation sur la période : {change:+.2f}%\n"
+        f"Indicateurs techniques calculés :\n"
+        f"  - SMA 20 : {indicators.get('sma_20')}\n"
+        f"  - EMA 12 : {indicators.get('ema_12')}\n"
+        f"  - EMA 26 : {indicators.get('ema_26')}\n"
+        f"  - RSI 14 : {indicators.get('rsi_14')}\n"
+        f"  - MACD Histogramme : {indicators.get('macd', {}).get('histogram')}\n"
+        f"  - MACD Ligne / Signal : {indicators.get('macd', {}).get('line')} / {indicators.get('macd', {}).get('signal')}\n"
+        f"  - Bandes de Bollinger : médiane {indicators.get('bollinger', {}).get('middle')}, "
+        f"haute {indicators.get('bollinger', {}).get('upper')}, basse {indicators.get('bollinger', {}).get('lower')}\n\n"
+        f"{history_section}"
+        f"Question du trader : {question}\n"
     )
 
     try:
@@ -204,16 +320,16 @@ async def _explain_with_gemini(
         provider = GeminiProvider(
             api_key=settings.google_ai_api_key,
             model=model_name,
-            temperature=0.2,
-            max_tokens=600,
-            request_timeout_seconds=10.0,
+            temperature=0.3,
+            max_tokens=800,
+            request_timeout_seconds=12.0,
         )
         generation = await provider.generate(system_instruction=system_instruction, prompt=prompt)
         if generation.content and generation.content.strip():
             return generation.content.strip()
     except Exception:
         pass
-    return brief.get("text", "")
+    return fallback_analysis
 
 
 @router.post("/ask")
@@ -235,6 +351,7 @@ async def trading_ask(
                 payload.interval,
                 payload.locale,
                 settings,
+                conversation_history=payload.conversation_history,
             )
         return brief
     except (KeyError, ValueError, MarketUnavailable) as exc:

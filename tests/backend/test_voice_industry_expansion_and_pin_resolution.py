@@ -148,6 +148,58 @@ def test_phone_ambiguity_collision_prevents_impersonation(tmp_path):
     assert "ambiguous" in str(exc.value).lower()
 
 
+def test_owner_can_reassign_or_rotate_phone_without_ambiguity_collision(tmp_path):
+    """Owner can claim or rotate phone number even if a stale/seed record held it, or rotate their own PIN."""
+    engine, session, company_a, config_a, user_a, company_b, config_b, user_b = _setup_multi_tenant_db(tmp_path)
+    dummy_secret = "test_synthetic_secret_" + "x" * 20
+    settings = Settings(AUTH_JWT_SECRET=dummy_secret)
+
+    tenant_a1 = TenantContext(company_id=company_a.id, user_id=user_a.id)
+    auth = VoiceCallerAuth(session, settings)
+    owner_phone = "+15142955720"
+
+    # 1. Initial PIN set by owner
+    cred1 = auth.set_pin(tenant_a1, "USER", user_a.id, "948201", phone_number=owner_phone)
+    session.commit()
+    assert cred1.phone_number == owner_phone
+
+    # 2. Owner rotates/updates PIN with same phone -> must succeed smoothly without collision
+    cred2 = auth.set_pin(tenant_a1, "USER", user_a.id, "682491", phone_number=owner_phone)
+    session.commit()
+    assert cred2.id == cred1.id
+    assert cred2.phone_number == owner_phone
+
+    # 3. If an inactive employee had a credential with a new phone number
+    inactive_user = User(
+        id=uuid4(),
+        company_id=company_a.id,
+        first_name="Ancien",
+        last_name="Employe",
+        email="inactive@company-a.ca",
+        password_hash=hash_password("Pass123456!"),
+        is_active=False,
+    )
+    session.add(inactive_user)
+    session.commit()
+    cred_stale = VoiceCallerCredential(
+        id=uuid4(),
+        company_id=company_a.id,
+        principal_type="USER",
+        principal_id=inactive_user.id,
+        phone_number="+15148887766",
+        pin_hash=hash_password("DummyHash123"),
+        enabled=True,
+    )
+    session.add(cred_stale)
+    session.commit()
+
+    # Owner claims this phone -> must succeed and reassign to owner
+    cred_reassigned = auth.set_pin(tenant_a1, "USER", user_a.id, "591823", phone_number="+15148887766")
+    session.commit()
+    assert cred_reassigned.principal_id == user_a.id
+    assert cred_reassigned.phone_number == "+15148887766"
+
+
 def test_multi_tenant_isolation_allows_independent_pin_and_sector_config(tmp_path):
     """Company A and Company B can have independent sectors, independent PINs and even identical phone numbers across different tenants."""
     engine, session, company_a, config_a, user_a, company_b, config_b, user_b = _setup_multi_tenant_db(tmp_path)

@@ -118,17 +118,69 @@ class VoiceCallerAuth:
         if self.db.get_bind().dialect.name == "postgresql":
             self.db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
                 {"lock_key": f"voice_pin:{tenant.company_id}:{phone}"})
-        existing = self.db.scalar(select(VoiceCallerCredential).where(VoiceCallerCredential.company_id == tenant.company_id,
-            VoiceCallerCredential.principal_type == principal_type, VoiceCallerCredential.principal_id == principal_id))
-        shared = self.db.scalar(select(VoiceCallerCredential).where(VoiceCallerCredential.company_id == tenant.company_id, VoiceCallerCredential.phone_number == phone))
-        if shared is not None and (existing is None or shared.id != existing.id):
-            raise PermissionError("Phone identity is ambiguous")
+        existing = self.db.scalar(
+            select(VoiceCallerCredential).where(
+                VoiceCallerCredential.company_id == tenant.company_id,
+                VoiceCallerCredential.principal_id == principal_id,
+            )
+        )
+        shared = self.db.scalar(
+            select(VoiceCallerCredential).where(
+                VoiceCallerCredential.company_id == tenant.company_id,
+                VoiceCallerCredential.phone_number == phone,
+            )
+        )
+        if shared is not None and shared.principal_id == principal_id:
+            shared.principal_type = principal_type
+            existing = shared
+        elif shared is not None and shared.principal_id != principal_id:
+            is_owner_or_admin = False
+            if isinstance(principal, User):
+                if getattr(principal, "role", None) in {UserRole.OWNER, UserRole.ADMIN}:
+                    is_owner_or_admin = True
+                else:
+                    membership = self.db.scalar(
+                        select(CompanyMembership).where(
+                            CompanyMembership.company_id == tenant.company_id,
+                            CompanyMembership.user_id == principal_id,
+                            CompanyMembership.is_active.is_(True),
+                        )
+                    )
+                    if membership is not None and membership.role in {UserRole.OWNER, UserRole.ADMIN}:
+                        is_owner_or_admin = True
+
+            other_user = self.db.scalar(
+                select(User).where(
+                    User.id == shared.principal_id,
+                    User.company_id == tenant.company_id,
+                    User.is_active.is_(True),
+                )
+            )
+
+            if is_owner_or_admin or other_user is None:
+                if existing is not None and existing.id != shared.id:
+                    self.db.delete(existing)
+                    self.db.flush()
+                shared.principal_id = principal_id
+                shared.principal_type = principal_type
+                existing = shared
+            else:
+                raise PermissionError("Phone identity is ambiguous")
+
         if existing is None:
-            existing = VoiceCallerCredential(company_id=tenant.company_id, principal_type=principal_type, principal_id=principal_id, phone_number=phone)
+            existing = VoiceCallerCredential(
+                company_id=tenant.company_id,
+                principal_type=principal_type,
+                principal_id=principal_id,
+                phone_number=phone,
+            )
             self.db.add(existing)
+        existing.principal_type = principal_type
         existing.phone_number = phone
         existing.pin_hash = hash_password(self._peppered(tenant.company_id, principal_id, pin))
-        existing.enabled = True; existing.failed_attempts = 0; existing.locked_until = None
+        existing.enabled = True
+        existing.failed_attempts = 0
+        existing.locked_until = None
         caller_types = ("OWNER", "EMPLOYEE") if principal_type == "USER" else ("CUSTOMER",)
         for session in self.db.scalars(select(VoiceAuthSession).where(VoiceAuthSession.company_id == tenant.company_id,
             VoiceAuthSession.caller_type.in_(caller_types), VoiceAuthSession.principal_id == principal_id,

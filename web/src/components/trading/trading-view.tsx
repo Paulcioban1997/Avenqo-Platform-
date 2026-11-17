@@ -59,8 +59,8 @@ export function TradingView() {
   const [notice, setNotice] = useState("");
   const [streams, setStreams] = useState<Record<string, { connected?: boolean }>>({});
   const [query, setQuery] = useState("");
-  const [quoteCurrency, setQuoteCurrency] = useState("USDT");
-  const [provider, setProvider] = useState("auto");
+  const [quoteCurrency] = useState("USDT");
+  const [provider] = useState("auto");
   const [found, setFound] = useState<Instrument[]>([]);
   const [symbol, setSymbol] = useState("BTCUSDT");
   const [interval, setInterval] = useState("1h");
@@ -69,7 +69,6 @@ export function TradingView() {
   const [candleFreshness, setCandleFreshness] = useState("delayed");
   const [candleSource, setCandleSource] = useState("");
   const [quotes, setQuotes] = useState<Quote[]>([]);
-  const [rankings, setRankings] = useState<Quote[]>([]);
   const [watch, setWatch] = useState<string[]>([
     "BTCUSDT",
     "ETHUSDT",
@@ -78,22 +77,18 @@ export function TradingView() {
     "LINKUSDT",
   ]);
   const [error, setError] = useState("");
-  const [classes, setClasses] = useState<
-    Array<{ asset_class: string; status: string; reason?: string }>
-  >([]);
   const [displayCurrency, setDisplayCurrency] = useState("CAD");
-  const [studyReturn, setStudyReturn] = useState(0.427);
-  const [holdingReturn, setHoldingReturn] = useState(0.185);
+  const [, setStudyReturn] = useState(0.427);
+  const [, setHoldingReturn] = useState(0.185);
 
-  // 1. Initialisation : statut du module, watchlist, classes d'actifs et devise de l'entreprise
+  // 1. Initialisation : statut du module, watchlist et devise de l'entreprise
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       try {
-        const [status, list, assets, account] = await Promise.all([
+        const [status, list, account] = await Promise.all([
           apiFetch("/api/v1/trading/status"),
           apiFetch("/api/v1/trading/watchlist"),
-          apiFetch("/api/v1/trading/asset-classes"),
           apiFetch("/api/v1/auth/me"),
         ]);
         if (cancelled) return;
@@ -112,10 +107,6 @@ export function TradingView() {
             }
           }
         }
-        if (assets.ok) {
-          const body = await assets.json();
-          setClasses(body.classes ?? []);
-        }
         if (account.ok) {
           const body = await account.json();
           setDisplayCurrency(body.company?.display_currency || "CAD");
@@ -133,6 +124,10 @@ export function TradingView() {
   // 2. Recherche d'actifs
   useEffect(() => {
     let cancelled = false;
+    if (!query.trim()) {
+      setFound([]);
+      return;
+    }
     const timer = window.setTimeout(async () => {
       try {
         const response = await apiFetch(
@@ -234,29 +229,6 @@ export function TradingView() {
     };
   }, [watch, provider, displayCurrency]);
 
-  // 5. Chargement des classements USDT
-  useEffect(() => {
-    let cancelled = false;
-    const loadRankings = async () => {
-      try {
-        const response = await apiFetch("/api/v1/trading/rankings");
-        if (!response.ok || cancelled) return;
-        const body = await response.json();
-        setRankings(Array.isArray(body?.rows) ? body.rows : []);
-      } catch {
-        // Ignorer
-      }
-    };
-    void loadRankings();
-    const timer = window.setInterval(() => {
-      void loadRankings();
-    }, 30000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, []);
-
   const compact = (value: string) => value.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
   const quotesList = Array.isArray(quotes) ? quotes : [];
   const selectedQuote = quotesList.find((item) => compact(item.symbol) === compact(symbol));
@@ -345,10 +317,13 @@ export function TradingView() {
     });
 
     return list;
-  }, [quotes]);
+  }, [quotesList]);
 
   const addWatchSymbol = async (next: string) => {
     setSymbol(next);
+    if (!watch.includes(next)) {
+      setWatch((prev) => [...prev, next]);
+    }
     try {
       const response = await apiFetch("/api/v1/trading/watchlist", {
         method: "POST",
@@ -428,9 +403,9 @@ export function TradingView() {
         </div>
       </div>
 
-      {/* 3. Zone principale : Graphique interactif Lightweight Charts (Gauche) + Prédictions & Gemini AI (Droite) */}
+      {/* 3. Zone principale : Graphique interactif + Lab (Gauche) | Prédictions & Chat Gemini (Droite) */}
       <div className="grid gap-4 xl:grid-cols-[1fr_380px]">
-        {/* Colonne gauche : Le grand graphique interactif */}
+        {/* Colonne gauche : Grand graphique interactif + Cartes Portefeuille & Modèles */}
         <div className="space-y-4">
           {error ? (
             <div className="flex h-[420px] items-center justify-center rounded-2xl border border-rose-900/50 bg-rose-950/20 p-6 text-center text-rose-400">
@@ -471,7 +446,7 @@ export function TradingView() {
           />
         </div>
 
-        {/* Colonne droite : Prédictions IA + Assistant Conversationnel Gemini Live Pro */}
+        {/* Colonne droite : Prédictions IA Quantitatives + Assistant Conversationnel Gemini */}
         <div className="space-y-4">
           <PredictionPanel
             symbol={symbol}
@@ -486,79 +461,21 @@ export function TradingView() {
             interval={interval}
             locale={locale}
           />
-
-          {/* Recherche rapide & Watchlist */}
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 backdrop-blur-xl space-y-3">
-            <h3 className="text-sm font-bold text-white flex items-center justify-between">
-              <span>🔍 {copy.searchAssetPlaceholder}</span>
-              <span className="text-xs text-slate-400 font-normal">{quoteCurrency}</span>
-            </h3>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Ex: SOL, XRP, AVAX..."
-              className="w-full rounded-xl border border-slate-800 bg-slate-900/90 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
-            />
-            {found.length > 0 && (
-              <div className="max-h-40 space-y-1 overflow-y-auto pr-1 text-xs scrollbar-thin">
-                {found.map((item) => (
-                  <button
-                    key={item.symbol}
-                    type="button"
-                    onClick={() => void addWatchSymbol(item.symbol)}
-                    className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 hover:bg-slate-900 text-slate-300 hover:text-white transition"
-                  >
-                    <span className="font-semibold text-white">{item.base}</span>
-                    <span className="font-mono text-slate-500">{item.symbol}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
       </div>
 
-      {/* 4. Tableaux des cotations suivies et classements en bas de page */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <QuoteTable
-          title={copy.watchlistTitle}
-          rows={quotes}
-          locale={locale}
-          onPick={setSymbol}
-        />
-        <QuoteTable
-          title="Classement USDT par volume (Binance)"
-          rows={rankings}
-          locale={locale}
-          onPick={(next) => void addWatchSymbol(next)}
-        />
-      </div>
-
-      {/* 5. Statut des classes d'actifs */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        {classes.map((item) => (
-          <div
-            key={item.asset_class}
-            className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs"
-          >
-            <div className="font-bold uppercase tracking-wider text-white">
-              {item.asset_class === "crypto"
-                ? "Cryptomonnaies"
-                : item.asset_class === "stock"
-                ? "Actions (Stocks)"
-                : "ETF & Fonds"}
-            </div>
-            <div
-              className={`mt-1 font-semibold ${
-                item.status === "available" ? "text-emerald-400" : "text-amber-400"
-              }`}
-            >
-              {item.status === "available" ? "Disponible (Public)" : "Non autorisé"}
-            </div>
-            {item.reason && <p className="mt-1 text-[11px] text-slate-500">{item.reason}</p>}
-          </div>
-        ))}
-      </div>
+      {/* 4. Watchlist & Marchés surveillés : Tableau professionnel épuré avec recherche intégrée */}
+      <WatchlistCard
+        quotes={quotesList}
+        activeSymbol={symbol}
+        locale={locale}
+        quoteCurrency={quoteCurrency}
+        onPick={setSymbol}
+        query={query}
+        onQueryChange={setQuery}
+        found={found}
+        onAddSymbol={addWatchSymbol}
+      />
     </div>
   );
 }
@@ -597,66 +514,208 @@ function FreshnessBadge({ value, locale }: { value: string; locale: LocaleCode }
   );
 }
 
-function QuoteTable({
-  title,
-  rows,
+function WatchlistCard({
+  quotes,
+  activeSymbol,
   locale,
+  quoteCurrency,
   onPick,
+  query,
+  onQueryChange,
+  found,
+  onAddSymbol,
 }: {
-  title: string;
-  rows: Quote[];
+  quotes: Quote[];
+  activeSymbol: string;
   locale: LocaleCode;
+  quoteCurrency: string;
   onPick: (symbol: string) => void;
+  query: string;
+  onQueryChange: (q: string) => void;
+  found: Array<{ symbol: string; base: string; quote: string }>;
+  onAddSymbol: (symbol: string) => void;
 }) {
+  const popularShortcuts = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT", "LINKUSDT", "XRPUSDT"];
+
   return (
-    <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950/80 p-3 backdrop-blur-xl">
-      <div className="mb-2 px-1 text-xs font-bold uppercase tracking-wider text-slate-400">
-        {title}
-      </div>
-      <table className="w-full min-w-[500px] text-left text-xs font-mono">
-        <thead>
-          <tr className="border-b border-slate-800 text-slate-500 text-[11px]">
-            <th className="pb-2 font-semibold">Symbole</th>
-            <th className="pb-2 font-semibold text-right">Prix</th>
-            <th className="pb-2 font-semibold text-right">24h</th>
-            <th className="pb-2 font-semibold text-right">Haut</th>
-            <th className="pb-2 font-semibold text-right">Bas</th>
-            <th className="pb-2 font-semibold text-right">Volume</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-800/50">
-          {rows.map((item) => (
-            <tr
-              key={item.symbol}
-              onClick={() => onPick(item.symbol)}
-              className="cursor-pointer hover:bg-slate-900/60 transition"
-            >
-              <td className="py-2 font-bold text-white font-sans">{item.symbol}</td>
-              <td className="py-2 text-right text-slate-200">
-                {typeof item.price === "number" ? item.price.toLocaleString(locale, { maximumFractionDigits: 4 }) : "—"}
-              </td>
-              <td
-                className={`py-2 text-right font-bold ${
-                  typeof item.change_percent === "number" && item.change_percent >= 0 ? "text-emerald-400" : "text-rose-400"
-                }`}
+    <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 backdrop-blur-xl shadow-xl space-y-4">
+      {/* En-tête : Titre + Recherche intégrée */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+        <div className="flex items-center gap-2">
+          <span className="text-base">📋</span>
+          <div>
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <span>Watchlist & Marchés surveillés</span>
+              <span className="rounded-full bg-slate-900 border border-slate-800 px-2 py-0.5 text-[10px] text-slate-400 font-mono">
+                {quotes.length} actifs
+              </span>
+            </h3>
+            <p className="text-[10px] text-slate-400">Cliquez sur un actif pour afficher instantanément son graphique interactif</p>
+          </div>
+        </div>
+
+        {/* Barre de recherche intégrée avec menu déroulant */}
+        <div className="relative w-full sm:w-72">
+          <div className="relative">
+            <input
+              value={query}
+              onChange={(e) => onQueryChange(e.target.value)}
+              placeholder="Rechercher un actif (ex: SOL, AVAX...)"
+              className="w-full rounded-xl border border-slate-800 bg-slate-900/90 pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+            />
+            <span className="absolute left-2.5 top-2 text-xs text-slate-500">🔍</span>
+            {query && (
+              <button
+                type="button"
+                onClick={() => onQueryChange("")}
+                className="absolute right-2.5 top-1.5 text-xs text-slate-500 hover:text-white"
               >
-                {typeof item.change_percent === "number"
-                  ? `${item.change_percent >= 0 ? "+" : ""}${item.change_percent.toFixed(2)} %`
-                  : "—"}
-              </td>
-              <td className="py-2 text-right text-slate-400">
-                {typeof item.high === "number" ? item.high.toLocaleString(locale, { maximumFractionDigits: 4 }) : "—"}
-              </td>
-              <td className="py-2 text-right text-slate-400">
-                {typeof item.low === "number" ? item.low.toLocaleString(locale, { maximumFractionDigits: 4 }) : "—"}
-              </td>
-              <td className="py-2 text-right text-slate-400">
-                {typeof item.volume === "number" ? item.volume.toLocaleString(locale, { maximumFractionDigits: 0 }) : "—"}
-              </td>
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* Menu flottant des résultats de recherche */}
+          {found.length > 0 && (
+            <div className="absolute left-0 right-0 top-full mt-1 z-30 max-h-48 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/95 p-1.5 shadow-2xl backdrop-blur-xl space-y-1">
+              {found.map((item) => (
+                <button
+                  key={item.symbol}
+                  type="button"
+                  onClick={() => {
+                    onAddSymbol(item.symbol);
+                    onQueryChange("");
+                  }}
+                  className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-900 hover:text-white transition"
+                >
+                  <span className="font-bold text-white">{item.base}</span>
+                  <span className="font-mono text-[11px] text-cyan-400">+{item.symbol}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Raccourcis rapides d'actifs populaires */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[10px] font-semibold text-slate-400">Ajout rapide :</span>
+        {popularShortcuts.map((sym) => {
+          const isTracked = quotes.some((q) => q.symbol === sym);
+          return (
+            <button
+              key={sym}
+              type="button"
+              disabled={isTracked}
+              onClick={() => onAddSymbol(sym)}
+              className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold transition ${
+                isTracked
+                  ? "bg-slate-900/40 text-slate-600 border border-slate-800/50 cursor-default"
+                  : "bg-slate-900/80 text-slate-300 border border-slate-800 hover:border-cyan-500 hover:text-cyan-300"
+              }`}
+            >
+              {isTracked ? `✓ ${sym.replace("USDT", "")}` : `+ ${sym.replace("USDT", "")}`}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Tableau complet responsive */}
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[620px] text-left text-xs font-mono">
+          <thead>
+            <tr className="border-b border-slate-800/80 text-[11px] font-semibold text-slate-500">
+              <th className="pb-2.5">Actif</th>
+              <th className="pb-2.5 text-right">Prix ({quoteCurrency})</th>
+              <th className="pb-2.5 text-right">Var. 24h</th>
+              <th className="pb-2.5 text-right">Haut 24h</th>
+              <th className="pb-2.5 text-right">Bas 24h</th>
+              <th className="pb-2.5 text-right">Volume</th>
+              <th className="pb-2.5 text-center">État</th>
+              <th className="pb-2.5 text-right">Action</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-slate-800/50">
+            {quotes.map((item) => {
+              const isSelected =
+                item.symbol === activeSymbol ||
+                item.symbol.replace(/[^A-Z0-9]/g, "") === activeSymbol.replace(/[^A-Z0-9]/g, "");
+              const isPositive = typeof item.change_percent === "number" && item.change_percent >= 0;
+
+              return (
+                <tr
+                  key={item.symbol}
+                  onClick={() => onPick(item.symbol)}
+                  className={`group cursor-pointer transition ${
+                    isSelected ? "bg-cyan-950/20 hover:bg-cyan-950/30" : "hover:bg-slate-900/60"
+                  }`}
+                >
+                  <td className="py-2.5 font-bold font-sans flex items-center gap-2">
+                    <span className="text-white">{item.symbol}</span>
+                    {isSelected && (
+                      <span className="rounded-full bg-cyan-900/60 border border-cyan-700/60 px-1.5 py-0.2 text-[9px] font-bold text-cyan-300">
+                        En cours
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-2.5 text-right font-bold text-white">
+                    {typeof item.price === "number"
+                      ? item.price.toLocaleString(locale, { maximumFractionDigits: 4 })
+                      : "—"}
+                  </td>
+                  <td className="py-2.5 text-right">
+                    <span
+                      className={`inline-block rounded-md px-1.5 py-0.5 text-[11px] font-bold ${
+                        isPositive ? "bg-emerald-950/60 text-emerald-400" : "bg-rose-950/60 text-rose-400"
+                      }`}
+                    >
+                      {typeof item.change_percent === "number"
+                        ? `${isPositive ? "+" : ""}${item.change_percent.toFixed(2)} %`
+                        : "—"}
+                    </span>
+                  </td>
+                  <td className="py-2.5 text-right text-slate-400">
+                    {typeof item.high === "number"
+                      ? item.high.toLocaleString(locale, { maximumFractionDigits: 4 })
+                      : "—"}
+                  </td>
+                  <td className="py-2.5 text-right text-slate-400">
+                    {typeof item.low === "number"
+                      ? item.low.toLocaleString(locale, { maximumFractionDigits: 4 })
+                      : "—"}
+                  </td>
+                  <td className="py-2.5 text-right text-slate-400">
+                    {typeof item.volume === "number"
+                      ? item.volume.toLocaleString(locale, { maximumFractionDigits: 0 })
+                      : "—"}
+                  </td>
+                  <td className="py-2.5 text-center">
+                    <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] text-slate-400 border border-slate-800 font-sans">
+                      {item.freshness === "live" ? "🟢 Direct" : "🟡 Différé"}
+                    </span>
+                  </td>
+                  <td className="py-2.5 text-right font-sans">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onPick(item.symbol);
+                      }}
+                      className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition ${
+                        isSelected
+                          ? "bg-cyan-600 text-white shadow-sm"
+                          : "bg-slate-900 border border-slate-700 text-slate-300 group-hover:border-cyan-500 group-hover:text-white"
+                      }`}
+                    >
+                      {isSelected ? "Sélectionné" : "Graphique"}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

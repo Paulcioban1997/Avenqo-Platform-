@@ -92,6 +92,62 @@ async def test_trading_ask_with_question_calls_gemini(mock_identity):
         mock_gen.assert_called_once()
 
 
+@pytest.mark.asyncio
+async def test_trading_ask_with_conversation_history_and_fluid_fallback():
+    from backend.app.routers.trading import _explain_with_gemini, _synthesize_fluid_trading_analysis, ChatMessage
+
+    settings_no_key = MagicMock(spec=Settings)
+    settings_no_key.google_ai_api_key = None
+
+    brief = {
+        "text": "Old static text",
+        "indicators": {
+            "rsi_14": 28.4,
+            "sma_20": 62000,
+            "ema_12": 61500,
+            "ema_26": 62800,
+            "macd": {"line": -120.0, "signal": -80.0, "histogram": -40.0},
+            "bollinger": {"middle": 62000, "upper": 63500, "lower": 60500},
+        },
+        "source": "binance-public",
+        "freshness": "delayed",
+        "change_percent": -2.3,
+    }
+
+    history = [
+        ChatMessage(role="user", content="Quelle est la tendance globale sur BTCUSDT ?"),
+        ChatMessage(role="assistant", content="La tendance est sous pression vendeuse sous la SMA 20."),
+    ]
+
+    # Verify fluid structured fallback when Gemini is offline
+    fallback_res = _synthesize_fluid_trading_analysis(
+        question="Le RSI est-il en survente et où se situe le momentum ?",
+        brief=brief,
+        symbol="BTCUSDT",
+        interval="1h",
+        locale="fr",
+    )
+    assert "survente" in fallback_res.lower()
+    assert "RSI 14" in fallback_res
+    assert "MACD Histogramme" in fallback_res
+    assert "Bandes de Bollinger" in fallback_res
+    assert "Moyennes mobiles" in fallback_res
+    # Not just the 1-line old static brief
+    assert len(fallback_res) > 200
+
+    # Verify _explain_with_gemini uses history and fallback gracefully
+    res = await _explain_with_gemini(
+        question="Le RSI est-il en survente ?",
+        brief=brief,
+        symbol="BTCUSDT",
+        interval="1h",
+        locale="fr",
+        settings=settings_no_key,
+        conversation_history=history,
+    )
+    assert "survente" in res.lower()
+
+
 def test_calculate_backtest_insufficient_history():
     from backend.app.services.market_feed import calculate_backtest
 
