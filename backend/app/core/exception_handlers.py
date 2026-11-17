@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 
+from typing import Any, cast
+
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -21,17 +23,23 @@ logger = logging.getLogger("avenqo.errors")
 async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
     """Renvoie une réponse JSON uniforme pour les erreurs HTTP."""
     accept_language = request.headers.get("accept-language")
-    structured = isinstance(exc.detail, dict) and isinstance(exc.detail.get("code"), str)
+    code = "HTTP_ERROR"
+    details = None
+    detail_data = exc.detail
+    if isinstance(detail_data, dict):
+        code_val = detail_data.get("code")
+        if isinstance(code_val, str):
+            code = code_val
+        details = {k: v for k, v in detail_data.items() if k not in {"code", "message"}}
+
     return JSONResponse(
         status_code=exc.status_code,
         content={
             "success": False,
             "error": {
-                "code": exc.detail["code"] if structured else "HTTP_ERROR",
+                "code": code,
                 "message": http_error_message(exc.status_code, accept_language, exc.detail),
-                "details": {k: v for k, v in exc.detail.items() if k not in {"code", "message"}}
-                if structured
-                else None,
+                "details": details,
             },
             "request_id": getattr(request.state, "request_id", None),
         },
@@ -111,6 +119,6 @@ async def internal_exception_handler(request: Request, exc: Exception) -> JSONRe
 
 
 def register_exception_handlers(app: FastAPI) -> None:
-    app.add_exception_handler(StarletteHTTPException, http_exception_handler)
-    app.add_exception_handler(RequestValidationError, validation_exception_handler)
-    app.add_exception_handler(Exception, internal_exception_handler)
+    app.add_exception_handler(StarletteHTTPException, cast(Any, http_exception_handler))
+    app.add_exception_handler(RequestValidationError, cast(Any, validation_exception_handler))
+    app.add_exception_handler(Exception, cast(Any, internal_exception_handler))
