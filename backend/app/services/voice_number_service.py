@@ -104,7 +104,14 @@ class VoiceNumberManagementService:
             raise PermissionError("This number is already bound to another tenant")
         config = session.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == tenant.company_id))
         if config is not None and config.telnyx_phone_number and config.telnyx_phone_number != phone_number:
-            raise ValueError("Existing Voice configuration uses a different number")
+            active_previous = session.scalar(select(VoicePhoneNumber).where(
+                VoicePhoneNumber.company_id == tenant.company_id,
+                VoicePhoneNumber.phone_number == config.telnyx_phone_number,
+                VoicePhoneNumber.status == "ACTIVE",
+            ))
+            if active_previous is not None:
+                raise ValueError("Existing Voice configuration uses a different number")
+            config.telnyx_phone_number = None
         if config is not None and not config.telnyx_phone_number:
             config.telnyx_phone_number = phone_number
         if existing is not None:
