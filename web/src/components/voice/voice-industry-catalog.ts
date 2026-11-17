@@ -774,3 +774,38 @@ export const INDUSTRY_CATALOG: IndustryItem[] = [
     ],
   },
 ];
+
+import {
+  getLocalizedCategory,
+  getLocalizedIndustry,
+  getVoiceIndustryCatalog,
+  getVoiceIndustryUi,
+  type LocalizedIndustry,
+  type VoiceIndustryCatalog,
+} from "@/lib/i18n/voice-industry-copy";
+
+export {
+  getLocalizedCategory,
+  getLocalizedIndustry,
+  getVoiceIndustryCatalog,
+  getVoiceIndustryUi,
+  type LocalizedIndustry,
+  type VoiceIndustryCatalog,
+};
+
+export function getIndustryItem(id: string): IndustryItem | undefined {
+  return INDUSTRY_CATALOG.find((ind) => ind.id === id);
+}
+
+export function getLocalizedIndustryItem(id: string, locale: string = "fr") {
+  const item = getIndustryItem(id);
+  if (!item) return null;
+  const localized = getLocalizedIndustry(id, locale);
+  return {
+    ...item,
+    name: localized?.name ?? (locale.startsWith("fr") ? item.nameFr : item.nameEn),
+    desc: localized?.desc ?? (locale.startsWith("fr") ? item.descFr : item.descEn),
+    suggestedCapabilities: localized?.suggestedCapabilities ?? (locale.startsWith("fr") ? item.suggestedCapabilitiesFr : item.suggestedCapabilitiesEn),
+  };
+}
+

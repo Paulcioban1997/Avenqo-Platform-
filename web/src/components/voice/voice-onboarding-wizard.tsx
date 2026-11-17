@@ -32,6 +32,7 @@ import {
   Clock,
   Bookmark,
   Search,
+  Info,
 } from "lucide-react";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { apiFetch } from "@/lib/api-request";
@@ -40,6 +41,9 @@ import {
   INDUSTRY_CATALOG,
   INDUSTRY_CATEGORIES,
   IndustryItem,
+  getLocalizedCategory,
+  getLocalizedIndustry,
+  getVoiceIndustryUi,
 } from "./voice-industry-catalog";
 
 interface WizardProps {
@@ -52,6 +56,7 @@ interface WizardProps {
 interface BusinessProfile {
   business_name: string;
   industry: string;
+  industries?: string[];
   description: string;
   activities: string[];
   locations: string[];
@@ -107,8 +112,9 @@ export function VoiceOnboardingWizard({
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [openSection, setOpenSection] = useState<number | null>(1);
   const [showAdvancedParams, setShowAdvancedParams] = useState<boolean>(false);
-  const [selectedIndustry, setSelectedIndustry] = useState<string>("retail");
-  const [selectedIndustries, setSelectedIndustries] = useState<string[]>(["retail"]);
+  const [selectedIndustry, setSelectedIndustry] = useState<string>("");
+  const [selectedIndustries, setSelectedIndustries] = useState<string[]>([]);
+  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
   const [industrySearch, setIndustrySearch] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [isExpandedCatalog, setIsExpandedCatalog] = useState<boolean>(false);
@@ -235,6 +241,23 @@ export function VoiceOnboardingWizard({
             expected_version: typeof data.profile.expected_version === "number" ? data.profile.expected_version : prev.expected_version ?? 0,
             business_name: data.profile.business_name || businessName,
           }));
+
+          // Restore multi-industry selections from backend
+          let restoredIndustries: string[] = [];
+          if (Array.isArray(data.profile.industries) && data.profile.industries.length > 0) {
+            restoredIndustries = data.profile.industries;
+          } else if (data.profile.industry && typeof data.profile.industry === "string" && data.profile.industry.trim()) {
+            const rawInd = data.profile.industry.trim().toLowerCase();
+            const matched = INDUSTRY_CATALOG.find(
+              (item) =>
+                item.id.toLowerCase() === rawInd ||
+                item.nameFr.toLowerCase() === rawInd ||
+                item.nameEn.toLowerCase() === rawInd
+            );
+            restoredIndustries = [matched ? matched.id : rawInd];
+          }
+          setSelectedIndustries(restoredIndustries);
+          setSelectedIndustry(restoredIndustries[0] || "");
           if (data.profile.opening_hours && typeof data.profile.opening_hours === "object") {
             const rawHours = data.profile.opening_hours;
             if (rawHours.weekly && typeof rawHours.weekly === "object") {
@@ -442,6 +465,8 @@ export function VoiceOnboardingWizard({
         contact_phone: profile.contact_phone?.trim() || null,
         opening_hours: finalOpeningHours,
         allowed_actions: allowedActions,
+        industries: selectedIndustries,
+        industry: selectedIndustries[0] || profile.industry || "",
       };
 
       let res: Response;
@@ -717,10 +742,13 @@ export function VoiceOnboardingWizard({
       return true;
     });
 
-    const currentPrimaryIndustry =
-      INDUSTRY_CATALOG.find((ind) => ind.id === selectedIndustry) ||
-      INDUSTRY_CATALOG.find((ind) => ind.id === "retail") ||
-      INDUSTRY_CATALOG[0];
+    const ui = getVoiceIndustryUi(locale);
+    const activePrimaryIndustry = selectedIndustry
+      ? (INDUSTRY_CATALOG.find((ind) => ind.id === selectedIndustry) ?? null)
+      : (selectedIndustries.length > 0 ? (INDUSTRY_CATALOG.find((ind) => ind.id === selectedIndustries[0]) ?? null) : null);
+    const activeLocalizedPrimary = activePrimaryIndustry
+      ? getLocalizedIndustry(activePrimaryIndustry.id, locale)
+      : null;
 
     const premiumImprovements = [
       {
@@ -1275,16 +1303,21 @@ export function VoiceOnboardingWizard({
               {/* UNE IA ADAPTÉE À CHAQUE INDUSTRIE */}
               <div className="space-y-4 pb-4 border-b border-slate-100 dark:border-white/[0.06]">
                 <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">🏢</span>
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
-                      {fr ? "Une IA adaptée à chaque industrie" : "AI Tailored to Each Industry"}
-                    </h4>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">🏢</span>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
+                        {ui.sectionTitle}
+                      </h4>
+                    </div>
+                    {selectedIndustries.length > 0 && (
+                      <span className="text-[11px] font-semibold text-[#0076FF] bg-blue-500/10 px-2.5 py-0.5 rounded-full border border-blue-500/20">
+                        {selectedIndustries.length} {ui.selectedCount}
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {fr
-                      ? "Des conversations naturelles, des processus métiers intégrés et une expérience client sur mesure, quel que soit votre secteur."
-                      : "Natural conversations, integrated business processes, and tailored client experience across every sector."}
+                    {ui.sectionSubtitle}
                   </p>
                 </div>
 
@@ -1297,11 +1330,7 @@ export function VoiceOnboardingWizard({
                         type="text"
                         value={industrySearch}
                         onChange={(e) => setIndustrySearch(e.target.value)}
-                        placeholder={
-                          fr
-                            ? "Rechercher parmi les 30 industries (ex: clinique, transport, restaurant, avocat...)"
-                            : "Search among 30 industries (e.g. clinic, logistics, restaurant, legal...)"
-                        }
+                        placeholder={ui.searchPlaceholder}
                         className="w-full pl-10 pr-4 py-2 rounded-xl text-xs bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white placeholder:text-slate-500 focus:outline-hidden focus:border-[#0076FF]"
                       />
                     </div>
@@ -1318,7 +1347,7 @@ export function VoiceOnboardingWizard({
                               : "bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-transparent hover:border-slate-300 dark:hover:border-slate-700"
                           }`}
                         >
-                          {fr ? cat.labelFr : cat.labelEn}
+                          {getLocalizedCategory(cat.id, locale)}
                         </button>
                       ))}
                     </div>
@@ -1329,24 +1358,28 @@ export function VoiceOnboardingWizard({
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
                   {filteredIndustries.map((ind) => {
                     const isSelected = selectedIndustries.includes(ind.id) || selectedIndustry === ind.id;
-                    const title = fr ? ind.nameFr : ind.nameEn;
-                    const desc = fr ? ind.descFr : ind.descEn;
+                    const localized = getLocalizedIndustry(ind.id, locale);
+                    const title = localized?.name ?? (fr ? ind.nameFr : ind.nameEn);
+                    const desc = localized?.desc ?? (fr ? ind.descFr : ind.descEn);
+                    const isImgFailed = failedImages[ind.id] || false;
 
                     return (
                       <div
                         key={ind.id}
                         onClick={() => {
-                          setSelectedIndustry(ind.id);
-                          setSelectedIndustries((prev) => {
-                            if (prev.includes(ind.id)) {
-                              return prev.length > 1 ? prev.filter((id) => id !== ind.id) : prev;
-                            } else {
-                              return [...prev, ind.id];
-                            }
-                          });
+                          const nextIndustries = selectedIndustries.includes(ind.id)
+                            ? selectedIndustries.filter((id) => id !== ind.id)
+                            : [...selectedIndustries, ind.id];
+                          setSelectedIndustries(nextIndustries);
+                          const nextPrimary = nextIndustries.length > 0
+                            ? (nextIndustries.includes(ind.id) ? ind.id : nextIndustries[0])
+                            : "";
+                          setSelectedIndustry(nextPrimary);
                           setProfile((p) => ({
                             ...p,
-                            industry: (ind.id === "custom" || ind.id === "other") && customIndustryName ? customIndustryName : (fr ? ind.nameFr : ind.nameEn),
+                            industry: (nextPrimary === "custom" || nextPrimary === "other") && customIndustryName
+                              ? customIndustryName
+                              : (nextPrimary ? (getLocalizedIndustry(nextPrimary, locale)?.name || nextPrimary) : ""),
                           }));
                         }}
                         className={`group relative rounded-2xl overflow-hidden border cursor-pointer transition flex flex-col justify-between ${
@@ -1357,10 +1390,13 @@ export function VoiceOnboardingWizard({
                       >
                         <div className="relative h-32 w-full overflow-hidden bg-slate-100 dark:bg-slate-800">
                           <img
-                            src={ind.image}
+                            src={isImgFailed ? ind.fallbackSvg : ind.image}
                             alt={title}
                             onError={(e) => {
-                              (e.currentTarget as HTMLImageElement).src = ind.fallbackSvg;
+                              const target = e.currentTarget as HTMLImageElement;
+                              target.onerror = null;
+                              setFailedImages((prev) => ({ ...prev, [ind.id]: true }));
+                              target.src = ind.fallbackSvg;
                             }}
                             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                           />
@@ -1401,12 +1437,12 @@ export function VoiceOnboardingWizard({
                     {isExpandedCatalog ? (
                       <>
                         <ChevronUp className="w-4 h-4 text-[#0076FF]" />
-                        <span>{fr ? "- Réduire les secteurs" : "- Show fewer sectors"}</span>
+                        <span>{ui.collapseButton}</span>
                       </>
                     ) : (
                       <>
                         <span className="text-[#0076FF] font-extrabold text-sm">+</span>
-                        <span>{fr ? "Voir plus d'industries" : "View more industries"}</span>
+                        <span>{ui.expandButton}</span>
                       </>
                     )}
                   </button>
@@ -1416,7 +1452,7 @@ export function VoiceOnboardingWizard({
                 {(selectedIndustries.includes("custom") || selectedIndustries.includes("other") || selectedIndustry === "custom" || selectedIndustry === "other") && (
                   <div className="p-4 rounded-2xl border border-blue-500/30 bg-blue-500/5 space-y-2 animate-in fade-in duration-200">
                     <label className="block text-xs font-bold text-slate-900 dark:text-white">
-                      {fr ? "Précisez votre secteur d'activité personnalisé :" : "Specify your custom industry sector:"}
+                      {ui.customIndustryPrompt}
                     </label>
                     <input
                       type="text"
@@ -1425,32 +1461,101 @@ export function VoiceOnboardingWizard({
                         setCustomIndustryName(e.target.value);
                         setProfile((p) => ({ ...p, industry: e.target.value }));
                       }}
-                      placeholder={fr ? "Ex : Blanchisserie industrielle, Énergie renouvelable..." : "e.g. Industrial Laundry, Renewable Energy..."}
+                      placeholder={ui.customIndustryPlaceholder}
                       className="w-full max-w-lg px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-hidden focus:border-[#0076FF]"
                     />
                   </div>
                 )}
 
                 {/* Voice Capability Adaptation Suggestions Panel */}
-                {currentPrimaryIndustry && (
-                  <div className="p-4 rounded-2xl border border-blue-500/20 bg-blue-500/5 dark:bg-blue-950/20 space-y-2.5">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-[#0076FF]" />
-                      <h5 className="text-xs font-bold text-slate-900 dark:text-white">
-                        {fr
-                          ? `Capacités vocales adaptées à votre secteur (${currentPrimaryIndustry.nameFr})`
-                          : `Voice capabilities tailored for your sector (${currentPrimaryIndustry.nameEn})`}
-                      </h5>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5">
-                      {(fr ? currentPrimaryIndustry.suggestedCapabilitiesFr : currentPrimaryIndustry.suggestedCapabilitiesEn).map((cap, i) => (
-                        <div key={i} className="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-300">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-[#0076FF] shrink-0 mt-0.5" />
-                          <span>{cap}</span>
-                        </div>
-                      ))}
-                    </div>
+                {selectedIndustries.length === 0 && !selectedIndustry ? (
+                  <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 text-center">
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {ui.noIndustrySelected}
+                    </p>
                   </div>
+                ) : (
+                  activePrimaryIndustry && (
+                    <div className="p-4 rounded-2xl border border-blue-500/20 bg-blue-500/5 dark:bg-blue-950/20 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-blue-500/10 pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="w-4 h-4 text-[#0076FF] shrink-0" />
+                          <h5 className="text-xs font-bold text-slate-900 dark:text-white">
+                            {ui.suggestionsTitle}{" "}
+                            <span className="text-[#0076FF]">
+                              {activeLocalizedPrimary?.name || (fr ? activePrimaryIndustry.nameFr : activePrimaryIndustry.nameEn)}
+                            </span>
+                          </h5>
+                        </div>
+                        <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                          {ui.primarySector}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-0.5">
+                        {(activeLocalizedPrimary?.suggestedCapabilities || (fr ? activePrimaryIndustry.suggestedCapabilitiesFr : activePrimaryIndustry.suggestedCapabilitiesEn)).map((cap, i) => {
+                          const lower = cap.toLowerCase();
+                          const isCrm =
+                            lower.includes("rendez-vous") ||
+                            lower.includes("appointment") ||
+                            lower.includes("booking") ||
+                            lower.includes("réservation") ||
+                            lower.includes("reservation") ||
+                            lower.includes("consultation") ||
+                            lower.includes("agenda") ||
+                            lower.includes("visite") ||
+                            lower.includes("crm");
+                          const isRetail = lower.includes("stock") || lower.includes("pièce") || lower.includes("inventaire") || lower.includes("article") || lower.includes("produit") || lower.includes("inventory") || lower.includes("parts") || lower.includes("order") || lower.includes("commande");
+
+                          let badgeText = ui.generalQa;
+                          let badgeClass = "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border-slate-200 dark:border-slate-700";
+                          let isModuleActive = true;
+
+                          if (isCrm) {
+                            if (crmEnabled) {
+                              badgeText = ui.crmActive;
+                              badgeClass = "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/60";
+                            } else {
+                              badgeText = ui.crmRequired;
+                              badgeClass = "bg-amber-50 text-amber-700 dark:bg-amber-950/70 dark:text-amber-400 border-amber-200 dark:border-amber-800/60";
+                              isModuleActive = false;
+                            }
+                          } else if (isRetail) {
+                            if (retailEnabled) {
+                              badgeText = ui.retailActive;
+                              badgeClass = "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/60";
+                            } else {
+                              badgeText = ui.retailRequired;
+                              badgeClass = "bg-amber-50 text-amber-700 dark:bg-amber-950/70 dark:text-amber-400 border-amber-200 dark:border-amber-800/60";
+                              isModuleActive = false;
+                            }
+                          }
+
+                          return (
+                            <div key={i} className="flex flex-col gap-1 p-2.5 rounded-xl bg-white/70 dark:bg-slate-900/70 border border-slate-200/60 dark:border-slate-800/60">
+                              <div className="flex items-start gap-2 text-xs text-slate-700 dark:text-slate-200">
+                                {isModuleActive ? (
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                                ) : (
+                                  <Info className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+                                )}
+                                <span className="leading-snug">{cap}</span>
+                              </div>
+                              <div className="pl-5.5">
+                                <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-semibold border ${badgeClass}`}>
+                                  {badgeText}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 italic pt-1 border-t border-blue-500/10">
+                        ℹ️ {ui.suggestionsDisclaimer}
+                      </p>
+                    </div>
+                  )
                 )}
               </div>
 

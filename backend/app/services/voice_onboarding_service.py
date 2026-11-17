@@ -45,13 +45,19 @@ class VoiceOnboardingService:
         saved = stored_business_profile(self.db, tenant.company_id)
         from backend.app.services.tenant_locale_service import get_profile
         locale = get_profile(self.db, tenant.company_id)
+        saved_industries = list(saved.get("industries") or [])
+        primary_ind = saved.get("industry") or company.industry or ""
+        if not saved_industries and primary_ind:
+            saved_industries = [primary_ind]
         values = {"business_name": config.business_name if config else company.name,
-                  "industry": company.industry, "timezone": company.timezone,
+                  "industry": primary_ind, "industries": saved_industries, "timezone": company.timezone,
                   "opening_hours": company.business_hours or (config.opening_hours if config else {}) or {},
                   "primary_locale": locale.primary_locale or company.preferred_language,
                   "secondary_locales": locale.secondary_locales, "contact_phone": company.phone,
                   "website": company.website or ""}
         values.update({k: v for k, v in saved.items() if k not in {"version", "expected_version"}})
+        if "industries" not in values or not values["industries"]:
+            values["industries"] = saved_industries
         # CRM owns split shifts, dated exceptions and verification-only schedules.
         # Never replace these with the legacy Voice weekday-only representation.
         if "weekly" in (company.business_hours or {}) or "date_overrides" in (company.business_hours or {}):
@@ -193,7 +199,8 @@ class VoiceOnboardingService:
         config.services = [{"name": s.name, "crm_service_id": str(s.id), "duration_minutes": s.duration_minutes,
                             "price": s.price, "currency": s.currency} for s in services]
         company = self.db.get(Company, tenant.company_id)
-        company.industry, company.timezone = request.industry, request.timezone
+        primary_ind = request.industry or (request.industries[0] if request.industries else "")
+        company.industry, company.timezone = primary_ind, request.timezone
         company.business_hours, company.phone, company.website = request.opening_hours, request.contact_phone, request.website or None
         from backend.app.services.tenant_locale_service import upsert_profile
         from backend.app.services.tenant_locale_service import get_profile
@@ -205,6 +212,8 @@ class VoiceOnboardingService:
             self.db.add(record)
         payload = request.model_dump(mode="json", exclude={"expected_version"})
         payload["version"] = request.expected_version + 1
+        payload["industry"] = primary_ind
+        payload["industries"] = request.industries or ([primary_ind] if primary_ind else [])
         record.draft_payload = {**(record.draft_payload or {}), PROFILE_KEY: payload}
         AuditLogService(self.db).record(actor_user_id=user_id, action="voice_business_profile_updated",
             target_type="company", target_id=str(tenant.company_id), company_id=tenant.company_id,
