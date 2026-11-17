@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { apiFetch } from "@/lib/api-request";
 import { TRADING_COPY } from "@/lib/i18n/trading-copy";
+import { getTradingChatStrings, pickRandomTradingQuestions } from "@/lib/i18n/trading-chat-i18n";
 import type { LocaleCode } from "@/lib/i18n/types";
 
 interface Message {
@@ -17,65 +18,45 @@ interface TradingGeminiChatProps {
   locale: LocaleCode;
 }
 
-// Bibliothèque de questions aléatoires hautement spécialisées en analyse technique et trading
-const SPECIALIZED_TRADING_QUESTIONS: string[] = [
-  // 1. Momentum & Oscillateurs
-  "Détectes-tu une divergence haussière ou baissière sur le RSI 14 et les dernières clôtures ?",
-  "L'histogramme MACD montre-t-il une décélération ou un renforcement du momentum ?",
-  "Le RSI 14 actuel signale-t-il un risque d'essoufflement ou une zone de surchauffe ?",
-  "Observe-t-on une divergence cachée de continuation sur le momentum court terme ?",
-  "Comment se positionne le RSI par rapport au niveau neutre des 50 sur cet intervalle ?",
-  "L'écartement des lignes MACD confirme-t-il la force de l'impulsion en cours ?",
-
-  // 2. Price Action & Niveaux Clés
-  "Quels sont les niveaux majeurs de support et de résistance calculés d'après les récents extrêmes ?",
-  "Où se situe le niveau d'invalidation critique si l'on prend un biais acheteur sur cet intervalle ?",
-  "Y a-t-il un risque de fausse cassure (bull trap ou bear trap) sur la dernière bougie ?",
-  "La structure récente forme-t-elle des sommets plus hauts (Higher Highs) ou une compression ?",
-  "À quel niveau de cours un retournement de tendance court terme serait-il confirmé ?",
-  "Quelles zones de liquidité récentes sont les plus susceptibles d'attirer le prix ?",
-
-  // 3. Volatilité & Bandes de Bollinger
-  "Que révèle la contraction actuelle des bandes de Bollinger sur l'imminence d'un breakout ?",
-  "Le cours évolue-t-il en sur-extension par rapport à la bande de Bollinger supérieure ou inférieure ?",
-  "La volatilité récente est-elle en phase de compression (Squeeze) ou d'expansion directionnelle ?",
-  "Quelle distance par rapport aux bandes de Bollinger suggère le placement d'un stop-loss sécurisé ?",
-  "Le cours réintègre-t-il la moyenne mobile centrale (SMA 20) après un excès d'amplitude ?",
-  "Comment la variation sur 24h se compare-t-elle à la volatilité historique récente ?",
-
-  // 4. Stratégie, Confluences & Moyennes Mobiles
-  "Quel est l'alignement entre l'EMA 12, la SMA 20 et la moyenne 26 périodes ?",
-  "Quelles sont les confluences techniques (RSI + MACD + MA) observables sur cet intervalle ?",
-  "Le marché évolue-t-il actuellement en phase de range (consolidation) ou de tendance nette ?",
-  "Quel serait le ratio risque/rendement (R:R) théorique sur le niveau de clôture actuel ?",
-  "Quelles conditions techniques précises attendrais-tu pour confirmer un point d'entrée ?",
-  "Existe-t-il un signal précoce de retour vers la moyenne mobile 20 périodes ?",
-];
-
-function pickRandomQuestions(count: number = 3): string[] {
-  const shuffled = [...SPECIALIZED_TRADING_QUESTIONS].sort(() => 0.5 - Math.random());
-  return shuffled.slice(0, count);
-}
-
 export function TradingGeminiChat({ symbol, interval, locale }: TradingGeminiChatProps) {
   const copy = TRADING_COPY[locale] || TRADING_COPY.fr;
+  const chatStrings = getTradingChatStrings(locale);
 
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [voiceActive, setVoiceActive] = useState(false);
-  const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>(() => pickRandomQuestions(3));
+  const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>(() =>
+    pickRandomTradingQuestions(locale, 3)
+  );
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content: `Bonjour ! Je suis l'analyste de marché Avenqo Trading AI propulsé par Google Gemini. Je suis spécialisé dans l'analyse quantitative en temps réel (Price Action, RSI 14, histogramme MACD, Bandes de Bollinger, moyennes mobiles et invalidations) pour **${symbol}** (${interval}).\n\nPosez-moi vos questions techniques ou choisissez une question aléatoire ci-dessous pour démarrer une conversation fluide.`,
+      content: chatStrings.welcome(symbol, interval),
       timestamp: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
     },
   ]);
 
+  // Update suggestions and greeting if symbol, interval, or locale changes while conversation hasn't started
+  useEffect(() => {
+    setSuggestedQuestions(pickRandomTradingQuestions(locale, 3));
+    setMessages((prev) => {
+      if (prev.length <= 1) {
+        return [
+          {
+            role: "assistant",
+            content: chatStrings.welcome(symbol, interval),
+            timestamp: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
+          },
+        ];
+      }
+      return prev;
+    });
+  }, [locale, symbol, interval, chatStrings]);
+
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    messagesEndRef.current?.scrollIntoView?.({ behavior: "smooth" });
   }, []);
 
   useEffect(() => {
@@ -83,14 +64,14 @@ export function TradingGeminiChat({ symbol, interval, locale }: TradingGeminiCha
   }, [messages, loading, scrollToBottom]);
 
   const shuffleQuestions = () => {
-    setSuggestedQuestions(pickRandomQuestions(3));
+    setSuggestedQuestions(pickRandomTradingQuestions(locale, 3));
   };
 
   const clearChat = () => {
     setMessages([
       {
         role: "assistant",
-        content: `Conversation réinitialisée. Prêt pour une nouvelle analyse technique de **${symbol}** sur l'intervalle ${interval}. Que souhaitez-vous analyser ?`,
+        content: chatStrings.reset(symbol, interval),
         timestamp: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
       },
     ]);
@@ -123,13 +104,13 @@ export function TradingGeminiChat({ symbol, interval, locale }: TradingGeminiCha
       });
 
       if (!response.ok) {
-        throw new Error("Erreur de communication avec l'assistant");
+        throw new Error(chatStrings.error);
       }
 
       const body = await response.json();
       const assistantMsg: Message = {
         role: "assistant",
-        content: body.text || "Analyse indisponible pour le moment.",
+        content: body.text || chatStrings.error,
         timestamp: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
       };
       setMessages((prev) => [...prev, assistantMsg]);
@@ -138,7 +119,7 @@ export function TradingGeminiChat({ symbol, interval, locale }: TradingGeminiCha
         ...prev,
         {
           role: "assistant",
-          content: "Désolé, impossible d'effectuer l'analyse en direct actuellement. Vérifiez la connexion aux flux de marché.",
+          content: chatStrings.error,
           timestamp: new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
         },
       ]);
@@ -148,9 +129,10 @@ export function TradingGeminiChat({ symbol, interval, locale }: TradingGeminiCha
   };
 
   const toggleVoice = () => {
-    setVoiceActive(!voiceActive);
-    if (!voiceActive) {
-      void sendQuery(`Analyse le ${symbol} et résume les confluences techniques majeures sur l'intervalle ${interval}.`);
+    const nextState = !voiceActive;
+    setVoiceActive(nextState);
+    if (nextState) {
+      void sendQuery(chatStrings.voicePrompt(symbol, interval));
     }
   };
 
@@ -216,12 +198,12 @@ export function TradingGeminiChat({ symbol, interval, locale }: TradingGeminiCha
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-bold text-white">{copy.aiChatTitle}</h2>
+              <h2 className="text-sm font-bold text-white">{chatStrings.title}</h2>
               <span className="rounded-full bg-cyan-950/80 px-2 py-0.5 text-[9px] font-bold text-cyan-400 border border-cyan-800/60">
-                Gemini Pro Live
+                {chatStrings.badge}
               </span>
             </div>
-            <p className="text-[10px] text-slate-400">Dialogue fluide & analyse technique quantifiée</p>
+            <p className="text-[10px] text-slate-400">{chatStrings.subtitle}</p>
           </div>
         </div>
 
@@ -231,7 +213,7 @@ export function TradingGeminiChat({ symbol, interval, locale }: TradingGeminiCha
             type="button"
             onClick={clearChat}
             className="rounded-lg border border-slate-800 bg-slate-900/60 p-1.5 text-slate-400 hover:text-white hover:border-slate-700 transition"
-            title="Effacer la conversation"
+            title={chatStrings.clearChatTooltip}
           >
             🧹
           </button>
@@ -245,7 +227,7 @@ export function TradingGeminiChat({ symbol, interval, locale }: TradingGeminiCha
                 ? "bg-rose-500 text-white animate-pulse shadow-lg shadow-rose-950"
                 : "bg-slate-900 border border-slate-700 text-slate-300 hover:text-white hover:border-slate-600"
             }`}
-            title="Activer le mode vocal"
+            title={chatStrings.voiceTooltip}
           >
             {voiceActive ? (
               <>
@@ -289,7 +271,7 @@ export function TradingGeminiChat({ symbol, interval, locale }: TradingGeminiCha
         {loading && (
           <div className="flex items-center gap-2 rounded-xl bg-slate-900/60 border border-slate-800/80 px-3 py-2 text-xs text-slate-400 animate-pulse w-fit">
             <span className="h-2 w-2 rounded-full bg-cyan-400 animate-ping"></span>
-            <span>Gemini analyse les indicateurs et la structure de {symbol}...</span>
+            <span>{chatStrings.loading(symbol)}</span>
           </div>
         )}
         <div ref={messagesEndRef} />
@@ -298,14 +280,14 @@ export function TradingGeminiChat({ symbol, interval, locale }: TradingGeminiCha
       {/* Suggestions de questions aléatoires et spécialisées */}
       <div className="space-y-1.5 pt-1 border-t border-slate-800/60">
         <div className="flex items-center justify-between text-[11px] text-slate-400">
-          <span className="font-semibold text-slate-300">Questions spécialisées :</span>
+          <span className="font-semibold text-slate-300">{chatStrings.specializedQuestionsLabel}</span>
           <button
             type="button"
             onClick={shuffleQuestions}
             className="flex items-center gap-1 text-[10px] text-cyan-400 hover:text-cyan-300 transition font-semibold"
           >
             <span>🎲</span>
-            <span>Nouvelles questions</span>
+            <span>{chatStrings.shuffleQuestionsLabel}</span>
           </button>
         </div>
 
@@ -335,7 +317,7 @@ export function TradingGeminiChat({ symbol, interval, locale }: TradingGeminiCha
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Posez votre question technique à Gemini..."
+          placeholder={chatStrings.inputPlaceholder}
           className="flex-1 rounded-xl border border-slate-800 bg-slate-900/90 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
         />
         <button

@@ -5,6 +5,8 @@ import { CANONICAL_LOCALES } from "../src/lib/i18n/canonical-locales.generated";
 import { TradingTickerBand, type TickerItem } from "../src/components/trading/trading-ticker-band";
 import { PredictionPanel } from "../src/components/trading/prediction-panel";
 import { TradingModelsCard } from "../src/components/trading/trading-models-card";
+import { TradingGeminiChat } from "../src/components/trading/trading-gemini-chat";
+import { getTradingChatStrings } from "../src/lib/i18n/trading-chat-i18n";
 
 // Mock des composants dépendants de canvas/lightweight-charts pour tests jsdom
 vi.mock("lightweight-charts", () => ({
@@ -195,5 +197,67 @@ describe("Avenqo Trading AI 2.0 — I18n & Completeness", () => {
     expect(screen.getByText("1.15")).toBeInTheDocument();
     expect(screen.getByText("-4.5 %")).toBeInTheDocument();
     expect(screen.getByText("62.5 %")).toBeInTheDocument();
+  });
+
+  it("renders TradingGeminiChat with genuine multilingual specialized trading questions and UI strings", () => {
+    // 1. Test French
+    const { unmount: unmountFr } = render(
+      <TradingGeminiChat symbol="BTCUSDT" interval="1h" locale="fr" />
+    );
+    expect(screen.getByText("Assistant Trading AI")).toBeInTheDocument();
+    expect(screen.getByText("Questions spécialisées :")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Posez votre question technique à Gemini...")).toBeInTheDocument();
+    expect(screen.getByText(/Je suis l'analyste de marché Avenqo Trading AI/i)).toBeInTheDocument();
+    unmountFr();
+
+    // 2. Test Spanish
+    const { unmount: unmountEs } = render(
+      <TradingGeminiChat symbol="SOLUSDT" interval="4h" locale="es" />
+    );
+    expect(screen.getByText("Asistente Trading AI")).toBeInTheDocument();
+    expect(screen.getByText("Preguntas especializadas:")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Hazle tu pregunta técnica a Gemini...")).toBeInTheDocument();
+    expect(screen.getByText(/¡Hola! Soy el analista de mercado Avenqo Trading AI/i)).toBeInTheDocument();
+    unmountEs();
+
+    // 3. Test Romanian
+    const { unmount: unmountRo } = render(
+      <TradingGeminiChat symbol="ETHUSDT" interval="15m" locale="ro" />
+    );
+    expect(screen.getByText("Asistent Trading AI")).toBeInTheDocument();
+    expect(screen.getByText("Întrebări specializate:")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Adresează întrebarea ta tehnică către Gemini...")).toBeInTheDocument();
+    expect(screen.getByText(/Bună ziua! Sunt analistul de piață Avenqo Trading AI/i)).toBeInTheDocument();
+    unmountRo();
+
+    // 4. Test German
+    const { unmount: unmountDe } = render(
+      <TradingGeminiChat symbol="BTCUSDT" interval="1d" locale="de" />
+    );
+    expect(screen.getByText("Trading AI Assistent")).toBeInTheDocument();
+    expect(screen.getByText("Spezialisierte Fragen:")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Stellen Sie Ihre technische Frage an Gemini...")).toBeInTheDocument();
+    expect(screen.getByText(/Guten Tag! Ich bin der Avenqo Trading AI Marktanalyst/i)).toBeInTheDocument();
+    unmountDe();
+
+    // 5. Test Japanese
+    const { unmount: unmountJa } = render(
+      <TradingGeminiChat symbol="BTCUSDT" interval="1h" locale="ja" />
+    );
+    expect(screen.getByText("Trading AI アシスタント")).toBeInTheDocument();
+    expect(screen.getByText("専門的な質問：")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Geminiにテクニカル分析の質問をする...")).toBeInTheDocument();
+    expect(screen.getByText(/Google Geminiを搭載したAvenqo Trading AIマーケットアナリストです/i)).toBeInTheDocument();
+    unmountJa();
+
+    // 6. Test Arabic
+    const { unmount: unmountAr } = render(
+      <TradingGeminiChat symbol="ETHUSDT" interval="1h" locale="ar" />
+    );
+    expect(screen.getByText("مساعد التداول بالذكاء الاصطناعي")).toBeInTheDocument();
+    expect(screen.getByText("أسئلة فنية متخصصة:")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("اطرح سؤالك الفني على جيميني...")).toBeInTheDocument();
+    expect(screen.getByText(/أنا محلل السوق Avenqo Trading AI المدعوم بتقنية Google Gemini/i)).toBeInTheDocument();
+    unmountAr();
   });
 });

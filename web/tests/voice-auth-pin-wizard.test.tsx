@@ -49,7 +49,8 @@ describe("VoiceOnboardingWizard - Personal Employee PIN Workflow", () => {
     fireEvent.click(screen.getByText(/4\. Téléphone et employés/i));
 
     await waitFor(() => {
-      expect(screen.getByText(/NIP actif et configuré/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/NIP actif et configuré/i).length).toBeGreaterThanOrEqual(2);
+      expect(screen.getByTestId("voice-hero-pin-status")).toBeInTheDocument();
       expect(screen.getByText(/Modifier votre code NIP personnel employé/i)).toBeInTheDocument();
     });
 
@@ -246,5 +247,37 @@ describe("VoiceOnboardingWizard - Personal Employee PIN Workflow", () => {
       expect(screen.queryByText("Entreprise 1")).toBeNull();
       expect(screen.getByText("Entreprise 2")).toBeInTheDocument();
     });
+  });
+
+  it("collapses and re-expands all 5 configuration steps via the dropdown menu header and hero button", async () => {
+    const fetcher = vi.fn(async () => ({ ok: true, json: async () => ({}) }));
+    vi.stubGlobal("fetch", fetcher);
+
+    render(
+      <VoiceOnboardingWizard
+        tenantId="tenant-test-collapse"
+        canManage={true}
+        businessName="Avenqo Sandbox Store"
+      />
+    );
+
+    // Initial state: steps are open
+    expect(await screen.findByText(/4\. Téléphone et employés/i)).toBeInTheDocument();
+    expect(screen.getByTestId("voice-hero-pin-status")).toBeInTheDocument();
+
+    // Toggle collapse via Hero button
+    const heroToggle = screen.getByTestId("voice-toggle-config-button");
+    fireEvent.click(heroToggle);
+
+    // Now the 5 steps should be collapsed
+    expect(screen.queryByText(/4\. Téléphone et employés/i)).toBeNull();
+
+    // Click the dropdown header to re-expand all steps
+    const dropdownHeader = screen.getByTestId("voice-config-dropdown-header");
+    fireEvent.click(dropdownHeader);
+
+    // All steps re-appear
+    expect(await screen.findByText(/4\. Téléphone et employés/i)).toBeInTheDocument();
+    expect(screen.getByText(/1\. Mon entreprise/i)).toBeInTheDocument();
   });
 });

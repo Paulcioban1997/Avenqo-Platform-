@@ -130,10 +130,24 @@ class VoiceCallerAuth:
                 VoiceCallerCredential.phone_number == phone,
             )
         )
-        if shared is not None and shared.principal_id == principal_id:
+        if shared is not None and str(shared.principal_id) == str(principal_id):
             shared.principal_type = principal_type
             existing = shared
-        elif shared is not None and shared.principal_id != principal_id:
+        elif shared is not None and str(shared.principal_id) != str(principal_id):
+            # Check if the number is currently claimed by another user in this tenant
+            other_user = self.db.scalar(
+                select(User).where(
+                    User.id == shared.principal_id,
+                    User.company_id == tenant.company_id,
+                )
+            )
+
+            # P0 Security Rule: NEVER automatically steal or reassign the phone number of an ACTIVE user,
+            # even if the requester is OWNER or ADMIN.
+            if other_user is not None and str(other_user.id) != str(principal_id) and other_user.is_active:
+                raise PermissionError("Ce numéro de téléphone est déjà associé à un autre collaborateur actif de l'entreprise.")
+
+            # If the phone was assigned to an inactive/deactivated account, only OWNER or ADMIN may reassign it
             is_owner_or_admin = False
             if isinstance(principal, User):
                 if getattr(principal, "role", None) in {UserRole.OWNER, UserRole.ADMIN}:
@@ -149,23 +163,46 @@ class VoiceCallerAuth:
                     if membership is not None and membership.role in {UserRole.OWNER, UserRole.ADMIN}:
                         is_owner_or_admin = True
 
-            other_user = self.db.scalar(
-                select(User).where(
-                    User.id == shared.principal_id,
-                    User.company_id == tenant.company_id,
-                    User.is_active.is_(True),
+            if not is_owner_or_admin:
+                raise PermissionError("Seul un administrateur peut réattribuer le numéro d'un compte inactif.")
+
+            # Authorized reassignment from inactive account:
+            # 1. Revoke any active voice sessions for the previous holder
+            now = datetime.now(timezone.utc)
+            for old_session in self.db.scalars(
+                select(VoiceAuthSession).where(
+                    VoiceAuthSession.company_id == tenant.company_id,
+                    VoiceAuthSession.principal_id == shared.principal_id,
+                    VoiceAuthSession.revoked_at.is_(None),
                 )
+            ):
+                old_session.revoked_at = now
+
+            # 2. Record explicit audit log of the reassignment
+            from backend.app.services.audit_log_service import AuditLogService
+            AuditLogService(self.db).record(
+                actor_user_id=principal_id,
+                action="voice_nip_reassigned_from_inactive",
+                target_type="voice_credential",
+                target_id=str(shared.id),
+                company_id=tenant.company_id,
+                metadata={
+                    "reassigned_from_user_id": str(shared.principal_id),
+                    "reassigned_to_user_id": str(principal_id),
+                    "phone_number": phone,
+                },
+                commit=False,
             )
 
-            if is_owner_or_admin or other_user is None:
-                if existing is not None and existing.id != shared.id:
-                    self.db.delete(existing)
-                    self.db.flush()
-                shared.principal_id = principal_id
-                shared.principal_type = principal_type
-                existing = shared
-            else:
-                raise PermissionError("Phone identity is ambiguous")
+            # 3. Clean up any existing duplicate credential for this principal
+            if existing is not None and existing.id != shared.id:
+                self.db.delete(existing)
+                self.db.flush()
+
+            # 4. Reassign credential
+            shared.principal_id = principal_id
+            shared.principal_type = principal_type
+            existing = shared
 
         if existing is None:
             existing = VoiceCallerCredential(

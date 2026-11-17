@@ -273,6 +273,68 @@ describe("Voice AI Industry Expansion & Verification Suite", () => {
     expect(customInput).toHaveValue("Robotique Aérospatiale");
   });
 
+  it("guarantees 100% authentic native translations with zero French or English remnants in Spanish, Romanian, Japanese, Arabic and German", () => {
+    // 1. Spanish (es)
+    const esCatalog = getVoiceIndustryCatalog("es");
+    expect(esCatalog.ui.searchPlaceholder).toBe("Buscar una industria...");
+    for (const ind of INDUSTRY_CATALOG) {
+      const item = getLocalizedIndustry(ind.id, "es");
+      expect(item).not.toBeNull();
+      // Ensure zero French remnants
+      for (const cap of item!.suggestedCapabilities) {
+        expect(cap).not.toMatch(/\b(rendez-vous|d'urgence|d'ouverture|soumissions|livraisons|recherche acquéreurs|enlèvements|devis|horaires)\b/i);
+        expect(cap).not.toMatch(/\b(booking|tracking|lookup|rescheduling)\b/i);
+      }
+    }
+
+    // 2. Romanian (ro)
+    const roCatalog = getVoiceIndustryCatalog("ro");
+    expect(roCatalog.ui.searchPlaceholder).toBe("Căutați o industrie...");
+    for (const ind of INDUSTRY_CATALOG) {
+      const item = getLocalizedIndustry(ind.id, "ro");
+      expect(item).not.toBeNull();
+      for (const cap of item!.suggestedCapabilities) {
+        expect(cap).not.toMatch(/\b(booking|tracking|lookup|rescheduling|orders|takeout|guidance)\b/i);
+        expect(cap).not.toMatch(/\b(rendez-vous|d'urgence|d'ouverture)\b/i);
+      }
+    }
+
+    // 3. Japanese (ja)
+    const jaCatalog = getVoiceIndustryCatalog("ja");
+    for (const ind of INDUSTRY_CATALOG) {
+      const item = getLocalizedIndustry(ind.id, "ja");
+      expect(item).not.toBeNull();
+      for (const cap of item!.suggestedCapabilities) {
+        // Must contain Japanese characters (hiragana, katakana, or CJK ideographs)
+        expect(cap).toMatch(/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/);
+        expect(cap).not.toMatch(/\b(booking|tracking|lookup|appointment|hours)\b/i);
+      }
+    }
+
+    // 4. Arabic (ar)
+    const arCatalog = getVoiceIndustryCatalog("ar");
+    for (const ind of INDUSTRY_CATALOG) {
+      const item = getLocalizedIndustry(ind.id, "ar");
+      expect(item).not.toBeNull();
+      for (const cap of item!.suggestedCapabilities) {
+        // Must contain Arabic characters
+        expect(cap).toMatch(/[\u0600-\u06FF]/);
+        expect(cap).not.toMatch(/\b(booking|tracking|lookup|appointment)\b/i);
+      }
+    }
+
+    // 5. German (de)
+    const deCatalog = getVoiceIndustryCatalog("de");
+    for (const ind of INDUSTRY_CATALOG) {
+      const item = getLocalizedIndustry(ind.id, "de");
+      expect(item).not.toBeNull();
+      for (const cap of item!.suggestedCapabilities) {
+        expect(cap).not.toMatch(/\b(rendez-vous|d'urgence|d'ouverture|soumissions)\b/i);
+        expect(cap).not.toMatch(/\b(booking|tracking|lookup)\b/i);
+      }
+    }
+  });
+
   it("handles image onError without looping and renders fallback SVG safely", async () => {
     const fetcher = vi.fn(async () => ({ ok: true, json: async () => ({}) }));
     vi.stubGlobal("fetch", fetcher);

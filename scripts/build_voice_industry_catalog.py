@@ -882,6 +882,60 @@ def make_ui_strings(loc: str):
         ui["noIndustrySelected"] = "Отрасль не выбрана."
         ui["primarySector"] = "Основная отрасль"
         ui["selectedCount"] = "выбрано"
+    elif lang == "ro":
+        ui["sectionTitle"] = "O INTELIGENȚĂ ARTIFICIALĂ ADAPTATĂ FIECĂREI INDUSTRII"
+        ui["sectionSubtitle"] = "Conversații naturale, fluxuri de lucru integrate și o experiență dedicată clienților în orice domeniu."
+        ui["searchPlaceholder"] = "Căutați o industrie..."
+        ui["expandButton"] = "Afișați mai multe industrii"
+        ui["collapseButton"] = "Afișați mai puține"
+        ui["customIndustryPrompt"] = "Nu găsiți industria dumneavoastră?"
+        ui["customIndustryPlaceholder"] = "Descrieți activitatea afacerii..."
+        ui["suggestionsTitle"] = "Capacități sugerate pentru această industrie:"
+        ui["suggestionsDisclaimer"] = "Aceste sugestii ilustrează capacitățile IA. Integrările avansate necesită module active (CRM, Retail, Programări)."
+        ui["crmRequired"] = "Modulul CRM este necesar"
+        ui["crmActive"] = "Modulul CRM este activ"
+        ui["retailRequired"] = "Modulul Retail este necesar"
+        ui["retailActive"] = "Modulul Retail este activ"
+        ui["generalQa"] = "Inclus standard (FAQ și Recepție)"
+        ui["noIndustrySelected"] = "Niciun sector selectat. Alegeți cel puțin o industrie."
+        ui["primarySector"] = "Sector principal"
+        ui["selectedCount"] = "selectate"
+    elif lang == "nl":
+        ui["sectionTitle"] = "EEN AI OP MAAT VOOR ELKE SECTOR"
+        ui["sectionSubtitle"] = "Natuurlijke gesprekken, geïntegreerde bedrijfsprocessen en een persoonlijke klantervaring in elke sector."
+        ui["searchPlaceholder"] = "Zoek een sector..."
+        ui["expandButton"] = "Meer sectoren bekijken"
+        ui["collapseButton"] = "Minder weergeven"
+        ui["customIndustryPrompt"] = "Staat uw sector er niet tussen?"
+        ui["customIndustryPlaceholder"] = "Beschrijf uw bedrijfsactiviteit..."
+        ui["suggestionsTitle"] = "Aanbevolen functies voor deze sector:"
+        ui["suggestionsDisclaimer"] = "Deze suggesties tonen de AI-mogelijkheden. Geavanceerde integraties vereisen actieve modules (CRM, Retail, Afspraken)."
+        ui["crmRequired"] = "CRM-module vereist"
+        ui["crmActive"] = "CRM-module actief"
+        ui["retailRequired"] = "Retail-module vereist"
+        ui["retailActive"] = "Retail-module actief"
+        ui["generalQa"] = "Standaard inbegrepen (FAQ en Receptie)"
+        ui["noIndustrySelected"] = "Geen sector geselecteerd. Kies ten minste één sector."
+        ui["primarySector"] = "Primaire sector"
+        ui["selectedCount"] = "geselecteerd"
+    elif lang == "pl":
+        ui["sectionTitle"] = "SZTUCZNA INTELIGENCJA DOPASOWANA DO KAŻDEJ BRANŻY"
+        ui["sectionSubtitle"] = "Naturalne rozmowy, zintegrowane procesy biznesowe i spersonalizowana obsługa klienta w każdej branży."
+        ui["searchPlaceholder"] = "Szukaj branży..."
+        ui["expandButton"] = "Zobacz więcej branż"
+        ui["collapseButton"] = "Pokaż mniej"
+        ui["customIndustryPrompt"] = "Nie widzisz swojej branży?"
+        ui["customIndustryPlaceholder"] = "Opisz profil działalności..."
+        ui["suggestionsTitle"] = "Sugerowane możliwości dla tej branży:"
+        ui["suggestionsDisclaimer"] = "Sugestie te ilustrują możliwości AI. Zaawansowane integracje wymagają aktywnych modułów (CRM, Retail, Terminarz)."
+        ui["crmRequired"] = "Wymagany moduł CRM"
+        ui["crmActive"] = "Moduł CRM aktywny"
+        ui["retailRequired"] = "Wymagany moduł Retail"
+        ui["retailActive"] = "Moduł Retail aktywny"
+        ui["generalQa"] = "W pakiecie standardowym (FAQ i Recepcja)"
+        ui["noIndustrySelected"] = "Nie wybrano branży. Wybierz co najmniej jedną."
+        ui["primarySector"] = "Główny sektor"
+        ui["selectedCount"] = "wybrano"
 
     return ui
 
@@ -941,46 +995,20 @@ def get_localized_desc_and_caps(ind, loc):
     }
     desc = desc_template.get(loc) or desc_template.get(lang) or ind["descEn"]
 
-    # Localize capabilities
-    caps = []
-    # Capability translation dictionary by common terms
-    term_replacements = {
-        "es": {
-            "rendez-vous": "citas", "CRM": "CRM", "stocks": "stock", "urgences": "urgencias",
-            "heures": "horarios", "devis": "presupuestos", "suivi": "seguimiento", "tarifs": "tarifas"
-        },
-        "de": {
-            "rendez-vous": "Termine", "CRM": "CRM", "stocks": "Bestände", "urgences": "Notfälle",
-            "heures": "Öffnungszeiten", "devis": "Kostenvoranschläge", "suivi": "Sendungsverfolgung"
-        },
-        "it": {
-            "rendez-vous": "appuntamenti", "CRM": "CRM", "stocks": "scorte", "urgences": "emergenze",
-            "heures": "orari", "devis": "preventivi", "suivi": "tracciamento"
-        },
-        "pt": {
-            "rendez-vous": "agendamentos", "CRM": "CRM", "stocks": "estoque", "urgences": "urgências",
-            "heures": "horários", "devis": "orçamentos", "suivi": "rastreamento"
-        }
-    }
-    
-    for cap_fr in ind["capsFr"]:
-        if lang == "es":
-            c = cap_fr.replace("Prise de rendez-vous", "Gestión de citas").replace("Vérification des stocks", "Consulta de stock").replace("Horaires d'ouverture", "Horarios de atención").replace("Transfert d'urgence", "Transferencia de urgencia").replace("Demandes de soumissions", "Solicitudes de presupuesto").replace("Accompagnement", "Asistencia personalizada")
-            caps.append(c)
-        elif lang == "de":
-            c = cap_fr.replace("Prise de rendez-vous", "Terminbuchung").replace("Vérification des stocks", "Bestandsabfrage").replace("Horaires d'ouverture", "Öffnungszeiten & Anfahrt").replace("Transfert d'urgence", "Notfallweiterleitung").replace("Demandes de soumissions", "Angebotsanfragen").replace("Accompagnement", "Fachberatung")
-            caps.append(c)
-        elif lang == "it":
-            c = cap_fr.replace("Prise de rendez-vous", "Prenotazione appuntamenti").replace("Vérification des stocks", "Verifica giacenze").replace("Horaires d'ouverture", "Orari e informazioni").replace("Transfert d'urgence", "Inoltro urgenze").replace("Demandes de soumissions", "Richieste di preventivo").replace("Accompagnement", "Assistenza dedicata")
-            caps.append(c)
-        elif lang == "pt":
-            c = cap_fr.replace("Prise de rendez-vous", "Agendamento de consultas").replace("Vérification des stocks", "Consulta de estoque").replace("Horaires d'ouverture", "Horários de funcionamento").replace("Transfert d'urgence", "Transferência de emergência").replace("Demandes de soumissions", "Pedidos de orçamento").replace("Accompagnement", "Suporte dedicado")
-            caps.append(c)
-        else:
-            # For remaining locales, use the clear English capability
-            caps.append(ind["capsEn"][len(caps)] if len(caps) < len(ind["capsEn"]) else cap_fr)
+    # Localize capabilities using 100% authentic native translations
+    try:
+        from scripts.industry_native_caps import INDUSTRY_NATIVE_CAPABILITIES
+    except ImportError:
+        try:
+            from industry_native_caps import INDUSTRY_NATIVE_CAPABILITIES
+        except ImportError:
+            INDUSTRY_NATIVE_CAPABILITIES = {}
 
-    return desc, caps
+    ind_id = ind["id"]
+    if ind_id in INDUSTRY_NATIVE_CAPABILITIES and lang in INDUSTRY_NATIVE_CAPABILITIES[ind_id]:
+        return desc, INDUSTRY_NATIVE_CAPABILITIES[ind_id][lang]
+
+    return desc, ind["capsEn"]
 
 # Build catalogs for all 44 locales
 catalogs_data = {}

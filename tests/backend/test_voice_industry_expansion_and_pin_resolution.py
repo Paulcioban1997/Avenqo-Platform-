@@ -145,7 +145,7 @@ def test_phone_ambiguity_collision_prevents_impersonation(tmp_path):
     # User 2 attempts to claim the same phone in company A -> PermissionError
     with pytest.raises(PermissionError) as exc:
         auth.set_pin(tenant_a2, "USER", user_a2.id, "739105", phone_number=shared_phone)
-    assert "ambiguous" in str(exc.value).lower()
+    assert "collaborateur" in str(exc.value).lower() or "ambiguous" in str(exc.value).lower()
 
 
 def test_owner_can_reassign_or_rotate_phone_without_ambiguity_collision(tmp_path):
@@ -193,11 +193,168 @@ def test_owner_can_reassign_or_rotate_phone_without_ambiguity_collision(tmp_path
     session.add(cred_stale)
     session.commit()
 
-    # Owner claims this phone -> must succeed and reassign to owner
+    # Owner claims inactive user's phone -> succeeds, revokes sessions, logs audit
     cred_reassigned = auth.set_pin(tenant_a1, "USER", user_a.id, "591823", phone_number="+15148887766")
     session.commit()
     assert cred_reassigned.principal_id == user_a.id
     assert cred_reassigned.phone_number == "+15148887766"
+
+
+def test_active_employee_phone_cannot_be_claimed_by_owner_or_admin(tmp_path):
+    """P0 Security: An active employee's registered phone number can NEVER be hijacked or silently transferred, even by OWNER or ADMIN."""
+    engine, session, company_a, config_a, user_a, company_b, config_b, user_b = _setup_multi_tenant_db(tmp_path)
+    dummy_secret = "test_synthetic_secret_" + "x" * 20
+    settings = Settings(AUTH_JWT_SECRET=dummy_secret)
+    auth = VoiceCallerAuth(session, settings)
+
+    # 1. Create an active employee in company_a
+    employee_user = User(
+        id=uuid4(),
+        company_id=company_a.id,
+        first_name="Active",
+        last_name="Collaborator",
+        email="collab@company-a.ca",
+        password_hash=hash_password("CollabPass123!"),
+        role=UserRole.USER,
+        is_active=True,
+    )
+    session.add(employee_user)
+    session.add(CompanyMembership(
+        id=uuid4(),
+        company_id=company_a.id,
+        user_id=employee_user.id,
+        role=UserRole.USER,
+        is_active=True,
+    ))
+
+    # Also create an admin in company_a
+    admin_user = User(
+        id=uuid4(),
+        company_id=company_a.id,
+        first_name="Alice",
+        last_name="Admin",
+        email="admin@company-a.ca",
+        password_hash=hash_password("AdminPass123!"),
+        role=UserRole.ADMIN,
+        is_active=True,
+    )
+    session.add(admin_user)
+    session.add(CompanyMembership(
+        id=uuid4(),
+        company_id=company_a.id,
+        user_id=admin_user.id,
+        role=UserRole.ADMIN,
+        is_active=True,
+    ))
+    session.commit()
+
+    # 2. Employee sets their PIN with their personal phone number
+    emp_phone = "+15149991122"
+    tenant_emp = TenantContext(company_id=company_a.id, user_id=employee_user.id)
+    cred_emp = auth.set_pin(tenant_emp, "USER", employee_user.id, "183920", phone_number=emp_phone)
+    session.commit()
+    assert cred_emp.principal_id == employee_user.id
+
+    # 3. OWNER (user_a) attempts to take over the active employee's number -> MUST BE REJECTED
+    tenant_owner = TenantContext(company_id=company_a.id, user_id=user_a.id)
+    with pytest.raises(PermissionError) as exc_owner:
+        auth.set_pin(tenant_owner, "USER", user_a.id, "928301", phone_number=emp_phone)
+    assert "collaborateur actif" in str(exc_owner.value).lower()
+
+    # 4. ADMIN attempts to take over the active employee's number -> MUST BE REJECTED
+    tenant_admin = TenantContext(company_id=company_a.id, user_id=admin_user.id)
+    with pytest.raises(PermissionError) as exc_admin:
+        auth.set_pin(tenant_admin, "USER", admin_user.id, "928301", phone_number=emp_phone)
+    assert "collaborateur actif" in str(exc_admin.value).lower()
+
+    # 5. ANOTHER regular employee also cannot take over -> MUST BE REJECTED
+    other_emp = User(
+        id=uuid4(),
+        company_id=company_a.id,
+        first_name="Bob",
+        last_name="Staff",
+        email="bob@company-a.ca",
+        password_hash=hash_password("BobPass123!"),
+        role=UserRole.USER,
+        is_active=True,
+    )
+    session.add(other_emp)
+    session.add(CompanyMembership(
+        id=uuid4(),
+        company_id=company_a.id,
+        user_id=other_emp.id,
+        role=UserRole.USER,
+        is_active=True,
+    ))
+    session.commit()
+    tenant_other = TenantContext(company_id=company_a.id, user_id=other_emp.id)
+    with pytest.raises(PermissionError) as exc_other:
+        auth.set_pin(tenant_other, "USER", other_emp.id, "928301", phone_number=emp_phone)
+    assert "collaborateur actif" in str(exc_other.value).lower()
+
+    # 6. The original employee can rotate their own PIN without collision
+    cred_emp_rotated = auth.set_pin(tenant_emp, "USER", employee_user.id, "739102", phone_number=emp_phone)
+    session.commit()
+    assert cred_emp_rotated.id == cred_emp.id
+    assert cred_emp_rotated.principal_id == employee_user.id
+
+
+def test_regular_employee_cannot_reassign_inactive_user_phone(tmp_path):
+    """Only OWNER or ADMIN may reassign a deactivated user's phone; regular employees are denied."""
+    engine, session, company_a, config_a, user_a, company_b, config_b, user_b = _setup_multi_tenant_db(tmp_path)
+    dummy_secret = "test_synthetic_secret_" + "x" * 20
+    settings = Settings(AUTH_JWT_SECRET=dummy_secret)
+    auth = VoiceCallerAuth(session, settings)
+
+    # Inactive former staff member
+    former_user = User(
+        id=uuid4(),
+        company_id=company_a.id,
+        first_name="Former",
+        last_name="Employee",
+        email="former@company-a.ca",
+        password_hash=hash_password("FormerPass123!"),
+        role=UserRole.USER,
+        is_active=False,
+    )
+    session.add(former_user)
+    stale_phone = "+15147773344"
+    session.add(VoiceCallerCredential(
+        id=uuid4(),
+        company_id=company_a.id,
+        principal_type="USER",
+        principal_id=former_user.id,
+        phone_number=stale_phone,
+        pin_hash=hash_password("OldPinHash"),
+        enabled=True,
+    ))
+
+    # Active regular employee
+    staff_user = User(
+        id=uuid4(),
+        company_id=company_a.id,
+        first_name="Staff",
+        last_name="Member",
+        email="staff@company-a.ca",
+        password_hash=hash_password("StaffPass123!"),
+        role=UserRole.USER,
+        is_active=True,
+    )
+    session.add(staff_user)
+    session.add(CompanyMembership(
+        id=uuid4(),
+        company_id=company_a.id,
+        user_id=staff_user.id,
+        role=UserRole.USER,
+        is_active=True,
+    ))
+    session.commit()
+
+    # Regular employee attempts to claim the former user's phone -> REJECTED
+    tenant_staff = TenantContext(company_id=company_a.id, user_id=staff_user.id)
+    with pytest.raises(PermissionError) as exc:
+        auth.set_pin(tenant_staff, "USER", staff_user.id, "938201", phone_number=stale_phone)
+    assert "administrateur" in str(exc.value).lower()
 
 
 def test_multi_tenant_isolation_allows_independent_pin_and_sector_config(tmp_path):

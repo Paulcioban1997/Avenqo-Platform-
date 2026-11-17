@@ -316,7 +316,7 @@ def set_user_voice_pin(
     except (ValueError, PermissionError) as exc:
         db.rollback()
         err_text = str(exc)
-        if "Phone identity is ambiguous" in err_text:
+        if "Phone identity is ambiguous" in err_text or "associé à un autre collaborateur" in err_text:
             raise HTTPException(
                 status_code=422,
                 detail="Ce numéro de téléphone est déjà associé à un autre collaborateur de l'entreprise."
@@ -3209,8 +3209,15 @@ async def set_voice_pin(
     auth = VoiceCallerAuth(db, resolved_settings)
     tenant = TenantContext(company_id=identity.company_id, user_id=identity.user_id)
     phone = request.phone_number or user.phone
-    auth.set_pin(tenant, "USER", identity.user_id, pin_val, phone_number=phone)
-    db.commit()
+    try:
+        auth.set_pin(tenant, "USER", identity.user_id, pin_val, phone_number=phone)
+        db.commit()
+    except PermissionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
     return await get_voice_pin_status(identity, db)
 
 

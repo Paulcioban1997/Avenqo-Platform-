@@ -213,6 +213,8 @@ export function VoiceOnboardingWizard({
   });
 
   const [pinStatus, setPinStatus] = useState<VoicePinStatus | null>(null);
+  const [isConfigDropdownOpen, setIsConfigDropdownOpen] = useState<boolean>(true);
+  const [hasInteractedWithDropdown, setHasInteractedWithDropdown] = useState<boolean>(false);
 
   // Advanced Section toggle (Shared Dispatcher & DTMF fallback)
   const [showAdvancedAccordion, setShowAdvancedAccordion] = useState<boolean>(false);
@@ -863,8 +865,8 @@ export function VoiceOnboardingWizard({
 
       {/* HERO STATUS CARD */}
       <div className="p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0B132B] shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2.5">
+        <div className="space-y-1.5 flex-1">
+          <div className="flex items-center gap-2.5 flex-wrap">
             <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
               {profile.business_name || businessName || (fr ? "Entreprise non configurée" : "Unconfigured business")}
             </h3>
@@ -879,6 +881,35 @@ export function VoiceOnboardingWizard({
               </span>
             )}
           </div>
+
+          {/* NIP employé en haut de page, AU-DESSUS du numéro */}
+          <div className="flex items-center gap-2 pt-0.5" data-testid="voice-hero-pin-status">
+            {pinStatus?.configured ? (
+              pinStatus.is_locked ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/70 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60">
+                  <Lock className="w-3.5 h-3.5 text-rose-500" />
+                  <span>{fr ? "NIP employé verrouillé" : "Employee PIN locked"}</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60">
+                  <Lock className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>{fr ? "NIP actif et configuré" : "Employee PIN active & configured"}</span>
+                  {pinStatus.phone_number && (
+                    <span className="text-[10px] font-mono text-emerald-800 dark:text-emerald-300">
+                      ({pinStatus.phone_number})
+                    </span>
+                  )}
+                </span>
+              )
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                <Lock className="w-3.5 h-3.5 text-slate-400" />
+                <span>{fr ? "NIP employé à configurer" : "Employee PIN to configure"}</span>
+              </span>
+            )}
+          </div>
+
+          {/* Numéro de téléphone */}
           <div className="text-xs font-mono font-bold text-slate-700 dark:text-slate-300">
             {assignedNumber ? `${assignedNumber} · Gemini Live` : (fr ? "Numéro non configuré" : "Number not configured")}
           </div>
@@ -886,6 +917,27 @@ export function VoiceOnboardingWizard({
             <AlertCircle className="w-3.5 h-3.5 shrink-0" />
             <span>{fr ? "Appels réels : validation de fiabilité en cours" : "Real calls: reliability validation in progress"}</span>
           </div>
+        </div>
+
+        {/* Bouton rapide de repli/dépliage dans le hero si configuré */}
+        <div className="flex items-center">
+          <button
+            type="button"
+            data-testid="voice-toggle-config-button"
+            onClick={() => {
+              setIsConfigDropdownOpen((prev) => !prev);
+              setHasInteractedWithDropdown(true);
+            }}
+            className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 border bg-slate-100 hover:bg-slate-200 text-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-white border-slate-200 dark:border-slate-700 shadow-sm"
+          >
+            <Sliders className="w-3.5 h-3.5 text-primary" />
+            <span>
+              {isConfigDropdownOpen
+                ? (fr ? "Enrouler la configuration" : "Collapse configuration")
+                : (fr ? "⚙️ Reconfigurer mon agent Voice" : "⚙️ Reconfigure Voice Agent")}
+            </span>
+            {isConfigDropdownOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </button>
         </div>
       </div>
 
@@ -907,8 +959,55 @@ export function VoiceOnboardingWizard({
         </div>
       )}
 
-      {/* 5 ACCORDION CARDS */}
-      <div className="space-y-3">
+      {/* MENU DÉROULANT DE CONFIGURATION : 5 ÉTAPES */}
+      <div className="rounded-2xl border border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#0B132B] shadow-sm overflow-hidden transition-all">
+        <button
+          type="button"
+          data-testid="voice-config-dropdown-header"
+          onClick={() => {
+            setIsConfigDropdownOpen((prev) => !prev);
+            setHasInteractedWithDropdown(true);
+          }}
+          className="w-full p-4 sm:p-5 flex items-center justify-between text-left hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition cursor-pointer select-none"
+          aria-expanded={isConfigDropdownOpen}
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+              <Sliders className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-extrabold text-slate-900 dark:text-white">
+                  {fr ? "Configuration de l'agent Voice (5 étapes)" : "Voice Agent Configuration (5 steps)"}
+                </h4>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60">
+                  {isConfigDropdownOpen
+                    ? (fr ? "5 étapes visibles" : "5 steps visible")
+                    : (fr ? "Cliquer pour modifier" : "Click to edit")}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {fr
+                  ? "Entreprise, voix & industries, scénarios d'appels, NIP employé et diagnostics de mise en service."
+                  : "Company, voice & industries, call scenarios, employee PIN and provisioning diagnostics."}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 text-slate-400">
+            <span className="text-xs font-semibold hidden sm:inline text-slate-500 dark:text-slate-400">
+              {isConfigDropdownOpen
+                ? (fr ? "Enrouler" : "Collapse")
+                : (fr ? "Dérouler toutes les étapes" : "Expand all steps")}
+            </span>
+            {isConfigDropdownOpen ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+          </div>
+        </button>
+
+        {/* CONTENU DÉROULANT DES 5 ÉTAPES */}
+        {isConfigDropdownOpen && (
+          <div className="p-4 sm:p-5 pt-0 space-y-3 border-t border-slate-100 dark:border-white/[0.05]">
+            {/* 5 ACCORDION CARDS */}
+            <div className="space-y-3">
         {/* ========================================================
             ACCORDION 1: MON ENTREPRISE
             ======================================================== */}
@@ -2500,6 +2599,9 @@ export function VoiceOnboardingWizard({
             </div>
           )}
         </div>
+      </div>
+          </div>
+        )}
       </div>
 
       {/* PARAMÈTRES AVANCÉS (FACULTATIF) */}
