@@ -31,10 +31,16 @@ import {
   ExternalLink,
   Clock,
   Bookmark,
+  Search,
 } from "lucide-react";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { apiFetch } from "@/lib/api-request";
 import { VoiceLifecycleCard } from "@/components/voice/voice-lifecycle-card";
+import {
+  INDUSTRY_CATALOG,
+  INDUSTRY_CATEGORIES,
+  IndustryItem,
+} from "./voice-industry-catalog";
 
 interface WizardProps {
   tenantId?: string;
@@ -102,6 +108,11 @@ export function VoiceOnboardingWizard({
   const [openSection, setOpenSection] = useState<number | null>(1);
   const [showAdvancedParams, setShowAdvancedParams] = useState<boolean>(false);
   const [selectedIndustry, setSelectedIndustry] = useState<string>("retail");
+  const [selectedIndustries, setSelectedIndustries] = useState<string[]>(["retail"]);
+  const [industrySearch, setIndustrySearch] = useState<string>("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [isExpandedCatalog, setIsExpandedCatalog] = useState<boolean>(false);
+  const [customIndustryName, setCustomIndustryName] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [saveFeedback, setSaveFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -551,6 +562,7 @@ export function VoiceOnboardingWizard({
       });
       return;
     }
+
     if (employeePin !== employeePinConfirm) {
       setEmployeePinFeedback({
         type: "error",
@@ -578,13 +590,23 @@ export function VoiceOnboardingWizard({
     setEmployeePinSaving(true);
     setEmployeePinFeedback(null);
     try {
+      let normalizedPhone = employeePhone.trim();
+      if (normalizedPhone) {
+        const digits = normalizedPhone.replace(/\D/g, "");
+        if (digits.length === 10) {
+          normalizedPhone = `+1${digits}`;
+        } else if (digits.length === 11 && digits.startsWith("1")) {
+          normalizedPhone = `+${digits}`;
+        }
+      }
+
       const payload: Record<string, any> = {
         pin: employeePin,
         confirm_pin: employeePinConfirm,
         current_password: currentPassword.trim(),
       };
-      if (employeePhone.trim()) {
-        payload.phone_number = employeePhone.trim();
+      if (normalizedPhone) {
+        payload.phone_number = normalizedPhone;
       }
 
       // Backend accepts PUT /api/v1/voice/auth/pin for both creation and modification
@@ -598,7 +620,13 @@ export function VoiceOnboardingWizard({
         let errorMsg = fr ? "Échec de l'enregistrement du code NIP." : "Failed to save PIN.";
         try {
           const errData = await response.json();
-          if (errData?.detail) errorMsg = errData.detail;
+          if (errData?.error?.message) {
+            errorMsg = errData.error.message;
+          } else if (typeof errData?.detail === "string") {
+            errorMsg = errData.detail;
+          } else if (Array.isArray(errData?.error?.details) && errData.error.details[0]?.msg) {
+            errorMsg = errData.error.details[0].msg;
+          }
         } catch {
           errorMsg = `${errorMsg} (HTTP ${response.status})`;
         }
@@ -616,7 +644,8 @@ export function VoiceOnboardingWizard({
         const freshPinData = await verifyRes.json();
         const freshStatus = normalizePinStatus(freshPinData);
         setPinStatus(freshStatus);
-        if (freshStatus.configured) {
+        const isTrulyActive = freshStatus.configured && freshStatus.enabled && !freshStatus.is_locked;
+        if (isTrulyActive) {
           setEmployeePinFeedback({
             type: "success",
             message: fr
@@ -627,6 +656,13 @@ export function VoiceOnboardingWizard({
           setEmployeePinConfirm("");
           setCurrentPassword("");
           onRefreshStatus?.();
+        } else if (freshStatus.is_locked) {
+          setEmployeePinFeedback({
+            type: "error",
+            message: fr
+              ? "Le NIP est enregistré mais votre compte est verrouillé suite à de multiples tentatives erronées."
+              : "PIN is saved but your account is locked due to multiple failed attempts.",
+          });
         } else {
           setEmployeePinFeedback({
             type: "error",
@@ -653,36 +689,38 @@ export function VoiceOnboardingWizard({
     }
   };
 
-    const industryPresets = [
-      {
-        id: "auto",
-        title: fr ? "Automobile / Pièces" : "Automotive / Parts",
-        desc: fr ? "Pièces compatibles, stocks, devis, rendez-vous mécaniques." : "Compatible parts, inventory, quotes, mechanical bookings.",
-        image: "https://images.unsplash.com/photo-1619642751034-765dfdf7c58e?auto=format&fit=crop&w=600&q=80",
-        industryName: "Automobile / Pièces",
-      },
-      {
-        id: "medical",
-        title: fr ? "Médical / Clinique" : "Medical / Clinic",
-        desc: fr ? "Accueil, horaires, rendez-vous, informations administratives et transfert clinique." : "Welcome, hours, appointments, administrative info and clinic routing.",
-        image: "https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&w=600&q=80",
-        industryName: "Médical / Clinique",
-      },
-      {
-        id: "restaurant",
-        title: fr ? "Restauration" : "Restaurant",
-        desc: fr ? "Réservations, menus, allergènes, horaires et demandes spéciales." : "Reservations, menus, allergens, opening hours and special requests.",
-        image: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=600&q=80",
-        industryName: "Restauration",
-      },
-      {
-        id: "retail",
-        title: fr ? "Commerce / Retail" : "Retail / Store",
-        desc: fr ? "Catalogue, commandes, produits populaires et opportunités de vente." : "Catalog, orders, popular products and sales opportunities.",
-        image: "https://images.unsplash.com/photo-1556742049-0a67c5574f73?auto=format&fit=crop&w=600&q=80",
-        industryName: "Commerce / Retail",
-      },
+    const primaryIndustryIds = [
+      "auto",
+      "medical",
+      "restaurant",
+      "retail",
+      "transport",
+      "real_estate",
+      "hospitality",
+      "beauty",
     ];
+
+    const filteredIndustries = INDUSTRY_CATALOG.filter((item) => {
+      // When not expanded and no filter/search active, show the 8 primary industries
+      if (!isExpandedCatalog && !industrySearch.trim() && selectedCategory === "all") {
+        return primaryIndustryIds.includes(item.id);
+      }
+      if (selectedCategory !== "all" && item.category !== selectedCategory) {
+        return false;
+      }
+      if (industrySearch.trim()) {
+        const q = industrySearch.trim().toLowerCase();
+        const matchFr = item.nameFr.toLowerCase().includes(q) || item.descFr.toLowerCase().includes(q);
+        const matchEn = item.nameEn.toLowerCase().includes(q) || item.descEn.toLowerCase().includes(q);
+        return matchFr || matchEn;
+      }
+      return true;
+    });
+
+    const currentPrimaryIndustry =
+      INDUSTRY_CATALOG.find((ind) => ind.id === selectedIndustry) ||
+      INDUSTRY_CATALOG.find((ind) => ind.id === "retail") ||
+      INDUSTRY_CATALOG[0];
 
     const premiumImprovements = [
       {
@@ -1235,22 +1273,81 @@ export function VoiceOnboardingWizard({
           {openSection === 2 && (
             <div className="p-5 sm:p-6 border-t border-slate-100 dark:border-white/[0.06] space-y-6 animate-in fade-in duration-200">
               {/* UNE IA ADAPTÉE À CHAQUE INDUSTRIE */}
-              <div className="space-y-3 pb-4 border-b border-slate-100 dark:border-white/[0.06]">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm">🏢</span>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
-                    {fr ? "Une IA adaptée à chaque industrie" : "AI Tailored to Each Industry"}
-                  </h4>
+              <div className="space-y-4 pb-4 border-b border-slate-100 dark:border-white/[0.06]">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">🏢</span>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
+                      {fr ? "Une IA adaptée à chaque industrie" : "AI Tailored to Each Industry"}
+                    </h4>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {fr
+                      ? "Des conversations naturelles, des processus métiers intégrés et une expérience client sur mesure, quel que soit votre secteur."
+                      : "Natural conversations, integrated business processes, and tailored client experience across every sector."}
+                  </p>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  {industryPresets.map((ind) => {
-                    const isSelected = profile.industry?.toLowerCase().includes(ind.id) || selectedIndustry === ind.id;
+
+                {/* Search & Categories (Available when expanded or search is active) */}
+                {isExpandedCatalog && (
+                  <div className="space-y-2.5 pt-1 animate-in fade-in duration-200">
+                    <div className="relative">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={industrySearch}
+                        onChange={(e) => setIndustrySearch(e.target.value)}
+                        placeholder={
+                          fr
+                            ? "Rechercher parmi les 30 industries (ex: clinique, transport, restaurant, avocat...)"
+                            : "Search among 30 industries (e.g. clinic, logistics, restaurant, legal...)"
+                        }
+                        className="w-full pl-10 pr-4 py-2 rounded-xl text-xs bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white placeholder:text-slate-500 focus:outline-hidden focus:border-[#0076FF]"
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto pb-1">
+                      {INDUSTRY_CATEGORIES.map((cat) => (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => setSelectedCategory(cat.id)}
+                          className={`px-3 py-1 rounded-full text-[11px] font-semibold transition shrink-0 ${
+                            selectedCategory === cat.id
+                              ? "bg-[#0076FF] text-white shadow-xs"
+                              : "bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-transparent hover:border-slate-300 dark:hover:border-slate-700"
+                          }`}
+                        >
+                          {fr ? cat.labelFr : cat.labelEn}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Responsive Grid: 4 cols on desktop, 2 on tablet, 1 on mobile */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                  {filteredIndustries.map((ind) => {
+                    const isSelected = selectedIndustries.includes(ind.id) || selectedIndustry === ind.id;
+                    const title = fr ? ind.nameFr : ind.nameEn;
+                    const desc = fr ? ind.descFr : ind.descEn;
+
                     return (
                       <div
                         key={ind.id}
                         onClick={() => {
                           setSelectedIndustry(ind.id);
-                          setProfile((p) => ({ ...p, industry: ind.industryName }));
+                          setSelectedIndustries((prev) => {
+                            if (prev.includes(ind.id)) {
+                              return prev.length > 1 ? prev.filter((id) => id !== ind.id) : prev;
+                            } else {
+                              return [...prev, ind.id];
+                            }
+                          });
+                          setProfile((p) => ({
+                            ...p,
+                            industry: (ind.id === "custom" || ind.id === "other") && customIndustryName ? customIndustryName : (fr ? ind.nameFr : ind.nameEn),
+                          }));
                         }}
                         className={`group relative rounded-2xl overflow-hidden border cursor-pointer transition flex flex-col justify-between ${
                           isSelected
@@ -1261,26 +1358,100 @@ export function VoiceOnboardingWizard({
                         <div className="relative h-32 w-full overflow-hidden bg-slate-100 dark:bg-slate-800">
                           <img
                             src={ind.image}
-                            alt={ind.title}
+                            alt={title}
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).src = ind.fallbackSvg;
+                            }}
                             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                           />
                           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-                          <div className="absolute top-2.5 right-2.5 p-1 rounded-md bg-black/50 text-white/90">
-                            <Bookmark className="w-3.5 h-3.5" />
-                          </div>
+                          {isSelected ? (
+                            <div className="absolute top-2.5 right-2.5 p-1 rounded-md bg-[#0076FF] text-white shadow-xs">
+                              <Check className="w-3.5 h-3.5" />
+                            </div>
+                          ) : (
+                            <div className="absolute top-2.5 right-2.5 p-1 rounded-md bg-black/50 text-white/90">
+                              <Bookmark className="w-3.5 h-3.5" />
+                            </div>
+                          )}
                         </div>
                         <div className="p-3.5 space-y-1">
-                          <h5 className="font-extrabold text-xs text-slate-900 dark:text-white">
-                            {ind.title}
-                          </h5>
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
-                            {ind.desc}
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm shrink-0">{ind.icon}</span>
+                            <h5 className="font-extrabold text-xs text-slate-900 dark:text-white truncate">
+                              {title}
+                            </h5>
+                          </div>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug line-clamp-2">
+                            {desc}
                           </p>
                         </div>
                       </div>
                     );
                   })}
                 </div>
+
+                {/* + Voir plus d'industries Toggle Button */}
+                <div className="flex justify-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsExpandedCatalog((prev) => !prev)}
+                    className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full text-xs font-bold border border-slate-300 dark:border-slate-700 hover:border-blue-500 bg-white dark:bg-[#0F172A] text-slate-800 dark:text-slate-200 transition shadow-xs hover:shadow-sm"
+                  >
+                    {isExpandedCatalog ? (
+                      <>
+                        <ChevronUp className="w-4 h-4 text-[#0076FF]" />
+                        <span>{fr ? "- Réduire les secteurs" : "- Show fewer sectors"}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-[#0076FF] font-extrabold text-sm">+</span>
+                        <span>{fr ? "Voir plus d'industries" : "View more industries"}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Custom Industry Input if "custom" or "other" is selected */}
+                {(selectedIndustries.includes("custom") || selectedIndustries.includes("other") || selectedIndustry === "custom" || selectedIndustry === "other") && (
+                  <div className="p-4 rounded-2xl border border-blue-500/30 bg-blue-500/5 space-y-2 animate-in fade-in duration-200">
+                    <label className="block text-xs font-bold text-slate-900 dark:text-white">
+                      {fr ? "Précisez votre secteur d'activité personnalisé :" : "Specify your custom industry sector:"}
+                    </label>
+                    <input
+                      type="text"
+                      value={customIndustryName}
+                      onChange={(e) => {
+                        setCustomIndustryName(e.target.value);
+                        setProfile((p) => ({ ...p, industry: e.target.value }));
+                      }}
+                      placeholder={fr ? "Ex : Blanchisserie industrielle, Énergie renouvelable..." : "e.g. Industrial Laundry, Renewable Energy..."}
+                      className="w-full max-w-lg px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-hidden focus:border-[#0076FF]"
+                    />
+                  </div>
+                )}
+
+                {/* Voice Capability Adaptation Suggestions Panel */}
+                {currentPrimaryIndustry && (
+                  <div className="p-4 rounded-2xl border border-blue-500/20 bg-blue-500/5 dark:bg-blue-950/20 space-y-2.5">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-[#0076FF]" />
+                      <h5 className="text-xs font-bold text-slate-900 dark:text-white">
+                        {fr
+                          ? `Capacités vocales adaptées à votre secteur (${currentPrimaryIndustry.nameFr})`
+                          : `Voice capabilities tailored for your sector (${currentPrimaryIndustry.nameEn})`}
+                      </h5>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5">
+                      {(fr ? currentPrimaryIndustry.suggestedCapabilitiesFr : currentPrimaryIndustry.suggestedCapabilitiesEn).map((cap, i) => (
+                        <div key={i} className="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-300">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-[#0076FF] shrink-0 mt-0.5" />
+                          <span>{cap}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="border-b border-slate-100 dark:border-white/[0.06] pb-4">
@@ -1968,9 +2139,23 @@ export function VoiceOnboardingWizard({
                     </div>
                   </div>
 
-                  {pinStatus?.configured && (
-                    <span className="self-start sm:self-auto px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                      {fr ? "NIP actif et configuré" : "PIN active & configured"}
+                  {pinStatus?.configured ? (
+                    pinStatus.is_locked ? (
+                      <span className="self-start sm:self-auto px-3 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                        {fr ? "NIP verrouillé" : "PIN locked"}
+                      </span>
+                    ) : !pinStatus.enabled ? (
+                      <span className="self-start sm:self-auto px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                        {fr ? "NIP désactivé" : "PIN disabled"}
+                      </span>
+                    ) : (
+                      <span className="self-start sm:self-auto px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                        {fr ? "NIP actif et configuré" : "PIN active & configured"}
+                      </span>
+                    )
+                  ) : (
+                    <span className="self-start sm:self-auto px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                      {fr ? "NIP non configuré" : "PIN not configured"}
                     </span>
                   )}
                 </div>
@@ -2006,6 +2191,14 @@ export function VoiceOnboardingWizard({
                       placeholder="+15142955720"
                       value={employeePhone}
                       onChange={(e) => setEmployeePhone(e.target.value)}
+                      onBlur={() => {
+                        const raw = employeePhone.trim().replace(/\D/g, "");
+                        if (raw.length === 10) {
+                          setEmployeePhone(`+1${raw}`);
+                        } else if (raw.length === 11 && raw.startsWith("1")) {
+                          setEmployeePhone(`+${raw}`);
+                        }
+                      }}
                       className="w-full max-w-md px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden focus:border-[#0076FF]"
                     />
                   </div>

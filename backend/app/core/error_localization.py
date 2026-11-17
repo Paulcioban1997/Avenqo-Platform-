@@ -1006,7 +1006,61 @@ def http_error_message(
         or "confirmation" in detail_text
         or "déjà utilisée" in detail_text
         or "invitation introuvable" in detail_text
+        or "nip" in detail_text
+        or "pin" in detail_text
+        or "téléphone" in detail_text
+        or "telephone" in detail_text
+        or "phone" in detail_text
+        or "mot de passe actuel" in detail_text
+        or "current password" in detail_text
+        or "nontrivial" in detail_text
+        or "ambiguous" in detail_text
+        or "collaborateur" in detail_text
+        or "verrouillé" in detail_text
+        or "locked" in detail_text
     ):
+        if "choose a nontrivial voice pin" in detail_text:
+            return (
+                "Veuillez choisir un code NIP plus sécurisé (évitez les suites comme 123456 ou chiffres répétés)."
+                if locale.startswith("fr")
+                else "Please choose a more secure PIN (avoid sequential sequences like 123456 or repeated digits)."
+            )
+        if "pin and confirmation pin do not match" in detail_text:
+            return (
+                "Le code NIP et la confirmation ne correspondent pas."
+                if locale.startswith("fr")
+                else "PIN and confirmation PIN do not match."
+            )
+        if "pin must not be identical to your account password" in detail_text:
+            return (
+                "Le code NIP ne doit pas être identique à votre mot de passe de compte."
+                if locale.startswith("fr")
+                else "Voice PIN must not be identical to your account password."
+            )
+        if "phone identity is ambiguous" in detail_text:
+            return (
+                "Ce numéro de téléphone est déjà associé à un autre collaborateur de l'entreprise."
+                if locale.startswith("fr")
+                else "This phone number is already assigned to another staff member of the company."
+            )
+        if "a registered tenant principal phone is required" in detail_text:
+            return (
+                "Un numéro de téléphone portable autorisé est requis pour associer le NIP personnel à votre ligne."
+                if locale.startswith("fr")
+                else "An authorized mobile phone number is required to link your personal PIN."
+            )
+        if "principal is not an active tenant member" in detail_text:
+            return (
+                "Ce collaborateur n'est pas un membre actif de l'entreprise."
+                if locale.startswith("fr")
+                else "This user is not an active member of this company."
+            )
+        if "pin must contain 6 to 12 digits" in detail_text or "voice pin must contain 6 to 12 digits" in detail_text:
+            return (
+                "Le code NIP doit comporter de 6 à 12 chiffres."
+                if locale.startswith("fr")
+                else "PIN must contain 6 to 12 digits."
+            )
         return str(detail)
     if "crm schedule" in detail_text:
         return "Les horaires de cette entreprise sont configurés dans le module CRM. Modifiez-les dans le CRM." if locale.startswith("fr") else "Edit CRM schedules and dated exceptions in the CRM workspace."

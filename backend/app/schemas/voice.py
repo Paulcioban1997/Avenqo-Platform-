@@ -151,6 +151,24 @@ class VoicePinRequest(BaseModel):
     phone_number: str | None = None
     model_config = ConfigDict(extra="forbid")
 
+    @field_validator("phone_number", mode="before")
+    @classmethod
+    def normalize_phone_number(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        s = str(v).strip()
+        if not s:
+            return None
+        import re
+        cleaned = re.sub(r"[\s\(\)\-\.]", "", s)
+        if re.fullmatch(r"\d{10}", cleaned):
+            return f"+1{cleaned}"
+        if re.fullmatch(r"1\d{10}", cleaned):
+            return f"+{cleaned}"
+        if cleaned.startswith("+"):
+            return cleaned
+        return cleaned
+
     @model_validator(mode="after")
     def validate_pin_payload(self) -> VoicePinRequest:
         from backend.app.voice.auth import validate_voice_pin

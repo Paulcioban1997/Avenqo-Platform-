@@ -8,7 +8,9 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.app.core.error_localization import (
+    ERROR_MESSAGES,
     http_error_message,
+    resolve_api_locale,
     validation_error_message,
     validation_summary,
 )
@@ -49,16 +51,27 @@ def _clean_error_message(msg: str) -> str:
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     """Renvoie une réponse JSON uniforme pour les erreurs de validation."""
     accept_language = request.headers.get("accept-language")
-    details = [
-        {
-            "type": error.get("type", "validation_error"),
+    details = []
+    first_custom_message = None
+    for error in exc.errors():
+        err_type = str(error.get("type", "validation_error"))
+        cleaned_msg = _clean_error_message(str(error.get("msg", "")))
+        is_custom_error = err_type == "value_error" and cleaned_msg and not cleaned_msg.startswith("Value error")
+        if is_custom_error:
+            localized_msg = http_error_message(status.HTTP_422_UNPROCESSABLE_ENTITY, accept_language, cleaned_msg)
+            if localized_msg == ERROR_MESSAGES.get(resolve_api_locale(accept_language), {}).get("validation_failed"):
+                localized_msg = cleaned_msg
+            if not first_custom_message:
+                first_custom_message = localized_msg
+            msg_to_use = localized_msg
+        else:
+            msg_to_use = validation_error_message(err_type, accept_language)
+        details.append({
+            "type": err_type,
             "loc": list(error.get("loc", ())),
-            "msg": validation_error_message(
-                str(error.get("type", "validation_error")), accept_language
-            ),
-        }
-        for error in exc.errors()
-    ]
+            "msg": msg_to_use,
+        })
+    summary_message = first_custom_message or validation_summary(accept_language)
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         headers={"Content-Type": "application/json; charset=utf-8"},
@@ -66,7 +79,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "success": False,
             "error": {
                 "code": "VALIDATION_ERROR",
-                "message": validation_summary(accept_language),
+                "message": summary_message,
                 "details": details,
             },
             "request_id": getattr(request.state, "request_id", None),

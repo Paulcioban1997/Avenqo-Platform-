@@ -315,7 +315,28 @@ def set_user_voice_pin(
         db.commit()
     except (ValueError, PermissionError) as exc:
         db.rollback()
-        raise HTTPException(status_code=422, detail=str(exc) or "Voice credential setup is unavailable") from None
+        err_text = str(exc)
+        if "Phone identity is ambiguous" in err_text:
+            raise HTTPException(
+                status_code=422,
+                detail="Ce numéro de téléphone est déjà associé à un autre collaborateur de l'entreprise."
+            ) from None
+        if "A registered tenant principal phone is required" in err_text:
+            raise HTTPException(
+                status_code=400,
+                detail="Un numéro de téléphone portable autorisé est requis pour associer le NIP personnel à votre ligne."
+            ) from None
+        if "Principal is not an active tenant member" in err_text:
+            raise HTTPException(
+                status_code=403,
+                detail="Ce collaborateur n'est pas un membre actif de l'entreprise."
+            ) from None
+        if "Choose a nontrivial Voice PIN" in err_text:
+            raise HTTPException(
+                status_code=422,
+                detail="Veuillez choisir un code NIP plus sécurisé (les suites comme 123456 ou répétitions 111111 sont refusées)."
+            ) from None
+        raise HTTPException(status_code=422, detail=err_text or "Voice credential setup is unavailable") from None
     
     credential = db.scalar(select(VoiceCallerCredential).where(
         VoiceCallerCredential.company_id == identity.user.company_id,
