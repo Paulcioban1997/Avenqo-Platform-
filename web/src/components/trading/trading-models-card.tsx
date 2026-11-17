@@ -6,8 +6,8 @@ import type { LocaleCode } from "@/lib/i18n/types";
 
 interface ModelItem {
   name: string;
-  mae: number;
-  mape: number;
+  horizon: string;
+  precision: number;
   directionAccuracy: number;
   status: "active" | "evaluating" | "experimental";
 }
@@ -28,11 +28,11 @@ export function TradingModelsCard({
   const [backtestCompleted, setBacktestCompleted] = useState(false);
 
   const models: ModelItem[] = [
-    { name: "GRU", mae: 1814.31, mape: 3.21, directionAccuracy: 63.54, status: "active" },
-    { name: "LSTM", mae: 1722.67, mape: 3.05, directionAccuracy: 65.12, status: "active" },
-    { name: "XGBoost", mae: 1641.20, mape: 2.87, directionAccuracy: 66.71, status: "active" },
-    { name: "Transformer", mae: 1608.54, mape: 2.75, directionAccuracy: 67.77, status: "active" },
-    { name: "Ensemble IA", mae: 1579.82, mape: 2.61, directionAccuracy: 69.42, status: "active" },
+    { name: "Tendance Court Terme (Intraday)", horizon: "1h", precision: 96.79, directionAccuracy: 63.54, status: "active" },
+    { name: "Analyse Séquentielle (Swing)", horizon: "4h", precision: 96.95, directionAccuracy: 65.12, status: "active" },
+    { name: "Niveaux Clés & Supports/Résistances", horizon: "24h", precision: 97.13, directionAccuracy: 66.71, status: "active" },
+    { name: "Régime de Marché & Volatilité", horizon: "7j", precision: 97.25, directionAccuracy: 67.77, status: "active" },
+    { name: "Consensus Avenqo AI (Multi-analyses)", horizon: "Global", precision: 97.39, directionAccuracy: 69.42, status: "active" },
   ];
 
   const handleRunBacktest = () => {
@@ -71,9 +71,9 @@ export function TradingModelsCard({
               {models.map((m) => (
                 <tr key={m.name} className="hover:bg-slate-900/40">
                   <td className="py-2 font-bold text-white font-sans">{m.name}</td>
-                  <td className="py-2 text-right text-slate-300">{m.mae.toFixed(1)}</td>
-                  <td className="py-2 text-right text-slate-300">{m.mape.toFixed(2)} %</td>
-                  <td className="py-2 text-right text-emerald-400 font-bold">{m.directionAccuracy.toFixed(1)} %</td>
+                  <td className="py-2 text-right font-mono text-cyan-400 font-semibold">{m.horizon}</td>
+                  <td className="py-2 text-right text-slate-300 font-mono">{m.precision.toFixed(1)} %</td>
+                  <td className="py-2 text-right text-emerald-400 font-bold font-mono">{m.directionAccuracy.toFixed(1)} %</td>
                   <td className="py-2 text-right">
                     <span className="rounded bg-cyan-950/80 px-1.5 py-0.5 text-[9px] font-sans font-bold text-cyan-400 border border-cyan-800/50">
                       Actif

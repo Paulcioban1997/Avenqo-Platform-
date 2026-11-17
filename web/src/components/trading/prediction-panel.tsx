@@ -55,7 +55,7 @@ export function PredictionPanel({
             <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse"></span>
             {copy.predictionTitle} ({symbol})
           </h2>
-          <p className="text-[11px] text-slate-400">Modèles statistiques GRU, LSTM, XGBoost & Transformer</p>
+          <p className="text-[11px] text-slate-400">Moteurs d'analyse prédictive et détection de tendance Avenqo</p>
         </div>
 
         {/* Sélecteur d'horizon */}
