@@ -318,6 +318,6 @@ class ToolOrchestrator:
             for attempt in getattr(exc, "attempts", ()):
                 if not any(attempt is recorded for recorded in known):
                     known.append(replace(attempt, attempt_number=len(known) + 1))
-            exc.attempts = tuple(known)
+            setattr(exc, "attempts", tuple(known))
             raise
 
