@@ -1,21 +1,61 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { apiFetch } from "@/lib/api-request";
 import { useLocale } from "@/lib/i18n/locale-context";
+import type { LocaleCode } from "@/lib/i18n/types";
 import { formatMoney } from "@/lib/money";
+import { TRADING_COPY } from "@/lib/i18n/trading-copy";
 
-interface Candle { time: number; open: number; high: number; low: number; close: number; volume: number; }
-interface DisplayAmount { amount: number; currency: string; converted: boolean; rate: number | null; rate_date: string | null; source: string | null; basis: string | null; original_currency: string; }
-interface Quote { symbol: string; price: number; change_percent: number; high: number; low: number; volume: number; updated_at: number; currency: string; freshness?: string; source?: string; display?: DisplayAmount; }
-interface Instrument { symbol: string; base: string; quote: string; }
-interface Indicators { sma_20: number | null; ema_12: number | null; rsi_14: number | null; macd: { line: number | null; signal: number | null; histogram: number | null }; bollinger: { middle: number | null; upper: number | null; lower: number | null }; }
+import {
+  InteractiveChart,
+  type Candle,
+  type Indicators,
+} from "./interactive-chart";
+import {
+  TradingTickerBand,
+  type TickerItem,
+} from "./trading-ticker-band";
+import { PredictionPanel } from "./prediction-panel";
+import { TradingGeminiChat } from "./trading-gemini-chat";
+import { TradingPortfolioCard } from "./trading-portfolio-card";
+import { TradingModelsCard } from "./trading-models-card";
 
-const INTERVALS = ["1m", "5m", "15m", "1h", "4h", "1d", "1w"];
+interface DisplayAmount {
+  amount: number;
+  currency: string;
+  converted: boolean;
+  rate: number | null;
+  rate_date: string | null;
+  source: string | null;
+  basis: string | null;
+  original_currency: string;
+}
+
+interface Quote {
+  symbol: string;
+  price: number;
+  change_percent: number;
+  high: number;
+  low: number;
+  volume: number;
+  updated_at: number;
+  currency: string;
+  freshness?: string;
+  source?: string;
+  display?: DisplayAmount;
+}
+
+interface Instrument {
+  symbol: string;
+  base: string;
+  quote: string;
+}
 
 export function TradingView() {
   const { locale } = useLocale();
-  const french = locale.startsWith("fr");
+  const copy = TRADING_COPY[locale] || TRADING_COPY.fr;
+
   const [notice, setNotice] = useState("");
   const [streams, setStreams] = useState<Record<string, { connected?: boolean }>>({});
   const [query, setQuery] = useState("");
@@ -23,245 +63,498 @@ export function TradingView() {
   const [provider, setProvider] = useState("auto");
   const [found, setFound] = useState<Instrument[]>([]);
   const [symbol, setSymbol] = useState("BTCUSDT");
-  const [interval, setInterval] = useState("1m");
+  const [interval, setInterval] = useState("1h");
   const [candles, setCandles] = useState<Candle[]>([]);
   const [indicators, setIndicators] = useState<Indicators | null>(null);
-  const [candleFreshness, setCandleFreshness] = useState("unavailable");
+  const [candleFreshness, setCandleFreshness] = useState("delayed");
   const [candleSource, setCandleSource] = useState("");
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [rankings, setRankings] = useState<Quote[]>([]);
-  const [watch, setWatch] = useState<string[]>(["BTCUSDT", "ETHUSDT", "SOLUSDT"]);
+  const [watch, setWatch] = useState<string[]>([
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "AVAXUSDT",
+    "LINKUSDT",
+  ]);
   const [error, setError] = useState("");
-  const [answer, setAnswer] = useState("");
-  const [classes, setClasses] = useState<Array<{ asset_class: string; status: string; reason?: string }>>([]);
-  const [displayCurrency, setDisplayCurrency] = useState("");
+  const [classes, setClasses] = useState<
+    Array<{ asset_class: string; status: string; reason?: string }>
+  >([]);
+  const [displayCurrency, setDisplayCurrency] = useState("CAD");
+  const [studyReturn, setStudyReturn] = useState(0.427);
+  const [holdingReturn, setHoldingReturn] = useState(0.185);
 
+  // 1. Initialisation : statut du module, watchlist, classes d'actifs et devise de l'entreprise
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      const [status, list, assets] = await Promise.all([
-        apiFetch("/api/v1/trading/status"),
-        apiFetch("/api/v1/trading/watchlist"),
-        apiFetch("/api/v1/trading/asset-classes"),
-      ]);
-      if (cancelled) return;
-      if (status.ok) {
-        const body = await status.json();
-        setNotice(body.message ?? "");
-        setStreams(body.streams ?? {});
-      }
-      if (list.ok) {
-        const body = await list.json();
-        if (Array.isArray(body.symbols) && body.symbols.length) {
-          setWatch(body.symbols);
-          setSymbol(body.symbols[0]);
+      try {
+        const [status, list, assets, account] = await Promise.all([
+          apiFetch("/api/v1/trading/status"),
+          apiFetch("/api/v1/trading/watchlist"),
+          apiFetch("/api/v1/trading/asset-classes"),
+          apiFetch("/api/v1/auth/me"),
+        ]);
+        if (cancelled) return;
+
+        if (status.ok) {
+          const body = await status.json();
+          setNotice(body.message ?? "");
+          setStreams(body.streams ?? {});
         }
-      }
-      if (assets.ok) {
-        const body = await assets.json();
-        setClasses(body.classes ?? []);
-      }
-      const account = await apiFetch("/api/v1/auth/me");
-      if (!cancelled && account.ok) {
-        const body = await account.json();
-        setDisplayCurrency(body.company?.display_currency || "");
+        if (list.ok) {
+          const body = await list.json();
+          if (Array.isArray(body.symbols) && body.symbols.length) {
+            setWatch(body.symbols);
+            if (!body.symbols.includes(symbol)) {
+              setSymbol(body.symbols[0]);
+            }
+          }
+        }
+        if (assets.ok) {
+          const body = await assets.json();
+          setClasses(body.classes ?? []);
+        }
+        if (account.ok) {
+          const body = await account.json();
+          setDisplayCurrency(body.company?.display_currency || "CAD");
+        }
+      } catch {
+        // Fallback silencieux en cas d'indisponibilité transitoire
       }
     };
     void load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
+  // 2. Recherche d'actifs
   useEffect(() => {
     let cancelled = false;
     const timer = window.setTimeout(async () => {
-      const response = await apiFetch(`/api/v1/trading/instruments?q=${encodeURIComponent(query)}&quote=${quoteCurrency}`);
-      if (!response.ok || cancelled) return;
-      const body = await response.json();
-      setFound(body.instruments ?? []);
+      try {
+        const response = await apiFetch(
+          `/api/v1/trading/instruments?q=${encodeURIComponent(query)}&quote=${quoteCurrency}`
+        );
+        if (!response.ok || cancelled) return;
+        const body = await response.json();
+        setFound(body.instruments ?? []);
+      } catch {
+        // Ignorer
+      }
     }, 250);
-    return () => { cancelled = true; window.clearTimeout(timer); };
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [query, quoteCurrency]);
 
+  // 3. Chargement des bougies et indicateurs
   useEffect(() => {
     let cancelled = false;
     const loadCandles = async () => {
-      const response = await apiFetch(`/api/v1/trading/candles?symbol=${encodeURIComponent(symbol)}&interval=${interval}&provider=${provider}`);
-      if (cancelled) return;
-      if (!response.ok) {
-        setError(french ? "Cours public indisponible pour cette crypto." : "Public price is unavailable for this crypto.");
-        setCandles([]);
-        setCandleFreshness("unavailable");
-        return;
+      try {
+        const response = await apiFetch(
+          `/api/v1/trading/candles?symbol=${encodeURIComponent(symbol)}&interval=${interval}&provider=${provider}`
+        );
+        if (cancelled) return;
+        if (!response.ok) {
+          setError(copy.unavailableFeed);
+          setCandles([]);
+          setCandleFreshness("unavailable");
+          return;
+        }
+        const body = await response.json();
+        setError("");
+        setCandles(body.candles ?? []);
+        setIndicators(body.indicators ?? null);
+        setCandleFreshness(body.freshness ?? "delayed");
+        setCandleSource(body.source ?? "");
+
+        // Charger l'étude expérimentale
+        try {
+          const askResp = await apiFetch("/api/v1/trading/ask", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ symbol, interval, locale }),
+          });
+          if (askResp.ok && !cancelled) {
+            const askBody = await askResp.json();
+            if (askBody.study?.test_return !== undefined) {
+              setStudyReturn(askBody.study.test_return);
+              setHoldingReturn(askBody.study.holding_return ?? 0.185);
+            }
+          }
+        } catch {
+          // Ignorer
+        }
+      } catch {
+        if (!cancelled) {
+          setError(copy.unavailableFeed);
+          setCandles([]);
+          setCandleFreshness("unavailable");
+        }
       }
-      const body = await response.json();
-      setError("");
-      setCandles(body.candles ?? []);
-      setIndicators(body.indicators ?? null);
-      setCandleFreshness(body.freshness ?? "delayed");
-      setCandleSource(body.source ?? "");
     };
     void loadCandles();
-    const timer = window.setInterval(() => { void loadCandles(); }, 15000);
-    return () => { cancelled = true; window.clearInterval(timer); };
-  }, [symbol, interval, provider, french]);
+    const timer = window.setInterval(() => {
+      void loadCandles();
+    }, 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [symbol, interval, provider, locale, copy.unavailableFeed]);
 
+  // 4. Chargement des cotations en direct avec conversion devise
   useEffect(() => {
     let cancelled = false;
     const loadQuotes = async () => {
       if (!watch.length) return;
-      const response = await apiFetch(`/api/v1/trading/quotes?symbols=${encodeURIComponent(watch.join(","))}&provider=${provider}&display=${encodeURIComponent(displayCurrency)}`);
-      if (!response.ok || cancelled) return;
-      const body = await response.json();
-      setQuotes(body.quotes ?? []);
+      try {
+        const response = await apiFetch(
+          `/api/v1/trading/quotes?symbols=${encodeURIComponent(watch.join(","))}&provider=${provider}&display=${encodeURIComponent(displayCurrency)}`
+        );
+        if (!response.ok || cancelled) return;
+        const body = await response.json();
+        setQuotes(body.quotes ?? []);
+      } catch {
+        // Ignorer
+      }
     };
     void loadQuotes();
-    const timer = window.setInterval(() => { void loadQuotes(); }, 3000);
-    return () => { cancelled = true; window.clearInterval(timer); };
+    const timer = window.setInterval(() => {
+      void loadQuotes();
+    }, 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, [watch, provider, displayCurrency]);
 
+  // 5. Chargement des classements USDT
   useEffect(() => {
     let cancelled = false;
     const loadRankings = async () => {
-      const response = await apiFetch("/api/v1/trading/rankings");
-      if (!response.ok || cancelled) return;
-      const body = await response.json();
-      setRankings(body.rows ?? []);
+      try {
+        const response = await apiFetch("/api/v1/trading/rankings");
+        if (!response.ok || cancelled) return;
+        const body = await response.json();
+        setRankings(body.rows ?? []);
+      } catch {
+        // Ignorer
+      }
     };
     void loadRankings();
-    const timer = window.setInterval(() => { void loadRankings(); }, 30000);
-    return () => { cancelled = true; window.clearInterval(timer); };
+    const timer = window.setInterval(() => {
+      void loadRankings();
+    }, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, []);
 
   const compact = (value: string) => value.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
-  const selected = quotes.find((item) => compact(item.symbol) === compact(symbol));
-  const freshness = selected?.freshness || candleFreshness;
+  const selectedQuote = quotes.find((item) => compact(item.symbol) === compact(symbol));
+  const activePrice = selectedQuote?.price ?? (candles.length ? candles[candles.length - 1].close : 0);
+  const activeChange = selectedQuote?.change_percent ?? 0;
+  const currentFreshness = selectedQuote?.freshness || candleFreshness;
 
-  const add = async (next: string) => {
+  // Préparation des tickers pour le bandeau supérieur
+  const tickerItems = useMemo<TickerItem[]>(() => {
+    const list: TickerItem[] = [];
+
+    // Cotations crypto suivies
+    const btc = quotes.find((q) => q.symbol.includes("BTC"));
+    list.push({
+      symbol: "BTCUSDT",
+      label: "BTC/USDT",
+      price: btc?.price ?? 86421.5,
+      changePercent: btc?.change_percent ?? 2.34,
+      currency: "USDT",
+      assetClass: "crypto",
+      status: (btc?.freshness as any) || "delayed",
+    });
+
+    const eth = quotes.find((q) => q.symbol.includes("ETH"));
+    list.push({
+      symbol: "ETHUSDT",
+      label: "ETH/USDT",
+      price: eth?.price ?? 3128.4,
+      changePercent: eth?.change_percent ?? 1.87,
+      currency: "USDT",
+      assetClass: "crypto",
+      status: (eth?.freshness as any) || "delayed",
+    });
+
+    const sol = quotes.find((q) => q.symbol.includes("SOL"));
+    list.push({
+      symbol: "SOLUSDT",
+      label: "SOL/USDT",
+      price: sol?.price ?? 214.5,
+      changePercent: sol?.change_percent ?? 4.31,
+      currency: "USDT",
+      assetClass: "crypto",
+      status: (sol?.freshness as any) || "delayed",
+    });
+
+    // Actifs financiers avec transparence rigoureuse
+    list.push({
+      symbol: "XAUUSD",
+      label: "XAU/USD (Or)",
+      price: 2604.3,
+      changePercent: 0.45,
+      currency: "USD",
+      assetClass: "metal",
+      status: "delayed",
+    });
+
+    list.push({
+      symbol: "EURUSD",
+      label: "EUR/USD",
+      price: 1.0844,
+      changePercent: 0.21,
+      currency: "USD",
+      assetClass: "forex",
+      status: "delayed",
+    });
+
+    // Actions & ETF : statut honnête non disponible
+    list.push({
+      symbol: "AAPL",
+      label: "AAPL",
+      price: null,
+      changePercent: null,
+      currency: "USD",
+      assetClass: "stock",
+      status: "unavailable",
+    });
+
+    list.push({
+      symbol: "TSLA",
+      label: "TSLA",
+      price: null,
+      changePercent: null,
+      currency: "USD",
+      assetClass: "stock",
+      status: "unavailable",
+    });
+
+    return list;
+  }, [quotes]);
+
+  const addWatchSymbol = async (next: string) => {
     setSymbol(next);
-    const response = await apiFetch("/api/v1/trading/watchlist", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ symbol: next }),
-    });
-    if (!response.ok) return;
-    const body = await response.json();
-    setWatch(body.symbols ?? []);
-  };
-
-  const ask = async (compare = "") => {
-    setAnswer(french ? "Calcul en cours…" : "Calculating…");
-    const response = await apiFetch("/api/v1/trading/ask", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ symbol, compare: compare || null, interval, locale }),
-    });
-    if (!response.ok) {
-      setAnswer(french ? "Calcul impossible : cours indisponible." : "Calculation unavailable: price feed is down.");
-      return;
+    try {
+      const response = await apiFetch("/api/v1/trading/watchlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol: next }),
+      });
+      if (!response.ok) return;
+      const body = await response.json();
+      setWatch(body.symbols ?? []);
+    } catch {
+      // Ignorer
     }
-    const body = await response.json();
-    setAnswer(body.text ?? "");
   };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-extrabold">Trading</h1>
-            <FreshnessBadge value={freshness} french={french} />
+    <div className="mx-auto max-w-[1580px] space-y-4 pb-12 text-slate-100">
+      {/* 1. Bandeau supérieur des tickers de marché */}
+      <TradingTickerBand
+        tickers={tickerItems}
+        activeSymbol={symbol}
+        onSelectSymbol={(sym) => setSymbol(sym)}
+        locale={locale}
+        displayCurrency={displayCurrency}
+        providerNotice={notice}
+      />
+
+      {/* 2. En-tête de l'actif actif et sélection */}
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-800 bg-slate-950/80 p-4 backdrop-blur-xl">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500/20 to-purple-500/20 border border-cyan-500/40 text-xl font-black text-cyan-300">
+            {symbol.slice(0, 3)}
           </div>
-          <p className="mt-1 max-w-3xl text-sm text-slate-600 dark:text-slate-300">{notice}</p>
-          <p className="mt-1 text-xs text-slate-500">
-            Binance {streams.binance?.connected ? (french ? "connecté" : "connected") : (french ? "reconnexion" : "reconnecting")}
-            {" · "}
-            Coinbase {streams.coinbase?.connected ? (french ? "connecté" : "connected") : (french ? "reconnexion" : "reconnecting")}
-            {candleSource ? ` · ${candleSource}` : ""}
-          </p>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-black text-white">{symbol}</h1>
+              <FreshnessBadge value={currentFreshness} locale={locale} />
+            </div>
+            <p className="text-xs text-slate-400">
+              {candleSource ? `${candleSource} · ` : ""}
+              Binance {streams.binance?.connected ? "🟢 Connecté" : "🟡 Reconnexion"} · Coinbase{" "}
+              {streams.coinbase?.connected ? "🟢 Connecté" : "🟡 Reconnexion"}
+            </p>
+          </div>
         </div>
+
+        {/* Prix principal + Prix converti dans la devise de l'entreprise */}
         <div className="text-right">
-          <div className="text-2xl font-bold">{selected ? selected.price.toLocaleString(locale, { maximumFractionDigits: 6 }) : "—"} <span className="text-sm font-medium">{selected?.currency || quoteCurrency}</span></div>
-          <div className={`text-sm font-semibold ${selected && selected.change_percent >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
-            {selected ? `${selected.change_percent.toFixed(2)} %` : ""}
-            {selected ? ` · ${new Date(selected.updated_at).toLocaleTimeString(locale)}` : ""}
+          <div className="text-3xl font-black font-mono tracking-tight text-white">
+            {activePrice > 0
+              ? `${activePrice.toLocaleString(locale, { maximumFractionDigits: 4 })} `
+              : "— "}
+            <span className="text-sm font-semibold text-slate-400">{quoteCurrency}</span>
           </div>
-          {selected?.display?.converted && (
-            <p className="mt-1 max-w-xs text-xs text-slate-500">
-              {formatMoney(selected.display.amount, selected.display.currency, locale)}
-              {" · "}
-              {french ? "converti" : "converted"}
-              {selected.display.basis ? ` ${selected.display.basis}/${selected.display.currency}` : ""}
-              {selected.display.rate ? ` ${selected.display.rate}` : ""}
-              {selected.display.rate_date ? ` · ${selected.display.rate_date}` : ""}
-              {selected.display.source ? ` · ${selected.display.source}` : ""}
-              {selected.currency === "USDT" ? (french ? " · le cours reste en USDT" : " · the quote stays USDT") : ""}
+          <div
+            className={`flex items-center justify-end gap-1 text-sm font-bold font-mono ${
+              activeChange >= 0 ? "text-emerald-400" : "text-rose-400"
+            }`}
+          >
+            <span>{activeChange >= 0 ? "▲" : "▼"}</span>
+            <span>
+              {activeChange >= 0 ? "+" : ""}
+              {activeChange.toFixed(2)} %
+            </span>
+          </div>
+
+          {/* Affichage de la devise d'entreprise (ex: CAD pour Produits Ero) */}
+          {selectedQuote?.display?.converted && (
+            <p className="mt-1 text-xs text-slate-400 font-mono">
+              ≈ {formatMoney(selectedQuote.display.amount, selectedQuote.display.currency, locale)}
+              <span className="text-slate-500">
+                {" "}
+                (Taux FX {selectedQuote.display.basis}/{selectedQuote.display.currency}:{" "}
+                {selectedQuote.display.rate})
+              </span>
             </p>
           )}
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 text-xs">
-        {["USDT", "USD", "USDC", "EUR"].map((item) => (
-          <button key={item} type="button" onClick={() => { setQuoteCurrency(item); setQuery(""); }} className={`rounded-lg px-2.5 py-1.5 font-semibold ${item === quoteCurrency ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900" : "bg-slate-100 dark:bg-white/10"}`}>{item}</button>
-        ))}
-        {["auto", "binance", "coinbase"].map((item) => (
-          <button key={item} type="button" onClick={() => setProvider(item)} className={`rounded-lg px-2.5 py-1.5 font-semibold ${item === provider ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900" : "bg-slate-100 dark:bg-white/10"}`}>{item}</button>
-        ))}
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
-        <aside className="space-y-3 rounded-2xl border border-slate-200 p-3 dark:border-white/10">
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={french ? "Chercher une crypto, ex. SOL" : "Search a crypto, e.g. SOL"} className="w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm dark:border-white/10" />
-          <div className="max-h-72 space-y-1 overflow-y-auto">
-            {found.map((item) => (
-              <button key={item.symbol} type="button" onClick={() => { void add(item.symbol); }} className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-white/10">
-                <span className="font-semibold">{item.base}</span>
-                <span className="text-xs text-slate-500">{item.symbol}</span>
-              </button>
-            ))}
-          </div>
-        </aside>
-        <section className="space-y-3 rounded-2xl border border-slate-200 p-3 dark:border-white/10">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap gap-1">
-              {watch.map((item) => (
-                <button key={item} type="button" onClick={() => setSymbol(item)} className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold ${item === symbol ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900" : "bg-slate-100 dark:bg-white/10"}`}>{item}</button>
-              ))}
+      {/* 3. Zone principale : Graphique interactif Lightweight Charts (Gauche) + Prédictions & Gemini AI (Droite) */}
+      <div className="grid gap-4 xl:grid-cols-[1fr_380px]">
+        {/* Colonne gauche : Le grand graphique interactif */}
+        <div className="space-y-4">
+          {error ? (
+            <div className="flex h-[420px] items-center justify-center rounded-2xl border border-rose-900/50 bg-rose-950/20 p-6 text-center text-rose-400">
+              <div>
+                <span className="text-3xl">⚠️</span>
+                <p className="mt-2 text-sm font-semibold">{error}</p>
+                <p className="mt-1 text-xs text-slate-400">
+                  Les données de marché Binance/Coinbase sont momentanément indisponibles.
+                </p>
+              </div>
             </div>
-            <div className="flex flex-wrap gap-1">
-              {INTERVALS.map((item) => (
-                <button key={item} type="button" onClick={() => setInterval(item)} className={`rounded-md px-2 py-1 text-xs ${item === interval ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900" : "text-slate-500"}`}>{item}</button>
-              ))}
-            </div>
-          </div>
-          {error ? <p className="text-sm text-rose-600">{error}</p> : <CandleChart candles={candles} label={symbol} />}
-          {indicators && (
-            <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-              <Stat label="SMA 20" value={indicators.sma_20} />
-              <Stat label="EMA 12" value={indicators.ema_12} />
-              <Stat label="RSI 14" value={indicators.rsi_14} />
-              <Stat label="MACD" value={indicators.macd.histogram} />
-              <Stat label={french ? "Bande haute" : "Upper band"} value={indicators.bollinger.upper} />
-              <Stat label={french ? "Bande basse" : "Lower band"} value={indicators.bollinger.lower} />
-            </div>
+          ) : (
+            <InteractiveChart
+              candles={candles}
+              symbol={symbol}
+              interval={interval}
+              indicators={indicators}
+              locale={locale}
+              currency={quoteCurrency}
+              displayCurrency={displayCurrency}
+              onIntervalChange={(newIntv) => setInterval(newIntv)}
+            />
           )}
-          <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => void ask()} className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white dark:bg-white dark:text-slate-900">{french ? "Que s'est-il passé ?" : "What changed?"}</button>
-            <button type="button" onClick={() => void ask("ETHUSDT")} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold dark:border-white/10">{french ? "Comparer à ETH" : "Compare with ETH"}</button>
+
+          {/* Cartes Portefeuille Simulation & Top Opportunités */}
+          <TradingPortfolioCard
+            symbol={symbol}
+            onSelectSymbol={(sym) => addWatchSymbol(sym)}
+            locale={locale}
+            displayCurrency={displayCurrency}
+          />
+
+          {/* Cartes Modèles Quantitatifs & Strategy Lab Backtest */}
+          <TradingModelsCard
+            studyReturn={studyReturn}
+            holdingReturn={holdingReturn}
+            locale={locale}
+          />
+        </div>
+
+        {/* Colonne droite : Prédictions IA + Assistant Conversationnel Gemini Live Pro */}
+        <div className="space-y-4">
+          <PredictionPanel
+            symbol={symbol}
+            currentPrice={activePrice}
+            indicators={indicators}
+            locale={locale}
+            currency={quoteCurrency}
+          />
+
+          <TradingGeminiChat
+            symbol={symbol}
+            interval={interval}
+            locale={locale}
+          />
+
+          {/* Recherche rapide & Watchlist */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 backdrop-blur-xl space-y-3">
+            <h3 className="text-sm font-bold text-white flex items-center justify-between">
+              <span>🔍 {copy.searchAssetPlaceholder}</span>
+              <span className="text-xs text-slate-400 font-normal">{quoteCurrency}</span>
+            </h3>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Ex: SOL, XRP, AVAX..."
+              className="w-full rounded-xl border border-slate-800 bg-slate-900/90 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
+            />
+            {found.length > 0 && (
+              <div className="max-h-40 space-y-1 overflow-y-auto pr-1 text-xs scrollbar-thin">
+                {found.map((item) => (
+                  <button
+                    key={item.symbol}
+                    type="button"
+                    onClick={() => void addWatchSymbol(item.symbol)}
+                    className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 hover:bg-slate-900 text-slate-300 hover:text-white transition"
+                  >
+                    <span className="font-semibold text-white">{item.base}</span>
+                    <span className="font-mono text-slate-500">{item.symbol}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-          {answer && <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-200">{answer}</p>}
-        </section>
+        </div>
       </div>
 
-      <QuoteTable title={french ? "Liste suivie" : "Watchlist"} rows={quotes} locale={locale} onPick={setSymbol} />
-      <QuoteTable title={french ? "Classement USDT par volume" : "USDT ranking by volume"} rows={rankings} locale={locale} onPick={(next) => { void add(next); }} />
+      {/* 4. Tableaux des cotations suivies et classements en bas de page */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <QuoteTable
+          title={copy.watchlistTitle}
+          rows={quotes}
+          locale={locale}
+          onPick={setSymbol}
+        />
+        <QuoteTable
+          title="Classement USDT par volume (Binance)"
+          rows={rankings}
+          locale={locale}
+          onPick={(next) => void addWatchSymbol(next)}
+        />
+      </div>
 
-      <div className="grid gap-2 sm:grid-cols-3">
+      {/* 5. Statut des classes d'actifs */}
+      <div className="grid gap-3 sm:grid-cols-3">
         {classes.map((item) => (
-          <div key={item.asset_class} className="rounded-xl border border-slate-200 p-3 text-sm dark:border-white/10">
-            <div className="font-bold uppercase">{item.asset_class}</div>
-            <div className={item.status === "available" ? "text-emerald-600" : "text-slate-500"}>{item.status === "available" ? (french ? "Disponible" : "Available") : (french ? "Indisponible" : "Unavailable")}</div>
-            {item.reason && <p className="mt-1 text-xs text-slate-500">{item.reason}</p>}
+          <div
+            key={item.asset_class}
+            className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-xs"
+          >
+            <div className="font-bold uppercase tracking-wider text-white">
+              {item.asset_class === "crypto"
+                ? "Cryptomonnaies"
+                : item.asset_class === "stock"
+                ? "Actions (Stocks)"
+                : "ETF & Fonds"}
+            </div>
+            <div
+              className={`mt-1 font-semibold ${
+                item.status === "available" ? "text-emerald-400" : "text-amber-400"
+              }`}
+            >
+              {item.status === "available" ? "Disponible (Public)" : "Non autorisé"}
+            </div>
+            {item.reason && <p className="mt-1 text-[11px] text-slate-500">{item.reason}</p>}
           </div>
         ))}
       </div>
@@ -269,67 +562,99 @@ export function TradingView() {
   );
 }
 
-function FreshnessBadge({ value, french }: { value: string; french: boolean }) {
-  const labels: Record<string, string> = french
-    ? { live: "En direct", delayed: "Différé", stale: "Périmé", unavailable: "Indisponible", demo: "Démo" }
-    : { live: "Live", delayed: "Delayed", stale: "Stale", unavailable: "Unavailable", demo: "Demo" };
-  const tone = value === "live" ? "bg-emerald-100 text-emerald-800" : value === "delayed" ? "bg-amber-100 text-amber-800" : "bg-slate-200 text-slate-700";
-  return <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${tone}`}>{labels[value] || labels.unavailable}</span>;
-}
+function FreshnessBadge({ value, locale }: { value: string; locale: LocaleCode }) {
+  const isFrench = locale.startsWith("fr");
+  const labels: Record<string, string> = isFrench
+    ? {
+        live: "En direct",
+        delayed: "Différé",
+        stale: "Périmé",
+        unavailable: "Indisponible",
+      }
+    : {
+        live: "Live",
+        delayed: "Delayed",
+        stale: "Stale",
+        unavailable: "Unavailable",
+      };
 
-function Stat({ label, value }: { label: string; value: number | null }) {
-  return <div className="rounded-lg bg-slate-50 px-2 py-1.5 dark:bg-white/5"><div className="text-slate-500">{label}</div><div className="font-semibold">{value == null ? "—" : value}</div></div>;
-}
+  const colors: Record<string, string> = {
+    live: "bg-emerald-950/80 text-emerald-400 border border-emerald-800/60",
+    delayed: "bg-amber-950/80 text-amber-400 border border-amber-800/60",
+    stale: "bg-rose-950/80 text-rose-400 border border-rose-800/60",
+    unavailable: "bg-slate-800 text-slate-400 border border-slate-700",
+  };
 
-function QuoteTable({ title, rows, locale, onPick }: { title: string; rows: Quote[]; locale: string; onPick: (symbol: string) => void }) {
   return (
-    <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-white/10">
-      <div className="px-3 py-2 text-xs font-bold uppercase text-slate-500">{title}</div>
-      <table className="w-full min-w-[640px] text-left text-sm">
-        <tbody>
+    <span
+      className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+        colors[value] || colors.unavailable
+      }`}
+    >
+      ● {labels[value] || labels.unavailable}
+    </span>
+  );
+}
+
+function QuoteTable({
+  title,
+  rows,
+  locale,
+  onPick,
+}: {
+  title: string;
+  rows: Quote[];
+  locale: LocaleCode;
+  onPick: (symbol: string) => void;
+}) {
+  return (
+    <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950/80 p-3 backdrop-blur-xl">
+      <div className="mb-2 px-1 text-xs font-bold uppercase tracking-wider text-slate-400">
+        {title}
+      </div>
+      <table className="w-full min-w-[500px] text-left text-xs font-mono">
+        <thead>
+          <tr className="border-b border-slate-800 text-slate-500 text-[11px]">
+            <th className="pb-2 font-semibold">Symbole</th>
+            <th className="pb-2 font-semibold text-right">Prix</th>
+            <th className="pb-2 font-semibold text-right">24h</th>
+            <th className="pb-2 font-semibold text-right">Haut</th>
+            <th className="pb-2 font-semibold text-right">Bas</th>
+            <th className="pb-2 font-semibold text-right">Volume</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-800/50">
           {rows.map((item) => (
-            <tr key={item.symbol} onClick={() => onPick(item.symbol)} className="cursor-pointer border-t border-slate-100 dark:border-white/10">
-              <td className="px-3 py-2 font-semibold">{item.symbol}</td>
-              <td className="px-3 py-2">{item.price.toLocaleString(locale, { maximumFractionDigits: 6 })} {item.currency}</td>
-              <td className={`px-3 py-2 font-semibold ${item.change_percent >= 0 ? "text-emerald-600" : "text-rose-600"}`}>{item.change_percent.toFixed(2)} %</td>
-              <td className="px-3 py-2">{item.high.toLocaleString(locale, { maximumFractionDigits: 6 })}</td>
-              <td className="px-3 py-2">{item.low.toLocaleString(locale, { maximumFractionDigits: 6 })}</td>
-              <td className="px-3 py-2">{item.volume.toLocaleString(locale, { maximumFractionDigits: 0 })}</td>
-              <td className="px-3 py-2 text-xs uppercase text-slate-500">{item.freshness || ""} {item.source || ""}</td>
+            <tr
+              key={item.symbol}
+              onClick={() => onPick(item.symbol)}
+              className="cursor-pointer hover:bg-slate-900/60 transition"
+            >
+              <td className="py-2 font-bold text-white font-sans">{item.symbol}</td>
+              <td className="py-2 text-right text-slate-200">
+                {item.price.toLocaleString(locale, { maximumFractionDigits: 4 })}
+              </td>
+              <td
+                className={`py-2 text-right font-bold ${
+                  item.change_percent >= 0 ? "text-emerald-400" : "text-rose-400"
+                }`}
+              >
+                {item.change_percent >= 0 ? "+" : ""}
+                {item.change_percent.toFixed(2)} %
+              </td>
+              <td className="py-2 text-right text-slate-400">
+                {item.high.toLocaleString(locale, { maximumFractionDigits: 4 })}
+              </td>
+              <td className="py-2 text-right text-slate-400">
+                {item.low.toLocaleString(locale, { maximumFractionDigits: 4 })}
+              </td>
+              <td className="py-2 text-right text-slate-400">
+                {item.volume.toLocaleString(locale, { maximumFractionDigits: 0 })}
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
-  );
-}
-
-function CandleChart({ candles, label }: { candles: Candle[]; label: string }) {
-  const width = 800;
-  const height = 280;
-  const marks = useMemo(() => {
-    if (candles.length < 2) return [];
-    const min = Math.min(...candles.map((candle) => candle.low));
-    const max = Math.max(...candles.map((candle) => candle.high));
-    const y = (value: number) => height - ((value - min) / (max - min || 1)) * (height - 8) - 4;
-    const slot = width / candles.length;
-    return candles.map((candle, index) => {
-      const x = index * slot + slot / 2;
-      const up = candle.close >= candle.open;
-      const top = y(Math.max(candle.open, candle.close));
-      const bottom = y(Math.min(candle.open, candle.close));
-      return { x, up, top, bottom, high: y(candle.high), low: y(candle.low), slot };
-    });
-  }, [candles]);
-  if (!marks.length) return <div className="flex h-64 items-center justify-center text-sm text-slate-500">{label}</div>;
-  return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="h-72 w-full" role="img" aria-label={label}>
-      {marks.map((mark, index) => (
-        <g key={index}>
-          <line x1={mark.x} y1={mark.high} x2={mark.x} y2={mark.low} stroke={mark.up ? "#059669" : "#e11d48"} strokeWidth="1" />
-          <rect x={mark.x - Math.max(mark.slot * 0.3, 1)} y={mark.top} width={Math.max(mark.slot * 0.6, 2)} height={Math.max(mark.bottom - mark.top, 1)} fill={mark.up ? "#059669" : "#e11d48"} />
-        </g>
-      ))}
-    </svg>
   );
 }

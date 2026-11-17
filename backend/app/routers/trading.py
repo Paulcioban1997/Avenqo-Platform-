@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from backend.app.config.settings import Settings, get_settings
 from backend.app.core.permission_grants import effective_permissions
 from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity
@@ -36,6 +37,7 @@ class AskRequest(BaseModel):
     compare: str | None = Field(default=None, max_length=32)
     interval: str = "1h"
     locale: str = "fr"
+    question: str | None = Field(default=None, max_length=1000)
 
 
 def require_trading(
@@ -142,16 +144,85 @@ def trading_asset_classes(identity: CurrentIdentity = Depends(require_trading)) 
     return asset_classes()
 
 
+async def _explain_with_gemini(
+    question: str,
+    brief: dict,
+    symbol: str,
+    interval: str,
+    locale: str,
+    settings: Settings,
+) -> str:
+    if not settings.google_ai_api_key:
+        return brief.get("text", "")
+
+    indicators = brief.get("indicators", {})
+    source = brief.get("source", "Binance/Coinbase")
+    freshness = brief.get("freshness", "delayed")
+    change = brief.get("change_percent", 0.0)
+
+    system_instruction = (
+        "Tu es l'analyste quantitatif de marché et assistant financier Avenqo Trading AI. "
+        "RÈGLES STRICTES :\n"
+        "1. N'invente AUCUN prix, aucun faux Sharpe ratio ni fausse statistique. Fonde-toi exclusivement sur les métriques factuelles fournies.\n"
+        "2. Explique avec clarté technique les concepts (RSI, MACD, moyennes mobiles, volatilité, supports/résistances).\n"
+        "3. Rappelle qu'Avenqo ne fournit pas de conseil en investissement ni d'ordres automatisés.\n"
+        f"4. Réponds dans la langue demandée ({locale})."
+    )
+
+    prompt = (
+        f"Actif : {symbol}\n"
+        f"Intervalle : {interval}\n"
+        f"Source : {source} ({freshness})\n"
+        f"Variation : {change:.2f}%\n"
+        f"Indicateurs :\n"
+        f"- SMA 20 : {indicators.get('sma_20')}\n"
+        f"- EMA 12 : {indicators.get('ema_12')}\n"
+        f"- RSI 14 : {indicators.get('rsi_14')}\n"
+        f"- MACD Histogramme : {indicators.get('macd', {}).get('histogram')}\n"
+        f"- Bandes de Bollinger : {indicators.get('bollinger', {}).get('middle')} "
+        f"(haute: {indicators.get('bollinger', {}).get('upper')}, basse: {indicators.get('bollinger', {}).get('lower')})\n\n"
+        f"Question : {question}\n"
+    )
+
+    try:
+        from backend.app.ai.llm.gemini_provider import GeminiProvider
+
+        model_name = settings.gemini_model or "gemini-2.5-flash"
+        provider = GeminiProvider(
+            api_key=settings.google_ai_api_key,
+            model=model_name,
+            temperature=0.2,
+            max_tokens=600,
+            request_timeout_seconds=10.0,
+        )
+        generation = await provider.generate(system_instruction=system_instruction, prompt=prompt)
+        if generation.content and generation.content.strip():
+            return generation.content.strip()
+    except Exception:
+        pass
+    return brief.get("text", "")
+
+
 @router.post("/ask")
-def trading_ask(
+async def trading_ask(
     payload: AskRequest,
     identity: CurrentIdentity = Depends(require_trading),
+    settings: Settings = Depends(get_settings),
 ) -> dict:
     del identity
     try:
         brief = factual_brief(payload.symbol, payload.interval, payload.compare, payload.locale)
         series = candles(payload.symbol, payload.interval, 200)
         brief["study"] = experimental_study([row["close"] for row in series["candles"]])
+        if payload.question and payload.question.strip():
+            brief["text"] = await _explain_with_gemini(
+                payload.question.strip(),
+                brief,
+                payload.symbol,
+                payload.interval,
+                payload.locale,
+                settings,
+            )
         return brief
     except (KeyError, ValueError, MarketUnavailable) as exc:
         raise _market_error(exc) from exc
