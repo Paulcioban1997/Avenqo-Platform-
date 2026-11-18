@@ -74,19 +74,24 @@ class DatasetImportService:
         tenant: TenantContext,
         module_code: str,
         filename: str,
-        content: bytes,
+        content: bytes | Path,
     ) -> Dataset:
         if module_code not in MODULES_BY_CODE:
             raise DatasetImportError("Module Avenqo inconnu")
         self._quota.check_dataset_quota(tenant)
-        self._quota.check_storage_quota(tenant, incoming_bytes=len(content) if content else 0)
+        incoming_len = content.stat().st_size if isinstance(content, Path) else (len(content) if content else 0)
+        self._quota.check_storage_quota(tenant, incoming_bytes=incoming_len)
         if not filename.lower().endswith(".csv"):
             raise DatasetImportError("Seuls les fichiers CSV sont acceptés à cette étape")
         max_upload_bytes = self._quota.max_upload_bytes(tenant, self._max_upload_bytes)
-        if not content or len(content) > max_upload_bytes:
+        if incoming_len == 0 or incoming_len > max_upload_bytes:
             raise DatasetImportError("Fichier vide ou taille maximale dépassée")
         try:
-            rows = list(csv.DictReader(StringIO(content.decode("utf-8-sig"))))
+            if isinstance(content, Path):
+                with open(content, "r", encoding="utf-8-sig") as f:
+                    rows = list(csv.DictReader(f))
+            else:
+                rows = list(csv.DictReader(StringIO(content.decode("utf-8-sig"))))
         except (UnicodeDecodeError, csv.Error) as exc:
             raise DatasetImportError("CSV invalide ou encodage non supporté") from exc
         if not rows or not rows[0]:

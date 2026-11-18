@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import re
+import shutil
 from tempfile import NamedTemporaryFile
 from uuid import UUID
 
@@ -21,7 +22,7 @@ class ArtifactService:
         tenant: TenantContext,
         dataset_id: UUID,
         filename: str,
-        content: bytes,
+        content: bytes | Path,
     ) -> Path:
         safe_name = _SAFE_FILENAME.sub("_", Path(filename).name) or "dataset.csv"
         directory = self._root / str(tenant.company_id) / "datasets" / str(dataset_id)
@@ -32,12 +33,14 @@ class ArtifactService:
         temporary_path: Path | None = None
         try:
             with NamedTemporaryFile(dir=directory, delete=False) as temporary:
-                temporary.write(content)
-                temporary.flush()
                 temporary_path = Path(temporary.name)
+            if isinstance(content, Path):
+                shutil.copyfile(content, temporary_path)
+            else:
+                temporary_path.write_bytes(content)
             temporary_path.replace(destination)
         finally:
-            if temporary_path is not None:
+            if temporary_path is not None and temporary_path.exists():
                 temporary_path.unlink(missing_ok=True)
         return destination
 
@@ -47,7 +50,10 @@ class ArtifactService:
 
     def get_tenant_storage_bytes(self, tenant: TenantContext | UUID | str) -> int:
         """Calcule la taille totale en octets de tous les fichiers stockés pour ce tenant."""
-        company_id = str(tenant.company_id if hasattr(tenant, "company_id") else tenant)
+        if isinstance(tenant, TenantContext):
+            company_id = str(tenant.company_id)
+        else:
+            company_id = str(tenant)
         total = 0
         tenant_dirs = [
             self._root / company_id,

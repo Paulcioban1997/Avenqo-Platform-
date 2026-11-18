@@ -11,8 +11,10 @@ une capacité métier sur un dataset déjà importé (voir
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 import shutil
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -20,6 +22,8 @@ from sqlalchemy.orm import Session
 from backend.app.models import Company, Dataset
 from payments.plans import data_import_limits_for
 from shared.ai_engine.contracts import TenantContext
+
+logger = logging.getLogger(__name__)
 
 
 class DataImportQuotaExceeded(ValueError):
@@ -37,7 +41,12 @@ class DataImportStorageUnavailableError(DataImportQuotaExceeded):
 class DataImportPolicy:
     """Résout les limites CORE d'import de données pour le plan d'un tenant."""
 
-    def __init__(self, session: Session, artifact_root: Path | None = None) -> None:
+    def __init__(
+        self,
+        session: Session,
+        artifact_root: Path | None = None,
+        s3_storage: Any | None = None,
+    ) -> None:
         self._session = session
         if artifact_root is None:
             try:
@@ -47,24 +56,46 @@ class DataImportPolicy:
                 self._artifact_root = Path("./artifacts").resolve()
         else:
             self._artifact_root = Path(artifact_root).resolve()
+        self._s3_storage = s3_storage
 
     def current_storage_bytes(self, tenant: TenantContext) -> int:
-        """Calcule la consommation de stockage réelle en octets pour ce tenant."""
-        company_id = str(tenant.company_id)
-        total = 0
-        tenant_dirs = [
-            self._artifact_root / company_id,
-            self._artifact_root / "company_datasets" / company_id,
-        ]
-        for t_dir in tenant_dirs:
-            if t_dir.exists() and t_dir.is_dir():
-                for p in t_dir.rglob("*"):
-                    if p.is_file():
-                        try:
-                            total += p.stat().st_size
-                        except OSError:
-                            pass
-        return total
+        """Calcule la consommation de stockage réelle en octets pour ce tenant de manière unifiée sans double comptage."""
+        company_id = tenant.company_id
+        company_id_str = str(company_id)
+
+        # 1. Objets S3 (si configurés et client opérationnel)
+        canonical_objects: dict[str, int] = {}
+        if self._s3_storage is not None and getattr(self._s3_storage, "_s3", None) is not None:
+            try:
+                s3_objs = self._s3_storage.list_tenant_objects(company_id)
+                canonical_objects.update(s3_objs)
+            except Exception as exc:
+                logger.warning("Échec listing objets S3 pour tenant %s: %s", company_id, exc)
+
+        # 2. Objets locaux sous company_datasets (sans double-comptage avec S3)
+        local_company_dir = (self._artifact_root / "company_datasets" / company_id_str).resolve()
+        if local_company_dir.exists() and local_company_dir.is_dir():
+            for p in local_company_dir.rglob("*"):
+                if p.is_file():
+                    try:
+                        rel = str(p.relative_to(local_company_dir)).replace("\\", "/")
+                        if rel not in canonical_objects:
+                            canonical_objects[rel] = p.stat().st_size
+                    except OSError:
+                        pass
+
+        # 3. Artefacts directs sous artifact_root / company_id (legacy ou imports directs)
+        direct_artifact_bytes = 0
+        direct_dir = (self._artifact_root / company_id_str).resolve()
+        if direct_dir.exists() and direct_dir.is_dir():
+            for p in direct_dir.rglob("*"):
+                if p.is_file():
+                    try:
+                        direct_artifact_bytes += p.stat().st_size
+                    except OSError:
+                        pass
+
+        return sum(canonical_objects.values()) + direct_artifact_bytes
 
     def max_upload_bytes(self, tenant: TenantContext, global_ceiling_bytes: int | None = None) -> int:
         """Le plan définit la taille maximale d'un fichier à charger."""

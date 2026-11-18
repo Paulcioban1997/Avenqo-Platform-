@@ -43,16 +43,17 @@ class CompanyDatasetLoader:
     def __init__(self, max_upload_bytes: int) -> None:
         self._max_upload_bytes = max_upload_bytes
 
-    def load(self, filename: str, content: bytes) -> LoadedDataset:
+    def load(self, filename: str, content: bytes | Path) -> LoadedDataset:
         extension = Path(filename).suffix.lower()
         if extension not in SUPPORTED_EXTENSIONS:
             raise UnsupportedDatasetFormat(
                 f"Format '{extension or 'inconnu'}' non supporté. "
                 f"Formats acceptés : {', '.join(SUPPORTED_EXTENSIONS)}."
             )
-        if not content:
+        file_size = content.stat().st_size if isinstance(content, Path) else len(content)
+        if file_size == 0:
             raise EmptyDataset("Le fichier envoyé est vide.")
-        if len(content) > self._max_upload_bytes:
+        if file_size > self._max_upload_bytes:
             raise DatasetTooLarge(
                 f"Le fichier dépasse la taille maximale autorisée "
                 f"({self._max_upload_bytes} octets)."
@@ -83,43 +84,53 @@ class CompanyDatasetLoader:
         normalized = tuple({key: self._coerce(value) for key, value in row.items()} for row in rows)
         return LoadedDataset(rows=normalized, columns=columns, source_format=extension.lstrip("."))
 
-    def _load_csv(self, content: bytes) -> list[dict[str, Any]]:
+    def _load_csv(self, content: bytes | Path) -> list[dict[str, Any]]:
         try:
-            text = content.decode("utf-8-sig")
-            rows = list(csv.DictReader(StringIO(text)))
+            if isinstance(content, Path):
+                with open(content, "r", encoding="utf-8-sig") as f:
+                    rows = list(csv.DictReader(f))
+            else:
+                text = content.decode("utf-8-sig")
+                rows = list(csv.DictReader(StringIO(text)))
         except (UnicodeDecodeError, csv.Error) as exc:
             raise InvalidDatasetFile("CSV invalide ou encodage non supporté.") from exc
         if not rows or rows[0] is None:
             raise EmptyDataset("Le CSV doit contenir un en-tête et au moins une ligne.")
         return rows
 
-    def _load_tsv(self, content: bytes) -> list[dict[str, Any]]:
+    def _load_tsv(self, content: bytes | Path) -> list[dict[str, Any]]:
         try:
-            text = content.decode("utf-8-sig")
-            rows = list(csv.DictReader(StringIO(text), delimiter="\t"))
+            if isinstance(content, Path):
+                with open(content, "r", encoding="utf-8-sig") as f:
+                    rows = list(csv.DictReader(f, delimiter="\t"))
+            else:
+                text = content.decode("utf-8-sig")
+                rows = list(csv.DictReader(StringIO(text), delimiter="\t"))
         except (UnicodeDecodeError, csv.Error) as exc:
             raise InvalidDatasetFile("TSV invalide ou encodage non supporté.") from exc
         if not rows or rows[0] is None:
             raise EmptyDataset("Le TSV doit contenir un en-tête et au moins une ligne.")
         return rows
 
-    def _load_excel(self, content: bytes, extension: str) -> list[dict[str, Any]]:
+    def _load_excel(self, content: bytes | Path, extension: str) -> list[dict[str, Any]]:
         try:
             import pandas as pd
 
             engine = "xlrd" if extension == ".xls" else "openpyxl"
-            frame = pd.read_excel(BytesIO(content), engine=engine)
+            src = str(content) if isinstance(content, Path) else BytesIO(content)
+            frame = pd.read_excel(src, engine=engine)
         except EmptyDataset:
             raise
         except Exception as exc:  # pragma: no cover - dépend de la lib externe
             raise DatasetParseError(f"{extension.upper()[1:]} invalide ou illisible : {exc}") from exc
         return self._frame_to_rows(frame)
 
-    def _load_pdf(self, content: bytes) -> list[dict[str, Any]]:
+    def _load_pdf(self, content: bytes | Path) -> list[dict[str, Any]]:
         try:
             from pypdf import PdfReader
 
-            reader = PdfReader(BytesIO(content), strict=True)
+            src = str(content) if isinstance(content, Path) else BytesIO(content)
+            reader = PdfReader(src, strict=True)
             rows = []
             for page_number, page in enumerate(reader.pages, start=1):
                 text = page.extract_text() or ""
@@ -131,17 +142,19 @@ class CompanyDatasetLoader:
             raise DatasetParseError(f"PDF invalide ou illisible : {exc}") from exc
         return rows
 
-    def _load_txt(self, content: bytes) -> list[dict[str, Any]]:
+    def _load_txt(self, content: bytes | Path) -> list[dict[str, Any]]:
         try:
-            text = content.decode("utf-8-sig")
+            if isinstance(content, Path):
+                with open(content, "r", encoding="utf-8-sig") as f:
+                    text = f.read()
+            else:
+                text = content.decode("utf-8-sig")
         except UnicodeDecodeError as exc:
             raise InvalidDatasetFile("TXT invalide ou encodage non supporté.") from exc
 
         lines = [line for line in text.splitlines() if line.strip()]
         if not lines:
             return []
-        # Treat delimited text as a table when a stable delimiter and header
-        # exist. Plain prose remains importable as one text value per row.
         try:
             dialect = csv.Sniffer().sniff("\n".join(lines[:20]), delimiters=",;\t|")
             rows = list(csv.DictReader(lines, dialect=dialect))
@@ -151,9 +164,13 @@ class CompanyDatasetLoader:
             pass
         return [{"text": line} for line in lines]
 
-    def _load_json(self, content: bytes) -> list[dict[str, Any]]:
+    def _load_json(self, content: bytes | Path) -> list[dict[str, Any]]:
         try:
-            payload = json.loads(content.decode("utf-8"))
+            if isinstance(content, Path):
+                with open(content, "r", encoding="utf-8") as f:
+                    payload = json.load(f)
+            else:
+                payload = json.loads(content.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise InvalidDatasetFile("JSON invalide ou encodage non supporté.") from exc
         if isinstance(payload, dict) and "data" in payload:
@@ -167,11 +184,12 @@ class CompanyDatasetLoader:
             rows.append(item)
         return rows
 
-    def _load_parquet(self, content: bytes) -> list[dict[str, Any]]:
+    def _load_parquet(self, content: bytes | Path) -> list[dict[str, Any]]:
         try:
             import pandas as pd
 
-            frame = pd.read_parquet(BytesIO(content))
+            src = str(content) if isinstance(content, Path) else BytesIO(content)
+            frame = pd.read_parquet(src)
         except Exception as exc:  # pragma: no cover - dépend de la lib externe
             raise DatasetParseError(f"Parquet invalide ou illisible : {exc}") from exc
         return self._frame_to_rows(frame)

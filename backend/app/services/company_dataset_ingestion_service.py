@@ -123,13 +123,14 @@ class CompanyDatasetIngestionService:
         tenant: TenantContext,
         module_code: str,
         filename: str,
-        content: bytes,
+        content: bytes | Path,
     ) -> Dataset:
         if module_code not in MODULES_BY_CODE:
             raise DatasetIngestionError("Module Avenqo inconnu")
-        self._quota.check_storage_quota(tenant, incoming_bytes=len(content) if content else 0)
+        content_size = content.stat().st_size if isinstance(content, Path) else (len(content) if content else 0)
+        self._quota.check_storage_quota(tenant, incoming_bytes=content_size)
         plan_max_bytes = self._quota.max_upload_bytes(tenant, self._max_upload_bytes)
-        if not content or len(content) > plan_max_bytes:
+        if content_size == 0 or content_size > plan_max_bytes:
             raise DatasetIngestionError("Fichier vide ou taille maximale dépassée pour votre offre")
 
         loaded = self._loader.load(filename, content)

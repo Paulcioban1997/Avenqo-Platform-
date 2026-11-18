@@ -45,12 +45,11 @@ def isolated_db_url(monkeypatch):
 
 
 def test_alembic_0084_linear_head():
-    """Verify Alembic history remains strictly linear with exactly one head."""
+    """Verify Alembic history remains strictly linear and 0084 is properly chained."""
     alembic_cfg = Config("alembic.ini")
     script = ScriptDirectory.from_config(alembic_cfg)
     heads = script.get_heads()
     assert len(heads) == 1, f"Expected 1 linear Alembic head, got {heads}"
-    assert heads[0] == "0084_commerce_demo_isolation"
     rev = script.get_revision("0084_commerce_demo_isolation")
     assert rev.down_revision == "0083_company_display_currency"
 

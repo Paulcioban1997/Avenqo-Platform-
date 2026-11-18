@@ -35,8 +35,16 @@ class DatasetStorage(ABC):
         dataset_id: UUID,
         version: int,
         filename: str,
-        content: bytes,
+        content: bytes | Path,
     ) -> str:
+        ...
+
+    @abstractmethod
+    def list_tenant_objects(self, company_id: UUID) -> dict[str, int]:
+        ...
+
+    @abstractmethod
+    def get_tenant_storage_bytes(self, company_id: UUID) -> int:
         ...
 
     @abstractmethod
@@ -69,12 +77,37 @@ class DatasetStorage(ABC):
     ) -> str:
         ...
 
+    @property
+    @abstractmethod
+    def _root(self) -> Path:
+        ...
+
+    @abstractmethod
+    def prepared_path(self, company_id: UUID, dataset_id: UUID, version: int) -> Path:
+        ...
+
+    @abstractmethod
+    def metadata_path(self, company_id: UUID, dataset_id: UUID, version: int) -> Path:
+        ...
+
+    @abstractmethod
+    def canonical_path(self, company_id: UUID, dataset_id: UUID, version: int) -> Path:
+        ...
+
+    @abstractmethod
+    def delete_dataset(self, company_id: UUID, dataset_id: UUID) -> None:
+        ...
+
 
 class LocalDatasetStorage(DatasetStorage):
     """Implémentation locale sur disque (GCS/S3 : placeholders pour Phase future)."""
 
     def __init__(self, root: Path) -> None:
-        self._root = root.resolve()
+        self._storage_root = root.resolve()
+
+    @property
+    def _root(self) -> Path:
+        return self._storage_root
 
     def save_raw(
         self,
@@ -82,11 +115,54 @@ class LocalDatasetStorage(DatasetStorage):
         dataset_id: UUID,
         version: int,
         filename: str,
-        content: bytes,
+        content: bytes | Path,
     ) -> str:
         directory = self._version_dir(company_id, dataset_id, version) / "raw"
         safe_name = _SAFE_FILENAME.sub("_", Path(filename).name) or "dataset"
+        if isinstance(content, Path):
+            return str(self._write_file_copy(directory, safe_name, content))
         return str(self._write_bytes(directory, safe_name, content))
+
+    def list_tenant_objects(self, company_id: UUID) -> dict[str, int]:
+        tenant_dir = (self._root / str(company_id)).resolve()
+        objects: dict[str, int] = {}
+        if not tenant_dir.exists() or not tenant_dir.is_dir():
+            return objects
+        for p in tenant_dir.rglob("*"):
+            if p.is_file():
+                try:
+                    rel = str(p.relative_to(tenant_dir)).replace("\\", "/")
+                    objects[rel] = p.stat().st_size
+                except OSError:
+                    pass
+        return objects
+
+    def get_tenant_storage_bytes(self, company_id: UUID) -> int:
+        return sum(self.list_tenant_objects(company_id).values())
+
+    def _write_file_copy(self, directory: Path, safe_name: str, source_path: Path) -> Path:
+        directory.mkdir(parents=True, exist_ok=True)
+        try:
+            directory.chmod(directory.stat().st_mode | 0o2770)
+        except OSError:
+            pass
+        destination = (directory / safe_name).resolve()
+        if self._root not in destination.parents:
+            raise ValueError("Chemin de dataset invalide (traversée de répertoire détectée)")
+        temporary_path: Path | None = None
+        try:
+            with NamedTemporaryFile(dir=directory, delete=False) as temporary:
+                temporary_path = Path(temporary.name)
+            shutil.copyfile(source_path, temporary_path)
+            temporary_path.replace(destination)
+            try:
+                os.chmod(destination, 0o660)
+            except OSError:
+                pass
+        finally:
+            if temporary_path is not None and temporary_path.exists():
+                temporary_path.unlink(missing_ok=True)
+        return destination
 
     def save_prepared(
         self,
@@ -217,17 +293,25 @@ class S3DatasetStorage(DatasetStorage):
         dataset_id: UUID,
         version: int,
         filename: str,
-        content: bytes,
+        content: bytes | Path,
     ) -> str:
         key = self._s3_key(company_id, dataset_id, version, "raw", filename)
         if self._s3 is not None:
             try:
-                self._s3.put_object(
-                    Bucket=self.bucket,
-                    Key=key,
-                    Body=content,
-                    ContentType="application/octet-stream",
-                )
+                if isinstance(content, Path):
+                    self._s3.upload_file(
+                        Filename=str(content),
+                        Bucket=self.bucket,
+                        Key=key,
+                        ExtraArgs={"ContentType": "application/octet-stream"},
+                    )
+                else:
+                    self._s3.put_object(
+                        Bucket=self.bucket,
+                        Key=key,
+                        Body=content,
+                        ContentType="application/octet-stream",
+                    )
                 if self.local_fallback:
                     self.local_fallback.save_raw(company_id, dataset_id, version, filename, content)
                 return f"s3://{self.bucket}/{key}"
@@ -247,6 +331,31 @@ class S3DatasetStorage(DatasetStorage):
         if self.local_fallback:
             return self.local_fallback.save_raw(company_id, dataset_id, version, filename, content)
         raise StorageDurabilityError("Durabilité non garantie : aucun client S3 ni fallback local disponible")
+
+    def list_tenant_objects(self, company_id: UUID) -> dict[str, int]:
+        """Liste les objets S3 appartenant à ce tenant sous le préfixe {company_id}/."""
+        objects: dict[str, int] = {}
+        if self._s3 is None:
+            if self.local_fallback and hasattr(self.local_fallback, "list_tenant_objects"):
+                return self.local_fallback.list_tenant_objects(company_id)
+            return objects
+        prefix = f"{company_id}/"
+        try:
+            paginator = self._s3.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
+                for item in page.get("Contents", []):
+                    key = item.get("Key", "")
+                    size = item.get("Size", 0)
+                    rel = key[len(prefix):] if key.startswith(prefix) else key
+                    objects[rel] = size
+        except Exception as exc:
+            logger.warning("Échec list_tenant_objects S3 sur bucket=%s prefix=%s: %s", self.bucket, prefix, exc)
+            if self.local_fallback and hasattr(self.local_fallback, "list_tenant_objects"):
+                return self.local_fallback.list_tenant_objects(company_id)
+        return objects
+
+    def get_tenant_storage_bytes(self, company_id: UUID) -> int:
+        return sum(self.list_tenant_objects(company_id).values())
 
     def save_prepared(
         self,

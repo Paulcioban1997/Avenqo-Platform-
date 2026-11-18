@@ -35,7 +35,22 @@ from shared.ai_engine.registry.registry import ModelRegistry
 
 def get_data_import_policy(db: Session = Depends(get_db)) -> DataImportPolicy:
     settings = get_settings()
-    return DataImportPolicy(db, Path(settings.artifact_root))
+    s3_storage: S3DatasetStorage | None = None
+    s3_enabled = getattr(settings, "dataset_s3_enabled", False)
+    if callable(s3_enabled):
+        s3_enabled = s3_enabled()
+    s3_bucket = getattr(settings, "dataset_s3_bucket", None)
+    if s3_enabled and s3_bucket:
+        local_fallback = LocalDatasetStorage(Path(settings.artifact_root) / "company_datasets")
+        s3_storage = S3DatasetStorage(
+            bucket=str(s3_bucket),
+            access_key=settings.dataset_s3_access_key or "",
+            secret_key=settings.dataset_s3_secret_key or "",
+            endpoint_url=getattr(settings, "dataset_s3_endpoint_url", None),
+            region=getattr(settings, "dataset_s3_region", "auto"),
+            local_fallback=local_fallback,
+        )
+    return DataImportPolicy(db, Path(settings.artifact_root), s3_storage=s3_storage)
 
 
 def get_dataset_import_service(
