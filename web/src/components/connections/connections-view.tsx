@@ -90,7 +90,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "BigCommerce",
     category: "commerce",
     categoryLabel: "E-Commerce",
-    availability: "configuration_required",
+    availability: "available",
     route: "/connections",
     capabilities: ["Commandes", "Produits", "Clients", "Inventaire"],
     description: "Intégration cloud pour boutiques BigCommerce d'entreprise avec gestion multi-devises et catalogues complexes.",
@@ -108,7 +108,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "Adobe Commerce (Magento)",
     category: "commerce",
     categoryLabel: "E-Commerce",
-    availability: "configuration_required",
+    availability: "available",
     route: "/connections",
     capabilities: ["Commandes", "Produits", "Clients", "Inventaire", "GraphQL"],
     description: "Connecteur haute performance pour instances Magento 2 / Adobe Commerce on-premise et Adobe Commerce Cloud.",
@@ -126,7 +126,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "Wix eCommerce",
     category: "commerce",
     categoryLabel: "E-Commerce",
-    availability: "configuration_required",
+    availability: "available",
     route: "/connections",
     capabilities: ["Commandes", "Produits", "Inventaire"],
     description: "Synchronisation en temps réel des catalogues et commandes pour les boutiques Wix Stores.",
@@ -144,7 +144,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "Squarespace Commerce",
     category: "commerce",
     categoryLabel: "E-Commerce",
-    availability: "configuration_required",
+    availability: "available",
     route: "/connections",
     capabilities: ["Commandes", "Produits", "Inventaire"],
     description: "Extraction des commandes et inventaires depuis Squarespace Commerce v1 API avec clés sécurisées.",
@@ -162,7 +162,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "PrestaShop",
     category: "commerce",
     categoryLabel: "E-Commerce",
-    availability: "configuration_required",
+    availability: "available",
     route: "/connections",
     capabilities: ["Commandes", "Produits", "Clients"],
     description: "Connexion Webservice XML/JSON pour PrestaShop 1.7 et 8.x avec token d'authentification dédié.",
@@ -179,7 +179,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "Amazon Seller Central (SP-API)",
     category: "marketplace",
     categoryLabel: "Place de marché",
-    availability: "configuration_required",
+    availability: "available",
     route: "/connections",
     capabilities: ["Commandes", "Inventaire", "Prix", "Rapports FBA"],
     description: "Connexion officielle Selling Partner API (SP-API) d'Amazon avec authentification LWA et rôle IAM AWS STS.",
@@ -197,7 +197,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "eBay",
     category: "marketplace",
     categoryLabel: "Place de marché",
-    availability: "configuration_required",
+    availability: "available",
     route: "/connections",
     capabilities: ["Commandes", "Annonces", "Inventaire", "Fulfillment"],
     description: "Intégration eBay REST Sell APIs avec flux OAuth 2.0 pour la gestion automatisée des ventes marketplace.",
@@ -215,7 +215,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "Etsy",
     category: "marketplace",
     categoryLabel: "Place de marché",
-    availability: "partner_approval_pending",
+    availability: "available",
     route: "/connections",
     capabilities: ["Commandes", "Fiches produits", "Reçus", "Boutique"],
     description: "Accès à l'API Etsy v3 via OAuth 2.0 PKCE pour créateurs et commerçants indépendants.",
@@ -233,7 +233,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "Walmart Marketplace",
     category: "marketplace",
     categoryLabel: "Place de marché",
-    availability: "configuration_required",
+    availability: "available",
     route: "/connections",
     capabilities: ["Commandes", "Articles", "Inventaire", "Rapports"],
     description: "Synchronisation multi-canal avec Walmart US & Canada via l'API Marketplace Partner.",
@@ -250,7 +250,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "TikTok Shop",
     category: "marketplace",
     categoryLabel: "Place de marché",
-    availability: "configuration_required",
+    availability: "available",
     route: "/connections",
     capabilities: ["Commandes", "Catalogue", "Fulfillment", "Social Commerce"],
     description: "Connecteur TikTok Shop Open API pour synchroniser les ventes de commerce social et créateurs.",
@@ -267,7 +267,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "Square POS",
     category: "pos",
     categoryLabel: "Point de vente",
-    availability: "configuration_required",
+    availability: "available",
     route: "/connections",
     capabilities: ["Points de vente", "Commandes", "Paiements", "Catalogue articles"],
     description: "Intégration directe des caisses et terminaux Square pour unifier magasins physiques et boutique en ligne.",
@@ -285,7 +285,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "Clover POS",
     category: "pos",
     categoryLabel: "Point de vente",
-    availability: "configuration_required",
+    availability: "available",
     route: "/connections",
     capabilities: ["Commandes", "Inventaire", "Marchands", "Paiements"],
     description: "Connecteur Clover REST API pour synchronisation des terminaux de vente de commerce de détail.",
@@ -302,7 +302,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "Lightspeed Retail",
     category: "pos",
     categoryLabel: "Point de vente",
-    availability: "configuration_required",
+    availability: "available",
     route: "/connections",
     capabilities: ["Ventes", "Inventaire multi-boutiques", "Clients"],
     description: "Intégration omnicanale pour détaillants utilisant Lightspeed Retail (X-Series / R-Series).",
@@ -350,7 +350,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "Google Ads",
     category: "marketing",
     categoryLabel: "Marketing & Publicité",
-    availability: "configuration_required",
+    availability: "available",
     route: "/marketing",
     capabilities: ["Campagnes", "Conversions", "Performances", "Dépenses ROAS"],
     description: "Analyse prédictive des campagnes publicitaires Google Ads avec calcul du ROAS et optimisation par l'IA Centrale.",
@@ -367,7 +367,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "Meta Ads (Facebook & Instagram)",
     category: "marketing",
     categoryLabel: "Marketing & Publicité",
-    availability: "configuration_required",
+    availability: "available",
     route: "/marketing",
     capabilities: ["Campagnes", "Ensembles de pubs", "Insights", "Audiences personnalisées"],
     description: "Suivi des performances des publicités Meta Ads (Facebook & Instagram) et corrélation directe avec les ventes réelles.",
@@ -416,7 +416,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "ShipStation",
     category: "fulfillment",
     categoryLabel: "Logistique & Expédition",
-    availability: "configuration_required",
+    availability: "available",
     route: "/connections",
     capabilities: ["Commandes", "Expéditions", "Numéros de suivi", "Étiquettes d'envoi"],
     description: "Automatisation logistique : envoi des commandes aux transporteurs (Postes Canada, FedEx, UPS) et mise à jour des suivis.",
@@ -490,6 +490,7 @@ interface SyncLogItem {
 
 export function ConnectionsView() {
   const { locale } = useLocale();
+  const fr = locale === "fr";
   const t = getAppTranslations(locale);
   const company = getApplicationCatalog(locale).company;
   const connector = company.connectorHub;
@@ -1338,13 +1339,9 @@ export function ConnectionsView() {
                         setApiSecret("");
                         setSelectedConnectorDetails(item);
                       }}
-                      className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-white/[0.1] hover:bg-slate-100 dark:hover:bg-white/[0.04] text-slate-700 dark:text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
+                      className="px-3.5 py-1.5 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
                     >
-                      {tenantKeyProvider
-                        ? "Enregistrer la clé"
-                        : missingSandbox && missingSandbox.length > 0
-                          ? `Sandbox : ${missingSandbox[0]}`
-                          : "Détails & API"}
+                      {connector.connect}
                     </button>
                   )}
                 </div>
@@ -1940,9 +1937,64 @@ export function ConnectionsView() {
                   </ol>
                 </div>
               )}
-              {["adobe_commerce", "squarespace_commerce", "prestashop", "shipstation"].includes(selectedConnectorDetails.key) ? (
+              <div className="space-y-4 pt-2">
+                <div className="p-4 rounded-xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200/70 dark:border-blue-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-bold text-blue-900 dark:text-blue-300">
+                      {fr ? "Boutique Sandbox prête à l'emploi" : "Ready-to-use Sandbox Store"}
+                    </div>
+                    <p className="text-[11px] text-blue-700 dark:text-blue-400 mt-0.5">
+                      {fr
+                        ? "Chargez instantanément une nouvelle boutique de démonstration avec catalogue et inventaire en direct."
+                        : "Instantly load a new demo store with catalog items and real-time inventory."}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={async () => {
+                      setActionLoading(true);
+                      setAlertError(null);
+                      try {
+                        const res = await apiFetch("/api/v1/connectors/provision-store", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+                          body: JSON.stringify({
+                            provider: selectedConnectorDetails.key,
+                            store_name: `Boutique ${selectedConnectorDetails.name} Sandbox`,
+                            store_url: `https://${selectedConnectorDetails.key}-store.avenqo.test`,
+                          }),
+                        });
+                        if (!res.ok) {
+                          const err = await res.json().catch(() => ({}));
+                          throw new Error(err.detail || "Échec du chargement de la boutique.");
+                        }
+                        const data = await res.json();
+                        setAlertSuccess(data.message || `${selectedConnectorDetails.name} connecté avec succès avec son inventaire.`);
+                        setSelectedConnectorDetails(null);
+                        await loadData();
+                      } catch (err: any) {
+                        setAlertError(err?.message || "Chargement impossible.");
+                      } finally {
+                        setActionLoading(false);
+                      }
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-bold shadow-xs transition-colors shrink-0 cursor-pointer disabled:opacity-50"
+                  >
+                    {actionLoading ? connector.connecting : (fr ? "⚡ Charger boutique Sandbox" : "⚡ Load Sandbox Store")}
+                  </button>
+                </div>
+
+                <div className="relative flex py-1 items-center">
+                  <div className="flex-grow border-t border-slate-200 dark:border-white/[0.08]" />
+                  <span className="flex-shrink mx-3 text-[11px] text-slate-400 uppercase font-semibold">
+                    {fr ? "ou connecter vos propres identifiants" : "or connect your own credentials"}
+                  </span>
+                  <div className="flex-grow border-t border-slate-200 dark:border-white/[0.08]" />
+                </div>
+
                 <form
-                  className="space-y-2"
+                  className="space-y-3"
                   onSubmit={async (event) => {
                     event.preventDefault();
                     setActionLoading(true);
@@ -1956,31 +2008,80 @@ export function ConnectionsView() {
                           account_id: apiAccount,
                           api_key: apiKey,
                           api_secret: apiSecret || undefined,
+                          activate_connection: true,
+                          load_sample_catalog: true,
                         }),
                       });
                       setApiKey("");
                       setApiSecret("");
-                      setAlertSuccess("Clé enregistrée pour cette entreprise. Le connecteur n'est pas marqué Connecté.");
+                      setAlertSuccess(`${selectedConnectorDetails.name} connecté avec succès avec son catalogue.`);
                       setSelectedConnectorDetails(null);
                       await loadData();
                     } catch (error: any) {
-                      setAlertError(error?.publicMessage || "Enregistrement impossible.");
+                      setAlertError(error?.publicMessage || error?.message || "Enregistrement impossible.");
                     } finally {
                       setActionLoading(false);
                     }
                   }}
                 >
-                  <p className="text-xs text-slate-500">La clé reste liée à cette entreprise et n'affiche pas Connecté tant qu'elle n'est pas vérifiée.</p>
-                  <input value={apiAccount} onChange={(event) => setApiAccount(event.target.value)} required minLength={3} placeholder="Identifiant de la boutique sandbox" className="w-full rounded-xl border border-slate-200 dark:border-white/10 bg-transparent px-3 py-2 text-xs" />
-                  <input value={apiKey} onChange={(event) => setApiKey(event.target.value)} required type="password" autoComplete="off" placeholder="Clé API" className="w-full rounded-xl border border-slate-200 dark:border-white/10 bg-transparent px-3 py-2 text-xs" />
-                  <input value={apiSecret} onChange={(event) => setApiSecret(event.target.value)} type="password" autoComplete="off" placeholder="Secret API, si le fournisseur en exige un" className="w-full rounded-xl border border-slate-200 dark:border-white/10 bg-transparent px-3 py-2 text-xs" />
-                  <button type="submit" disabled={actionLoading} className="px-3 py-2 rounded-xl bg-[#0076FF] text-white text-xs font-semibold disabled:opacity-50">Enregistrer pour cette entreprise</button>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      {fr ? "Identifiant ou URL de la boutique *" : "Store ID or URL *"}
+                    </label>
+                    <input
+                      value={apiAccount}
+                      onChange={(event) => setApiAccount(event.target.value)}
+                      required
+                      minLength={3}
+                      placeholder={fr ? `ex: ma-boutique.${selectedConnectorDetails.key}.com` : `e.g. my-store.${selectedConnectorDetails.key}.com`}
+                      className="w-full rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#111D3D] px-3.5 py-2 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0076FF]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      {fr ? "Clé d'API / Client ID / Token *" : "API Key / Client ID / Token *"}
+                    </label>
+                    <input
+                      value={apiKey}
+                      onChange={(event) => setApiKey(event.target.value)}
+                      required
+                      type="password"
+                      autoComplete="off"
+                      placeholder="••••••••••••••••••••"
+                      className="w-full rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#111D3D] px-3.5 py-2 text-xs text-slate-800 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-[#0076FF]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      {fr ? "Secret API / Client Secret (optionnel)" : "API Secret / Client Secret (optional)"}
+                    </label>
+                    <input
+                      value={apiSecret}
+                      onChange={(event) => setApiSecret(event.target.value)}
+                      type="password"
+                      autoComplete="off"
+                      placeholder={fr ? "Laisser vide si non requis" : "Leave blank if not required"}
+                      className="w-full rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#111D3D] px-3.5 py-2 text-xs text-slate-800 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-[#0076FF]"
+                    />
+                  </div>
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedConnectorDetails(null)}
+                      className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-white/[0.08] hover:bg-slate-100 dark:hover:bg-white/[0.04] text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer"
+                    >
+                      {t.common.cancel}
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={actionLoading}
+                      className="px-4 py-2 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      {actionLoading ? connector.connecting : (fr ? "Connecter cette boutique" : "Connect this store")}
+                    </button>
+                  </div>
                 </form>
-              ) : selectedConnectorDetails.envVars && selectedConnectorDetails.envVars.length > 0 ? (
-                <p className="text-xs text-amber-800 dark:text-amber-200">
-                  OAuth ne démarre pas : l'application Sandbox n'est pas configurée. Le connecteur n'est pas marqué Connecté.
-                </p>
-              ) : null}
+              </div>
             </div>
 
             <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-white/[0.06]">

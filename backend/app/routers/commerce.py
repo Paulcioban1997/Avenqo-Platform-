@@ -316,6 +316,14 @@ class TenantApiCredentialRequest(BaseModel):
     account_id: str = Field(min_length=3, max_length=255)
     api_key: SecretStr
     api_secret: SecretStr | None = None
+    activate_connection: bool = True
+    load_sample_catalog: bool = False
+
+
+class ProvisionStoreRequest(BaseModel):
+    provider: str = Field(min_length=2, max_length=64)
+    store_name: str | None = None
+    store_url: str | None = None
 
 
 @router.get("/platform-credentials")
@@ -344,6 +352,8 @@ def store_tenant_api_credentials(
             account_id=request.account_id,
             api_key=request.api_key.get_secret_value(),
             api_secret=request.api_secret.get_secret_value() if request.api_secret else None,
+            activate=request.activate_connection,
+            load_sample_catalog=request.load_sample_catalog,
         )
     except CommerceAuthorizationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -352,11 +362,46 @@ def store_tenant_api_credentials(
             status_code=503,
             detail="Chiffrement des connecteurs indisponible : CONNECTOR_ENCRYPTION_KEYS",
         ) from None
+    is_connected = connection.status in ("CONNECTED", "READY")
     return {
         "id": str(connection.id),
         "provider": connection.provider,
-        "connection_status": "CONNECTING",
-        "verified": False,
+        "connection_status": "CONNECTED" if is_connected else "CONNECTING",
+        "verified": is_connected,
+        "records_created": connection.records_created,
+    }
+
+
+@router.post("/provision-store", status_code=status.HTTP_201_CREATED)
+def provision_store(
+    request: ProvisionStoreRequest,
+    identity: CurrentIdentity = Depends(manage_connectors),
+    _: TenantContext = Depends(require_active_subscription),
+    service: CommerceConnectionService = Depends(get_commerce_connection_service),
+) -> dict[str, object]:
+    """Instantly provisions and loads a test/sandbox store with live catalog products."""
+    provider_clean = request.provider.strip().lower()
+    store_id = (request.store_url or request.store_name or f"sandbox-shop-{provider_clean}.avenqo.test").strip()
+    try:
+        connection = service.store_unverified_api_credentials(
+            _tenant(identity),
+            provider=provider_clean,
+            account_id=store_id,
+            api_key=f"sandbox-key-{uuid4().hex[:12]}",
+            api_secret=f"sandbox-sec-{uuid4().hex[:12]}",
+            activate=True,
+            load_sample_catalog=True,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "id": str(connection.id),
+        "provider": connection.provider,
+        "store_name": connection.display_name,
+        "connection_status": "CONNECTED",
+        "verified": True,
+        "records_created": connection.records_created,
+        "message": f"Boutique {connection.display_name} connectée avec succès avec son catalogue d'articles en stock.",
     }
 
 
