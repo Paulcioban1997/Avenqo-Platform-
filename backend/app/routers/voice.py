@@ -95,6 +95,7 @@ from backend.app.schemas.voice import (
     VoiceLifecycleActionRequest,
     VoiceIvrSettingsRequest,
     VoiceAuthPinStatusResponse,
+    VoicePinDeleteRequest,
     VoiceSetupRequest,
     VoiceOwnedNumberRequest,
     VoiceModulePermissionsUpdateRequest,
@@ -266,17 +267,74 @@ def get_user_voice_pin_status(
     phone = cred.phone_number if cred else identity.user.phone
     masked_phone = (phone[:4] + " *** **" + phone[-2:]) if phone and len(phone) >= 6 else phone
     is_locked = bool(cred and cred.locked_until and utc(cred.locked_until) > now)
+    membership = db.scalar(select(CompanyMembership).where(
+        CompanyMembership.company_id == identity.user.company_id,
+        CompanyMembership.user_id == identity.user.id,
+        CompanyMembership.is_active.is_(True),
+    ))
+    user_role = membership.role.value if membership and hasattr(membership.role, "value") else (str(membership.role) if membership else getattr(identity.user, "role", "EMPLOYEE"))
+    if hasattr(user_role, "value"):
+        user_role = user_role.value
+    u_phone = identity.user.phone
+    masked_u_phone = (u_phone[:4] + " *** **" + u_phone[-2:]) if u_phone and len(u_phone) >= 6 else u_phone
+    cred_phone = cred.phone_number if cred else None
+    masked_cred_phone = (cred_phone[:4] + " *** **" + cred_phone[-2:]) if cred_phone and len(cred_phone) >= 6 else cred_phone
+    user_full_name = f"{identity.user.first_name or ''} {identity.user.last_name or ''}".strip() or identity.user.email
     return {
         "has_pin": cred is not None,
         "configured": cred is not None,
         "enabled": bool(cred.enabled) if cred else False,
         "phone_access_enabled": bool(cred.enabled) if cred else False,
-        "phone_number": masked_phone,
+        "phone_number": masked_cred_phone or masked_u_phone,
+        "user_id": str(identity.user.id),
+        "user_email": identity.user.email,
+        "user_name": user_full_name,
+        "user_role": str(user_role),
+        "user_account_phone": masked_u_phone,
+        "credential_phone": masked_cred_phone,
         "is_locked": is_locked,
         "failed_attempts": cred.failed_attempts if cred else 0,
         "locked_until": cred.locked_until.isoformat() if (cred and cred.locked_until) else None,
         "active_sessions_count": int(active_sessions),
     }
+
+
+@router.delete("/auth/pin")
+def delete_user_voice_pin(
+    request: VoicePinDeleteRequest,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    current_pw = _secret_val(request.current_password)
+    if not current_pw or not verify_password(current_pw, identity.user.password_hash):
+        raise HTTPException(status_code=403, detail="Le mot de passe actuel est incorrect.")
+
+    cred = db.scalar(select(VoiceCallerCredential).where(
+        VoiceCallerCredential.company_id == identity.user.company_id,
+        VoiceCallerCredential.principal_type == "USER",
+        VoiceCallerCredential.principal_id == identity.user.id,
+    ))
+    if cred is not None:
+        now = datetime.now(timezone.utc)
+        for s in db.scalars(select(VoiceAuthSession).where(
+            VoiceAuthSession.company_id == identity.user.company_id,
+            VoiceAuthSession.principal_id == identity.user.id,
+            VoiceAuthSession.revoked_at.is_(None),
+        )):
+            s.revoked_at = now
+
+        AuditLogService(db).record(
+            actor_user_id=identity.user.id,
+            action="voice_pin_deleted",
+            target_type="voice_credential",
+            target_id=str(cred.id),
+            company_id=identity.user.company_id,
+            metadata={"user_id": str(identity.user.id), "phone_number": cred.phone_number},
+            commit=False,
+        )
+        db.delete(cred)
+        db.commit()
+    return {"status": "DELETED", "configured": False}
 
 
 @router.put("/auth/pin", dependencies=[Depends(rate_limit("voice_pin_setup", "rate_limit_ai_per_minute"))])
@@ -1711,6 +1769,19 @@ def get_voice_auth_pin(
             VoiceCallerCredential.principal_id == identity.user.id,
         )
     )
+    membership = db.scalar(select(CompanyMembership).where(
+        CompanyMembership.company_id == identity.user.company_id,
+        CompanyMembership.user_id == identity.user.id,
+        CompanyMembership.is_active.is_(True),
+    ))
+    user_role = membership.role.value if membership and hasattr(membership.role, "value") else (str(membership.role) if membership else getattr(identity.user, "role", "EMPLOYEE"))
+    if hasattr(user_role, "value"):
+        user_role = user_role.value
+    user_full_name = f"{identity.user.first_name or ''} {identity.user.last_name or ''}".strip() or identity.user.email
+    masked_u_phone = (identity.user.phone[:4] + " *** **" + identity.user.phone[-2:]) if identity.user.phone and len(identity.user.phone) >= 6 else identity.user.phone
+    cred_phone = credential.phone_number if credential else None
+    masked_cred_phone = (cred_phone[:4] + " *** **" + cred_phone[-2:]) if cred_phone and len(cred_phone) >= 6 else cred_phone
+
     if credential is None:
         return VoiceAuthPinStatusResponse(
             configured=False,
@@ -1720,6 +1791,12 @@ def get_voice_auth_pin(
             failed_attempts=0,
             locked_until=None,
             active_sessions_count=0,
+            user_id=str(identity.user.id),
+            user_email=identity.user.email,
+            user_name=user_full_name,
+            user_role=str(user_role),
+            user_account_phone=masked_u_phone,
+            credential_phone=None,
         )
     now = datetime.now(timezone.utc)
     active_sessions = db.scalar(
@@ -1738,6 +1815,12 @@ def get_voice_auth_pin(
         failed_attempts=credential.failed_attempts,
         locked_until=credential.locked_until,
         active_sessions_count=int(active_sessions),
+        user_id=str(identity.user.id),
+        user_email=identity.user.email,
+        user_name=user_full_name,
+        user_role=str(user_role),
+        user_account_phone=masked_u_phone,
+        credential_phone=masked_cred_phone,
     )
 
 

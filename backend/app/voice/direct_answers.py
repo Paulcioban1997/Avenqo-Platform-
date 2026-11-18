@@ -58,12 +58,21 @@ def spoken_module_answer(names: list[str], *, plan_code: str | None, locale: str
     loc = locale.lower()
     french = loc.startswith("fr")
     romanian = loc.startswith("ro")
+    spanish = loc.startswith("es")
     unique = []
     for name in names:
         cleaned = str(name).strip()
         if cleaned and cleaned not in unique:
             unique.append(cleaned)
     plan = (plan_code or "").strip()
+    if spanish:
+        if not unique:
+            base = "Su empresa no tiene actualmente ningún módulo activo."
+        else:
+            base = "Su empresa cuenta actualmente con los siguientes módulos: " + ", ".join(unique) + "."
+        if plan:
+            return f"Su suscripción {plan} está activa. {base}"
+        return base
     if romanian:
         if not unique:
             base = "Compania dumneavoastră nu are în prezent niciun modul activ."
@@ -99,7 +108,10 @@ def spoken_catalog_answer(
     loc = locale.lower()
     french = loc.startswith("fr")
     romanian = loc.startswith("ro")
+    spanish = loc.startswith("es")
     if not retail_enabled:
+        if spanish:
+            return "El catálogo de ventas no está disponible para su empresa."
         if romanian:
             return "Catalogul de vânzări nu este disponibil pentru compania dumneavoastră."
         return (
@@ -112,6 +124,8 @@ def spoken_catalog_answer(
         if isinstance(row, dict) and str(row.get("name") or row.get("title") or row.get("product_name") or "").strip()
     ]
     if not rows:
+        if spanish:
+            return "El catálogo no contiene actualmente ningún producto a la venta."
         if romanian:
             return "Catalogul nu conține în prezent niciun produs de vânzare."
         return (
@@ -136,50 +150,69 @@ def spoken_catalog_answer(
         freshness = str(row.get("freshness_status") or "").upper()
         is_demo_row = row.get("is_demo") is True or freshness == "DEMO_SIMULATION"
         if price is None or price == "":
-            price_text = "preț nespecificat" if romanian else ("prix non indiqué" if french else "price not listed")
+            price_text = "precio no especificado" if spanish else ("preț nespecificat" if romanian else ("prix non indiqué" if french else "price not listed"))
         else:
             price_text = f"{price} {unit}".strip()
             if is_demo_row:
-                demo_tag = " (preț demonstrativ)" if romanian else (" (prix démonstration)" if french else " (demo price)")
+                demo_tag = " (precio de demostración)" if spanish else (" (preț demonstrativ)" if romanian else (" (prix démonstration)" if french else " (demo price)"))
                 price_text += demo_tag
             elif row.get("price_status") == "historical_catalog" or not is_live:
-                hist_tag = " (preț de referință)" if romanian else (" (prix indicatif)" if french else " (reference price)")
+                hist_tag = " (precio de referencia)" if spanish else (" (preț de referință)" if romanian else (" (prix indicatif)" if french else " (reference price)"))
                 price_text += hist_tag
 
         available = ""
         inventory = row.get("inventory_count")
         stock_avail = row.get("stock_availability")
         if is_demo_row:
-            available = ", date demonstrative" if romanian else (", données de démonstration" if french else ", demo data")
+            available = ", datos de demostración" if spanish else (", date demonstrative" if romanian else (", données de démonstration" if french else ", demo data"))
         elif is_live and (stock_avail == "IN_STOCK" or row.get("in_stock") is True):
-            available = ", disponibil" if romanian else (", disponible" if french else ", available")
+            available = ", disponible" if spanish else (", disponibil" if romanian else (", disponible" if french else ", available"))
         elif is_live and (stock_avail == "OUT_OF_STOCK" or row.get("in_stock") is False):
-            available = ", stoc epuizat" if romanian else (", en rupture de stock" if french else ", out of stock")
+            available = ", agotado" if spanish else (", stoc epuizat" if romanian else (", en rupture de stock" if french else ", out of stock"))
         elif freshness == "STALE":
-            available = ", date de stoc expirate" if romanian else (", données de stock non récentes" if french else ", stock data stale")
+            available = ", datos de stock no recientes" if spanish else (", date de stoc expirate" if romanian else (", données de stock non récentes" if french else ", stock data stale"))
         elif freshness == "UNAVAILABLE":
-            available = ", stoc indisponibil" if romanian else (", stock indisponible" if french else ", stock unavailable")
+            available = ", stock no disponible" if spanish else (", stoc indisponibil" if romanian else (", stock indisponible" if french else ", stock unavailable"))
         elif freshness == "SYNCING":
-            available = ", sincronizare stoc în curs" if romanian else (", synchronisation de stock en cours" if french else ", stock syncing in progress")
+            available = ", sincronización de stock en curso" if spanish else (", sincronizare stoc în curs" if romanian else (", synchronisation de stock en cours" if french else ", stock syncing in progress"))
         elif freshness == "UNCONFIRMED_HISTORICAL":
-            available = ", stoc direct neconfirmat" if romanian else (", stock en direct non synchronisé" if french else ", live stock unconfirmed")
+            available = ", stock en directo no confirmado" if spanish else (", stoc direct neconfirmat" if romanian else (", stock en direct non synchronisé" if french else ", live stock unconfirmed"))
         else:
-            available = ", stoc direct neconfirmat" if romanian else (", stock direct non confirmé" if french else ", live stock unconfirmed")
+            available = ", stock en directo no confirmado" if spanish else (", stoc direct neconfirmat" if romanian else (", stock direct non confirmé" if french else ", live stock unconfirmed"))
         spoken.append(f"{name}, {price_text}{available}")
     extra = ""
     if len(rows) > 5:
         remaining = len(rows) - 5
-        if romanian:
+        if spanish:
+            extra = f" Y {remaining} {'artículo' if remaining == 1 else 'artículos'} más en el catálogo."
+        elif romanian:
             extra = f" Și încă {remaining} {'articol' if remaining == 1 else 'articole'} în catalog."
         elif french:
             extra = f" Et {remaining} autre{'s' if remaining > 1 else ''} article{'s' if remaining > 1 else ''} au catalogue."
         else:
             extra = f" And {remaining} more items in the catalog."
+    if spanish:
+        return "Tenemos en el catálogo: " + " ; ".join(spoken) + "." + extra
     if romanian:
         return "Avem în catalog: " + " ; ".join(spoken) + "." + extra
     if french:
         return "Nous avons au catalogue : " + " ; ".join(spoken) + "." + extra
     return "In our catalog, we have: " + "; ".join(spoken) + "." + extra
+
+
+def is_language_inquiry(text: str) -> str | None:
+    """Detect if caller is asking about language capabilities (Spanish, English, French, Romanian)."""
+    normalized = unicodedata.normalize("NFKD", text.casefold())
+    ascii_text = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    if re.search(r"\b(habla|hablas|hablo|hablar|hablan)\b.{0,15}\b(espanol|spanish)\b|\b(parlez|parle|parlez-vous|tu parles|vous parlez)\b.{0,15}\b(espagnol|spanish)\b|\b(do you speak|can you speak)\b.{0,15}\b(spanish|espanol)\b|\b(en espanol|en espagnol)\b", ascii_text):
+        return "es"
+    if re.search(r"\b(do you speak|can you speak)\b.{0,15}\b(english)\b|\b(parlez|parle|parlez-vous|tu parles|vous parlez)\b.{0,15}\b(anglais|english)\b|\b(habla|hablas|hablo)\b.{0,15}\b(ingles|english)\b|\b(in english|en anglais)\b", ascii_text):
+        return "en"
+    if re.search(r"\b(parlez|parle|parlez-vous|tu parles|vous parlez)\b.{0,15}\b(francais|french)\b|\b(do you speak|can you speak)\b.{0,15}\b(french)\b|\b(habla|hablas|hablo)\b.{0,15}\b(frances|french)\b|\b(en francais|in french)\b", ascii_text):
+        return "fr"
+    if re.search(r"\b(vorbiti|vorbim|vorbesti)\b.{0,15}\b(romana)\b|\b(parlez|parlez-vous|do you speak)\b.{0,15}\b(roumain|romanian)\b", ascii_text):
+        return "ro"
+    return None
 
 
 def resolve_direct_voice_answer(
@@ -194,8 +227,28 @@ def resolve_direct_voice_answer(
     """Return a spoken answer, or None when Central AI should handle the turn."""
     if db is None:
         return None
+    lang_inquiry = is_language_inquiry(transcript)
+    if lang_inquiry:
+        from sqlalchemy import select
+        from backend.app.models import VoiceBusinessConfig
+        from backend.app.voice.messages import voice_speech_name
+        cfg = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_id))
+        spoken_brand = voice_speech_name(cfg) if cfg else "Produits Héros"
+        if lang_inquiry == "es":
+            return f"¡Hola! Sí, hablo español. ¿En qué puedo ayudarle hoy en {spoken_brand}?"
+        elif lang_inquiry == "en":
+            return f"Hello! Yes, I speak English. How can I help you today at {spoken_brand}?"
+        elif lang_inquiry == "ro":
+            return f"Bună ziua! Da, vorbesc limba română. Cu ce vă pot ajuta astăzi la {spoken_brand}?"
+        elif lang_inquiry == "fr":
+            return f"Bonjour ! Oui, je parle français. Comment puis-je vous aider aujourd'hui chez {spoken_brand} ?"
+
     if is_module_access_question(transcript):
         if not authenticated_staff or not staff_role:
+            if locale.lower().startswith("es"):
+                return "Esta información está reservada para empleados autenticados de su empresa."
+            if locale.lower().startswith("ro"):
+                return "Aceste informații sunt rezervate angajaților autentificați ai companiei dumneavoastră."
             if locale.lower().startswith("fr"):
                 return "Cette information est réservée aux employés authentifiés de votre entreprise."
             return "That information is reserved for authenticated employees of your company."

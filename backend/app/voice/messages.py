@@ -166,8 +166,6 @@ def voice_speech_name(config) -> str:
         or "Avenqo"
     )
     display = str(display).replace("_", " ").strip()
-    if re.search(r"\bProduits[_\s,]+Ero\b", spoken, flags=re.IGNORECASE):
-        return re.sub(r"\bProduits[_\s,]+Ero\b", "Produits Éro", spoken, flags=re.IGNORECASE)
     if spoken.casefold() != display.casefold():
         return spoken
     locale = str(getattr(config, "preferred_language", "fr") or "fr")
@@ -180,7 +178,7 @@ def voice_speech_name(config) -> str:
     if not last.isalpha() or not (2 <= len(last) <= 3) or last.casefold() in _FR_SHORT_PARTICLES:
         return spoken
     if last.casefold() in {"ero", "éro"}:
-        return f"{' '.join(parts[:-1])} Éro"
+        return f"{' '.join(parts[:-1])} Héros"
     return f"{' '.join(parts[:-1])}, {last}"
 
 
@@ -219,8 +217,10 @@ def apply_spoken_pronunciation(text: str, config) -> str:
         if name.casefold() != spoken.casefold():
             rendered = re.sub(re.escape(name), spoken, rendered, flags=re.IGNORECASE)
     # Also clean any leftover literal underscores or phonetic anomalies in spoken brand text
-    rendered = re.sub(r"\bProduits[_\s,]+Ero\b", "Produits Éro", rendered, flags=re.IGNORECASE)
-    rendered = re.sub(r"\bProduits?[_\s,]+Z[eé]ro\b", "Produits Éro", rendered, flags=re.IGNORECASE)
+    if spoken:
+        rendered = re.sub(r"\bProduits?[_\s,]+Z[eé]ro\b", spoken, rendered, flags=re.IGNORECASE)
+        rendered = re.sub(r"\bProduits[_\s,]+Ero\b", spoken, rendered, flags=re.IGNORECASE)
+        rendered = re.sub(r"\bProduits[_\s,]+Éro\b", spoken, rendered, flags=re.IGNORECASE)
     return rendered
 
 
@@ -245,6 +245,11 @@ def voice_ivr_greeting(config) -> str:
                 f"Bună ziua, bun venit la {name}. Dacă sunteți angajat, apăsați 1. "
                 "Dacă sunteți client, apăsați 2."
             )
+        elif loc.startswith("es"):
+            return (
+                f"Bienvenido a {name}. Si es empleado, marque 1. "
+                "Si es cliente, marque 2."
+            )
         else:
             return (
                 f"Hello, welcome to {name}. If you are an employee, press 1. "
@@ -260,6 +265,8 @@ def voice_ivr_greeting(config) -> str:
         if isinstance(displayed, str) and displayed.strip():
             rendered = rendered.replace(displayed.strip().replace("_", " "), name)
     res = rendered.replace("_", " ").strip()
-    res = re.sub(r"\bProduits[_\s,]+Ero\b", "Produits Éro", res, flags=re.IGNORECASE)
-    res = re.sub(r"\bProduits?[_\s,]+Z[eé]ro\b", "Produits Éro", res, flags=re.IGNORECASE)
+    if name:
+        res = re.sub(r"\bProduits?[_\s,]+Z[eé]ro\b", name, res, flags=re.IGNORECASE)
+        res = re.sub(r"\bProduits[_\s,]+Ero\b", name, res, flags=re.IGNORECASE)
+        res = re.sub(r"\bProduits[_\s,]+Éro\b", name, res, flags=re.IGNORECASE)
     return res

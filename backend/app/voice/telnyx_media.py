@@ -301,9 +301,14 @@ class PublicInboundConversation:
         return voice_natural_greeting(voice_agent_language(self.db, config), voice_speech_name(config))
 
     def portal_message(self) -> str:
-        _call, config, _company = self.context()
-        if resolve_locale(config.preferred_language).startswith("fr"):
+        call, config, _company = self.context()
+        loc = resolve_locale(call.locale or config.preferred_language).casefold()
+        if loc.startswith("fr"):
             return "Créez ou modifiez votre NIP Voice depuis votre espace Avenqo authentifié, dans Voice AI, Sécurité. Ne dites jamais votre NIP à voix haute."
+        if loc.startswith("es"):
+            return "Cree o modifique su PIN de Voice desde su espacio Avenqo autenticado, en Voice AI, Seguridad. Nunca diga su PIN en voz alta."
+        if loc.startswith("ro"):
+            return "Creați sau modificați codul PIN Voice din spațiul Avenqo autentificat, la Voice AI, Securitate. Nu rostiți niciodată PIN-ul cu voce tare."
         return "Create or change your Voice PIN in your authenticated Avenqo workspace, under Voice AI, Security. Never say your PIN aloud."
 
     def has_configured_pin(self, call: VoiceCall) -> bool:
@@ -340,30 +345,42 @@ class PublicInboundConversation:
         call, config, _company = self.context()
         safe = redact_voice_secrets(transcript)
         normalized = "".join(character for character in unicodedata.normalize("NFKD", safe.casefold()) if not unicodedata.combining(character))
-        french = resolve_locale(call.locale or config.preferred_language).startswith("fr")
+        loc = resolve_locale(call.locale or config.preferred_language).casefold()
+        french = loc.startswith("fr")
+        spanish = loc.startswith("es")
+        romanian = loc.startswith("ro")
 
         # 1. PIN creation/configuration/management instructions
         if re.search(r"(creer|configur|changer|modifier|reinitialis|oubli|create|change|set|reset).{0,30}\b(nip|pin)\b", normalized):
             return {"status": "success", "answer": self.portal_message(), "public": True}
 
         # 2. Inquiries specifically about PIN authentication / secure authentication
-        pin_inquiry = re.search(
+        pin_inquiry = bool(re.search(
             r"\b(authentifi|authentification|identifier|connexion|login)\b.{0,30}\b(nip|pin|securis)\b"
             r"|\b(nip|pin)\b.{0,30}\b(securis|authentifi)\b"
             r"|\b(entrer|composer|saisir|fournir|taper)\b.{0,20}\b(nip|pin)\b"
             r"|\b(code nip|code pin)\b",
             normalized,
-        )
+        ))
+
+        # Check if caller has a public customer intent (appointment, speaking/contacting, recruitment, job application)
+        is_public_customer_intent = bool(re.search(
+            r"\b(rendez[- ]vous|rdv|appointment|booking|cita|reunion|programare|rencontrer|rencontre|parler|parle|hablar|vorbi|speak|talk|contacter|contact|message|mensaje|mesaj|recrutement|recruitment|embauche|hiring|emploi|job|empleo|angajare|candidature|postuler|apply|entrevue|interview|entrevista|interviu|joindre|reach)\b",
+            normalized,
+        ))
 
         # 3. Requests for confidential business, financial or inventory data
-        private_data = re.search(
-            r"\b(commande|commandes|order|orders)\b.{0,25}\b(recu|recues|aujourd'hui|jour|du jour|recent|recentes|total|nombre|recents|derniere|dernieres|today)\b"
-            r"|\b(combien de commandes|combien de ventes|combien de transactions|combien d'argent)\b"
-            r"|\b(chiffre d'affaires|ventes du jour|ventes d'aujourd'hui|ventes aujourd'hui|produits vendus|commandes internes|mes clients|autres clients|internal|internes)\b"
-            r"|\b(proprietaire|owner|employe|employee|patron|manager|metriques|metrics|revenus|revenue|credits|abonnement|subscription|retail|comptabilite|accounting|dashboard|factures|invoices|ventes|sales)\b"
-            r"|\b(niveau de stock|etat des stocks|stock restant)\b",
-            normalized,
-        )
+        private_data = None
+        if not is_public_customer_intent:
+            private_data = re.search(
+                r"\b(chiffre d'affaires|ventes du jour|ventes d'aujourd'hui|ventes aujourd'hui|produits vendus|commandes internes|mes clients|autres clients|internal|internes|metriques|metrics|revenus|revenue|credits|abonnement|subscription|retail|comptabilite|accounting|dashboard|factures|invoices)\b"
+                r"|\b(commande|commandes|order|orders)\b.{0,25}\b(recu|recues|aujourd'hui|jour|du jour|recent|recentes|total|nombre|recents|derniere|dernieres|today)\b"
+                r"|\b(combien de commandes|combien de ventes|combien de transactions|combien d'argent)\b"
+                r"|\b(niveau de stock|etat des stocks|stock restant)\b"
+                r"|\b(je suis|i am)\b.{0,15}\b(proprietaire|owner|patron|boss|manager|employe|employee)\b"
+                r"|\b(mode|espace|session|connexion|portail)\b.{0,20}\b(proprietaire|owner|patron|boss|manager|employe|employee|gestion|direction)\b",
+                normalized,
+            )
 
         if pin_inquiry or private_data:
             has_pin = self.has_configured_pin(call)
@@ -373,45 +390,74 @@ class PublicInboundConversation:
                 self.db.commit()
 
                 if pin_inquiry:
-                    prompt = (
-                        "Oui, l'accès sécurisé s'effectue par NIP à l'aide des touches de votre téléphone. "
-                        "Veuillez saisir votre code NIP sur le clavier de votre téléphone, suivi du carré. "
-                        "Ne prononcez jamais votre NIP à voix haute."
-                        if french
-                        else "Yes, secure authentication is available using your phone keypad. "
-                        "Please enter your PIN on your phone keypad, followed by pound. "
-                        "Never say your PIN aloud."
-                    )
+                    if spanish:
+                        prompt = (
+                            "Sí, el acceso seguro se realiza mediante PIN con las teclas de su teléfono. "
+                            "Por favor, introduzca su código PIN en el teclado de su teléfono seguido de almohadilla. "
+                            "Nunca pronuncie su PIN en voz alta."
+                        )
+                    elif french:
+                        prompt = (
+                            "Oui, l'accès sécurisé s'effectue par NIP à l'aide des touches de votre téléphone. "
+                            "Veuillez saisir votre code NIP sur le clavier de votre téléphone, suivi du carré. "
+                            "Ne prononcez jamais votre NIP à voix haute."
+                        )
+                    elif romanian:
+                        prompt = (
+                            "Da, autentificarea securizată se realizează prin PIN folosind tastatura telefonului. "
+                            "Vă rugăm să introduceți codul PIN pe tastatură urmat de diez. "
+                            "Nu rostiți niciodată PIN-ul cu voce tare."
+                        )
+                    else:
+                        prompt = (
+                            "Yes, secure authentication is available using your phone keypad. "
+                            "Please enter your PIN on your phone keypad, followed by pound. "
+                            "Never say your PIN aloud."
+                        )
                 else:
-                    prompt = (
-                        "Pour accéder aux données de votre entreprise, veuillez saisir votre NIP "
-                        "à l'aide des touches de votre téléphone. Ne prononcez jamais votre NIP à voix haute."
-                        if french
-                        else "To access your business data, please enter your PIN using your phone keypad. "
-                        "Never say your PIN aloud."
-                    )
+                    if spanish:
+                        prompt = (
+                            "Para acceder a los datos de su empresa, por favor introduzca su PIN "
+                            "con las teclas de su teléfono. Nunca pronuncie su PIN en voz alta."
+                        )
+                    elif french:
+                        prompt = (
+                            "Pour accéder aux données de votre entreprise, veuillez saisir votre NIP "
+                            "à l'aide des touches de votre téléphone. Ne prononcez jamais votre NIP à voix haute."
+                        )
+                    elif romanian:
+                        prompt = (
+                            "Pentru a accesa datele companiei dumneavoastră, vă rugăm să introduceți PIN-ul "
+                            "folosind tastele telefonului. Nu rostiți niciodată PIN-ul cu voce tare."
+                        )
+                    else:
+                        prompt = (
+                            "To access your business data, please enter your PIN using your phone keypad. "
+                            "Never say your PIN aloud."
+                        )
                 return {"status": "success", "answer": prompt, "auth_required": True, "public": True}
             else:
                 if pin_inquiry:
                     answer = (
-                        "L'authentification par NIP est disponible, mais aucun NIP n'est configuré pour ce numéro. "
-                        + self.portal_message()
-                        if french
-                        else "PIN authentication is available, but no PIN is configured for this number. "
+                        ("L'authentification par NIP est disponible, mais aucun NIP n'est configuré pour ce numéro. " if french else ("La autenticación por PIN está disponible, pero no hay ningún PIN configurado para este número. " if spanish else ("Autentificarea prin PIN este disponibilă, dar nu este configurat niciun PIN pentru acest număr. " if romanian else "PIN authentication is available, but no PIN is configured for this number. ")))
                         + self.portal_message()
                     )
                 else:
                     answer = (
-                        "L'accès aux données de votre entreprise nécessite la configuration d'un NIP. "
-                        + self.portal_message()
-                        if french
-                        else "Accessing company data requires configuring a PIN. "
+                        ("L'accès aux données de votre entreprise nécessite la configuration d'un NIP. " if french else ("El acceso a los datos de su empresa requiere configurar un PIN. " if spanish else ("Accesul la datele companiei dumneavoastră necesită configurarea unui PIN. " if romanian else "Accessing company data requires configuring a PIN. ")))
                         + self.portal_message()
                     )
                 return {"status": "success", "answer": answer, "public": True}
 
-        if re.search(r"mes rendez.vous|my appointments|mon dossier client|my record", normalized):
-            answer = "Une vérification de votre identité client est nécessaire pour accéder à vos données personnelles ou modifier un rendez-vous." if french else "Customer identity verification is required to access personal information or change an appointment."
+        if re.search(r"mes rendez.vous|my appointments|mon dossier client|my record|mis citas", normalized):
+            if spanish:
+                answer = "Se requiere verificar su identidad de cliente para acceder a sus datos personales o modificar una cita."
+            elif french:
+                answer = "Une vérification de votre identité client est nécessaire pour accéder à vos données personnelles ou modifier un rendez-vous."
+            elif romanian:
+                answer = "Verificarea identității este necesară pentru a accesa datele personale sau a modifica o programare."
+            else:
+                answer = "Customer identity verification is required to access personal information or change an appointment."
             return {"status": "success", "answer": answer, "customer_verification_required": True, "public": True}
         return None
 
@@ -421,35 +467,93 @@ class PublicInboundConversation:
         profile = CompanyIntelligenceService(self.db).get_profile(call.company_id)
         safe = redact_voice_secrets(transcript)
         normalized = "".join(character for character in unicodedata.normalize("NFKD", safe.casefold()) if not unicodedata.combining(character))
-        french = resolve_locale(call.locale or config.preferred_language).startswith("fr")
+        loc = resolve_locale(call.locale or config.preferred_language).casefold()
+        french = loc.startswith("fr")
+        spanish = loc.startswith("es")
+        romanian = loc.startswith("ro")
         if re.search(r"(creer|configur|changer|create|change|set).{0,30}\b(nip|pin)\b", normalized):
             return {"status": "success", "answer": self.portal_message(), "public": True}
-        private = re.search(r"\b(proprietaire|owner|employe|employee|patron|manager|metriques|metrics|revenus|revenue|credits|abonnement|subscription|retail|comptabilite|accounting|dashboard|factures|invoices|ventes|sales)\b|chiffre d'affaires|produits vendus|commandes internes|mes clients|autres clients|internal|internes", normalized)
+
+        is_public_customer_intent = bool(re.search(
+            r"\b(rendez[- ]vous|rdv|appointment|booking|cita|reunion|programare|rencontrer|rencontre|parler|parle|hablar|vorbi|speak|talk|contacter|contact|message|mensaje|mesaj|recrutement|recruitment|embauche|hiring|emploi|job|empleo|angajare|candidature|postuler|apply|entrevue|interview|entrevista|interviu|joindre|reach)\b",
+            normalized,
+        ))
+        is_management_contact = bool(re.search(
+            r"\b(proprietaire|owner|patron|boss|manager|direction|due[nñ]o|jefe|gerente|encargado|proprietar|sef)\b", normalized
+        ))
+        private = None
+        if not is_public_customer_intent and not is_management_contact:
+            private = re.search(
+                r"\b(chiffre d'affaires|ventes du jour|ventes d'aujourd'hui|ventes aujourd'hui|produits vendus|commandes internes|mes clients|autres clients|internal|internes|metriques|metrics|revenus|revenue|credits|abonnement|subscription|retail|comptabilite|accounting|dashboard|factures|invoices)\b"
+                r"|\b(je suis|i am)\b.{0,15}\b(proprietaire|owner|patron|boss|manager|employe|employee)\b"
+                r"|\b(mode|espace|session|connexion|portail)\b.{0,20}\b(proprietaire|owner|patron|boss|manager|employe|employee|gestion|direction)\b",
+                normalized,
+            )
         if private:
             prompt = voice_auth_message(call.locale or config.preferred_language, 0)
             return {"status": "success", "answer": prompt + " " + self.portal_message(), "auth_required": True, "public": True}
-        if re.search(r"mes rendez.vous|my appointments|mon dossier|my record|annuler|cancel|deplacer|reschedule", normalized):
-            answer = "Une vérification de votre identité client est nécessaire pour accéder à vos données personnelles ou modifier un rendez-vous." if french else "Customer identity verification is required to access personal information or change an appointment."
+
+        if re.search(r"mes rendez.vous|my appointments|mon dossier|my record|mis citas|annuler|cancel|deplacer|reschedule", normalized):
+            if spanish:
+                answer = "Se requiere verificar su identidad de cliente para acceder a sus datos personales o modificar una cita."
+            elif french:
+                answer = "Une vérification de votre identité client est nécessaire pour accéder à vos données personnelles ou modifier un rendez-vous."
+            elif romanian:
+                answer = "Verificarea identității este necesară pentru a accesa datele personale sau a modifica o programare."
+            else:
+                answer = "Customer identity verification is required to access personal information or change an appointment."
             return {"status": "success", "answer": answer, "customer_verification_required": True, "public": True}
+
         is_pickup_reservation = bool(re.search(
             r"reserver|reserve|reservation|cueillette|cueillir|ramassage|ramasser|venir chercher|passer prendre|recuperer|retrait|pick.?up|mettre de cote|bloquer",
             normalized,
         ))
         is_booking_request = bool(re.search(
-            r"rendez.vous|appointment|booking|disponibilit|disponible|availability|available",
+            r"rendez[- .]vous|appointment|booking|disponibilit|disponible|availability|available",
             normalized,
-        )) or is_pickup_reservation
-        if is_booking_request:
-            if not profile.has_crm_booking:
-                return {"status": "success", "answer": "Aucune prestation réservable ou cueillette en magasin n’est actuellement configurée pour cette entreprise." if french else "No bookable service or store pickup is currently configured for this business.", "public": True}
+        )) or is_pickup_reservation or (is_management_contact and is_public_customer_intent)
+
+        if is_booking_request or (is_management_contact and not private):
+            if not profile.has_crm_booking or is_management_contact:
+                if is_management_contact:
+                    if spanish:
+                        answer = "La administración y la gerencia no están disponibles directamente por teléfono en este momento. Puede dejar un mensaje o escribir por correo electrónico para coordinar una cita o enviar su consulta."
+                    elif french:
+                        answer = "La direction et le propriétaire ne sont pas joignables directement par téléphone pour le moment. Vous pouvez laisser un message ou écrire par courriel pour convenir d'un rendez-vous ou transmettre votre demande."
+                    elif romanian:
+                        answer = "Conducerea și proprietarul nu pot fi contactați direct prin telefon în acest moment. Puteți lăsa un mesaj sau trimite un e-mail pentru a stabili o întâlnire."
+                    else:
+                        answer = "Management and the owner are not directly reachable by phone at the moment. You can leave a message or send an email to request an appointment or submit your inquiry."
+                    return {"status": "success", "answer": answer, "public": True}
+                else:
+                    if spanish:
+                        answer = "Actualmente no hay ningún servicio reservable ni recogida en tienda configurado para esta empresa."
+                    elif french:
+                        answer = "Aucune prestation réservable ou cueillette en magasin n’est actuellement configurée pour cette entreprise."
+                    elif romanian:
+                        answer = "Nu există servicii rezervabile sau ridicare din magazin configurate în prezent pentru această companie."
+                    else:
+                        answer = "No bookable service or store pickup is currently configured for this business."
+                    return {"status": "success", "answer": answer, "public": True}
+
             if is_pickup_reservation:
-                answer = (
-                    "Les réservations de produits ne sont pas effectuées par téléphone. Pour une cueillette ou un rendez-vous de service, veuillez indiquer la prestation et la date souhaitées."
-                    if french
-                    else "Product reservations are not processed by phone. For store pickup or a service appointment, please provide the desired service and date."
-                )
+                if spanish:
+                    answer = "Las reservas de productos no se realizan por teléfono. Para recogida en tienda o una cita de servicio, indique el servicio y la fecha deseados."
+                elif french:
+                    answer = "Les réservations de produits ne sont pas effectuées par téléphone. Pour une cueillette ou un rendez-vous de service, veuillez indiquer la prestation et la date souhaitées."
+                elif romanian:
+                    answer = "Rezervările de produse nu se efectuează prin telefon. Pentru ridicare sau o programare, vă rugăm să indicați serviciul și data dorite."
+                else:
+                    answer = "Product reservations are not processed by phone. For store pickup or a service appointment, please provide the desired service and date."
             else:
-                answer = "Pour demander un rendez-vous, indiquez le service et la date souhaités. Aucun rendez-vous n'est encore confirmé." if french else "For an appointment request, please provide the service and desired date. No booking is confirmed yet."
+                if spanish:
+                    answer = "Para solicitar una cita, indique el servicio y la fecha deseados. Ninguna reserva está confirmada todavía."
+                elif french:
+                    answer = "Pour demander un rendez-vous, indiquez le service et la date souhaités. Aucun rendez-vous n'est encore confirmé."
+                elif romanian:
+                    answer = "Pentru a solicita o programare, indicați serviciul și data dorite. Nicio programare nu este confirmată încă."
+                else:
+                    answer = "For an appointment request, please provide the service and desired date. No booking is confirmed yet."
             call.source_context = {**(call.source_context or {}), "public_appointment_request": True}
             self.db.commit()
             return {"status": "success", "answer": answer, "public": True}
@@ -1915,7 +2019,24 @@ async def telnyx_media_socket(
             ]
             return any(re.search(p, normalized) for p in patterns)
 
-        from backend.app.voice.direct_answers import resolve_direct_voice_answer
+        from backend.app.voice.direct_answers import resolve_direct_voice_answer, is_language_inquiry
+        lang_target = is_language_inquiry(transcript)
+        if lang_target:
+            target_locale_map = {"es": "es-ES", "en": "en-US", "fr": "fr-CA", "ro": "ro-RO"}
+            target_loc = target_locale_map.get(lang_target)
+            if target_loc:
+                current_call.locale = target_loc
+                bridge.locale = target_loc
+                call_lang_session.active_locale = target_loc
+                call_lang_session.last_confirmed_locale = target_loc
+                call_lang_session.explicit_switch_requested = True
+                call_lang_session.language_lock_state = "LOCKED"
+                current_call.source_context = {
+                    **(current_call.source_context or {}),
+                    "call_language_session": call_lang_session.as_dict(),
+                }
+                db.commit()
+
         direct_answer = resolve_direct_voice_answer(
             db,
             company_id=current_company.id,
@@ -1935,7 +2056,12 @@ async def telnyx_media_socket(
             )
             farewell = getattr(current_config, "farewell_message", None)
             if not farewell:
-                if call_loc.startswith("ro"):
+                if call_loc.startswith("es"):
+                    if has_unconfirmed:
+                        farewell = "Tenga en cuenta que su solicitud de cita no ha sido confirmada y no se ha creado ninguna reserva. ¡Muchas gracias por llamar! ¡Adiós y que tenga un buen día!"
+                    else:
+                        farewell = "¡Muchas gracias por llamar! ¡Adiós y que tenga un buen día!"
+                elif call_loc.startswith("ro"):
                     if has_unconfirmed:
                         farewell = "Vă rugăm să rețineți că cererea de programare nu a fost confirmată și nu a fost creată nicio programare. Vă mulțumim pentru apel. La revedere și o zi frumoasă!"
                     else:

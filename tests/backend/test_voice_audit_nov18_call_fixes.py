@@ -54,23 +54,31 @@ from backend.app.models import (
     VoiceCallerCredential,
 )
 from backend.app.models.commerce_connection import NormalizedCommerceRecord
+from backend.app.dependencies.auth import CurrentIdentity
 from backend.app.routers.voice import (
+    delete_user_voice_pin,
+    get_user_voice_pin_status,
     is_call_already_ended_error,
     update_user_phone_access,
 )
 from backend.app.schemas.voice import (
     VoicePhoneAccessRequest,
     VoiceAuthPinStatusResponse,
+    VoicePinDeleteRequest,
 )
 from backend.app.services.company_intelligence_service import (
     CompanyIntelligenceService,
 )
 from backend.app.voice.auth import VoiceCallerAuth
 from backend.app.voice.direct_answers import (
+    is_language_inquiry,
     is_open_catalog_question,
     resolve_direct_voice_answer,
     spoken_catalog_answer,
+    spoken_module_answer,
 )
+from backend.app.voice.language_resolver import CallLanguageSession
+from backend.app.voice.telnyx_media import PublicInboundConversation
 from backend.app.voice.messages import (
     apply_spoken_pronunciation,
     voice_ivr_greeting,
@@ -461,6 +469,315 @@ def test_p1_broad_catalog_query_direct_answer(tmp_path):
         assert "Planche Modèle 1" in ans
         assert ("stock direct non confirmé" in ans or "stock en direct non synchronisé" in ans)
         assert "en rupture de stock" not in ans
+    finally:
+        session.close()
+        engine.dispose()
+
+
+# ==============================================================================
+# 6. P0 — NIP LOGGING, RECONNAISSANCE IDENTITÉ COLLABORATEUR & DÉLIAISON
+# ==============================================================================
+
+def test_p0_nip_logging_identifies_matched_principal_and_unlinking(tmp_path, caplog):
+    """Vérifie que verify_gather trace explicitement l'identifiant et le rôle du compte sans fuite de NIP,
+    qu'un collaborateur peut délier/supprimer son NIP de manière sécurisée avec mot de passe,
+    et qu'aucun employé ne peut détourner le numéro d'un autre utilisateur actif.
+    """
+    import logging
+    engine, session, company, config, _api_key, orchestrator = _voice_database(tmp_path)
+    try:
+        user_pw = "Secr3tPassword!2026"
+        user1 = User(
+            company_id=company.id,
+            first_name="Francis",
+            last_name="Queval",
+            email="francis@eroproduits.com",
+            phone="+15145550001",
+            password_hash=hash_password(user_pw),
+            role=UserRole.OWNER,
+            is_active=True,
+        )
+        user2 = User(
+            company_id=company.id,
+            first_name="Ami",
+            last_name="Employe",
+            email="ami@eroproduits.com",
+            phone="+15145550002",
+            password_hash=hash_password(user_pw),
+            role=UserRole.USER,
+            is_active=True,
+        )
+        session.add_all([user1, user2])
+        session.commit()
+
+        mem1 = CompanyMembership(company_id=company.id, user_id=user1.id, role=UserRole.OWNER, is_active=True)
+        mem2 = CompanyMembership(company_id=company.id, user_id=user2.id, role=UserRole.USER, is_active=True)
+        session.add_all([mem1, mem2])
+        session.commit()
+
+        settings = Settings()
+        auth = VoiceCallerAuth(session, settings)
+        tenant1 = TenantContext(company.id, user1.id)
+        tenant2 = TenantContext(company.id, user2.id)
+
+        # Configurer le NIP pour user1
+        auth.set_pin(tenant1, "USER", user1.id, "481926", phone_number="+15145550001")
+        session.commit()
+
+        # 1. Tentative par user2 de s'attribuer le numéro de user1 -> REFUS STRICT
+        with pytest.raises(PermissionError) as exc_info:
+            auth.set_pin(tenant2, "USER", user2.id, "739264", phone_number="+15145550001")
+        assert "déjà associé à un autre collaborateur" in str(exc_info.value)
+
+        # 2. Appel avec mauvais NIP: vérifier que les logs identifient le principal_id et principal_role
+        call = VoiceCall(
+            company_id=company.id,
+            caller_phone="+15145550001",
+            config_id=config.id,
+        )
+        session.add(call)
+        session.commit()
+
+        with caplog.at_level(logging.INFO, logger="avenqo.voice.auth"):
+            result = auth.verify_gather(call, "739264")  # mauvais NIP
+        assert result["success"] is False
+        assert result["reason"] == "invalid_pin"
+
+        log_records = [r.message for r in caplog.records if "VoiceCallerAuth.verify_gather" in r.message]
+        assert any(str(user1.id) in msg for msg in log_records)
+        assert any("principal_role=owner" in msg.lower() for msg in log_records)
+        assert any("pin mismatch" in msg for msg in log_records)
+        # Aucune fuite de NIP en clair ni de numéro complet non masqué
+        assert not any("481926" in msg for msg in log_records)
+        assert not any("739264" in msg for msg in log_records)
+
+        # 3. Vérification du statut enrichi via get_user_voice_pin_status
+        identity1 = CurrentIdentity(auth_session=None, user=user1, raw_token="")
+        status_resp = get_user_voice_pin_status(identity=identity1, db=session)
+        assert status_resp["has_pin"] is True
+        assert status_resp["user_id"] == str(user1.id)
+        assert status_resp["user_email"] == "francis@eroproduits.com"
+        assert status_resp["user_role"].upper() == "OWNER"
+
+        # 4. Déliaison / suppression propre du NIP avec mot de passe
+        # Tentative avec mauvais mot de passe -> 403
+        from fastapi import HTTPException
+        with pytest.raises(HTTPException) as http_exc:
+            delete_user_voice_pin(VoicePinDeleteRequest(current_password="MauvaisPassword!"), identity=identity1, db=session)
+        assert http_exc.value.status_code == 403
+
+        # Succès avec bon mot de passe
+        del_resp = delete_user_voice_pin(VoicePinDeleteRequest(current_password=user_pw), identity=identity1, db=session)
+        assert del_resp["status"] == "DELETED"
+        assert del_resp["configured"] is False
+
+        # Vérifier que le statut est désormais non configuré
+        status_after = get_user_voice_pin_status(identity=identity1, db=session)
+        assert status_after["has_pin"] is False
+        assert status_after["configured"] is False
+    finally:
+        session.close()
+        engine.dispose()
+
+
+# ==============================================================================
+# 7. P0 — DEMANDES CLIENTS ENTRANTES (SECURITY GATE FALSE POSITIVES)
+# ==============================================================================
+
+def test_p0_customer_inbound_request_owner_does_not_trigger_nip(tmp_path):
+    """Vérifie qu'un appelant public demandant un rendez-vous, un contact ou un recrutement
+    avec le patron / manager / propriétaire n'est JAMAIS bloqué par le NIP employé,
+    et reçoit une réponse honnête de contact sans inventer de réservation fictive.
+    """
+    engine, session, company, config, _api_key, orchestrator = _voice_database(tmp_path)
+    try:
+        user = User(
+            company_id=company.id,
+            first_name="Francis",
+            last_name="Queval",
+            email="francis@eroproduits.com",
+            phone="+15145550001",
+            password_hash=hash_password("Secr3tPassword!2026"),
+            role=UserRole.OWNER,
+            is_active=True,
+        )
+        session.add(user)
+        session.flush()
+        mem = CompanyMembership(company_id=company.id, user_id=user.id, role=UserRole.OWNER, is_active=True)
+        session.add(mem)
+        session.commit()
+        tenant = TenantContext(company.id, user.id)
+        VoiceCallerAuth(session, Settings()).set_pin(tenant, "USER", user.id, "481926", phone_number="+15145550001")
+        session.commit()
+
+        from backend.app.models.voice import CompanyRoutingNip
+        session.add(CompanyRoutingNip(
+            id=uuid4(),
+            company_id=company.id,
+            routing_code="86849",
+            routing_code_hash="hash_86849",
+            status="ACTIVE",
+            created_by_user_id=user.id,
+        ))
+        session.commit()
+
+        call = VoiceCall(
+            company_id=company.id,
+            caller_phone="+15145550001",
+            config_id=config.id,
+            locale="fr-CA",
+            status="in_progress",
+            telnyx_call_control_id="v3:test_ctrl_id",
+            source_context={"dispatcher_routing": True},
+        )
+        session.add(call)
+        session.commit()
+
+        settings = Settings(telnyx_media_enabled=True, telnyx_media_inbound_enabled=True)
+        conv = PublicInboundConversation(session, settings, call.id)
+
+        # 1. Phrases publiques qui mentionnent le patron/manager/recrutement
+        test_phrases = [
+            "Bonjour, j'aimerais prendre rendez-vous avec le patron.",
+            "Je souhaite parler au manager pour un emploi.",
+            "Demande de rendez-vous avec le patron pour du recrutement.",
+            "Puis-je parler au propriétaire de la boutique ?",
+            "I would like to schedule an interview with the owner.",
+        ]
+        for phrase in test_phrases:
+            gate_res = conv.security_gate(phrase)
+            # Ne doit JAMAIS demander de NIP
+            assert gate_res is None or gate_res.get("auth_required") is not True, f"Security gate triggered wrongly for: {phrase}"
+
+        # 2. Réponse publique : si pas de module CRM réservation, donner une réponse de contact honnête
+        ans_french = conv.public_answer("Bonjour, j'aimerais prendre rendez-vous avec le patron.")
+        assert ans_french["status"] == "success"
+        assert ans_french.get("auth_required") is not True
+        assert "direction et le propriétaire ne sont pas joignables directement par téléphone" in ans_french["answer"]
+        assert "laisser un message" in ans_french["answer"] or "courriel" in ans_french["answer"]
+
+        # En anglais
+        call.locale = "en-US"
+        session.commit()
+        ans_english = conv.public_answer("Can I speak to the manager about an appointment?")
+        assert ans_english["status"] == "success"
+        assert ans_english.get("auth_required") is not True
+        assert "Management and the owner are not directly reachable by phone" in ans_english["answer"]
+
+        # En espagnol
+        call.locale = "es-ES"
+        session.commit()
+        ans_spanish = conv.public_answer("¿Puedo hablar con el dueño para una cita?")
+        assert ans_spanish["status"] == "success"
+        assert ans_spanish.get("auth_required") is not True
+        assert "administración y la gerencia no están disponibles" in ans_spanish["answer"]
+    finally:
+        session.close()
+        engine.dispose()
+
+
+# ==============================================================================
+# 8. P0 — PRONONCIATION PHONÉTIQUE « PRODUITS HÉROS » (ANTI-LIAISON ZÉRO)
+# ==============================================================================
+
+def test_p0_phonetic_pronunciation_produits_heros():
+    """Vérifie que l'alias phonétique 'Produits Héros' avec H aspiré
+    élimine la liaison [z] ('Produit Zéro') tout en préservant le nom d'entreprise officiel.
+    """
+    cfg = MagicMock()
+    cfg.business_name = "Produits Ero"
+    cfg.voice_display_name = "Produits Ero"
+    cfg.effective_voice_name = "Produits Ero"
+    cfg.custom_pronunciation = "Produits Héros"
+    cfg.preferred_language = "fr"
+
+    # 1. voice_speech_name utilise en priorité l'alias custom_pronunciation
+    spoken = voice_speech_name(cfg)
+    assert spoken == "Produits Héros"
+
+    # 2. apply_spoken_pronunciation remplace les graphies officielles et les anomalies 'Zéro'
+    text1 = "Bienvenue chez Produits Ero. Nous sommes à votre écoute."
+    rendered1 = apply_spoken_pronunciation(text1, cfg)
+    assert "Produits Héros" in rendered1
+    assert "Produits Ero" not in rendered1
+
+    text2 = "Vous êtes bien chez Produit Zéro."
+    rendered2 = apply_spoken_pronunciation(text2, cfg)
+    assert "Produits Héros" in rendered2
+    assert "Zéro" not in rendered2
+
+    # 3. voice_ivr_greeting applique 'Produits Héros'
+    greeting = voice_ivr_greeting(cfg)
+    assert "Produits Héros" in greeting
+    assert "Zéro" not in greeting
+
+    # 4. Cas sans custom_pronunciation explicite : la règle générique française applique 'Produits Héros'
+    cfg_auto = MagicMock()
+    cfg_auto.business_name = "Produits Ero"
+    cfg_auto.voice_display_name = "Produits Ero"
+    cfg_auto.effective_voice_name = "Produits Ero"
+    cfg_auto.custom_pronunciation = None
+    cfg_auto.preferred_language = "fr"
+    spoken_auto = voice_speech_name(cfg_auto)
+    assert spoken_auto == "Produits Héros"
+
+
+# ==============================================================================
+# 9. P0 — MULTILINGUE & ESPAGNOL (« ¿Habla español? »)
+# ==============================================================================
+
+def test_p0_multilingual_spanish_inquiry_and_switching(tmp_path):
+    """Vérifie la détection et la prise en charge de l'espagnol :
+    - Détection de '¿Habla español?', 'Hablas español', 'Hablo español', 'en español'
+    - Réponse directe courtoise en espagnol
+    - Réponses directes de modules et de catalogue en espagnol
+    """
+    engine, session, company, config, _api_key, orchestrator = _voice_database(tmp_path)
+    try:
+        config.custom_pronunciation = "Produits Héros"
+        session.commit()
+
+        # 1. is_language_inquiry
+        assert is_language_inquiry("¿Habla español?") == "es"
+        assert is_language_inquiry("Hablas español ?") == "es"
+        assert is_language_inquiry("Hablo español") == "es"
+        assert is_language_inquiry("podemos hablar en español por favor") == "es"
+        assert is_language_inquiry("Do you speak English?") == "en"
+        assert is_language_inquiry("Parlez-vous français ?") == "fr"
+
+        # 2. resolve_direct_voice_answer pour l'espagnol
+        ans = resolve_direct_voice_answer(
+            session,
+            company_id=company.id,
+            transcript="¿Habla español?",
+            authenticated_staff=False,
+            locale="es-ES",
+        )
+        assert ans is not None
+        assert "¡Hola! Sí, hablo español." in ans
+        assert "Produits Héros" in ans
+
+        # 3. CallLanguageSession bascule explicitement vers es-ES
+        lang_session = CallLanguageSession(
+            tenant_id=company.id,
+            call_session_id=str(uuid4()),
+            primary_locale="fr-CA",
+            active_locale="fr-CA",
+            allowed_locales=("fr-CA", "en-US", "es-ES", "ro-RO"),
+        )
+        switched = lang_session.check_explicit_switch("¿Habla español?")
+        assert switched == "es-ES"
+
+        switched2 = lang_session.check_explicit_switch("en español por favor")
+        assert switched2 == "es-ES"
+
+        # 4. Spoken module answer & catalog answer en espagnol
+        mod_ans = spoken_module_answer(["Retail", "Voice AI"], plan_code="Professional", locale="es-ES")
+        assert "Su empresa cuenta actualmente con los siguientes módulos: Retail, Voice AI." in mod_ans
+        assert "Su suscripción Professional está activa." in mod_ans
+
+        cat_ans = spoken_catalog_answer([], retail_enabled=True, locale="es-ES")
+        assert "El catálogo no contiene actualmente ningún producto a la venta." in cat_ans
     finally:
         session.close()
         engine.dispose()
