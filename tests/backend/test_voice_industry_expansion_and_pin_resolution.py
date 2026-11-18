@@ -414,3 +414,59 @@ def test_pin_status_distinguishes_active_from_locked():
     }
     is_disabled_active = status_disabled["configured"] and status_disabled["enabled"] and not status_disabled["is_locked"]
     assert is_disabled_active is False
+
+
+def test_pin_rotation_omitting_phone_preserves_verified_number(tmp_path):
+    """When rotating a PIN, omitting phone_number preserves the verified phone number."""
+    engine, session, company_a, config_a, user_a, company_b, config_b, user_b = _setup_multi_tenant_db(tmp_path)
+    dummy_secret = "test_synthetic_secret_" + "y" * 20
+    settings = Settings(AUTH_JWT_SECRET=dummy_secret)
+
+    tenant_a = TenantContext(company_id=company_a.id, user_id=user_a.id)
+    auth = VoiceCallerAuth(session, settings)
+
+    # 1. Initial PIN creation with full phone
+    initial_phone = "+15142955720"
+    cred = auth.set_pin(tenant_a, "USER", user_a.id, "849201", phone_number=initial_phone)
+    session.commit()
+    assert cred.phone_number == initial_phone
+    old_hash = cred.pin_hash
+
+    # 2. PIN rotation with phone_number=None (omitted)
+    rotated_cred = auth.set_pin(tenant_a, "USER", user_a.id, "739182", phone_number=None)
+    session.commit()
+    assert rotated_cred.phone_number == initial_phone
+    assert rotated_cred.pin_hash != old_hash
+
+    # 3. PIN rotation with masked phone string (e.g. "+151 *** **20")
+    # Must NOT corrupt the phone number or raise an error; retains initial_phone
+    masked_cred = auth.set_pin(tenant_a, "USER", user_a.id, "528194", phone_number="+151 *** **20")
+    session.commit()
+    assert masked_cred.phone_number == initial_phone
+
+
+def test_locked_account_unlocked_on_authenticated_pin_reset(tmp_path):
+    """An account locked due to failed attempts is immediately unlocked upon setting a new PIN."""
+    engine, session, company_a, config_a, user_a, company_b, config_b, user_b = _setup_multi_tenant_db(tmp_path)
+    dummy_secret = "test_synthetic_secret_" + "z" * 20
+    settings = Settings(AUTH_JWT_SECRET=dummy_secret)
+
+    tenant_a = TenantContext(company_id=company_a.id, user_id=user_a.id)
+    auth = VoiceCallerAuth(session, settings)
+
+    # Initial setup
+    cred = auth.set_pin(tenant_a, "USER", user_a.id, "849201", phone_number="+15142955720")
+    session.commit()
+
+    # Simulate lockout
+    cred.failed_attempts = 5
+    cred.locked_until = datetime.now(timezone.utc) + timedelta(minutes=15)
+    session.commit()
+
+    # Reset PIN via auth controller (as happens after account re-authentication with password)
+    unlocked = auth.set_pin(tenant_a, "USER", user_a.id, "938210", phone_number=None)
+    session.commit()
+
+    assert unlocked.failed_attempts == 0
+    assert unlocked.locked_until is None
+    assert unlocked.enabled is True

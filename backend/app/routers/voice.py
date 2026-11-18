@@ -288,7 +288,18 @@ def set_user_voice_pin(
     if confirm_pin_str and pin_str != confirm_pin_str:
         raise HTTPException(status_code=422, detail="Voice PIN and confirmation PIN do not match")
 
-    phone_to_use = request.phone_number or identity.user.phone
+    # Clean phone_number: if client sent masked string (e.g. "+151 *** **20" or contains "*"), never treat as new phone
+    req_phone = (request.phone_number or "").strip()
+    if "*" in req_phone:
+        if existing_cred and existing_cred.phone_number:
+            req_phone = ""  # Omit to retain existing verified phone
+        else:
+            raise HTTPException(
+                status_code=422,
+                detail="Veuillez saisir un numéro de téléphone complet sans caractères masqués.",
+            )
+
+    phone_to_use = req_phone or (existing_cred.phone_number if existing_cred else None) or identity.user.phone
     if not phone_to_use and not existing_cred:
         raise HTTPException(
             status_code=400,
@@ -301,7 +312,7 @@ def set_user_voice_pin(
             "USER",
             identity.user.id,
             pin_str,
-            phone_number=request.phone_number,
+            phone_number=req_phone or None,
         )
         AuditLogService(db).record(
             actor_user_id=identity.user.id,

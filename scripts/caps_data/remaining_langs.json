@@ -1,0 +1,422 @@
+{
+  "auto": {
+    "id": [
+      "Cek kecocokan suku cadang berdasarkan nomor rangka (VIN) atau tipe mobil",
+      "Ketersediaan stok dan perkiraan harga suku cadang",
+      "Booking jadwal servis rutin dan perbaikan bengkel",
+      "Pantau status pengerjaan kendaraan di bengkel"
+    ],
+    "ms": [
+      "Semakan keserasian alat ganti mengikut VIN atau model kenderaan",
+      "Ketersediaan stok dan anggaran harga",
+      "Tempahan janji temu servis dan pembaikan bengkel",
+      "Penjejakan status kemajuan kenderaan di bengkel"
+    ]
+  },
+  "medical": {
+    "id": [
+      "Pendaftaran dan perubahan jadwal konsultasi dokter",
+      "Panduan administrasi dan berkas yang diperlukan",
+      "Jadwal praktik dokter dan konsultasi daring",
+      "Peralihan prioritas ke perawat medis yang bertugas"
+    ],
+    "ms": [
+      "Tempahan dan penjadualan semula temu janji perubatan",
+      "Panduan pentadbiran dan dokumen yang diperlukan",
+      "Jadual bertugas doktor dan pilihan telekesihatan",
+      "Pemindahan keutamaan kepada kakitangan kejururawatan"
+    ]
+  },
+  "restaurant": {
+    "id": [
+      "Reservasi meja dengan konfirmasi SMS instan",
+      "Menu spesial hari ini dan daftar hidangan",
+      "Informasi alergen berdasarkan bahan terverifikasi",
+      "Pesanan bawa pulang dan reservasi rombongan privat"
+    ],
+    "ms": [
+      "Tempahan meja dengan pengesahan SMS segera",
+      "Menu istimewa harian dan pengenalan menu",
+      "Pertanyaan alergen berdasarkan bahan yang disahkan",
+      "Pesanan bawa pulang dan tempahan kumpulan persendirian"
+    ]
+  },
+  "retail": {
+    "id": [
+      "Cek stok barang di toko secara real-time",
+      "Pelacakan nomor resi paket dan status pengiriman",
+      "Kebijakan pengembalian barang dan jam buka cabang",
+      "Rekomendasi produk pelengkap dan aksesori resmi"
+    ],
+    "ms": [
+      "Semakan stok kedai fizikal secara masa nyata",
+      "Penjejakan bungkusan dan status penghantaran",
+      "Polisi pemulangan dan waktu operasi cawangan",
+      "Cadangan barangan pelengkap dan aksesori disahkan"
+    ]
+  },
+  "transport": {
+    "id": [
+      "Pelacakan kargo berdasarkan nomor Bill of Lading (BOL)",
+      "Estimasi waktu kedatangan (ETA) dan jadwal bongkar muat",
+      "Dukungan sopir terverifikasi dengan kode PIN",
+      "Jam operasional gudang dan protokol gerbang masuk"
+    ],
+    "ms": [
+      "Penjejakan penghantaran melalui nombor Bill of Lading (BOL)",
+      "Anggaran masa ketibaan (ETA) dan slot dok muatan",
+      "Sokongan pemandu yang disahkan dengan kod PIN",
+      "Waktu operasi gudang dan protokol keselamatan pintu masuk"
+    ]
+  },
+  "real_estate": {
+    "id": [
+      "Informasi properti dijual dan disewakan",
+      "Kriteria pencarian dan penilaian anggaran pembeli",
+      "Jadwal survei lokasi bersama agen berlisensi",
+      "Permintaan estimasi nilai pasar properti"
+    ],
+    "ms": [
+      "Maklumat hartanah untuk dijual atau disewa",
+      "Kriteria carian dan kelayakan bajet pembeli",
+      "Tempahan lawatan tapak dengan broker berlesen",
+      "Permintaan penilaian awal nilai pasaran hartanah"
+    ]
+  },
+  "hospitality": {
+    "id": [
+      "Pemesanan kamar dan perubahan jadwal menginap",
+      "Panduan check-in / check-out dan informasi parkir",
+      "Layanan concierge dan rekomendasi wisata lokal",
+      "Permintaan layanan kamar dan fasilitas menginap"
+    ],
+    "ms": [
+      "Tempahan bilik dan pengubahsuaian tempoh penginapan",
+      "Dasar daftar masuk/keluar dan panduan parkir",
+      "Bantuan rencam dan cadangan tarikan tempatan",
+      "Permintaan perkhidmatan bilik dan kemudahan tetamu"
+    ]
+  },
+  "beauty": {
+    "id": [
+      "Booking jadwal spa, salon rambut, dan pijat relaksasi",
+      "Daftar harga perawatan dan paket kecantikan",
+      "Pengingat jadwal otomatis dan opsi ubah tanggal",
+      "Panduan persiapan sebelum perawatan dimulai"
+    ],
+    "ms": [
+      "Tempahan rawatan spa, salun rambut dan urutan",
+      "Senarai harga rawatan dan pakej kecantikan",
+      "Peringatan temu janji automatik dan penjadualan semula",
+      "Garis panduan persediaan sebelum rawatan"
+    ]
+  },
+  "construction": {
+    "id": [
+      "Pengumpulan kebutuhan proyek untuk penawaran kontraktor",
+      "Panggilan darurat pipa bocor, kelistrikan, atau atap",
+      "Jadwal survei estimasi biaya langsung di lokasi",
+      "Koordinasi subkontraktor resmi berlisensi"
+    ],
+    "ms": [
+      "Pengambilan keperluan projek untuk sebut harga kontraktor",
+      "Panggilan kecemasan paip bocor, elektrik atau bumbung",
+      "Penjadualan anggaran kos lawatan tapak",
+      "Penyelarasan subkontraktor berlesen yang sah"
+    ]
+  },
+  "finance": {
+    "id": [
+      "Penjadwalan konsultasi dengan penasihat keuangan",
+      "Lokasi kantor cabang dan jam operasional teller",
+      "Prakualifikasi pengajuan pinjaman yang aman",
+      "Pengalihan ke divisi manajemen aset dan kekayaan"
+    ],
+    "ms": [
+      "Penjadwalan mesyuarat penasihat kewangan",
+      "Lokasi cawangan dan waktu urusan kaunter",
+      "Pra-kelayakan pertanyaan pinjaman yang selamat",
+      "Penghalaan ke jabatan pengurusan kekayaan"
+    ]
+  },
+  "insurance": {
+    "id": [
+      "Laporan klaim asuransi awal dan pembukaan berkas",
+      "Pelacakan proses penyelesaian klaim secara online",
+      "Penjelasan cakupan polis asuransi dan nilai potongan",
+      "Bantuan darurat di jalan dan evakuasi kecelakaan"
+    ],
+    "ms": [
+      "Penerimaan awal pengisytiharan tuntutan insurans",
+      "Penjejakan status kelulusan pampasan tuntutan",
+      "Penerangan skop perlindungan polisi dan deduktibel",
+      "Bantuan tunda kecemasan dan kerosakan jalan raya"
+    ]
+  },
+  "legal": {
+    "id": [
+      "Jadwal konsultasi hukum awal dengan pengacara",
+      "Klasifikasi bidang kasus (perdata, pidana, ketenagakerjaan)",
+      "Informasi honorarium dan prosedur surat kuasa",
+      "Pemeriksaan daluwarsa perkara dan daftar dokumen bukti"
+    ],
+    "ms": [
+      "Tempahan rundingan undang-undang awal dengan peguam",
+      "Klasifikasi bidang kes (sivil, jenayah, buruh)",
+      "Kadar yuran guaman dan prosedur surat kuasa",
+      "Tempoh had masa tindakan dan senarai bukti diperlukan"
+    ]
+  },
+  "education": {
+    "id": [
+      "Informasi program kursus, kalender akademik, dan jadwal",
+      "Pendaftaran daring dan seleksi berkas persyaratan",
+      "Biaya kuliah, beasiswa, dan skema cicilan",
+      "Konsultasi tatap muka dengan konselor pendidikan"
+    ],
+    "ms": [
+      "Program kursus, tarikh semester dan jadual waktu",
+      "Pendaftaran dalam talian dan semakan kelayakan kemasukan",
+      "Yuran pengajian, biasiswa dan pelan ansuran",
+      "Temu janji kaunselor akademik dan bimbingan"
+    ]
+  },
+  "hr_recruitment": {
+    "id": [
+      "Kualifikasi lowongan kerja dan uraian tugas",
+      "Penyaringan awal berkas lamaran dan CV pelamar",
+      "Pengaturan jadwal wawancara dengan tim HRD",
+      "Panduan berkas orientasi dan masuk kerja karyawan baru"
+    ],
+    "ms": [
+      "Syarat jawatan kosong dan huraian bidang tugas",
+      "Penyaringan awal resume dan maklum balas pemohon",
+      "Penyusunan jadual temu duga bersama perekrut",
+      "Dokumen pendaftaran masuk kerja dan taklimat staf baru"
+    ]
+  },
+  "it_services": {
+    "id": [
+      "Pembuatan tiket bantuan IT dan penentuan prioritas",
+      "Diagnosis awal gangguan jaringan dan perangkat lunak",
+      "Jadwal teknisi datang ke lokasi atau bantuan jarak jauh",
+      "Informasi status server cloud dan jadwal pemeliharaan"
+    ],
+    "ms": [
+      "Penciptaan tiket sokongan IT dan penetapan keutamaan",
+      "Diagnosis awal gangguan rangkaian dan perisian",
+      "Tempahan lawatan juruteknik tapak atau sokongan jauh",
+      "Status perkhidmatan awan dan notis penyelenggaraan"
+    ]
+  },
+  "manufacturing": {
+    "id": [
+      "Spesifikasi teknis mesin dan peralatan pabrik",
+      "Waktu siklus produksi dan jadwal pengiriman barang",
+      "Pemesanan suku cadang dan gambar teknik mesin",
+      "Sertifikasi mutu industri dan standar pengujian"
+    ],
+    "ms": [
+      "Spesifikasi teknikal jentera dan kapasiti kilang",
+      "Masa pendahuluan pengeluaran dan jadual penghantaran",
+      "Pesanan alat ganti gantian dan lukisan teknikal",
+      "Piawaian kawalan kualiti dan sijil industri"
+    ]
+  },
+  "agriculture": {
+    "id": [
+      "Ketersediaan benih, pupuk, dan pestisida pertanian",
+      "Pembelian hasil panen partai besar dan harga pasar",
+      "Konsultasi teknis agronomi dan panduan ahli tani",
+      "Jadwal masa panen dan rantai pendingin logistik"
+    ],
+    "ms": [
+      "Ketersediaan stok benih, baja dan racun perosak",
+      "Pembelian hasil tuaian pukal dan harga pasaran terkini",
+      "Sokongan teknikal agronomi dan nasihat pakar",
+      "Jadual musim penuaian dan logistik rantaian sejuk"
+    ]
+  },
+  "wholesale": {
+    "id": [
+      "Daftar harga grosir bertingkat sesuai volume order",
+      "Jumlah pesanan minimum (MOQ) dan waktu tunggu",
+      "Pengajuan akun kredit bisnis dan syarat pembayaran",
+      "Pelacakan pengiriman palet kargo dan kontainer"
+    ],
+    "ms": [
+      "Senarai harga borong bertingkat mengikut kuantiti",
+      "Kuantiti pesanan minimum (MOQ) dan tempoh masa",
+      "Permohonan akaun kredit perdagangan dan tempoh bayaran",
+      "Penjejakan kargo palet dan pergerakan kontena"
+    ]
+  },
+  "pharmacy": {
+    "id": [
+      "Cek status kesiapan obat resep untuk diambil",
+      "Ketersediaan obat bebas, suplemen, dan vitamin",
+      "Petunjuk apoteker mengenai dosis dan aturan minum",
+      "Informasi apotek jaga 24 jam dan layanan antar obat"
+    ],
+    "ms": [
+      "Semakan kesediaan ubat preskripsi untuk diambil",
+      "Stok ubat tanpa preskripsi dan suplemen kesihatan",
+      "Panduan dos dan amaran tindak balas daripada ahli farmasi",
+      "Waktu farmasi bertugas dan penghantaran ubat segera"
+    ]
+  },
+  "veterinary": {
+    "id": [
+      "Jadwal vaksinasi dan pemeriksaan rutin hewan peliharaan",
+      "Pertolongan pertama dan triase darurat medis hewan",
+      "Konsultasi sterilisasi, pemasangan microchip, dan perawatan",
+      "Akses riwayat medis dan sambungan ke dokter hewan"
+    ],
+    "ms": [
+      "Tempahan vaksinasi dan pemeriksaan kesihatan haiwan",
+      "Pertolongan cemas dan triaj kecemasan haiwan peliharaan",
+      "Konsultasi pemandulan, mikrocip dan penjagaan rutin",
+      "Semakan rekod rawatan dan panggilan ke doktor veterinar"
+    ]
+  },
+  "consulting": {
+    "id": [
+      "Perumusan tujuan dan ruang lingkup proyek konsultasi",
+      "Jadwal sesi perkenalan dengan konsultan senior",
+      "Paparan studi kasus sukses dan bidang keahlian",
+      "Permintaan proposal kerja sama dan materi presentasi"
+    ],
+    "ms": [
+      "Penetapan skop dan penilaian keperluan projek perundingan",
+      "Penjadualan sesi perbincangan bersama perunding kanan",
+      "Gambaran am amalan perundingan dan kajian kes",
+      "Permintaan kertas cadangan dan pembentangan pengenalan"
+    ]
+  },
+  "public_services": {
+    "id": [
+      "Jadwal pengangkutan sampah dan lokasi bank sampah",
+      "Laporan kerusakan jalan raya, lampu jalan, dan fasilitas umum",
+      "Jam buka kantor dinas pemerintah dan panduan izin",
+      "Pengalihan panggilan ke instansi kedinasan yang tepat"
+    ],
+    "ms": [
+      "Jadual kutipan sisa dan pusat kitar semula komuniti",
+      "Aduan kerosakan jalan awam, lampu jalan dan infrastruktur",
+      "Waktu operasi pejabat pihak berkuasa tempatan dan lesen",
+      "Penghalaan terus ke jabatan pentadbiran yang berkaitan"
+    ]
+  },
+  "telecom": {
+    "id": [
+      "Pengecekan jangkauan internet fiber optik sesuai alamat",
+      "Pemeriksaan otomatis gangguan jaringan dan pemulihan",
+      "Jadwal teknisi pasang baru internet rumah",
+      "Rincian paket kuota data, internet rumah, dan bundling"
+    ],
+    "ms": [
+      "Semakan liputan gentian optik dan internet jalur lebar mengikut alamat",
+      "Ujian automatik gangguan rangkaian dan pembaikan talian",
+      "Tempahan pemasangan internet dan janji temu juruteknik",
+      "Butiran pelan pakej data, panggilan dan tawaran kombo"
+    ]
+  },
+  "commercial_real_estate": {
+    "id": [
+      "Ketersediaan ruang kantor dan ruko komersial",
+      "Syarat sewa ruang usaha dan peraturan peruntukan zonasi",
+      "Jadwal survei gedung bagi pimpinan perusahaan",
+      "Spesifikasi teknis gedung (luas lantai, dermaga muat, parkir)"
+    ],
+    "ms": [
+      "Kekosongan ruang pejabat dan lot kedai komersial",
+      "Terma pajakan komersial dan kelulusan pengezonan",
+      "Penjadualan lawatan tapak untuk pengurusan korporat",
+      "Spesifikasi bangunan (keluasan lantai, dok punggah, tempat letak kereta)"
+    ]
+  },
+  "property_management": {
+    "id": [
+      "Penerimaan keluhan perbaikan fasilitas bagi penghuni",
+      "Triase laporan darurat (kebocoran pipa, kerusakan lift)",
+      "Pengumuman jadwal pemeliharaan dan pemadaman air",
+      "Petunjuk pembayaran iuran lingkungan (IPL) dan sewa"
+    ],
+    "ms": [
+      "Penerimaan aduan pembaikan daripada penghuni dan penyewa",
+      "Tindakan segera kecemasan teknikal (paip bocor, lif rosak)",
+      "Notis kerja-kerja penyelenggaraan dan gangguan bekalan air",
+      "Panduan pembayaran yuran penyelenggaraan dan sewa"
+    ]
+  },
+  "fitness_gym": {
+    "id": [
+      "Jadwal kelas olahraga grup dan pemesanan tempat",
+      "Daftar tarif keanggotaan gym, tiket harian, dan promo",
+      "Pemesanan sesi evaluasi fisik bersama pelatih pribadi",
+      "Tata tertib fasilitas gym dan panduan jam sepi"
+    ],
+    "ms": [
+      "Jadual kelas senaman berkumpulan dan tempahan slot",
+      "Kadar yuran keahlian gim, pas harian dan promosi",
+      "Tempahan sesi penilaian kecergasan bersama jurulatih peribadi",
+      "Peraturan kemudahan gimnasium dan waktu puncak"
+    ]
+  },
+  "events": {
+    "id": [
+      "Jadwal acara, daftar pengisi acara, dan info tiket",
+      "Petunjuk arah ke lokasi acara, parkir, dan akses disabilitas",
+      "Layanan khusus untuk pengisi stan pameran dan pembicara",
+      "Reservasi ruang VIP dan suite korporat eksklusif"
+    ],
+    "ms": [
+      "Jadual atur cara, senarai persembahan dan maklumat tiket",
+      "Panduan laluan ke lokasi, parkir dan kemudahan akses",
+      "Bantuan sokongan untuk pempamer dan penceramah jemputan",
+      "Tempahan bilik kenamaan VIP dan ruang korporat"
+    ]
+  },
+  "delivery_courier": {
+    "id": [
+      "Pelacakan paket secara instan dengan nomor resi pengiriman",
+      "Pengalihan alamat kirim atau titip di gerai terdekat",
+      "Instruksi penempatan paket di lokasi aman bagi kurir",
+      "Penanganan paket gagal kirim dan jadwal kirim ulang"
+    ],
+    "ms": [
+      "Penjejakan masa nyata melalui nombor penjejakan bungkusan",
+      "Pertukaran alamat penghantaran atau ambil di cawangan",
+      "Arahan serahan tempat selamat untuk pemandu kurier",
+      "Pengurusan bungkusan tertinggal dan jadual hantar semula"
+    ]
+  },
+  "cleaning_services": {
+    "id": [
+      "Estimasi harga instan berdasarkan luas meter persegi atau jumlah ruangan",
+      "Jadwal pembersihan rutin harian atau pembersihan menyeluruh",
+      "Protokol sanitasi dan penggunaan bahan pembersih ramah lingkungan",
+      "Tinjauan kepuasan pelanggan dan garansi pembersihan ulang"
+    ],
+    "ms": [
+      "Sebut harga segera berdasarkan keluasan ruang atau bilangan bilik",
+      "Penjadualan pembersihan berkala atau pembersihan intensif",
+      "Protokol sanitasi dan bekalan pembersih mesra alam",
+      "Maklum balas kualiti dan jaminan pembersihan semula percuma"
+    ]
+  },
+  "custom": {
+    "id": [
+      "Pelatihan asisten suara dengan istilah spesifik industri Anda",
+      "Jawaban bersumber secara ketat dari arsip resmi perusahaan Anda",
+      "Pengalihan panggilan yang disesuaikan dengan SOP internal Anda",
+      "Integrasi sistem kerja internal melalui antarmuka API yang aman"
+    ],
+    "ms": [
+      "Pembelajaran kosa kata khusus mengikut sektor perniagaan anda",
+      "Jawapan berpandukan dokumen rasmi syarikat yang disahkan sahaja",
+      "Penghalaan panggilan tersuai berasaskan peraturan dalaman anda",
+      "Integrasi alatan dalaman syarikat melalui API yang selamat"
+    ]
+  }
+}

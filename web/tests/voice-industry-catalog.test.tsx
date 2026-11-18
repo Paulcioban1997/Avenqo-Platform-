@@ -77,6 +77,29 @@ describe("Voice AI Industry Expansion & Verification Suite", () => {
     }
   });
 
+  it("verifies 100% native translations for capabilities in non-EN/FR locales with zero fallback leaks", () => {
+    const enCatalog = getVoiceIndustryCatalog("en" as LocaleCode);
+    const frCatalog = getVoiceIndustryCatalog("fr" as LocaleCode);
+
+    for (const loc of CANONICAL_LOCALES) {
+      const code = loc.code as LocaleCode;
+      if (["en", "en-GB", "fr", "fr-FR"].includes(code)) continue;
+
+      const catalog = getVoiceIndustryCatalog(code);
+      for (const ind of INDUSTRY_CATALOG) {
+        const item = catalog.industries[ind.id];
+        expect(item).toBeDefined();
+        const enCaps = new Set(enCatalog.industries[ind.id].suggestedCapabilities);
+        const frCaps = new Set(frCatalog.industries[ind.id].suggestedCapabilities);
+
+        for (const cap of item.suggestedCapabilities) {
+          expect(enCaps.has(cap)).toBe(false);
+          expect(frCaps.has(cap)).toBe(false);
+        }
+      }
+    }
+  });
+
   it("verifies Commerce / Retail has an updated valid image URL and reliable SVG fallback", () => {
     const retail = INDUSTRY_CATALOG.find((ind) => ind.id === "retail");
     expect(retail).toBeDefined();

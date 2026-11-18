@@ -280,4 +280,73 @@ describe("VoiceOnboardingWizard - Personal Employee PIN Workflow", () => {
     expect(await screen.findByText(/4\. Téléphone et employés/i)).toBeInTheDocument();
     expect(screen.getByText(/1\. Mon entreprise/i)).toBeInTheDocument();
   });
+
+  it("never injects masked phone number into the input and omits phone_number on PIN rotation", async () => {
+    let putPayload: any = null;
+    const fetcher = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes("/api/v1/voice/auth/pin/status")) {
+        return {
+          ok: true,
+          json: async () => ({
+            has_pin: true,
+            phone_access_enabled: true,
+            phone_number: "+1514 *** **20",
+            is_locked: false,
+            failed_attempts: 0,
+            active_sessions_count: 1,
+          }),
+        };
+      }
+      if (url.includes("/api/v1/voice/auth/pin") && init?.method === "PUT") {
+        putPayload = JSON.parse(String(init.body));
+        return {
+          ok: true,
+          json: async () => ({ status: "CONFIGURED", configured: true, enabled: true }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+    vi.stubGlobal("fetch", fetcher);
+
+    render(
+      <VoiceOnboardingWizard
+        tenantId="tenant-test-masked"
+        canManage={true}
+        businessName="Produits Ero"
+      />
+    );
+
+    await screen.findByText(/4\. Téléphone et employés/i);
+    fireEvent.click(screen.getByText(/4\. Téléphone et employés/i));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Numéro actuellement enregistré :/i)).toBeInTheDocument();
+      expect(screen.getByText("+1514 *** **20")).toBeInTheDocument();
+    });
+
+    // The input itself must be EMPTY, not populated with "+1514 *** **20"
+    const phoneInput = screen.getByPlaceholderText(/Laisser vide pour conserver/i) as HTMLInputElement;
+    expect(phoneInput.value).toBe("");
+
+    // Fill password and new PIN
+    const passwordInput = screen.getByPlaceholderText(/Mot de passe actuel/i);
+    fireEvent.change(passwordInput, { target: { value: "SecretPassword123!" } });
+
+    const pinInputs = screen.getAllByPlaceholderText("••••••");
+    fireEvent.change(pinInputs[0], { target: { value: "951824" } });
+    fireEvent.change(pinInputs[1], { target: { value: "951824" } });
+
+    const submitBtn = screen.getByText(/Mettre à jour le NIP/i);
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(putPayload).not.toBeNull();
+    });
+
+    expect(putPayload.pin).toBe("951824");
+    expect(putPayload.confirm_pin).toBe("951824");
+    expect(putPayload.current_password).toBe("SecretPassword123!");
+    // phone_number MUST be omitted when the user didn't type a new number!
+    expect(putPayload.phone_number).toBeUndefined();
+  });
 });

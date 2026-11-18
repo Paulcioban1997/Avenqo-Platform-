@@ -1,0 +1,422 @@
+{
+  "auto": {
+    "hi": [
+      "VIN या वाहन मॉडल द्वारा पुर्जों की संगतता जांच",
+      "स्टॉक उपलब्धता और सांकेतिक मूल्य निर्धारण",
+      "रखरखाव और वर्कशॉप मरम्मत की बुकिंग",
+      "वर्कशॉप में वाहन की मरम्मत स्थिति पर नजर"
+    ],
+    "vi": [
+      "Kiểm tra tương thích phụ tùng theo số VIN hoặc mẫu xe",
+      "Tình trạng tồn kho và bảng giá tham khảo",
+      "Đặt hẹn bảo dưỡng và sửa chữa tại xưởng",
+      "Theo dõi tiến độ sửa chữa xe tại xưởng"
+    ]
+  },
+  "medical": {
+    "hi": [
+      "चिकित्सक परामर्श बुकिंग और समय पुनर्निर्धारण",
+      "प्रशासनिक मार्गदर्शन और आवश्यक दस्तावेज",
+      "चिकित्सकों का समय और टेलीहेल्थ विकल्प",
+      "अधिकृत नर्सिंग स्टाफ को प्राथमिकता स्थानांतरण"
+    ],
+    "vi": [
+      "Đặt lịch và điều chỉnh lịch khám bệnh",
+      "Hướng dẫn thủ tục hành chính và giấy tờ cần thiết",
+      "Lịch khám của bác sĩ và tùy chọn tư vấn từ xa",
+      "Chuyển tiếp ưu tiên đến nhân viên điều dưỡng trực"
+    ]
+  },
+  "restaurant": {
+    "hi": [
+      "त्वरित एसएमएस पुष्टि के साथ टेबल बुकिंग",
+      "आज के विशेष व्यंजन और मेनू प्रस्तुति",
+      "सत्यापित सामग्री डेटा से एलर्जी संबंधी पूछताछ",
+      "टेकअवे ऑर्डर और निजी समूह बुकिंग"
+    ],
+    "vi": [
+      "Đặt bàn với xác nhận ngay lập tức qua tin nhắn SMS",
+      "Món ăn đặc sắc trong ngày và giới thiệu thực đơn",
+      "Giải đáp thắc mắc về dị ứng từ thành phần kiểm định",
+      "Đặt món mang về và đặt tiệc đoàn riêng"
+    ]
+  },
+  "retail": {
+    "hi": [
+      "दुकान में वास्तविक समय स्टॉक जांच",
+      "पार्सल ट्रैकिंग और शिपमेंट स्थिति",
+      "वापसी नीतियां और शाखा खुलने का समय",
+      "अधिकृत पूरक उत्पादों के सुझाव"
+    ],
+    "vi": [
+      "Kiểm tra số lượng hàng tồn tại cửa hàng theo thời gian thực",
+      "Tra cứu bưu kiện và trạng thái vận chuyển",
+      "Chính sách đổi trả và giờ mở cửa các chi nhánh",
+      "Gợi ý các mặt hàng bổ trợ và phụ kiện phù hợp"
+    ]
+  },
+  "transport": {
+    "hi": [
+      "बिल ऑफ लैडिंग (BOL) द्वारा शिपमेंट ट्रैकिंग",
+      "अनुमानित आगमन समय (ETA) और डॉक विंडो",
+      "पिन-प्रमाणित ड्राइवर सहायता और निर्देश",
+      "गोदाम के घंटे और गेट सुरक्षा नियम"
+    ],
+    "vi": [
+      "Theo dõi đơn hàng theo số vận đơn đường biển (BOL)",
+      "Thời gian đến dự kiến (ETA) và khung giờ bốc dỡ tại bến",
+      "Hỗ trợ tài xế được xác thực bằng mã PIN",
+      "Giờ làm việc của kho và quy định an ninh cổng vào"
+    ]
+  },
+  "real_estate": {
+    "hi": [
+      "बिक्री या पट्टे के लिए संपत्तियों की जानकारी",
+      "खरीदार खोज मानदंड और बजट का सत्यापन",
+      "लाइसेंस प्राप्त दलालों के साथ साइट विजिट",
+      "प्रारंभिक बाजार मूल्यांकन अनुरोध"
+    ],
+    "vi": [
+      "Thông tin bất động sản đang bán hoặc cho thuê",
+      "Tổng hợp tiêu chí tìm kiếm và ngân sách của khách mua",
+      "Đặt lịch xem nhà thực tế với môi giới có chứng chỉ",
+      "Yêu cầu định giá sơ bộ theo thị trường"
+    ]
+  },
+  "hospitality": {
+    "hi": [
+      "कमरा बुकिंग और ठहरने की अवधि में बदलाव",
+      "चेक-इन / चेक-आउट नियम और पार्किंग गाइड",
+      "द्वारपाल सहायता और स्थानीय सिफारिशें",
+      "अतिथि सेवा अनुरोध और कमरे की सुविधाएं"
+    ],
+    "vi": [
+      "Đặt phòng và điều chỉnh thời gian lưu trú",
+      "Quy định nhận/trả phòng và hướng dẫn bãi đỗ xe",
+      "Dịch vụ trợ giúp đặc biệt và gợi ý địa điểm địa phương",
+      "Yêu cầu dịch vụ phòng và tiện nghi bổ sung"
+    ]
+  },
+  "beauty": {
+    "hi": [
+      "स्पा, हेयर सैलून और मालिश बुकिंग",
+      "उपचार मूल्य और पैकेज विवरण",
+      "स्वचालित अपॉइंटमेंट रिमाइंडर और पुनर्निर्धारण",
+      "उपचार-पूर्व तैयारी दिशानिर्देश"
+    ],
+    "vi": [
+      "Đặt lịch spa, làm tóc và trị liệu massage",
+      "Bảng giá dịch vụ và các gói chăm sóc ưu đãi",
+      "Nhắc lịch hẹn tự động và hỗ trợ dời lịch",
+      "Hướng dẫn chuẩn bị trước khi thực hiện dịch vụ"
+    ]
+  },
+  "construction": {
+    "hi": [
+      "ठेकेदार उद्धरण के लिए परियोजना आवश्यकताओं का संग्रह",
+      "आपातकालीन प्लंबिंग, बिजली या छत मरम्मत",
+      "साइट पर अनुमानित लागत निर्धारण की बुकिंग",
+      "अधिकृत उपठेकेदार समन्वय"
+    ],
+    "vi": [
+      "Tiếp nhận yêu cầu báo giá thi công và sửa chữa",
+      "Xử lý khẩn cấp sự cố đường ống nước, điện hoặc mái nhà",
+      "Đặt lịch khảo sát và đo đạc thực tế tại công trình",
+      "Điều phối nhà thầu phụ được phê duyệt"
+    ]
+  },
+  "finance": {
+    "hi": [
+      "वित्तीय सलाहकार बैठक शेड्यूलिंग",
+      "शाखा स्थान और व्यावसायिक घंटे",
+      "सुरक्षित ऋण पूछताछ पूर्व-योग्यता",
+      "धन प्रबंधन विभागों को रूटिंग"
+    ],
+    "vi": [
+      "Đặt lịch hẹn với chuyên viên tư vấn tài chính",
+      "Địa chỉ chi nhánh và giờ giao dịch tại quầy",
+      "Thẩm định sơ bộ hồ sơ vay vốn an toàn",
+      "Chuyển hướng đến bộ phận quản lý tài sản cá nhân"
+    ]
+  },
+  "insurance": {
+    "hi": [
+      "प्रारंभिक बीमा दावा सूचना और पंजीकरण",
+      "दावा निपटान स्थिति की ऑनलाइन ट्रैकिंग",
+      "पॉलिसी कवरेज और कटौती योग्य विवरण",
+      "सड़क किनारे आपातकालीन सहायता"
+    ],
+    "vi": [
+      "Tiếp nhận thông báo tổn thất bảo hiểm ban đầu",
+      "Theo dõi tiến độ giải quyết hồ sơ bồi thường",
+      "Giải thích phạm vi bảo hiểm và mức miễn bồi thường",
+      "Cứu hộ giao thông và hỗ trợ tai nạn khẩn cấp"
+    ]
+  },
+  "legal": {
+    "hi": [
+      "प्रारंभिक कानूनी परामर्श बुकिंग",
+      "मामले का वर्गीकरण (सिविल, आपराधिक, श्रम)",
+      "परामर्श शुल्क और वकालतनामा प्रक्रिया",
+      "सीमा अवधि और आवश्यक साक्ष्य सूची"
+    ],
+    "vi": [
+      "Đặt lịch hẹn tư vấn pháp lý ban đầu với luật sư",
+      "Phân loại lĩnh vực vụ việc (dân sự, hình sự, lao động)",
+      "Tư vấn mức thù lao và quy trình ký kết hợp đồng dịch vụ",
+      "Thời hiệu khởi kiện và danh mục tài liệu chứng cứ cần chuẩn bị"
+    ]
+  },
+  "education": {
+    "hi": [
+      "पाठ्यक्रम, सत्र तिथियां और समय सारिणी",
+      "पंजीकरण और प्रवेश आवश्यकताओं की पूर्व-जांच",
+      "ट्यूशन फीस, छात्रवृत्ति और किस्त विकल्प",
+      "शैक्षणिक सलाहकारों के साथ बैठक"
+    ],
+    "vi": [
+      "Chương trình đào tạo, lịch học kỳ và thời khóa biểu",
+      "Đăng ký tuyển sinh và kiểm tra điều kiện xét tuyển",
+      "Học phí, học bổng và các phương thức thanh toán trả góp",
+      "Đặt lịch tư vấn hướng nghiệp và học tập"
+    ]
+  },
+  "hr_recruitment": {
+    "hi": [
+      "नौकरी की आवश्यकताएं और भूमिका विवरण",
+      "प्राप्त बायोडाटा की प्रारंभिक जांच",
+      "साक्षात्कार तिथियों का समय निर्धारण",
+      "नए कर्मचारियों के लिए ऑनबोर्डिंग दस्तावेज"
+    ],
+    "vi": [
+      "Yêu cầu tuyển dụng và mô tả vị trí công việc",
+      "Sàng lọc sơ bộ hồ sơ ứng viên gửi về",
+      "Sắp xếp lịch phỏng vấn với bộ phận nhân sự",
+      "Hướng dẫn thủ tục và hồ sơ tiếp nhận nhân viên mới"
+    ]
+  },
+  "it_services": {
+    "hi": [
+      "आईटी सहायता टिकट का निर्माण और प्राथमिकता",
+      "नेटवर्क और सॉफ्टवेयर समस्याओं का निदान",
+      "ऑन-साइट तकनीशियन या रिमोट सहायता बुकिंग",
+      "क्लाउड सेवा स्थिति और रखरखाव सूचनाएं"
+    ],
+    "vi": [
+      "Tạo phiếu yêu cầu hỗ trợ kỹ thuật và phân loại ưu tiên",
+      "Chẩn đoán ban đầu sự cố mạng và phần mềm",
+      "Đặt hẹn kỹ thuật viên hỗ trợ tận nơi hoặc từ xa",
+      "Trạng thái dịch vụ đám mây và thông báo bảo trì"
+    ]
+  },
+  "manufacturing": {
+    "hi": [
+      "औद्योगिक मशीनरी विनिर्देश और क्षमता",
+      "उत्पादन लीड समय और वितरण कार्यक्रम",
+      "स्पेयर पार्ट्स ऑर्डर और तकनीकी चित्र",
+      "गुणवत्ता नियंत्रण मानक और प्रमाणपत्र"
+    ],
+    "vi": [
+      "Thông số kỹ thuật và công suất máy móc công nghiệp",
+      "Thời gian sản xuất và tiến độ giao hàng",
+      "Đặt mua phụ tùng thay thế và bản vẽ kỹ thuật",
+      "Tiêu chuẩn kiểm soát chất lượng và chứng nhận"
+    ]
+  },
+  "agriculture": {
+    "hi": [
+      "बीज, उर्वरक और कीटनाशक उपलब्धता",
+      "थोक फसल खरीद और बाजार मूल्य",
+      "कृषि विशेषज्ञ परामर्श और तकनीकी सहायता",
+      "फसल कटाई कार्यक्रम और कोल्ड चेन रसद"
+    ],
+    "vi": [
+      "Tình trạng sẵn có của giống cây, phân bón và thuốc trừ sâu",
+      "Thu mua nông sản số lượng lớn và giá thị trường",
+      "Tư vấn kỹ thuật nông nghiệp và hỗ trợ chuyên gia",
+      "Lịch thu hoạch mùa vụ và logistics chuỗi cung ứng lạnh"
+    ]
+  },
+  "wholesale": {
+    "hi": [
+      "मात्रा के अनुसार थोक मूल्य सूची",
+      "न्यूनतम ऑर्डर मात्रा (MOQ) और समय सीमा",
+      "व्यापार क्रेडिट खाता और भुगतान शर्तें",
+      "पैलेट और कंटेनर शिपमेंट ट्रैकिंग"
+    ],
+    "vi": [
+      "Bảng giá bán buôn theo bậc số lượng đặt hàng",
+      "Số lượng đặt hàng tối thiểu (MOQ) và thời gian giao",
+      "Đăng ký hạn mức tín dụng doanh nghiệp và điều khoản thanh toán",
+      "Theo dõi vận chuyển hàng theo kiện pallet và container"
+    ]
+  },
+  "pharmacy": {
+    "hi": [
+      "पर्चे वाली दवाओं की तैयारी की स्थिति",
+      "ओवर-द-काउंटर दवाएं और सप्लीमेंट्स स्टॉक",
+      "फार्मासिस्ट खुराक मार्गदर्शन और सावधानियां",
+      "ऑन-कॉल फार्मेसी और त्वरित डिलीवरी"
+    ],
+    "vi": [
+      "Kiểm tra tình trạng chuẩn bị thuốc theo đơn",
+      "Hàng tồn kho thuốc không kê đơn và thực phẩm chức năng",
+      "Dược sĩ hướng dẫn liều dùng và lưu ý tương tác thuốc",
+      "Nhà thuốc trực ca và dịch vụ giao thuốc khẩn cấp"
+    ]
+  },
+  "veterinary": {
+    "hi": [
+      "पालतू जानवरों का टीकाकरण और नियमित जांच",
+      "आपातकालीन पशु देखभाल और प्राथमिक उपचार",
+      "नसबंदी, माइक्रोचिप और सामान्य देखभाल",
+      "उपचार इतिहास और पशु चिकित्सक परामर्श"
+    ],
+    "vi": [
+      "Đặt lịch tiêm phòng và khám tổng quát cho thú cưng",
+      "Sơ cứu và tiếp nhận khẩn cấp các ca chấn thương",
+      "Tư vấn triệt sản, gắn vi mạch và chăm sóc định kỳ",
+      "Tra cứu hồ sơ bệnh án và kết nối bác sĩ thú y"
+    ]
+  },
+  "consulting": {
+    "hi": [
+      "परामर्श परियोजना के उद्देश्यों का निर्धारण",
+      "वरिष्ठ सलाहकारों के साथ परिचयात्मक बैठक",
+      "केस स्टडीज और विशेषज्ञता का अवलोकन",
+      "प्रस्ताव और परिचयात्मक डेक अनुरोध"
+    ],
+    "vi": [
+      "Xác định mục tiêu và phạm vi dự án tư vấn quản trị",
+      "Đặt lịch họp trao đổi ban đầu với chuyên gia cao cấp",
+      "Giới thiệu các dự án thành công và năng lực thực tế",
+      "Yêu cầu gửi hồ sơ đề xuất và tài liệu giới thiệu"
+    ]
+  },
+  "public_services": {
+    "hi": [
+      "कचरा संग्रहण कार्यक्रम और पुनर्चक्रण केंद्र",
+      "सड़क मरम्मत और नागरिक मुद्दों की रिपोर्टिंग",
+      "नगर पालिका खुलने का समय और परमिट गाइड",
+      "संबंधित प्रशासनिक विभागों को पुनर्निर्देशन"
+    ],
+    "vi": [
+      "Lịch thu gom rác thải và điểm tập kết tái chế",
+      "Tiếp nhận phản ánh về đường sá, ổ gà và chiếu sáng",
+      "Giờ làm việc của cơ quan hành chính và thủ tục cấp phép",
+      "Chuyển máy chính xác đến các phòng ban chuyên trách"
+    ]
+  },
+  "telecom": {
+    "hi": [
+      "पते के आधार पर ब्रॉडबैंड और फाइबर पात्रता",
+      "स्वचालित नेटवर्क आउटेज और सेवा स्वास्थ्य जांच",
+      "इंटरनेट स्थापना और तकनीशियन नियुक्ति",
+      "मोबाइल और डेटा प्लान पैकेज विवरण"
+    ],
+    "vi": [
+      "Kiểm tra khả năng lắp đặt mạng cáp quang theo địa chỉ",
+      "Tự động kiểm tra sự cố mạng và trạng thái đường truyền",
+      "Đặt lịch hẹn kỹ thuật viên lắp đặt tại nhà",
+      "Chi tiết các gói cước Internet và dịch vụ di động"
+    ]
+  },
+  "commercial_real_estate": {
+    "hi": [
+      "कार्यालय और खुदरा वाणिज्यिक स्थान उपलब्धता",
+      "वाणिज्यिक पट्टे की शर्तें और जोनिंग विवरण",
+      "कॉर्पोरेट अधिकारियों के लिए साइट विजिट",
+      "भवन विनिर्देश (क्षेत्रफल, लोडिंग डॉक, पार्किंग)"
+    ],
+    "vi": [
+      "Mặt bằng văn phòng và thương mại sẵn sàng cho thuê",
+      "Điều khoản hợp đồng thuê thương mại và quy hoạch xây dựng",
+      "Lên lịch khảo sát thực địa cho ban lãnh đạo doanh nghiệp",
+      "Thông số kỹ thuật tòa nhà (diện tích sàn, bến bốc dỡ, bãi xe)"
+    ]
+  },
+  "property_management": {
+    "hi": [
+      "निवासियों के रखरखाव और मरम्मत अनुरोध",
+      "तत्काल तकनीकी आपात स्थिति (पानी का रिसाव, हीटर विफलता)",
+      "रखरखाव नोटिस और उपयोगिता व्यवधान अपडेट",
+      "किराया और रखरखाव शुल्क भुगतान मार्गदर्शन"
+    ],
+    "vi": [
+      "Tiếp nhận yêu cầu bảo trì sửa chữa của cư dân",
+      "Xử lý khẩn cấp sự cố kỹ thuật (rò rỉ nước, mất điện, hỏng máy lạnh)",
+      "Thông báo kế hoạch sửa chữa và tạm ngưng cung cấp nước",
+      "Hướng dẫn thanh toán phí quản lý và tiền thuê nhà"
+    ]
+  },
+  "fitness_gym": {
+    "hi": [
+      "समूह फिटनेस क्लास शेड्यूल और आरक्षण",
+      "सदस्यता दरें, डे पास और ट्रायल ऑफर",
+      "व्यक्तिगत ट्रेनर सत्र बुकिंग",
+      "सुविधा दिशानिर्देश और पीक-ऑवर एडवाइजरी"
+    ],
+    "vi": [
+      "Lịch học các lớp thể dục nhóm và đặt chỗ",
+      "Bảng giá thẻ hội viên, vé ngày và chương trình ưu đãi",
+      "Đặt lịch đánh giá thể trạng với huấn luyện viên cá nhân",
+      "Quy định sử dụng cơ sở vật chất và giờ cao điểm"
+    ]
+  },
+  "events": {
+    "hi": [
+      "कार्यक्रम अनुसूची, कलाकारों की सूची और टिकट",
+      "स्थल दिशा-निर्देश, पार्किंग और पहुंच",
+      "प्रदर्शकों और वक्ताओं के लिए सहायता",
+      "वीआईपी लाउंज और कॉर्पोरेट सुइट आरक्षण"
+    ],
+    "vi": [
+      "Lịch trình sự kiện, danh sách nghệ sĩ và thông tin vé",
+      "Chỉ dẫn đường đi, khu vực đỗ xe và lối đi thuận tiện",
+      "Hỗ trợ dành riêng cho đơn vị triển lãm và diễn giả",
+      "Đặt phòng VIP và khu vực tiếp khách doanh nghiệp"
+    ]
+  },
+  "delivery_courier": {
+    "hi": [
+      "पार्सल ट्रैकिंग नंबर द्वारा त्वरित ट्रैकिंग",
+      "डिलीवरी पता बदलना या पिकअप पॉइंट पर भेजना",
+      "ड्राइवर के लिए सुरक्षित स्थान पर छोड़ने के निर्देश",
+      "छूटी हुई डिलीवरी का समाधान और नया समय"
+    ],
+    "vi": [
+      "Tra cứu hành trình đơn hàng ngay bằng mã bưu gửi",
+      "Thay đổi địa chỉ nhận hàng hoặc chuyển đến điểm nhận cố định",
+      "Ghi chú hướng dẫn vị trí giao an toàn cho nhân viên giao hàng",
+      "Xử lý bưu gửi chưa giao được và hẹn lịch giao lại"
+    ]
+  },
+  "cleaning_services": {
+    "hi": [
+      "क्षेत्रफल या कमरों की संख्या के अनुसार त्वरित कोटेशन",
+      "नियमित और गहन सफाई शेड्यूलिंग",
+      "स्वच्छता प्रोटोकॉल और पर्यावरण अनुकूल उत्पाद",
+      "गुणवत्ता प्रतिक्रिया और मुफ्त पुन: सफाई"
+    ],
+    "vi": [
+      "Báo giá nhanh chóng theo diện tích mét vuông hoặc số phòng",
+      "Lên lịch dọn dẹp định kỳ hoặc tổng vệ sinh toàn diện",
+      "Quy trình vệ sinh an toàn và sản phẩm thân thiện môi trường",
+      "Ghi nhận phản hồi chất lượng và cam kết làm lại miễn phí"
+    ]
+  },
+  "custom": {
+    "hi": [
+      "आपके व्यवसाय की विशिष्ट शब्दावली का प्रशिक्षण",
+      "केवल आपकी कंपनी की आधिकारिक फाइलों से उत्तर",
+      "आपके आंतरिक नियमों के आधार पर कस्टम कॉल रूटिंग",
+      "सुरक्षित एपीआई के माध्यम से आंतरिक उपकरण एकीकरण"
+    ],
+    "vi": [
+      "Đào tạo trợ lý ảo bằng thuật ngữ đặc thù ngành của bạn",
+      "Câu trả lời dựa tuyệt đối trên tài liệu nội bộ đã duyệt",
+      "Định tuyến cuộc gọi tùy biến theo quy trình riêng của doanh nghiệp",
+      "Kích hoạt thao tác công cụ nội bộ qua API bảo mật"
+    ]
+  }
+}

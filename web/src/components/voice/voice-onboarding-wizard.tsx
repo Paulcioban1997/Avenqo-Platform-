@@ -326,9 +326,9 @@ export function VoiceOnboardingWizard({
         const pinData = await pinRes.json();
         const normalized = normalizePinStatus(pinData);
         setPinStatus(normalized);
-        if (normalized.phone_number) {
-          setEmployeePhone(normalized.phone_number);
-        }
+        // Security rule: Never re-inject masked phone into the editable field.
+        // Rotation without changing phone keeps employeePhone empty and omits phone_number in PUT.
+        setEmployeePhone("");
       }
     } catch {
       // Graceful fallback
@@ -604,7 +604,9 @@ export function VoiceOnboardingWizard({
       });
       return;
     }
-    if (!employeePhone.trim() && !pinStatus?.phone_number) {
+    const hasExistingPhone = Boolean(pinStatus?.configured && pinStatus?.phone_number);
+    const typedPhone = employeePhone.trim();
+    if (!typedPhone && !hasExistingPhone) {
       setEmployeePinFeedback({
         type: "error",
         message: fr
@@ -617,22 +619,22 @@ export function VoiceOnboardingWizard({
     setEmployeePinSaving(true);
     setEmployeePinFeedback(null);
     try {
-      let normalizedPhone = employeePhone.trim();
-      if (normalizedPhone) {
+      const payload: Record<string, any> = {
+        pin: employeePin,
+        confirm_pin: employeePinConfirm,
+        current_password: currentPassword.trim(),
+      };
+
+      // Only provide phone_number if user entered an unmasked full number.
+      // For simple PIN rotation without phone change, omit phone_number to retain the verified server value.
+      if (typedPhone && !typedPhone.includes("*")) {
+        let normalizedPhone = typedPhone;
         const digits = normalizedPhone.replace(/\D/g, "");
         if (digits.length === 10) {
           normalizedPhone = `+1${digits}`;
         } else if (digits.length === 11 && digits.startsWith("1")) {
           normalizedPhone = `+${digits}`;
         }
-      }
-
-      const payload: Record<string, any> = {
-        pin: employeePin,
-        confirm_pin: employeePinConfirm,
-        current_password: currentPassword.trim(),
-      };
-      if (normalizedPhone) {
         payload.phone_number = normalizedPhone;
       }
 
@@ -682,6 +684,7 @@ export function VoiceOnboardingWizard({
           setEmployeePin("");
           setEmployeePinConfirm("");
           setCurrentPassword("");
+          setEmployeePhone("");
           onRefreshStatus?.();
         } else if (freshStatus.is_locked) {
           setEmployeePinFeedback({
@@ -2388,11 +2391,25 @@ export function VoiceOnboardingWizard({
 
                   <div>
                     <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
-                      {fr ? "Numéro de téléphone employé autorisé *" : "Authorized Staff Phone Number *"}
+                      {pinStatus?.configured
+                        ? (fr ? "Numéro de téléphone employé (laisser vide pour conserver le numéro)" : "Authorized Staff Phone (leave blank to keep current number)")
+                        : (fr ? "Numéro de téléphone employé autorisé *" : "Authorized Staff Phone Number *")}
                     </label>
+
+                    {pinStatus?.configured && pinStatus?.phone_number ? (
+                      <div className="mb-2 max-w-md px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between text-xs">
+                        <span className="text-slate-500 dark:text-slate-400">
+                          {fr ? "Numéro actuellement enregistré :" : "Currently registered number:"}
+                        </span>
+                        <span className="font-mono font-bold text-slate-900 dark:text-white">
+                          {pinStatus.phone_number}
+                        </span>
+                      </div>
+                    ) : null}
+
                     <input
                       type="tel"
-                      placeholder="+15142955720"
+                      placeholder={pinStatus?.configured ? (fr ? "Laisser vide pour conserver, ou nouveau +1514..." : "Leave blank to keep, or enter new +1...") : "+15142955720"}
                       value={employeePhone}
                       onChange={(e) => setEmployeePhone(e.target.value)}
                       onBlur={() => {
@@ -2405,6 +2422,13 @@ export function VoiceOnboardingWizard({
                       }}
                       className="w-full max-w-md px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden focus:border-[#0076FF]"
                     />
+                    {pinStatus?.configured ? (
+                      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                        {fr
+                          ? "Pour une simple rotation de NIP, laissez ce champ vide. Votre numéro actif reste inchangé côté serveur."
+                          : "For a simple PIN rotation, leave this field blank. Your active registered number will be preserved on the server."}
+                      </p>
+                    ) : null}
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-md">
@@ -2444,7 +2468,7 @@ export function VoiceOnboardingWizard({
                   <div className="pt-2">
                     <button
                       type="button"
-                      disabled={employeePinSaving || employeePin.length < 6 || !currentPassword.trim() || (!employeePhone.trim() && !pinStatus?.phone_number)}
+                      disabled={employeePinSaving || employeePin.length < 6 || !currentPassword.trim() || (!employeePhone.trim() && !pinStatus?.configured && !pinStatus?.phone_number)}
                       onClick={savePersonalPin}
                       className="px-5 py-2.5 rounded-xl bg-[#0076FF] hover:bg-blue-600 text-white text-xs font-bold shadow-xs transition disabled:opacity-50 flex items-center gap-2"
                     >

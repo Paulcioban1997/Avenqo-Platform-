@@ -9,6 +9,21 @@ Outputs:
 import json
 import os
 import re
+import sys
+
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_REPO_ROOT = os.path.abspath(os.path.join(_SCRIPT_DIR, ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+if _SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPT_DIR)
+
+try:
+    from scripts.industry_native_caps import INDUSTRY_NATIVE_CAPABILITIES
+except ImportError:
+    from industry_native_caps import INDUSTRY_NATIVE_CAPABILITIES
+
+assert len(INDUSTRY_NATIVE_CAPABILITIES) == 30, f"Expected 30 industries in INDUSTRY_NATIVE_CAPABILITIES, got {len(INDUSTRY_NATIVE_CAPABILITIES)}"
 
 CANONICAL_LOCALES = [
     "fr", "en", "es", "pt", "ro", "ar", "ar-EG", "zh", "ja", "ko",
@@ -996,19 +1011,11 @@ def get_localized_desc_and_caps(ind, loc):
     desc = desc_template.get(loc) or desc_template.get(lang) or ind["descEn"]
 
     # Localize capabilities using 100% authentic native translations
-    try:
-        from scripts.industry_native_caps import INDUSTRY_NATIVE_CAPABILITIES
-    except ImportError:
-        try:
-            from industry_native_caps import INDUSTRY_NATIVE_CAPABILITIES
-        except ImportError:
-            INDUSTRY_NATIVE_CAPABILITIES = {}
-
     ind_id = ind["id"]
     if ind_id in INDUSTRY_NATIVE_CAPABILITIES and lang in INDUSTRY_NATIVE_CAPABILITIES[ind_id]:
         return desc, INDUSTRY_NATIVE_CAPABILITIES[ind_id][lang]
 
-    return desc, ind["capsEn"]
+    raise ValueError(f"Missing native capabilities for industry '{ind_id}' in locale '{loc}' (lang: '{lang}')")
 
 # Build catalogs for all 44 locales
 catalogs_data = {}

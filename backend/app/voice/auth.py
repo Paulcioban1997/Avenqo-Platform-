@@ -113,7 +113,19 @@ class VoiceCallerAuth:
             principal = self.db.scalar(select(CRMClient).where(CRMClient.id == principal_uuid, CRMClient.company_id == company_uuid, CRMClient.is_deleted.is_(False)))
         else:
             raise ValueError("Unsupported principal type")
-        raw_phone = phone_number or (principal.phone if principal is not None else None)
+        existing = self.db.scalar(
+            select(VoiceCallerCredential).where(
+                VoiceCallerCredential.company_id == company_uuid,
+                VoiceCallerCredential.principal_id == principal_uuid,
+            )
+        )
+        if phone_number and "*" in phone_number:
+            if existing is not None and existing.phone_number:
+                phone_number = None
+            else:
+                raise ValueError("Veuillez saisir un numéro de téléphone complet sans caractères masqués.")
+
+        raw_phone = phone_number or (existing.phone_number if existing is not None else None) or (principal.phone if principal is not None else None)
         if isinstance(principal, User) and principal.company is not None and principal.company.country:
             if principal.company.country.upper() in {"CA", "US", "CANADA", "UNITED STATES"}:
                 digits = re.sub(r"\D", "", raw_phone or "")
@@ -129,12 +141,6 @@ class VoiceCallerAuth:
         if self.db.get_bind().dialect.name == "postgresql":
             self.db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
                 {"lock_key": f"voice_pin:{company_uuid}:{phone}"})
-        existing = self.db.scalar(
-            select(VoiceCallerCredential).where(
-                VoiceCallerCredential.company_id == company_uuid,
-                VoiceCallerCredential.principal_id == principal_uuid,
-            )
-        )
         shared = self.db.scalar(
             select(VoiceCallerCredential).where(
                 VoiceCallerCredential.company_id == company_uuid,

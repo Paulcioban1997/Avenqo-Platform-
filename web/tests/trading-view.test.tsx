@@ -6,7 +6,7 @@ import { TradingTickerBand, type TickerItem } from "../src/components/trading/tr
 import { PredictionPanel } from "../src/components/trading/prediction-panel";
 import { TradingModelsCard } from "../src/components/trading/trading-models-card";
 import { TradingGeminiChat } from "../src/components/trading/trading-gemini-chat";
-import { getTradingChatStrings } from "../src/lib/i18n/trading-chat-i18n";
+import { getTradingChatStrings, pickRandomTradingQuestions } from "../src/lib/i18n/trading-chat-i18n";
 
 // Mock des composants dépendants de canvas/lightweight-charts pour tests jsdom
 vi.mock("lightweight-charts", () => ({
@@ -259,5 +259,32 @@ describe("Avenqo Trading AI 2.0 — I18n & Completeness", () => {
     expect(screen.getByPlaceholderText("اطرح سؤالك الفني على جيميني...")).toBeInTheDocument();
     expect(screen.getByText(/أنا محلل السوق Avenqo Trading AI المدعوم بتقنية Google Gemini/i)).toBeInTheDocument();
     unmountAr();
+  });
+
+  it("verifies all 44 canonical locales have complete TradingChatStrings and non-empty questions", () => {
+    expect(CANONICAL_LOCALES.length).toBe(44);
+    for (const loc of CANONICAL_LOCALES) {
+      const strings = getTradingChatStrings(loc.code);
+      expect(strings).toBeDefined();
+      expect(strings.title).toBeTruthy();
+      expect(strings.badge).toBeTruthy();
+      expect(strings.subtitle).toBeTruthy();
+      expect(strings.specializedQuestionsLabel).toBeTruthy();
+      expect(strings.shuffleQuestionsLabel).toBeTruthy();
+      expect(strings.inputPlaceholder).toBeTruthy();
+      expect(strings.clearChatTooltip).toBeTruthy();
+      expect(strings.voiceTooltip).toBeTruthy();
+      expect(strings.welcome("BTCUSDT", "1h")).toContain("BTCUSDT");
+      expect(strings.reset("BTCUSDT", "1h")).toContain("BTCUSDT");
+      expect(strings.loading("BTCUSDT")).toContain("BTCUSDT");
+      expect(strings.voicePrompt("BTCUSDT", "1h")).toContain("BTCUSDT");
+      expect(strings.questions.length).toBeGreaterThanOrEqual(16);
+
+      const randomQs = pickRandomTradingQuestions(loc.code, 3);
+      expect(randomQs.length).toBe(3);
+      for (const q of randomQs) {
+        expect(strings.questions).toContain(q);
+      }
+    }
   });
 });
