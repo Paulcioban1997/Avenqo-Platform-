@@ -409,6 +409,10 @@ class VoiceIvrSettingsRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class VoicePinDeleteRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=256)
+
+
 class VoiceAuthPinStatusResponse(BaseModel):
     configured: bool
     enabled: bool = True
@@ -419,6 +423,12 @@ class VoiceAuthPinStatusResponse(BaseModel):
     has_pin: bool = False
     is_locked: bool = False
     active_sessions_count: int = 0
+    user_id: str | None = None
+    user_email: str | None = None
+    user_name: str | None = None
+    user_role: str | None = None
+    user_account_phone: str | None = None
+    credential_phone: str | None = None
 
     @model_validator(mode="after")
     def sync_pin_status_fields(self) -> VoiceAuthPinStatusResponse:

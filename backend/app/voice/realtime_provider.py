@@ -201,20 +201,23 @@ def build_personality_system_prompt(
         else "Complete your concise spoken response clearly before waiting for the caller."
     )
     pronunciation_note = ""
+    spoken_brand = company_name
     if custom_pronunciation and str(custom_pronunciation).strip():
         pron = str(custom_pronunciation).strip()
+        spoken_brand = pron
         pronunciation_note = (
-            f"PRONUNCIATION INSTRUCTION: The official phonetic pronunciation for '{company_name}' is '{pron}'. "
-            f"Always pronounce it strictly as '{pron}'. "
+            f"PRONUNCIATION INSTRUCTION: The official phonetic spoken name for '{company_name}' is '{pron}'. "
+            f"Always pronounce it strictly as '{pron}' (never pronounce with a 'Z' sound or liaison). "
         )
     elif "ero" in company_name.lower() or "éro" in company_name.lower():
+        spoken_brand = "Produits Héros"
         pronunciation_note = (
-            "PRONUNCIATION INSTRUCTION: Pronounce 'Produits Éro' clearly as 'Éro' (rhymes with 'héros'), "
+            "PRONUNCIATION INSTRUCTION: Pronounce 'Produits Ero' as 'Produits Héros' (with aspirate H, rhymes with 'héros'), "
             "never with a 'Z' sound ('Zéro' or 'Zero' is strictly prohibited). "
         )
     prompt = (
-        f"You represent the company '{company_name}'. "
-        f"Always pronounce and refer to the company strictly as '{company_name}'. "
+        f"You represent the company '{company_name}'. Spoken name: '{spoken_brand}'. "
+        f"Always pronounce and refer to the company as '{spoken_brand}'. "
         f"{pronunciation_note}"
         "Treat that spelling as a proper name in the caller's language. "
         "Do not read it as a number and do not replace it with an English common noun. "

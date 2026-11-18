@@ -43,6 +43,16 @@ def normalized_phone(value):
     return None
 
 
+def mask_phone(value: str | None) -> str:
+    """Mask a phone number for safe logging without exposing full customer/staff numbers."""
+    if not value or not isinstance(value, str):
+        return ""
+    cleaned = value.strip()
+    if len(cleaned) <= 5:
+        return "***"
+    return f"{cleaned[:3]}***{cleaned[-4:]}"
+
+
 def redact_voice_secrets(value):
     return re.sub(r"(?<!\d)(?:\d[ -]?){6,12}(?!\d)", "[REDACTED]", str(value or ""))
 
@@ -141,6 +151,17 @@ class VoiceCallerAuth:
         if self.db.get_bind().dialect.name == "postgresql":
             self.db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
                 {"lock_key": f"voice_pin:{company_uuid}:{phone}"})
+        # Strict protection: verify that this phone is not registered to another active user in the tenant
+        other_active_user = self.db.scalar(
+            select(User).where(
+                User.company_id == company_uuid,
+                User.id != principal_uuid,
+                User.is_active.is_(True),
+                or_(User.phone == phone, User.phone == raw_phone),
+            )
+        )
+        if other_active_user is not None:
+            raise PermissionError("Ce numéro de téléphone est déjà associé à un autre collaborateur actif de l'entreprise.")
         shared = self.db.scalar(
             select(VoiceCallerCredential).where(
                 VoiceCallerCredential.company_id == company_uuid,
@@ -512,6 +533,21 @@ class VoiceCallerAuth:
                 )
             )
 
+        matched_principal_id = str(credential.principal_id) if credential else (str(caller_user.id) if caller_user else None)
+        principal_role_str: str | None = None
+        if credential and credential.principal_type == "USER":
+            mem = self.db.scalar(select(CompanyMembership).where(
+                CompanyMembership.user_id == credential.principal_id,
+                CompanyMembership.company_id == call.company_id,
+                CompanyMembership.is_active.is_(True),
+            ))
+            if mem:
+                principal_role_str = mem.role.value if hasattr(mem.role, "value") else str(mem.role)
+            elif caller_user and hasattr(caller_user, "role"):
+                principal_role_str = caller_user.role.value if hasattr(caller_user.role, "value") else str(caller_user.role)
+        elif caller_user and hasattr(caller_user, "role"):
+            principal_role_str = caller_user.role.value if hasattr(caller_user.role, "value") else str(caller_user.role)
+
         caller_matched = caller_user is not None
         credential_found = credential is not None
         credential_enabled = bool(credential and credential.enabled)
@@ -520,20 +556,28 @@ class VoiceCallerAuth:
 
         call.verification_attempts += 1
         logger.info(
-            "VoiceCallerAuth.verify_gather: company_id=%s call_id=%s caller_matched=%s credential_found=%s enabled=%s locked=%s attempt=%s/%s",
-            call.company_id, call.id, caller_matched, credential_found, credential_enabled, is_locked, call.verification_attempts, maximum,
+            "VoiceCallerAuth.verify_gather: company_id=%s call_id=%s caller_matched=%s credential_found=%s enabled=%s locked=%s principal_id=%s principal_role=%s masked_caller=%s masked_cred_phone=%s attempt=%s/%s",
+            call.company_id, call.id, caller_matched, credential_found, credential_enabled, is_locked,
+            matched_principal_id, principal_role_str,
+            mask_phone(call.caller_phone),
+            mask_phone(credential.phone_number if credential else None),
+            call.verification_attempts, maximum,
         )
 
         if credential is None or not credential.enabled:
             verify_password(self._peppered(call.company_id, call.id, pin_clean), hash_password(secrets.token_urlsafe(32)))
             self.db.flush()
             fail_reason = "caller_not_recognized" if not caller_matched else ("pin_not_configured" if not credential_found else "credential_disabled")
+            logger.warning(
+                "VoiceCallerAuth.verify_gather: rejected (reason=%s, company_id=%s, call_id=%s, principal_id=%s, principal_role=%s)",
+                fail_reason, call.company_id, call.id, matched_principal_id, principal_role_str,
+            )
             return {**failed, "reason": fail_reason}
 
         if is_locked:
             logger.warning(
-                "VoiceCallerAuth.verify_gather: credential locked (company_id=%s, principal_id=%s, locked_until=%s)",
-                call.company_id, credential.principal_id, credential.locked_until,
+                "VoiceCallerAuth.verify_gather: credential locked (company_id=%s, call_id=%s, principal_id=%s, principal_role=%s, locked_until=%s)",
+                call.company_id, call.id, credential.principal_id, principal_role_str, credential.locked_until,
             )
             self.db.flush()
             return {**failed, "reason": "account_locked", "locked_until": credential.locked_until.isoformat() if credential.locked_until else None}
@@ -555,9 +599,13 @@ class VoiceCallerAuth:
             if credential.failed_attempts >= maximum:
                 credential.locked_until = now + timedelta(seconds=getattr(self.settings, "voice_pin_lockout_seconds", 900))
                 logger.warning(
-                    "VoiceCallerAuth.verify_gather: lockout triggered (company_id=%s, principal_id=%s, failed_attempts=%s)",
-                    call.company_id, credential.principal_id, credential.failed_attempts,
+                    "VoiceCallerAuth.verify_gather: lockout triggered (company_id=%s, call_id=%s, principal_id=%s, principal_role=%s, failed_attempts=%s)",
+                    call.company_id, call.id, credential.principal_id, principal_role_str, credential.failed_attempts,
                 )
+            logger.warning(
+                "VoiceCallerAuth.verify_gather: pin mismatch (company_id=%s, call_id=%s, principal_id=%s, principal_role=%s, attempt=%s/%s)",
+                call.company_id, call.id, credential.principal_id, principal_role_str, call.verification_attempts, maximum,
+            )
             self.db.flush()
             return {**failed, "reason": "invalid_pin"}
         principal_model = User if credential.principal_type == "USER" else CRMClient
