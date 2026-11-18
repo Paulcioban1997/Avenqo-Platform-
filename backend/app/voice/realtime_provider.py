@@ -173,6 +173,7 @@ def build_personality_system_prompt(
     formality_level: int = 65,
     allow_natural_interruptions: bool = True,
     extra_instructions: str = "",
+    custom_pronunciation: str | None = None,
 ) -> str:
     lang_name = locale_info(locale).english_name
     preset_descriptions = {
@@ -200,7 +201,13 @@ def build_personality_system_prompt(
         else "Complete your concise spoken response clearly before waiting for the caller."
     )
     pronunciation_note = ""
-    if "ero" in company_name.lower() or "éro" in company_name.lower():
+    if custom_pronunciation and str(custom_pronunciation).strip():
+        pron = str(custom_pronunciation).strip()
+        pronunciation_note = (
+            f"PRONUNCIATION INSTRUCTION: The official phonetic pronunciation for '{company_name}' is '{pron}'. "
+            f"Always pronounce it strictly as '{pron}'. "
+        )
+    elif "ero" in company_name.lower() or "éro" in company_name.lower():
         pronunciation_note = (
             "PRONUNCIATION INSTRUCTION: Pronounce 'Produits Éro' clearly as 'Éro' (rhymes with 'héros'), "
             "never with a 'Z' sound ('Zéro' or 'Zero' is strictly prohibited). "
@@ -446,6 +453,10 @@ class GeminiLiveRealtimeAudioAdapter:
                 "Gemini Live requires an authorized company voice name; no tenant brand fallback is allowed"
             )
         self._company_name = str(resolved_company).strip().replace("_", " ")
+        self._custom_pronunciation = (
+            getattr(config, "custom_pronunciation", None)
+            or getattr(config, "voice_pronunciation", None)
+        ) if config is not None else None
         self._personality_preset = getattr(config, "personality_preset", "professional_premium_warm") if config is not None else "professional_premium_warm"
         self._professionalism_level = int(getattr(config, "professionalism_level", 100) if config is not None else 100)
         self._warmth_level = int(getattr(config, "warmth_level", 85) if config is not None else 85)
@@ -502,6 +513,7 @@ class GeminiLiveRealtimeAudioAdapter:
             humor_level=self._humor_level,
             formality_level=self._formality_level,
             allow_natural_interruptions=self._allow_natural_interruptions,
+            custom_pronunciation=self._custom_pronunciation,
         )
         try:
             from google.genai import types
@@ -1413,6 +1425,7 @@ class GoogleGeminiLiveRealtimeProvider:
             formality_level=context.formality_level,
             allow_natural_interruptions=context.allow_natural_interruptions,
             extra_instructions=context.system_instruction,
+            custom_pronunciation=getattr(context, "custom_pronunciation", None) or getattr(context, "voice_pronunciation", None),
         )
         safe_tools = self.sanitize_authorized_tools(authorized_tools)
         try:
