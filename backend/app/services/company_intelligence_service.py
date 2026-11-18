@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 from uuid import UUID
@@ -13,6 +14,87 @@ from backend.app.services.module_entitlement_service import ModuleEntitlementSer
 from shared.ai_engine.contracts import TenantContext
 
 BOOKING_TOOLS = frozenset({"check_availability", "list_available_slots", "create_appointment", "book_appointment"})
+
+def classify_connector_freshness(
+    conn: CommerceConnection | None,
+    now: datetime | None = None,
+    *,
+    freshness_threshold_hours: int = 24,
+) -> str:
+    """Classifie l'état de fraîcheur d'un connecteur e-commerce.
+
+    Retourne l'un des états suivants :
+    - 'UNAVAILABLE' : en erreur, déconnecté ou non disponible
+    - 'SYNCING' : synchronisation active en cours
+    - 'CONNECTED' : connecté mais aucun sync réussi complété
+    - 'STALE' : dernier sync réussi plus ancien que le seuil de fraîcheur (par défaut 24h)
+    - 'FRESH' : dernier sync récent dans le seuil garanti
+    - 'UNCONFIRMED_HISTORICAL' : aucune connexion
+    """
+    if conn is None:
+        return "UNCONFIRMED_HISTORICAL"
+    st = str(getattr(conn, "status", "") or "").upper()
+    if st in ("ERROR", "FAILED", "DISCONNECTED", "REAUTH_REQUIRED"):
+        return "UNAVAILABLE"
+    if st in ("SYNCING", "PROCESSING", "CONNECTING", "AUTHORIZING"):
+        return "SYNCING"
+    if st not in ("READY", "CONNECTED", "ACTIVE", "COMPLETED"):
+        return "UNAVAILABLE"
+
+    sync_time = getattr(conn, "last_successful_sync", None) or getattr(conn, "sync_completed_at", None)
+    if sync_time is None:
+        return "CONNECTED"
+
+    cur_now = now or datetime.now(timezone.utc)
+    sync_utc = sync_time.replace(tzinfo=timezone.utc) if sync_time.tzinfo is None else sync_time.astimezone(timezone.utc)
+    now_utc = cur_now.replace(tzinfo=timezone.utc) if cur_now.tzinfo is None else cur_now.astimezone(timezone.utc)
+
+    if (now_utc - sync_utc) > timedelta(hours=freshness_threshold_hours):
+        return "STALE"
+    return "FRESH"
+
+
+def classify_product_freshness(
+    record,
+    connections_by_id: dict[UUID, CommerceConnection],
+    now: datetime | None = None,
+    *,
+    freshness_threshold_hours: int = 24,
+    max_product_age_days: int = 7,
+) -> tuple[str, bool]:
+    """Évalue la fraîcheur effective d'un produit.
+
+    Retourne : (freshness_status, is_live_stock)
+    is_live_stock est strictement True UNIQUEMENT si freshness_status == 'FRESH'.
+    """
+    cid = getattr(record, "connection_id", None) if not isinstance(record, dict) else record.get("connection_id")
+    if not cid:
+        return "UNCONFIRMED_HISTORICAL", False
+
+    conn = connections_by_id.get(cid)
+    if conn is None:
+        return "UNAVAILABLE", False
+
+    conn_freshness = classify_connector_freshness(
+        conn, now=now, freshness_threshold_hours=freshness_threshold_hours
+    )
+    if conn_freshness != "FRESH":
+        return conn_freshness, False
+
+    # Le connecteur est FRESH. Vérifier l'horodatage propre du produit.
+    prod_time = (
+        (getattr(record, "source_updated_at", None) or getattr(record, "updated_at", None))
+        if not isinstance(record, dict)
+        else (record.get("source_updated_at") or record.get("updated_at"))
+    )
+    if prod_time is not None:
+        cur_now = now or datetime.now(timezone.utc)
+        prod_utc = prod_time.replace(tzinfo=timezone.utc) if getattr(prod_time, "tzinfo", None) is None else prod_time.astimezone(timezone.utc)
+        now_utc = cur_now.replace(tzinfo=timezone.utc) if cur_now.tzinfo is None else cur_now.astimezone(timezone.utc)
+        if (now_utc - prod_utc) > timedelta(days=max_product_age_days):
+            return "STALE", False
+
+    return "FRESH", True
 
 class CompanyOfferingUnavailable(ValueError):
     pass
@@ -113,11 +195,7 @@ class CompanyIntelligenceService:
             CRMEmployee.is_active.is_(True)).limit(100)).all() if "crm" in active else []
 
         products_list: list[dict] = []
-        active_live_conn_ids = {
-            c.id for c in connections
-            if c.provider in ("shopify", "woocommerce")
-            and str(c.status).upper() in ("READY", "SYNCING", "ACTIVE")
-        }
+        connections_by_id = {c.id: c for c in connections}
         if "retail" in active:
             try:
                 from backend.app.models.commerce_connection import NormalizedCommerceRecord
@@ -150,9 +228,28 @@ class CompanyIntelligenceService:
                         inventory = sum(v.get("inventory_level", 0) for v in variants if isinstance(v.get("inventory_level"), (int, float)))
                     raw_count = int(inventory) if isinstance(inventory, (int, float)) else 0
 
-                    is_live_stock = bool(r.connection_id and r.connection_id in active_live_conn_ids)
+                    freshness_status, is_live_stock = classify_product_freshness(
+                        r, connections_by_id, now=datetime.now(timezone.utc)
+                    )
                     in_stock = (raw_count > 0 or status == "instock") if is_live_stock else False
                     confirmed_inventory_count = raw_count if is_live_stock else None
+
+                    stock_status_label = (
+                        "live_synced" if freshness_status == "FRESH"
+                        else (
+                            "stale" if freshness_status == "STALE"
+                            else (
+                                "syncing" if freshness_status == "SYNCING"
+                                else (
+                                    "unavailable" if freshness_status == "UNAVAILABLE"
+                                    else (
+                                        "unverified_connected" if freshness_status == "CONNECTED"
+                                        else "unconfirmed_historical"
+                                    )
+                                )
+                            )
+                        )
+                    )
 
                     curr_str = str(company.currency_code or "").strip().upper()
                     curr_sym = "$" if curr_str in ("CAD", "USD", "$") or not curr_str else ("€" if curr_str in ("EUR", "€") else ("£" if curr_str in ("GBP", "£") else curr_str))
@@ -168,10 +265,11 @@ class CompanyIntelligenceService:
                         "price_display": p_disp,
                         "price_status": "verified" if is_live_stock else "historical_catalog",
                         "is_live_stock": is_live_stock,
+                        "freshness_status": freshness_status,
                         "in_stock": in_stock,
                         "inventory_count": confirmed_inventory_count,
                         "historical_reference_units": raw_count if not is_live_stock else None,
-                        "stock_status": "live_synced" if is_live_stock else "unconfirmed_historical",
+                        "stock_status": stock_status_label,
                         "description": pdata.get("description") or pdata.get("body_html") or "",
                     })
             except Exception:

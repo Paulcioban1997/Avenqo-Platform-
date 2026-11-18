@@ -320,19 +320,39 @@ class GetProductDetailTool(RetailAITool):
             )
 
         from backend.app.models.commerce_connection import CommerceConnection
+        from backend.app.services.company_intelligence_service import classify_product_freshness
         conn_map: dict[UUID, str] = {}
+        conns_by_id: dict[UUID, CommerceConnection] = {}
         if records:
             conn_ids = {r.connection_id for r in records if r.connection_id}
             conns = self._session.scalars(
                 select(CommerceConnection).where(CommerceConnection.id.in_(conn_ids))
             ).all()
             conn_map = {c.id: (c.display_name or c.provider) for c in conns}
+            conns_by_id = {c.id: c for c in conns}
 
         products = []
         for r in records:
             p = _product_to_dict(r)
             cid = r.connection_id
             p["store_name"] = conn_map.get(cid, str(p.get("provider") or "Commerce Store"))
+            freshness_status, is_live_stock = classify_product_freshness(
+                r, conns_by_id, now=datetime.now(timezone.utc)
+            )
+            raw_inv = p.get("inventory_level")
+            p["freshness_status"] = freshness_status
+            p["is_live_stock"] = is_live_stock
+            if is_live_stock:
+                p["stock_confirmed"] = True
+                p["stock_is_current"] = True
+                p["price_status"] = "verified"
+            else:
+                p["stock_confirmed"] = False
+                p["stock_is_current"] = False
+                p["inventory_level"] = None
+                p["stock_quantity"] = None
+                p["historical_observed_units"] = raw_inv
+                p["price_status"] = "historical_catalog"
             if approximate_match_name:
                 p["matched_approximate"] = True
                 p["original_query"] = arguments.product_name

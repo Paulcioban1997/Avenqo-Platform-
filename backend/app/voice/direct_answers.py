@@ -120,15 +120,27 @@ def spoken_catalog_answer(
             unit = "£"
         else:
             unit = raw_unit
+        is_live = row.get("is_live_stock") is True
+        freshness = str(row.get("freshness_status") or "").upper()
         if price is None or price == "":
             price_text = "preț nespecificat" if romanian else ("prix non indiqué" if french else "price not listed")
         else:
             price_text = f"{price} {unit}".strip()
+            if row.get("price_status") == "historical_catalog" or not is_live:
+                hist_tag = " (preț de referință)" if romanian else (" (prix indicatif)" if french else " (reference price)")
+                price_text += hist_tag
+
         available = ""
         inventory = row.get("inventory_count")
-        if row.get("is_live_stock") is True and row.get("in_stock") is True and isinstance(inventory, (int, float)) and inventory > 0:
+        if is_live and row.get("in_stock") is True and isinstance(inventory, (int, float)) and inventory > 0:
             available = ", disponibil" if romanian else (", disponible" if french else ", available")
-        elif row.get("is_live_stock") is False:
+        elif freshness == "STALE":
+            available = ", date de stoc expirate" if romanian else (", données de stock non récentes" if french else ", stock data stale")
+        elif freshness == "UNAVAILABLE":
+            available = ", stoc indisponibil" if romanian else (", stock indisponible" if french else ", stock unavailable")
+        elif freshness == "SYNCING":
+            available = ", sincronizare stoc în curs" if romanian else (", synchronisation de stock en cours" if french else ", stock syncing in progress")
+        else:
             available = ", stoc nesincronizat" if romanian else (", stock en direct non synchronisé" if french else ", live stock unconfirmed")
         spoken.append(f"{name}, {price_text}{available}")
     extra = ""

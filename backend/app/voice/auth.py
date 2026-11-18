@@ -436,6 +436,7 @@ class VoiceCallerAuth:
         caller_norm = normalized_phone(call.caller_phone)
         credential = None
         caller_user: User | None = None
+        candidate_sync_phone: str | None = None
         if identifier:
             id_str = str(identifier).strip()
             # Lookup user by email, phone, or UUID within company
@@ -496,20 +497,8 @@ class VoiceCallerAuth:
                             VoiceCallerCredential.principal_id == caller_user.id,
                         ).with_for_update()
                     )
-                    # Legitimate auto-heal: if credential exists and phone number differs, update it to caller_norm with audit
                     if credential is not None and credential.phone_number != caller_norm:
-                        old_phone = credential.phone_number
-                        credential.phone_number = caller_norm
-                        AuditLogService(self.db).record(
-                            actor_user_id=caller_user.id,
-                            action="voice_credential_phone_synchronized",
-                            target_type="voice_credential",
-                            target_id=str(credential.id),
-                            company_id=call.company_id,
-                            metadata={"previous_phone": old_phone, "synchronized_phone": caller_norm},
-                            commit=False,
-                        )
-                        self.db.flush()
+                        candidate_sync_phone = caller_norm
 
         if caller_user is None and credential is not None and credential.principal_type == "USER":
             caller_user = self.db.scalar(
@@ -598,6 +587,52 @@ class VoiceCallerAuth:
         credential.failed_attempts = 0
         credential.locked_until = None
         self.establish(call)
+
+        # Post-authentication verified phone synchronization:
+        # Preconditions:
+        # 1. PIN verification was 100% successful.
+        # 2. Principal is a valid active User of this company.
+        # 3. Caller ID matches the phone officially registered on the principal's User account.
+        # 4. Strict conflict check: No other user or credential in this company already uses this phone number.
+        if (
+            candidate_sync_phone
+            and credential.principal_type == "USER"
+            and isinstance(principal, User)
+            and principal.id == credential.principal_id
+            and (normalized_phone(principal.phone) == candidate_sync_phone or principal.phone == call.caller_phone)
+        ):
+            conflict_cred = self.db.scalar(
+                select(VoiceCallerCredential).where(
+                    VoiceCallerCredential.company_id == call.company_id,
+                    VoiceCallerCredential.phone_number == candidate_sync_phone,
+                    VoiceCallerCredential.id != credential.id,
+                )
+            )
+            conflict_user = self.db.scalar(
+                select(User).where(
+                    User.company_id == call.company_id,
+                    User.phone == candidate_sync_phone,
+                    User.id != principal.id,
+                )
+            )
+            if conflict_cred is None and conflict_user is None:
+                old_phone = credential.phone_number
+                credential.phone_number = candidate_sync_phone
+                AuditLogService(self.db).record(
+                    actor_user_id=principal.id,
+                    action="voice_credential_phone_synchronized",
+                    target_type="voice_credential",
+                    target_id=str(credential.id),
+                    company_id=call.company_id,
+                    metadata={"previous_phone": old_phone, "synchronized_phone": candidate_sync_phone},
+                    commit=False,
+                )
+            else:
+                logger.warning(
+                    "VoiceCallerAuth.verify_gather: phone sync skipped due to conflict (company_id=%s, phone=%s)",
+                    call.company_id, candidate_sync_phone,
+                )
+
         self.db.flush()
         logger.info(
             "VoiceCallerAuth.verify_gather: authentication succeeded (company_id=%s, call_id=%s, principal_id=%s, caller_type=%s)",

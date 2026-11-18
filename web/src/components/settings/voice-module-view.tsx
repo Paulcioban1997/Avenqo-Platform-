@@ -475,9 +475,12 @@ export function VoiceModuleView() {
 
         <div className="flex items-center gap-2 flex-wrap">
           {routingNip && (
-            <div className="px-3.5 py-1.5 rounded-xl bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 text-xs font-mono font-bold flex items-center gap-1.5 shadow-xs">
+            <div
+              className="px-3.5 py-1.5 rounded-xl bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 text-xs font-mono font-bold flex items-center gap-1.5 shadow-xs"
+              title={fr ? "Code d'acheminement standard partagé / Secours (pour router vers votre entreprise depuis le numéro central)" : "Shared platform routing code (routes to your company when calling central dispatcher)"}
+            >
               <KeyRound className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-              <span>NIP : {routingNip}#</span>
+              <span>{fr ? "Acheminement standard :" : "Routing code :"} {routingNip}#</span>
             </div>
           )}
           {currentStatus?.business_number ? (
