@@ -346,6 +346,10 @@ class GetProductDetailTool(RetailAITool):
                 p["stock_confirmed"] = True
                 p["stock_is_current"] = True
                 p["price_status"] = "verified"
+                in_stock_bool = bool((raw_inv is not None and raw_inv > 0) or p.get("in_stock") is True)
+                p["in_stock"] = in_stock_bool
+                p["stock_availability"] = "IN_STOCK" if in_stock_bool else "OUT_OF_STOCK"
+                p["stock_status"] = "instock" if in_stock_bool else "outofstock"
             else:
                 p["stock_confirmed"] = False
                 p["stock_is_current"] = False
@@ -353,6 +357,9 @@ class GetProductDetailTool(RetailAITool):
                 p["stock_quantity"] = None
                 p["historical_observed_units"] = raw_inv
                 p["price_status"] = "historical_catalog"
+                p["in_stock"] = None
+                p["stock_availability"] = "UNKNOWN"
+                p["stock_status"] = "unknown"
             if approximate_match_name:
                 p["matched_approximate"] = True
                 p["original_query"] = arguments.product_name

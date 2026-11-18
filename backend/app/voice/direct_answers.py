@@ -34,15 +34,24 @@ def is_module_access_question(text: str) -> bool:
 
 def is_open_catalog_question(text: str) -> bool:
     words = _words(text)
-    products = bool(words & {"produit", "produits", "product", "products", "article", "articles", "catalogue", "catalog"})
+    products = bool(words & {
+        "produit", "produits", "product", "products", "article", "articles",
+        "catalogue", "catalog", "catalogs", "catalogues", "item", "items",
+        "planche", "planches", "snowboard", "snowboards",
+    })
     if not products:
         return False
-    listing = bool(words & {"quels", "quelles", "quel", "liste", "what", "which", "catalogue", "catalog"})
+    listing = bool(words & {
+        "quels", "quelles", "quel", "quelle", "liste", "what", "which",
+        "catalogue", "catalog", "chacun", "chacune", "tous", "toutes", "all", "every", "each",
+    })
     for_sale = bool(words & {"vente", "vendre", "sale", "sales"})
-    prices = bool(words & {"prix", "price", "prices", "tarif", "tarifs"})
-    if words & {"stock", "inventaire", "inventory"} and not prices and "vente" not in words and not listing:
-        return False
-    return (listing or for_sale) and (prices or for_sale or listing)
+    prices = bool(words & {"prix", "price", "prices", "tarif", "tarifs", "combien", "cout"})
+    stock_inquiry = bool(words & {
+        "stock", "stocks", "inventaire", "inventory", "disponible", "disponibles",
+        "disponibilite", "disponibilites", "restant", "restants",
+    })
+    return listing or for_sale or prices or stock_inquiry
 
 
 def spoken_module_answer(names: list[str], *, plan_code: str | None, locale: str) -> str:
@@ -132,16 +141,21 @@ def spoken_catalog_answer(
 
         available = ""
         inventory = row.get("inventory_count")
-        if is_live and row.get("in_stock") is True and isinstance(inventory, (int, float)) and inventory > 0:
+        stock_avail = row.get("stock_availability")
+        if is_live and (stock_avail == "IN_STOCK" or row.get("in_stock") is True):
             available = ", disponibil" if romanian else (", disponible" if french else ", available")
+        elif is_live and (stock_avail == "OUT_OF_STOCK" or row.get("in_stock") is False):
+            available = ", stoc epuizat" if romanian else (", en rupture de stock" if french else ", out of stock")
         elif freshness == "STALE":
             available = ", date de stoc expirate" if romanian else (", données de stock non récentes" if french else ", stock data stale")
         elif freshness == "UNAVAILABLE":
             available = ", stoc indisponibil" if romanian else (", stock indisponible" if french else ", stock unavailable")
         elif freshness == "SYNCING":
             available = ", sincronizare stoc în curs" if romanian else (", synchronisation de stock en cours" if french else ", stock syncing in progress")
-        else:
+        elif freshness == "UNCONFIRMED_HISTORICAL":
             available = ", stoc nesincronizat" if romanian else (", stock en direct non synchronisé" if french else ", live stock unconfirmed")
+        else:
+            available = ", stoc direct neconfirmat" if romanian else (", stock direct non confirmé" if french else ", live stock unconfirmed")
         spoken.append(f"{name}, {price_text}{available}")
     extra = ""
     if len(rows) > 5:
@@ -153,10 +167,10 @@ def spoken_catalog_answer(
         else:
             extra = f" And {remaining} more items in the catalog."
     if romanian:
-        return "Avem în vânzare: " + " ; ".join(spoken) + "." + extra
+        return "Avem în catalog: " + " ; ".join(spoken) + "." + extra
     if french:
-        return "Nous avons en vente : " + " ; ".join(spoken) + "." + extra
-    return "We currently have for sale: " + "; ".join(spoken) + "." + extra
+        return "Nous avons au catalogue : " + " ; ".join(spoken) + "." + extra
+    return "In our catalog, we have: " + "; ".join(spoken) + "." + extra
 
 
 def resolve_direct_voice_answer(
@@ -164,9 +178,9 @@ def resolve_direct_voice_answer(
     *,
     company_id: UUID,
     transcript: str,
-    authenticated_staff: bool,
-    staff_role: str | None,
-    locale: str,
+    authenticated_staff: bool = False,
+    staff_role: str | None = None,
+    locale: str = "en",
 ) -> str | None:
     """Return a spoken answer, or None when Central AI should handle the turn."""
     if db is None:

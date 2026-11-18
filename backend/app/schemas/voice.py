@@ -209,7 +209,12 @@ class VoicePinSetupRequest(VoicePinRequest):
 
 class VoicePhoneAccessRequest(BaseModel):
     enabled: bool
-    model_config = ConfigDict(extra="forbid")
+    current_password: SecretStr | None = None
+    model_config = ConfigDict(extra="ignore")
+
+    @property
+    def current_password_value(self) -> str | None:
+        return self.current_password.get_secret_value() if self.current_password else None
 
 
 class VoiceMemberAccessRequest(BaseModel):
@@ -407,15 +412,18 @@ class VoiceIvrSettingsRequest(BaseModel):
 class VoiceAuthPinStatusResponse(BaseModel):
     configured: bool
     enabled: bool = True
+    phone_access_enabled: bool = True
     phone_number: str | None = None
     failed_attempts: int = 0
     locked_until: datetime | None = None
     has_pin: bool = False
     is_locked: bool = False
+    active_sessions_count: int = 0
 
     @model_validator(mode="after")
     def sync_pin_status_fields(self) -> VoiceAuthPinStatusResponse:
         self.has_pin = self.configured
+        self.phone_access_enabled = self.enabled
         now = datetime.now(timezone.utc)
         if self.locked_until:
             lu = self.locked_until if self.locked_until.tzinfo else self.locked_until.replace(tzinfo=timezone.utc)

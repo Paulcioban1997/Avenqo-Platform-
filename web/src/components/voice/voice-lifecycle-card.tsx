@@ -123,7 +123,9 @@ export function VoiceLifecycleCard({
       if (pinRes.ok) {
         const pData = (await pinRes.json()) as PinStatus;
         setPinStatus(pData);
-        if (pData.phone_number && !employeePhone) setEmployeePhone(pData.phone_number);
+        if (pData.phone_number && !pData.phone_number.includes("*") && !employeePhone) {
+          setEmployeePhone(pData.phone_number);
+        }
       }
     } catch {
       setErrorMsg(

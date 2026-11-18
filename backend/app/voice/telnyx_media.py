@@ -754,7 +754,7 @@ class TelnyxMediaBridge:
         self.turn_correlation: str | None = None
         self.tts_failures = 0
         self.tts_timeout = 10.0
-        self.central_ai_timeout = 15.0
+        self.central_ai_timeout = 18.0
         self.inbound_audio_timeout = 5.0
         self._call_start_time: float = time.monotonic()
         self._last_speech_stopped_at: float | None = None
@@ -929,18 +929,18 @@ class TelnyxMediaBridge:
                 loc = resolve_locale(self.locale)
                 if loc.startswith("ro"):
                     timeout_answer = (
-                        "Ne cerem scuze, procesarea solicitării dumneavoastră durează prea mult. "
-                        "Ați putea reformula întrebarea?"
+                        "Ne cerem scuze pentru așteptare. Vă pot ajuta direct cu informații despre produsele noastre, "
+                        "programul de lucru sau programări. Ce ați dori să știți?"
                     )
                 elif loc.startswith("fr"):
                     timeout_answer = (
-                        "Désolé, le traitement de votre demande prend trop de temps. "
-                        "Pouvez-vous reformuler votre question ?"
+                        "Désolé pour cette attente. Je peux vous renseigner directement sur nos produits, "
+                        "nos horaires ou la prise de rendez-vous. Que souhaitez-vous savoir ?"
                     )
                 else:
                     timeout_answer = (
-                        "Sorry, your request is taking too long. "
-                        "Could you rephrase your question?"
+                        "Sorry for the delay. I can help you directly with our products, "
+                        "opening hours, or booking an appointment. What would you like to know?"
                     )
                 result = {"status": "success", "answer": timeout_answer}
             except Exception as exc:
