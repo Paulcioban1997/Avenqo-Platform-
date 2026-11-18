@@ -255,37 +255,11 @@ def test_p0_telnyx_90018_call_ended_detection():
 
 def test_p0_tri_state_stock_logic(tmp_path):
     """Vérifie que le stock inconnu (non synchronisé en direct) produit UNKNOWN et None, et jamais False ou rupture."""
-    from backend.app.models import CompanyModule, CompanyModuleStatus, Module
-
     engine, session, company, config, _api_key, orchestrator = _voice_database(tmp_path)
     try:
-        # Activer le module Retail pour l'entreprise
-        retail_mod = Module(name="Retail AI", code="retail", is_active=True)
-        session.add(retail_mod)
-        session.flush()
-        session.add(CompanyModule(
-            company_id=company.id,
-            module_id=retail_mod.id,
-            status=CompanyModuleStatus.ACTIVE,
-            activated_at=datetime.now(timezone.utc),
-        ))
-
-        # Connexion pour l'import de données
-        conn = CommerceConnection(
-            id=uuid4(),
-            company_id=company.id,
-            provider="manual_import",
-            external_account_id="import-1",
-            status="READY",
-            last_successful_sync=None,  # Pas de sync en direct -> stock non vérifié en direct
-        )
-        session.add(conn)
-        session.flush()
-
         # 1. Produit avec inventaire non synchronisé en direct (dataset statique sans connecteur actif récent)
         rec_unconfirmed = NormalizedCommerceRecord(
             company_id=company.id,
-            connection_id=conn.id,
             provider="manual_import",
             entity_type="product",
             source_record_id="prod_101",
@@ -345,7 +319,7 @@ def test_p0_tri_state_stock_verified_live_states():
         "inventory_count": 8,
     }
     answer_instock = spoken_catalog_answer([in_stock_product], retail_enabled=True, locale="fr")
-    assert "disponible" in answer_instock
+    assert "8 en stock" in answer_instock
     assert "en rupture de stock" not in answer_instock
 
     # Simulation produit en direct avec stock = 0
@@ -424,39 +398,13 @@ def test_p1_broad_catalog_query_detection():
 
 def test_p1_broad_catalog_query_direct_answer(tmp_path):
     """Vérifie que la requête large de stock reçoit une réponse directe de catalogue sans timeout."""
-    from backend.app.models import CompanyModule, CompanyModuleStatus, Module
-
     engine, session, company, config, _api_key, orchestrator = _voice_database(tmp_path)
     try:
-        # Activer le module Retail pour l'entreprise
-        retail_mod = Module(name="Retail AI", code="retail", is_active=True)
-        session.add(retail_mod)
-        session.flush()
-        session.add(CompanyModule(
-            company_id=company.id,
-            module_id=retail_mod.id,
-            status=CompanyModuleStatus.ACTIVE,
-            activated_at=datetime.now(timezone.utc),
-        ))
-
-        # Connexion commerce
-        conn = CommerceConnection(
-            id=uuid4(),
-            company_id=company.id,
-            provider="catalog",
-            external_account_id="cat-1",
-            status="READY",
-            last_successful_sync=None,
-        )
-        session.add(conn)
-        session.flush()
-
         # Ajout de plusieurs produits au catalogue
         for i in range(1, 4):
             session.add(
                 NormalizedCommerceRecord(
                     company_id=company.id,
-                    connection_id=conn.id,
                     provider="catalog",
                     entity_type="product",
                     source_record_id=f"prod_{i}",
