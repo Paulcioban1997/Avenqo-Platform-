@@ -514,20 +514,19 @@ class CommerceConnectionService:
         context = self._context(connection, secret_payload)
         try:
             connected = await connector.test_connection(context)
-            if connected:
-                shop_metadata = await connector.get_shop_metadata(context)
+            if not connected:
+                connection.status = CommerceConnectionStatus.ERROR.value
+                connection.error_category = "connection_test_failed"
+                self._db.commit()
+                raise CommerceAuthorizationError("Shopify connection test failed")
+            shop_metadata = await connector.get_shop_metadata(context)
         except ShopifyConnectorError as exc:
             connection.status = CommerceConnectionStatus.ERROR.value
             connection.error_category = "connection_test_failed"
             self._db.commit()
             raise CommerceAuthorizationError("Shopify connection test failed") from exc
-        if not connected:
-            connection.status = CommerceConnectionStatus.ERROR.value
-            connection.error_category = "connection_test_failed"
-            self._db.commit()
-            raise CommerceAuthorizationError("Shopify connection test failed")
 
-        connection.display_name = shop_metadata["name"]
+        connection.display_name = shop_metadata.get("name") or connection.external_account_id
         connection.sync_cursor = {**dict(connection.sync_cursor or {}), "shop": dict(shop_metadata)}
         self._validate_shopify_actor(oauth_state)
         self._db.commit()
