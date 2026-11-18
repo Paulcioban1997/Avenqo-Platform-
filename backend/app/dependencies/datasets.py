@@ -34,7 +34,8 @@ from shared.ai_engine.registry.registry import ModelRegistry
 
 
 def get_data_import_policy(db: Session = Depends(get_db)) -> DataImportPolicy:
-    return DataImportPolicy(db)
+    settings = get_settings()
+    return DataImportPolicy(db, Path(settings.artifact_root))
 
 
 def get_dataset_import_service(

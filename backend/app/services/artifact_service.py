@@ -44,3 +44,21 @@ class ArtifactService:
     @staticmethod
     def delete(path: Path) -> None:
         path.unlink(missing_ok=True)
+
+    def get_tenant_storage_bytes(self, tenant: TenantContext | UUID | str) -> int:
+        """Calcule la taille totale en octets de tous les fichiers stockés pour ce tenant."""
+        company_id = str(tenant.company_id if hasattr(tenant, "company_id") else tenant)
+        total = 0
+        tenant_dirs = [
+            self._root / company_id,
+            self._root / "company_datasets" / company_id,
+        ]
+        for t_dir in tenant_dirs:
+            if t_dir.exists() and t_dir.is_dir():
+                for p in t_dir.rglob("*"):
+                    if p.is_file():
+                        try:
+                            total += p.stat().st_size
+                        except OSError:
+                            pass
+        return total

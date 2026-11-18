@@ -3,7 +3,7 @@
 from collections.abc import Iterable
 
 from shared.ai_engine.contracts import DataConnector, SourceKind
-from shared.ai_engine.connectors.catalog import COMMERCE_CONNECTOR_CATALOG
+from shared.ai_engine.connectors.catalog import COMMERCE_CONNECTOR_CATALOG, CONNECTOR_ALIASES
 from shared.ai_engine.connectors.commerce import CommerceConnector, ConnectorDefinition
 from shared.ai_engine.exceptions import ConnectorNotRegisteredError
 
@@ -51,8 +51,13 @@ class CommerceConnectorRegistry:
         return provider in self._connectors
 
     def definition(self, provider: str) -> ConnectorDefinition:
+        target = provider
+        if target not in self._definitions and target in CONNECTOR_ALIASES:
+            target = CONNECTOR_ALIASES[target]
+        if target not in self._definitions and target.replace("-", "_") in self._definitions:
+            target = target.replace("-", "_")
         try:
-            return self._definitions[provider]
+            return self._definitions[target]
         except KeyError as exc:
             raise ConnectorNotRegisteredError(
                 f"Provider '{provider}' is not present in the connector catalog"

@@ -18,6 +18,9 @@ class ConnectorCategory(StrEnum):
     MARKETING = "marketing"
     FULFILLMENT = "fulfillment"
     ANALYTICS = "analytics"
+    CRM = "crm"
+    VOICE = "voice"
+    BILLING = "billing"
 
 
 class ConnectorImplementationStatus(StrEnum):
