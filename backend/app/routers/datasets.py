@@ -17,6 +17,7 @@ from backend.app.services.retail_source_service import RetailSourceNotFound, Ret
 from backend.app.dependencies.datasets import (
     get_capability_execution_gate,
     get_company_dataset_ingestion_service,
+    get_data_import_policy,
     get_dataset_cleaning_service,
     get_dataset_import_service,
 )
@@ -45,7 +46,7 @@ from backend.app.services.company_dataset_ingestion_service import (
     DatasetNotFoundError as CompanyDatasetNotFoundError,
     InvalidMappingError,
 )
-from backend.app.services.data_import_policy import DataImportQuotaExceeded
+from backend.app.services.data_import_policy import DataImportPolicy, DataImportQuotaExceeded
 from backend.app.services.dataset_cleaning_service import (
     DatasetCleaningService,
     DatasetNotReadyForExport,
@@ -294,6 +295,15 @@ def dataset_response(dataset) -> DatasetResponse:
         columns=profile.schema_json["columns"],
         distributions=profile.distribution_json,
     )
+
+
+@router.get("/quota")
+def get_dataset_quota(
+    tenant: TenantContext = Depends(get_tenant_context),
+    policy: DataImportPolicy = Depends(get_data_import_policy),
+) -> dict[str, object]:
+    """Retourne les quotas d'import et de stockage autorisés selon le forfait."""
+    return policy.storage_quota_for_tenant(tenant)
 
 
 @router.post("/csv", response_model=DatasetResponse, status_code=status.HTTP_201_CREATED)

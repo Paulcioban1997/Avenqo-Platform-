@@ -33,6 +33,8 @@ def classify_connector_freshness(
     """
     if conn is None:
         return "UNCONFIRMED_HISTORICAL"
+    if bool(getattr(conn, "is_demo", False)):
+        return "DEMO_SIMULATION"
     st = str(getattr(conn, "status", "") or "").upper()
     if st in ("ERROR", "FAILED", "DISCONNECTED", "REAUTH_REQUIRED"):
         return "UNAVAILABLE"
@@ -74,6 +76,9 @@ def classify_product_freshness(
     conn = connections_by_id.get(cid)
     if conn is None:
         return "UNAVAILABLE", False
+
+    if bool(getattr(record, "is_demo", False)) or bool(getattr(conn, "is_demo", False)):
+        return "DEMO_SIMULATION", False
 
     conn_freshness = classify_connector_freshness(
         conn, now=now, freshness_threshold_hours=freshness_threshold_hours
@@ -240,17 +245,21 @@ class CompanyIntelligenceService:
                         stock_availability = "UNKNOWN"
                         confirmed_inventory_count = None
 
+                    is_demo_product = freshness_status == "DEMO_SIMULATION" or bool(getattr(r, "is_demo", False))
                     stock_status_label = (
-                        "live_synced" if freshness_status == "FRESH"
+                        "demo_synthetic" if is_demo_product
                         else (
-                            "stale" if freshness_status == "STALE"
+                            "live_synced" if freshness_status == "FRESH"
                             else (
-                                "syncing" if freshness_status == "SYNCING"
+                                "stale" if freshness_status == "STALE"
                                 else (
-                                    "unavailable" if freshness_status == "UNAVAILABLE"
+                                    "syncing" if freshness_status == "SYNCING"
                                     else (
-                                        "unverified_connected" if freshness_status == "CONNECTED"
-                                        else "unconfirmed_historical"
+                                        "unavailable" if freshness_status == "UNAVAILABLE"
+                                        else (
+                                            "unverified_connected" if freshness_status == "CONNECTED"
+                                            else "unconfirmed_historical"
+                                        )
                                     )
                                 )
                             )
@@ -269,14 +278,16 @@ class CompanyIntelligenceService:
                         "currency": company.currency_code,
                         "currency_symbol": curr_sym,
                         "price_display": p_disp,
-                        "price_status": "verified" if is_live_stock else "historical_catalog",
-                        "is_live_stock": is_live_stock,
+                        "price_status": "demo_reference" if is_demo_product else ("verified" if is_live_stock else "historical_catalog"),
+                        "is_live_stock": is_live_stock and not is_demo_product,
                         "freshness_status": freshness_status,
-                        "in_stock": in_stock,
-                        "stock_availability": stock_availability,
-                        "inventory_count": confirmed_inventory_count,
+                        "in_stock": in_stock if not is_demo_product else None,
+                        "stock_availability": "UNKNOWN" if is_demo_product else stock_availability,
+                        "inventory_count": confirmed_inventory_count if not is_demo_product else None,
                         "historical_reference_units": raw_count if not is_live_stock else None,
                         "stock_status": stock_status_label,
+                        "is_demo": is_demo_product,
+                        "demo_disclaimer": "Boutique de démonstration — données fictives" if is_demo_product else None,
                         "description": pdata.get("description") or pdata.get("body_html") or "",
                     })
             except Exception:
@@ -286,7 +297,7 @@ class CompanyIntelligenceService:
         voice_pronun = getattr(config, "custom_pronunciation", None) if config else None
 
         online_store_conn = next(
-            (c for c in connections if c.provider in ("shopify", "woocommerce") and str(c.status).upper() in ("READY", "SYNCING", "ACTIVE")),
+            (c for c in connections if not bool(getattr(c, "is_demo", False)) and c.provider in ("shopify", "woocommerce") and str(c.status).upper() in ("READY", "SYNCING", "ACTIVE")),
             None
         )
         has_store = online_store_conn is not None

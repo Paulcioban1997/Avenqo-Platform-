@@ -90,7 +90,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "BigCommerce",
     category: "commerce",
     categoryLabel: "E-Commerce",
-    availability: "available",
+    availability: "configuration_required",
     route: "/connections",
     capabilities: ["Commandes", "Produits", "Clients", "Inventaire"],
     description: "Intégration cloud pour boutiques BigCommerce d'entreprise avec gestion multi-devises et catalogues complexes.",
@@ -126,7 +126,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "Wix eCommerce",
     category: "commerce",
     categoryLabel: "E-Commerce",
-    availability: "available",
+    availability: "configuration_required",
     route: "/connections",
     capabilities: ["Commandes", "Produits", "Inventaire"],
     description: "Synchronisation en temps réel des catalogues et commandes pour les boutiques Wix Stores.",
@@ -179,7 +179,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "Amazon Seller Central (SP-API)",
     category: "marketplace",
     categoryLabel: "Place de marché",
-    availability: "available",
+    availability: "partner_approval_pending",
     route: "/connections",
     capabilities: ["Commandes", "Inventaire", "Prix", "Rapports FBA"],
     description: "Connexion officielle Selling Partner API (SP-API) d'Amazon avec authentification LWA et rôle IAM AWS STS.",
@@ -197,7 +197,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "eBay",
     category: "marketplace",
     categoryLabel: "Place de marché",
-    availability: "available",
+    availability: "configuration_required",
     route: "/connections",
     capabilities: ["Commandes", "Annonces", "Inventaire", "Fulfillment"],
     description: "Intégration eBay REST Sell APIs avec flux OAuth 2.0 pour la gestion automatisée des ventes marketplace.",
@@ -215,7 +215,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "Etsy",
     category: "marketplace",
     categoryLabel: "Place de marché",
-    availability: "available",
+    availability: "partner_approval_pending",
     route: "/connections",
     capabilities: ["Commandes", "Fiches produits", "Reçus", "Boutique"],
     description: "Accès à l'API Etsy v3 via OAuth 2.0 PKCE pour créateurs et commerçants indépendants.",
@@ -233,7 +233,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "Walmart Marketplace",
     category: "marketplace",
     categoryLabel: "Place de marché",
-    availability: "available",
+    availability: "configuration_required",
     route: "/connections",
     capabilities: ["Commandes", "Articles", "Inventaire", "Rapports"],
     description: "Synchronisation multi-canal avec Walmart US & Canada via l'API Marketplace Partner.",
@@ -250,7 +250,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "TikTok Shop",
     category: "marketplace",
     categoryLabel: "Place de marché",
-    availability: "available",
+    availability: "partner_approval_pending",
     route: "/connections",
     capabilities: ["Commandes", "Catalogue", "Fulfillment", "Social Commerce"],
     description: "Connecteur TikTok Shop Open API pour synchroniser les ventes de commerce social et créateurs.",
@@ -267,7 +267,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "Square POS",
     category: "pos",
     categoryLabel: "Point de vente",
-    availability: "available",
+    availability: "configuration_required",
     route: "/connections",
     capabilities: ["Points de vente", "Commandes", "Paiements", "Catalogue articles"],
     description: "Intégration directe des caisses et terminaux Square pour unifier magasins physiques et boutique en ligne.",
@@ -285,7 +285,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "Clover POS",
     category: "pos",
     categoryLabel: "Point de vente",
-    availability: "available",
+    availability: "configuration_required",
     route: "/connections",
     capabilities: ["Commandes", "Inventaire", "Marchands", "Paiements"],
     description: "Connecteur Clover REST API pour synchronisation des terminaux de vente de commerce de détail.",
@@ -302,7 +302,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "Lightspeed Retail",
     category: "pos",
     categoryLabel: "Point de vente",
-    availability: "available",
+    availability: "configuration_required",
     route: "/connections",
     capabilities: ["Ventes", "Inventaire multi-boutiques", "Clients"],
     description: "Intégration omnicanale pour détaillants utilisant Lightspeed Retail (X-Series / R-Series).",
@@ -350,7 +350,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "Google Ads",
     category: "marketing",
     categoryLabel: "Marketing & Publicité",
-    availability: "available",
+    availability: "configuration_required",
     route: "/marketing",
     capabilities: ["Campagnes", "Conversions", "Performances", "Dépenses ROAS"],
     description: "Analyse prédictive des campagnes publicitaires Google Ads avec calcul du ROAS et optimisation par l'IA Centrale.",
@@ -367,7 +367,7 @@ const CANONICAL_22_CONNECTORS: CanonicalConnector[] = [
     name: "Meta Ads (Facebook & Instagram)",
     category: "marketing",
     categoryLabel: "Marketing & Publicité",
-    availability: "available",
+    availability: "configuration_required",
     route: "/marketing",
     capabilities: ["Campagnes", "Ensembles de pubs", "Insights", "Audiences personnalisées"],
     description: "Suivi des performances des publicités Meta Ads (Facebook & Instagram) et corrélation directe avec les ventes réelles.",
@@ -457,6 +457,7 @@ interface CommerceConnectionItem {
   status: string;
   is_active: boolean;
   connection_status?: string;
+  is_demo?: boolean;
   last_synced_at?: string | null;
   records_count?: number;
   sync_orders?: boolean;
@@ -496,7 +497,12 @@ export function ConnectionsView() {
   const connector = company.connectorHub;
   const session = useOptionalSession();
   const currentPlan = session?.identity?.company.subscription_plan?.toLowerCase() || "base";
-  const planMaxMb = 250;
+  const planStorage = currentPlan.includes("enterprise")
+    ? { mb: 102400 * 1024, label: "100 To", desc: "100 To de stockage" }
+    : currentPlan.includes("pro")
+    ? { mb: 2048 * 1024, label: "2 To", desc: "2 To de stockage" }
+    : { mb: 500 * 1024, label: "500 Go", desc: "500 Go de stockage" };
+  const planMaxMb = planStorage.mb;
   const maxFileBytes = planMaxMb * 1024 * 1024;
 
   const [loading, setLoading] = useState(true);
@@ -685,7 +691,11 @@ export function ConnectionsView() {
         return;
       }
       if (file.size > maxFileBytes) {
-        setAlertError(`Le fichier "${file.name}" dépasse la limite autorisée de ${planMaxMb} Mo pour votre forfait (${currentPlan.toUpperCase()}).`);
+        setAlertError(
+          fr
+            ? `Le fichier "${file.name}" dépasse la limite autorisée de ${planStorage.label} pour votre forfait (${currentPlan.toUpperCase()}).`
+            : `File "${file.name}" exceeds the allowed limit of ${planStorage.label} for your plan (${currentPlan.toUpperCase()}).`
+        );
         return;
       }
     }
@@ -1068,6 +1078,9 @@ export function ConnectionsView() {
           <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
             {company.connectionsNoDataFormats}
           </div>
+          <div className="text-[11px] font-medium text-[#0076FF] dark:text-[#00D4FF] mt-1.5 flex items-center justify-center gap-1.5">
+            <span>💾 {fr ? `Quota de stockage autorisé (${currentPlan.toUpperCase()}) : ${planStorage.label}` : `Allowed storage quota (${currentPlan.toUpperCase()}): ${planStorage.label}`}</span>
+          </div>
         </div>
 
         {uploadProgress !== null && (
@@ -1211,6 +1224,11 @@ export function ConnectionsView() {
                         <AlertTriangle size={10} />
                         <span>{connector.error}</span>
                       </span>
+                    ) : (isConnected && conn?.is_demo) || conn?.connection_status === "DEMO" ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 border border-purple-200/60 dark:border-purple-800/40 shrink-0">
+                        <Clock size={10} />
+                        <span>{fr ? "Démo Sandbox" : "Sandbox Demo"}</span>
+                      </span>
                     ) : isConnected ? (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 shrink-0">
                         <CheckCircle2 size={10} />
@@ -1242,6 +1260,11 @@ export function ConnectionsView() {
                   <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-2 line-clamp-2">
                     {isConnected && conn?.store_name ? conn.store_name : item.description}
                   </p>
+                  {(conn?.is_demo || conn?.connection_status === "DEMO") && (
+                    <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                      ⚠️ {fr ? "Boutique de démonstration — données fictives" : "Demo store — synthetic mock data"}
+                    </span>
+                  )}
                   {isConnected && conn?.store_url && (
                     <p className="mt-1 break-all text-[11px] text-[#0076FF] font-medium">{conn.store_url}</p>
                   )}
@@ -1363,16 +1386,48 @@ export function ConnectionsView() {
             </p>
           </div>
 
-          {connections.length > 0 && (
-            <button
-              onClick={() => handleTriggerSync()}
-              disabled={actionLoading}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
-            >
-              <RefreshCw size={13} className={actionLoading ? "animate-spin" : ""} />
-              <span>{connector.sync}</span>
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {connections.some((c) => c.is_demo) && (
+              <button
+                onClick={async () => {
+                  if (!confirm(fr ? "Supprimer toutes les boutiques de démonstration et leurs articles fictifs ?" : "Delete all demo stores and synthetic items?")) return;
+                  setActionLoading(true);
+                  try {
+                    const res = await apiFetch("/api/v1/connectors/demo-stores", {
+                      method: "DELETE",
+                      headers: getAuthHeaders(),
+                    });
+                    if (!res.ok) {
+                      const err = await res.json().catch(() => ({}));
+                      throw new Error(err.detail || "Échec de suppression.");
+                    }
+                    const data = await res.json();
+                    setAlertSuccess(data.message || (fr ? "Boutiques démo supprimées avec succès." : "Demo stores deleted successfully."));
+                    await loadData();
+                  } catch (err: any) {
+                    setAlertError(err?.message || "Suppression impossible.");
+                  } finally {
+                    setActionLoading(false);
+                  }
+                }}
+                disabled={actionLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-rose-200 dark:border-rose-900/40 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs font-semibold transition-colors cursor-pointer"
+              >
+                <Trash2 size={13} />
+                <span>{fr ? "Nettoyer boutiques démo" : "Purge demo stores"}</span>
+              </button>
+            )}
+            {connections.length > 0 && (
+              <button
+                onClick={() => handleTriggerSync()}
+                disabled={actionLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+              >
+                <RefreshCw size={13} className={actionLoading ? "animate-spin" : ""} />
+                <span>{connector.sync}</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {connections.length === 0 ? (
@@ -1387,6 +1442,7 @@ export function ConnectionsView() {
                   item.source_type === "connector" && item.connection_id === conn.id,
                 );
                 const connected = conn.connection_status === "CONNECTED";
+                const isDemo = conn.is_demo || conn.connection_status === "DEMO";
                 return <div
                 key={conn.id}
                 className="p-4 rounded-xl bg-slate-50 dark:bg-[#111D3D] border border-slate-100 dark:border-white/[0.06] space-y-3"
@@ -1396,10 +1452,21 @@ export function ConnectionsView() {
                     <Store size={14} className="text-[#0076FF]" />
                     <span>{conn.provider} — {conn.store_name || conn.store_url || "Boutique"}</span>
                   </div>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${connected ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400" : "bg-slate-200 text-slate-600 dark:bg-white/[0.08] dark:text-slate-300"}`}>
-                    {connected ? t.integrations.statusConnected : conn.status}
-                  </span>
+                  {isDemo ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 border border-purple-200/60 dark:border-purple-800/40">
+                      🧪 {fr ? "Boutique Démo — Fictif" : "Demo Store — Synthetic"}
+                    </span>
+                  ) : (
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${connected ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400" : "bg-slate-200 text-slate-600 dark:bg-white/[0.08] dark:text-slate-300"}`}>
+                      {connected ? t.integrations.statusConnected : conn.status}
+                    </span>
+                  )}
                 </div>
+                {isDemo && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                    ⚠️ {fr ? "Données de simulation isolées (non visibles en direct par l'IA vocale)" : "Simulated isolated data (not live in Voice AI)"}
+                  </p>
+                )}
 
                 <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-500 dark:text-slate-400">
                   <div>
@@ -1961,16 +2028,16 @@ export function ConnectionsView() {
                           headers: { "Content-Type": "application/json", ...getAuthHeaders() },
                           body: JSON.stringify({
                             provider: selectedConnectorDetails.key,
-                            store_name: `Boutique ${selectedConnectorDetails.name} Sandbox`,
+                            store_name: `Boutique ${selectedConnectorDetails.name} (Démo)`,
                             store_url: `https://${selectedConnectorDetails.key}-store.avenqo.test`,
                           }),
                         });
                         if (!res.ok) {
                           const err = await res.json().catch(() => ({}));
-                          throw new Error(err.detail || "Échec du chargement de la boutique.");
+                          throw new Error(err.detail || "Échec du chargement de la boutique de démonstration.");
                         }
                         const data = await res.json();
-                        setAlertSuccess(data.message || `${selectedConnectorDetails.name} connecté avec succès avec son inventaire.`);
+                        setAlertSuccess(data.message || (fr ? `${selectedConnectorDetails.name} : boutique démo chargée (données fictives isolées).` : `${selectedConnectorDetails.name}: demo store loaded (isolated synthetic data).`));
                         setSelectedConnectorDetails(null);
                         await loadData();
                       } catch (err: any) {
@@ -1981,7 +2048,7 @@ export function ConnectionsView() {
                     }}
                     className="px-3.5 py-2 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] text-white text-xs font-bold shadow-xs transition-colors shrink-0 cursor-pointer disabled:opacity-50"
                   >
-                    {actionLoading ? connector.connecting : (fr ? "⚡ Charger boutique Sandbox" : "⚡ Load Sandbox Store")}
+                    {actionLoading ? connector.connecting : (fr ? "⚡ Charger boutique démo Sandbox" : "⚡ Load Sandbox Demo Store")}
                   </button>
                 </div>
 
@@ -2000,7 +2067,7 @@ export function ConnectionsView() {
                     setActionLoading(true);
                     setAlertError(null);
                     try {
-                      await apiFetch("/api/v1/connectors/tenant-api-credentials", {
+                      const res = await apiFetch("/api/v1/connectors/tenant-api-credentials", {
                         method: "POST",
                         headers: { "Content-Type": "application/json", ...getAuthHeaders() },
                         body: JSON.stringify({
@@ -2008,13 +2075,18 @@ export function ConnectionsView() {
                           account_id: apiAccount,
                           api_key: apiKey,
                           api_secret: apiSecret || undefined,
-                          activate_connection: true,
-                          load_sample_catalog: true,
+                          activate_connection: false,
+                          load_sample_catalog: false,
                         }),
                       });
+                      if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        throw new Error(err.detail || "Échec de l'enregistrement des identifiants.");
+                      }
+                      const data = await res.json();
                       setApiKey("");
                       setApiSecret("");
-                      setAlertSuccess(`${selectedConnectorDetails.name} connecté avec succès avec son catalogue.`);
+                      setAlertSuccess(data.message || (fr ? `${selectedConnectorDetails.name} : identifiants enregistrés avec succès. Connexion en attente de vérification.` : `${selectedConnectorDetails.name}: credentials saved successfully. Connection pending verification.`));
                       setSelectedConnectorDetails(null);
                       await loadData();
                     } catch (error: any) {

@@ -6,7 +6,7 @@ from datetime import datetime
 from enum import Enum
 from uuid import UUID, uuid4
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -79,6 +79,7 @@ class CommerceConnection(Base, TimestampMixin):
         DateTime(timezone=True), nullable=True
     )
     disconnected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("0"))
 
 
 class CommerceOAuthState(Base):
@@ -124,10 +125,10 @@ class NormalizedCommerceRecord(Base, TimestampMixin):
         nullable=False,
         index=True,
     )
-    connection_id: Mapped[UUID] = mapped_column(
+    connection_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("commerce_connections.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     provider: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -142,6 +143,7 @@ class NormalizedCommerceRecord(Base, TimestampMixin):
     )
     normalized_data: Mapped[dict] = mapped_column(JSON, nullable=False)
     deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("0"))
 
 
 class CommerceRawSnapshot(Base):
@@ -165,10 +167,10 @@ class CommerceRawSnapshot(Base):
         nullable=False,
         index=True,
     )
-    connection_id: Mapped[UUID] = mapped_column(
+    connection_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("commerce_connections.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     provider: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -201,10 +203,10 @@ class CommerceWebhookReceipt(Base):
         nullable=False,
         index=True,
     )
-    connection_id: Mapped[UUID] = mapped_column(
+    connection_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
         ForeignKey("commerce_connections.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     provider: Mapped[str] = mapped_column(String(64), nullable=False)

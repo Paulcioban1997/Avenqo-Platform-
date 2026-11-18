@@ -168,20 +168,48 @@ class DataImportLimits:
 
     L'import de données est une capacité de plateforme disponible sur toute
     offre payante (Demo compris) ; seules ces limites varient par offre.
-    Valeurs par défaut techniques, ajustables sans changement de code via
-    `Settings` — pas des tarifs commerciaux définitifs.
+    - Base / Démo : jusqu'à 500 GB (500 Go)
+    - Professional : jusqu'à 2 TB (2 To)
+    - Enterprise : jusqu'à 100 TB (100 To)
     """
 
     max_datasets: int
     max_file_mb: int
+    max_storage_gb: int
+    max_storage_label: str
 
 
 DATA_IMPORT_LIMITS_BY_PLAN: dict[PlanCode, DataImportLimits] = {
-    PlanCode.BASE: DataImportLimits(max_datasets=25, max_file_mb=250),
-    PlanCode.DEMO: DataImportLimits(max_datasets=25, max_file_mb=250),
-    PlanCode.PROFESSIONAL: DataImportLimits(max_datasets=100, max_file_mb=250),
-    PlanCode.ENTERPRISE: DataImportLimits(max_datasets=1000, max_file_mb=250),
-    PlanCode.CUSTOM_ENTERPRISE: DataImportLimits(max_datasets=1000, max_file_mb=250),
+    PlanCode.BASE: DataImportLimits(
+        max_datasets=100,
+        max_file_mb=500 * 1024,
+        max_storage_gb=500,
+        max_storage_label="500 GB",
+    ),
+    PlanCode.DEMO: DataImportLimits(
+        max_datasets=100,
+        max_file_mb=500 * 1024,
+        max_storage_gb=500,
+        max_storage_label="500 GB",
+    ),
+    PlanCode.PROFESSIONAL: DataImportLimits(
+        max_datasets=1000,
+        max_file_mb=2 * 1024 * 1024,
+        max_storage_gb=2048,
+        max_storage_label="2 TB",
+    ),
+    PlanCode.ENTERPRISE: DataImportLimits(
+        max_datasets=10000,
+        max_file_mb=100 * 1024 * 1024,
+        max_storage_gb=102400,
+        max_storage_label="100 TB",
+    ),
+    PlanCode.CUSTOM_ENTERPRISE: DataImportLimits(
+        max_datasets=10000,
+        max_file_mb=100 * 1024 * 1024,
+        max_storage_gb=102400,
+        max_storage_label="100 TB",
+    ),
 }
 
 

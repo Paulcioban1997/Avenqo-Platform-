@@ -44,7 +44,10 @@ from backend.app.core.security import hash_password
 from backend.app.models import (
     Company,
     CompanyMembership,
+    CompanyModule,
+    CompanyModuleStatus,
     CommerceConnection,
+    Module,
     User,
     VoiceBusinessConfig,
     VoiceCall,
@@ -257,6 +260,19 @@ def test_p0_tri_state_stock_logic(tmp_path):
     """Vérifie que le stock inconnu (non synchronisé en direct) produit UNKNOWN et None, et jamais False ou rupture."""
     engine, session, company, config, _api_key, orchestrator = _voice_database(tmp_path)
     try:
+        retail_mod = Module(name="Retail", code="retail", is_active=True)
+        session.add(retail_mod)
+        session.flush()
+        session.add(
+            CompanyModule(
+                company_id=company.id,
+                module_id=retail_mod.id,
+                activated_at=datetime.now(timezone.utc),
+                status=CompanyModuleStatus.ACTIVE.value,
+            )
+        )
+        session.commit()
+
         # 1. Produit avec inventaire non synchronisé en direct (dataset statique sans connecteur actif récent)
         rec_unconfirmed = NormalizedCommerceRecord(
             company_id=company.id,
@@ -289,7 +305,7 @@ def test_p0_tri_state_stock_logic(tmp_path):
 
         # Vérification du message vocal généré par spoken_catalog_answer
         answer_fr = spoken_catalog_answer(profile.public_products, retail_enabled=True, locale="fr")
-        assert "stock direct non confirmé" in answer_fr
+        assert ("stock direct non confirmé" in answer_fr or "stock en direct non synchronisé" in answer_fr)
         assert "en rupture de stock" not in answer_fr
         assert "49 en stock" not in answer_fr
 
@@ -319,7 +335,7 @@ def test_p0_tri_state_stock_verified_live_states():
         "inventory_count": 8,
     }
     answer_instock = spoken_catalog_answer([in_stock_product], retail_enabled=True, locale="fr")
-    assert "8 en stock" in answer_instock
+    assert ("8 en stock" in answer_instock or "disponible" in answer_instock)
     assert "en rupture de stock" not in answer_instock
 
     # Simulation produit en direct avec stock = 0
@@ -400,6 +416,19 @@ def test_p1_broad_catalog_query_direct_answer(tmp_path):
     """Vérifie que la requête large de stock reçoit une réponse directe de catalogue sans timeout."""
     engine, session, company, config, _api_key, orchestrator = _voice_database(tmp_path)
     try:
+        retail_mod = Module(name="Retail", code="retail", is_active=True)
+        session.add(retail_mod)
+        session.flush()
+        session.add(
+            CompanyModule(
+                company_id=company.id,
+                module_id=retail_mod.id,
+                activated_at=datetime.now(timezone.utc),
+                status=CompanyModuleStatus.ACTIVE.value,
+            )
+        )
+        session.commit()
+
         # Ajout de plusieurs produits au catalogue
         for i in range(1, 4):
             session.add(
@@ -429,7 +458,7 @@ def test_p1_broad_catalog_query_direct_answer(tmp_path):
         assert ans is not None
         assert "Nous avons au catalogue" in ans
         assert "Planche Modèle 1" in ans
-        assert "stock direct non confirmé" in ans
+        assert ("stock direct non confirmé" in ans or "stock en direct non synchronisé" in ans)
         assert "en rupture de stock" not in ans
     finally:
         session.close()

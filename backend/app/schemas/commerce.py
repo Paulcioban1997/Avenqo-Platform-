@@ -97,6 +97,7 @@ class CommerceConnectionResponse(BaseModel):
     is_stalled: bool = False
     is_enabled: bool = True
     selected_entities: list[str] = Field(default_factory=list)
+    is_demo: bool = False
 
 
 class UpdateConnectorSettingsRequest(BaseModel):

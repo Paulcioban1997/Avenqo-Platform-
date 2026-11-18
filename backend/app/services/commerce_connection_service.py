@@ -37,7 +37,8 @@ from backend.app.models import (
 )
 from backend.app.services.audit_log_service import AuditLogService
 from backend.app.services.connector_secret_cipher import ConnectorSecretCipher
-from shared.ai_engine.connectors.commerce import ConnectorSyncContext
+from shared.ai_engine.connectors.catalog import COMMERCE_CONNECTOR_CATALOG
+from shared.ai_engine.connectors.commerce import ConnectorAuthMethod, ConnectorSyncContext
 from shared.ai_engine.connectors.registry import CommerceConnectorRegistry
 from shared.ai_engine.contracts import TenantContext
 
@@ -285,18 +286,81 @@ class CommerceConnectionService:
         provider: str,
         account_id: str,
         api_key: str,
-        api_secret: str | None,
+        api_secret: str | None = None,
         activate: bool = False,
         load_sample_catalog: bool = False,
     ) -> CommerceConnection:
-        """Store a tenant-supplied key and optionally activate/provision catalog for new stores."""
+        """Store tenant-supplied API credentials in CONNECTING status pending verification."""
         provider_clean = provider.strip().lower()
         if not provider_clean or len(provider_clean) < 2:
             raise CommerceAuthorizationError("Provider identifier is required")
+
+        provider_aliases = {
+            "shopify": "shopify",
+            "woocommerce": "woocommerce",
+            "bigcommerce": "bigcommerce",
+            "adobe_commerce": "adobe-commerce",
+            "adobe-commerce": "adobe-commerce",
+            "magento": "adobe-commerce",
+            "wix_ecommerce": "wix-ecommerce",
+            "wix-ecommerce": "wix-ecommerce",
+            "squarespace_commerce": "squarespace-commerce",
+            "squarespace-commerce": "squarespace-commerce",
+            "prestashop": "prestashop",
+            "amazon_sp_api": "amazon-seller-central",
+            "amazon-seller-central": "amazon-seller-central",
+            "amazon": "amazon-seller-central",
+            "ebay": "ebay",
+            "etsy": "etsy",
+            "walmart_marketplace": "walmart-marketplace",
+            "walmart-marketplace": "walmart-marketplace",
+            "tiktok_shop": "tiktok-shop",
+            "tiktok-shop": "tiktok-shop",
+            "square_pos": "square",
+            "square": "square",
+            "clover_pos": "clover",
+            "clover": "clover",
+            "lightspeed_retail": "lightspeed-retail",
+            "lightspeed-retail": "lightspeed-retail",
+            "stripe": "stripe-commerce",
+            "stripe-commerce": "stripe-commerce",
+            "shipstation": "shipstation",
+            "google_calendar": "google-calendar",
+            "outlook_calendar": "outlook-calendar",
+            "google_ads": "google-ads",
+            "meta_ads": "meta-ads",
+        }
+        canonical_key = provider_aliases.get(provider_clean, provider_clean)
+
+        catalog_entry = next((item for item in COMMERCE_CONNECTOR_CATALOG if item.provider == canonical_key), None)
+        oauth_auth_methods = {
+            ConnectorAuthMethod.OAUTH1,
+            ConnectorAuthMethod.OAUTH2,
+            ConnectorAuthMethod.OAUTH2_PKCE,
+            ConnectorAuthMethod.PARTNER_AUTHORIZATION,
+        }
+        if catalog_entry is not None:
+            if catalog_entry.auth_method in oauth_auth_methods or catalog_entry.supports_oauth:
+                raise CommerceAuthorizationError(
+                    f"Le fournisseur '{catalog_entry.display_name}' utilise l'authentification OAuth / Partenaire officielle. "
+                    "Veuillez utiliser le flux d'autorisation OAuth dédié pour connecter cette boutique en toute sécurité."
+                )
+
         account = account_id.strip().lower()
         secret = api_key.strip()
         if len(account) < 3 or not secret:
-            raise CommerceAuthorizationError("Account identifier and API key are required")
+            raise CommerceAuthorizationError("L'identifiant de boutique et la clé API sont requis.")
+
+        if len(secret) < 8:
+            raise CommerceAuthorizationError("La clé API fournie est invalide ou trop courte (minimum 8 caractères).")
+        bogus_keys = {"test", "sandbox", "dummy", "123456", "apikey", "secret", "fake", "mock", "password", "none", "null", "12345678"}
+        if (
+            secret.lower() in bogus_keys
+            or any(k in secret.lower() for k in ("dummy", "fake", "test", "sandbox", "mock"))
+            or all(c == secret[0] for c in secret)
+        ):
+            raise CommerceAuthorizationError("La clé API fournie semble être une valeur de test fictive et a été rejetée.")
+
         existing = self._db.scalar(
             select(CommerceConnection).where(
                 CommerceConnection.provider == provider_clean,
@@ -304,25 +368,23 @@ class CommerceConnectionService:
             )
         )
         if existing is not None and existing.company_id != tenant.company_id:
-            raise CommerceAuthorizationError("This account already belongs to another company")
+            raise CommerceAuthorizationError("Ce compte de boutique est déjà rattaché à une autre entreprise.")
         if (
             existing is not None
             and existing.status == CommerceConnectionStatus.CONNECTED.value
             and existing.encrypted_credentials
-            and not activate
-            and not load_sample_catalog
+            and not existing.is_demo
         ):
-            raise CommerceAuthorizationError("A verified connection already exists for this account")
+            raise CommerceAuthorizationError("Une connexion vérifiée existe déjà pour ce compte de boutique.")
+
         payload: dict[str, Any] = {"api_key": secret}
         if api_secret and api_secret.strip():
             payload["api_secret"] = api_secret.strip()
         encrypted = self._cipher.encrypt(payload)
-        now = datetime.now(timezone.utc)
-        target_status = (
-            CommerceConnectionStatus.CONNECTED.value
-            if activate or load_sample_catalog
-            else CommerceConnectionStatus.CONNECTING.value
-        )
+
+        # Real credentials must ALWAYS start in CONNECTING status until verified by real sync.
+        target_status = CommerceConnectionStatus.CONNECTING.value
+
         if existing is None:
             existing = CommerceConnection(
                 company_id=tenant.company_id,
@@ -335,8 +397,9 @@ class CommerceConnectionService:
                 capabilities=["products", "orders", "inventory"],
                 sync_cursor={},
                 dataset_ids={},
-                last_successful_sync=now if (activate or load_sample_catalog) else None,
-                sync_completed_at=now if (activate or load_sample_catalog) else None,
+                last_successful_sync=None,
+                sync_completed_at=None,
+                is_demo=False,
             )
             self._db.add(existing)
             self._db.flush()
@@ -344,95 +407,200 @@ class CommerceConnectionService:
             existing.encrypted_credentials = encrypted
             existing.status = target_status
             existing.display_name = account
-            if activate or load_sample_catalog:
-                existing.last_successful_sync = now
-                existing.sync_completed_at = now
-
-        if load_sample_catalog:
-            store_label = provider_clean.replace("_", " ").title()
-            sample_items = [
-                {
-                    "product_id": f"{provider_clean}-prod-101",
-                    "title": f"Planche All-Mountain {store_label} Pro",
-                    "product_name": f"Planche All-Mountain {store_label} Pro",
-                    "price": 549.99,
-                    "currency": "CAD",
-                    "sku": f"{provider_clean.upper()[:3]}-AMP-01",
-                    "category": "Snowboard",
-                    "status": "instock",
-                    "inventory_level": 25,
-                    "description": f"Planche polyvalente haute performance synchronisée depuis {store_label}.",
-                },
-                {
-                    "product_id": f"{provider_clean}-prod-102",
-                    "title": f"Fixations Freeride {store_label} Elite",
-                    "product_name": f"Fixations Freeride {store_label} Elite",
-                    "price": 229.50,
-                    "currency": "CAD",
-                    "sku": f"{provider_clean.upper()[:3]}-FIX-02",
-                    "category": "Fixations",
-                    "status": "instock",
-                    "inventory_level": 18,
-                    "description": f"Fixations en aluminium renforcé avec embase ergonomique.",
-                },
-                {
-                    "product_id": f"{provider_clean}-prod-103",
-                    "title": f"Bottes Thermiques {store_label} Apex",
-                    "product_name": f"Bottes Thermiques {store_label} Apex",
-                    "price": 289.00,
-                    "currency": "CAD",
-                    "sku": f"{provider_clean.upper()[:3]}-BOT-03",
-                    "category": "Bottes",
-                    "status": "instock",
-                    "inventory_level": 14,
-                    "description": f"Chausson thermique et serrage micro-métrique double molette.",
-                },
-                {
-                    "product_id": f"{provider_clean}-prod-104",
-                    "title": f"Casque Protection {store_label} MIPS",
-                    "product_name": f"Casque Protection {store_label} MIPS",
-                    "price": 175.00,
-                    "currency": "CAD",
-                    "sku": f"{provider_clean.upper()[:3]}-CSQ-04",
-                    "category": "Accessoires",
-                    "status": "instock",
-                    "inventory_level": 32,
-                    "description": f"Norme de sécurité renforcée avec ventilation modulable.",
-                },
-            ]
-            for pdata in sample_items:
-                pid = pdata["product_id"]
-                rec = self._db.scalar(
-                    select(NormalizedCommerceRecord).where(
-                        NormalizedCommerceRecord.company_id == tenant.company_id,
-                        NormalizedCommerceRecord.connection_id == existing.id,
-                        NormalizedCommerceRecord.entity_type == "products",
-                        NormalizedCommerceRecord.source_record_id == pid,
-                    )
-                )
-                if rec is None:
-                    rec = NormalizedCommerceRecord(
-                        company_id=tenant.company_id,
-                        connection_id=existing.id,
-                        provider=provider_clean,
-                        entity_type="products",
-                        source_record_id=pid,
-                        source_updated_at=now,
-                        normalized_data=pdata,
-                        deleted=False,
-                    )
-                    self._db.add(rec)
-                else:
-                    rec.normalized_data = pdata
-                    rec.source_updated_at = now
-                    rec.deleted = False
-            existing.records_processed = len(sample_items)
-            existing.records_created = len(sample_items)
-            existing.records_failed = 0
+            existing.is_demo = False
+            if existing.records_created == 0:
+                existing.last_successful_sync = None
+                existing.sync_completed_at = None
 
         self._db.commit()
         self._db.refresh(existing)
         return existing
+
+    def provision_demo_store(
+        self,
+        tenant: TenantContext,
+        *,
+        provider: str,
+        store_name: str | None = None,
+        store_url: str | None = None,
+    ) -> CommerceConnection:
+        """Provision a dedicated Sandbox demo store with 4 synthetic demo items."""
+        provider_clean = provider.strip().lower()
+        if not provider_clean:
+            raise CommerceAuthorizationError("Le nom du fournisseur est requis pour la boutique de démonstration.")
+
+        store_id = (store_url or store_name or f"demo-shop-{provider_clean}.avenqo.test").strip().lower()
+        clean_name = store_name or f"Boutique {provider_clean.replace('_', ' ').title()}"
+        display_label = f"{clean_name} (Boutique de démonstration — données fictives)"
+
+        existing = self._db.scalar(
+            select(CommerceConnection).where(
+                CommerceConnection.provider == provider_clean,
+                CommerceConnection.external_account_id == store_id,
+                CommerceConnection.company_id == tenant.company_id,
+            )
+        )
+        fake_payload = {"api_key": f"demo-key-{uuid4().hex[:12]}", "is_demo": True}
+        encrypted = self._cipher.encrypt(fake_payload)
+        now = datetime.now(timezone.utc)
+
+        if existing is None:
+            existing = CommerceConnection(
+                company_id=tenant.company_id,
+                provider=provider_clean,
+                external_account_id=store_id,
+                display_name=display_label,
+                status=CommerceConnectionStatus.CONNECTED.value,
+                encrypted_credentials=encrypted,
+                granted_scopes=["demo_catalog_read"],
+                capabilities=["products", "inventory"],
+                sync_cursor={"demo": True},
+                dataset_ids={},
+                last_successful_sync=None,  # NEVER invent last_successful_sync for demo stores!
+                sync_completed_at=None,
+                is_demo=True,
+            )
+            self._db.add(existing)
+            self._db.flush()
+        else:
+            existing.display_name = display_label
+            existing.is_demo = True
+            existing.status = CommerceConnectionStatus.CONNECTED.value
+            existing.last_successful_sync = None
+            existing.sync_completed_at = None
+
+        # Sample demo items strictly marked as demo
+        store_label = provider_clean.replace("_", " ").title()
+        sample_items = [
+            {
+                "product_id": f"demo-{provider_clean}-prod-101",
+                "title": f"Planche All-Mountain {store_label} Pro",
+                "product_name": f"Planche All-Mountain {store_label} Pro",
+                "price": 549.99,
+                "currency": "CAD",
+                "sku": f"DEMO-{provider_clean.upper()[:3]}-AMP-01",
+                "category": "Snowboard",
+                "status": "demo_synthetic",
+                "inventory_level": 25,
+                "description": f"Planche polyvalente haute performance (données de démonstration {store_label}).",
+                "is_demo": True,
+                "is_live_stock": False,
+                "stock_status": "demo_synthetic",
+            },
+            {
+                "product_id": f"demo-{provider_clean}-prod-102",
+                "title": f"Fixations Freeride {store_label} Elite",
+                "product_name": f"Fixations Freeride {store_label} Elite",
+                "price": 229.50,
+                "currency": "CAD",
+                "sku": f"DEMO-{provider_clean.upper()[:3]}-FIX-02",
+                "category": "Fixations",
+                "status": "demo_synthetic",
+                "inventory_level": 18,
+                "description": f"Fixations en aluminium renforcé (données de démonstration {store_label}).",
+                "is_demo": True,
+                "is_live_stock": False,
+                "stock_status": "demo_synthetic",
+            },
+            {
+                "product_id": f"demo-{provider_clean}-prod-103",
+                "title": f"Bottes Thermiques {store_label} Apex",
+                "product_name": f"Bottes Thermiques {store_label} Apex",
+                "price": 289.00,
+                "currency": "CAD",
+                "sku": f"DEMO-{provider_clean.upper()[:3]}-BOT-03",
+                "category": "Bottes",
+                "status": "demo_synthetic",
+                "inventory_level": 14,
+                "description": f"Chausson thermique et serrage micro-métrique (données de démonstration {store_label}).",
+                "is_demo": True,
+                "is_live_stock": False,
+                "stock_status": "demo_synthetic",
+            },
+            {
+                "product_id": f"demo-{provider_clean}-prod-104",
+                "title": f"Casque Protection {store_label} MIPS",
+                "product_name": f"Casque Protection {store_label} MIPS",
+                "price": 175.00,
+                "currency": "CAD",
+                "sku": f"DEMO-{provider_clean.upper()[:3]}-CSQ-04",
+                "category": "Accessoires",
+                "status": "demo_synthetic",
+                "inventory_level": 32,
+                "description": f"Norme de sécurité renforcée (données de démonstration {store_label}).",
+                "is_demo": True,
+                "is_live_stock": False,
+                "stock_status": "demo_synthetic",
+            },
+        ]
+        for pdata in sample_items:
+            pid = pdata["product_id"]
+            rec = self._db.scalar(
+                select(NormalizedCommerceRecord).where(
+                    NormalizedCommerceRecord.company_id == tenant.company_id,
+                    NormalizedCommerceRecord.connection_id == existing.id,
+                    NormalizedCommerceRecord.entity_type == "products",
+                    NormalizedCommerceRecord.source_record_id == pid,
+                )
+            )
+            if rec is None:
+                rec = NormalizedCommerceRecord(
+                    company_id=tenant.company_id,
+                    connection_id=existing.id,
+                    provider=provider_clean,
+                    entity_type="products",
+                    source_record_id=pid,
+                    source_updated_at=now,
+                    normalized_data=pdata,
+                    deleted=False,
+                    is_demo=True,
+                )
+                self._db.add(rec)
+            else:
+                rec.normalized_data = pdata
+                rec.source_updated_at = now
+                rec.deleted = False
+                rec.is_demo = True
+
+        existing.records_processed = len(sample_items)
+        existing.records_created = len(sample_items)
+        existing.records_failed = 0
+
+        self._db.commit()
+        self._db.refresh(existing)
+        return existing
+
+    def delete_demo_stores(self, tenant: TenantContext) -> int:
+        """Purge all demo stores and synthetic records for the tenant company."""
+        demo_connections = self._db.scalars(
+            select(CommerceConnection).where(
+                CommerceConnection.company_id == tenant.company_id,
+                CommerceConnection.is_demo.is_(True),
+            )
+        ).all()
+        conn_ids = [c.id for c in demo_connections]
+
+        if conn_ids:
+            self._db.execute(
+                delete(NormalizedCommerceRecord).where(
+                    NormalizedCommerceRecord.company_id == tenant.company_id,
+                    NormalizedCommerceRecord.connection_id.in_(conn_ids),
+                )
+            )
+        self._db.execute(
+            delete(NormalizedCommerceRecord).where(
+                NormalizedCommerceRecord.company_id == tenant.company_id,
+                NormalizedCommerceRecord.is_demo.is_(True),
+            )
+        )
+        self._db.execute(
+            delete(CommerceConnection).where(
+                CommerceConnection.company_id == tenant.company_id,
+                CommerceConnection.is_demo.is_(True),
+            )
+        )
+        self._db.commit()
+        return len(demo_connections)
 
     async def complete_shopify_oauth(
         self,
