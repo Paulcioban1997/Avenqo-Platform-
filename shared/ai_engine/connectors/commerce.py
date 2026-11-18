@@ -62,6 +62,7 @@ class ConnectorCapability(StrEnum):
     CATALOG = "catalog"
     WEBHOOKS = "webhooks"
     INCREMENTAL_SYNC = "incremental_sync"
+    ANALYTICS = "analytics"
 
 
 class ConnectorCapabilityError(NotImplementedError):
