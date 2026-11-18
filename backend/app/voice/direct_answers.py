@@ -215,6 +215,41 @@ def is_language_inquiry(text: str) -> str | None:
     return None
 
 
+def is_language_authorized_for_company(db: Session, company_id: UUID, lang_code: str) -> bool:
+    """Check if a language code (e.g. 'es', 'fr', 'en', 'ro') is authorized for the given tenant."""
+    from sqlalchemy import select
+    from backend.app.models import Company, VoiceBusinessConfig
+    from backend.app.services.tenant_locale_service import get_stored_profile, authorized_locales
+
+    lang_prefix = lang_code.casefold().split("-")[0]
+    profile = get_stored_profile(db, company_id)
+    if profile is not None:
+        locales = authorized_locales(profile)
+        for loc in locales:
+            if loc.casefold().startswith(lang_prefix):
+                return True
+        return False
+
+    cfg = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_id))
+    if cfg and cfg.preferred_language:
+        if cfg.preferred_language.casefold().startswith(lang_prefix):
+            return True
+        policy = getattr(cfg, "call_policy", None) or {}
+        if isinstance(policy, dict):
+            extra = policy.get("authorized_languages") or policy.get("secondary_languages") or []
+            if isinstance(extra, list):
+                for el in extra:
+                    if str(el).casefold().startswith(lang_prefix):
+                        return True
+
+    comp = db.scalar(select(Company).where(Company.id == company_id))
+    if comp and comp.preferred_language:
+        if comp.preferred_language.casefold().startswith(lang_prefix):
+            return True
+
+    return lang_prefix == "fr"
+
+
 def resolve_direct_voice_answer(
     db: Session | None,
     *,
@@ -230,18 +265,54 @@ def resolve_direct_voice_answer(
     lang_inquiry = is_language_inquiry(transcript)
     if lang_inquiry:
         from sqlalchemy import select
-        from backend.app.models import VoiceBusinessConfig
-        from backend.app.voice.messages import voice_speech_name
+        from backend.app.models import Company, VoiceBusinessConfig
+
         cfg = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_id))
-        spoken_brand = voice_speech_name(cfg) if cfg else "Produits Héros"
+        comp = db.scalar(select(Company).where(Company.id == company_id)) if cfg is None else None
+
+        # Clean tenant brand name: NO global fallback to "Produits Héros"!
+        brand_name = None
+        if cfg:
+            brand_name = (
+                getattr(cfg, "effective_voice_name", None)
+                or getattr(cfg, "voice_display_name", None)
+                or getattr(cfg, "business_name", None)
+            )
+        elif comp:
+            brand_name = comp.name
+
+        if brand_name:
+            brand_name = str(brand_name).replace("_", " ").strip()
+
+        # Check tenant language authorization
+        if not is_language_authorized_for_company(db, company_id, lang_inquiry):
+            if lang_inquiry == "es":
+                if brand_name:
+                    return f"Lo sentimos, la atención en español no está disponible para {brand_name}. Podemos atenderle en francés o inglés."
+                return "Lo sentimos, la atención en español no está disponible para esta empresa. Podemos atenderle en francés o inglés."
+            elif lang_inquiry == "en":
+                if brand_name:
+                    return f"Sorry, English assistance is not currently available for {brand_name}."
+                return "Sorry, English assistance is not currently available for this business."
+            elif lang_inquiry == "ro":
+                if brand_name:
+                    return f"Ne pare rău, asistența în limba română nu este disponibilă pentru {brand_name}."
+                return "Ne pare rău, asistența în limba română nu este disponibilă pentru această companie."
+            elif lang_inquiry == "fr":
+                if brand_name:
+                    return f"Désolé, l'assistance en français n'est pas disponible pour {brand_name}."
+                return "Désolé, l'assistance en français n'est pas disponible pour cette entreprise."
+            return None
+
+        # Language confirmed authorized:
         if lang_inquiry == "es":
-            return f"¡Hola! Sí, hablo español. ¿En qué puedo ayudarle hoy en {spoken_brand}?"
+            return f"¡Hola! Sí, hablo español. ¿En qué puedo ayudarle hoy en {brand_name}?" if brand_name else "¡Hola! Sí, hablo español. ¿En qué puedo ayudarle hoy?"
         elif lang_inquiry == "en":
-            return f"Hello! Yes, I speak English. How can I help you today at {spoken_brand}?"
+            return f"Hello! Yes, I speak English. How can I help you today at {brand_name}?" if brand_name else "Hello! Yes, I speak English. How can I help you today?"
         elif lang_inquiry == "ro":
-            return f"Bună ziua! Da, vorbesc limba română. Cu ce vă pot ajuta astăzi la {spoken_brand}?"
+            return f"Bună ziua! Da, vorbesc limba română. Cu ce vă pot ajuta astăzi la {brand_name}?" if brand_name else "Bună ziua! Da, vorbesc limba română. Cu ce vă pot ajuta astăzi?"
         elif lang_inquiry == "fr":
-            return f"Bonjour ! Oui, je parle français. Comment puis-je vous aider aujourd'hui chez {spoken_brand} ?"
+            return f"Bonjour ! Oui, je parle français. Comment puis-je vous aider aujourd'hui chez {brand_name} ?" if brand_name else "Bonjour ! Oui, je parle français. Comment puis-je vous aider aujourd'hui ?"
 
     if is_module_access_question(transcript):
         if not authenticated_staff or not staff_role:

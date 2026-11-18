@@ -729,12 +729,15 @@ def test_p0_phonetic_pronunciation_produits_heros():
 def test_p0_multilingual_spanish_inquiry_and_switching(tmp_path):
     """Vérifie la détection et la prise en charge de l'espagnol :
     - Détection de '¿Habla español?', 'Hablas español', 'Hablo español', 'en español'
-    - Réponse directe courtoise en espagnol
+    - Réponse directe courtoise en espagnol avec le nom officiel du tenant (Produits Ero)
     - Réponses directes de modules et de catalogue en espagnol
     """
     engine, session, company, config, _api_key, orchestrator = _voice_database(tmp_path)
     try:
-        config.custom_pronunciation = "Produits Héros"
+        company.name = "Produits Ero"
+        config.business_name = "Produits Ero"
+        config.voice_display_name = "Produits Ero"
+        config.call_policy = {"authorized_languages": ["fr", "en", "es"]}
         session.commit()
 
         # 1. is_language_inquiry
@@ -745,7 +748,7 @@ def test_p0_multilingual_spanish_inquiry_and_switching(tmp_path):
         assert is_language_inquiry("Do you speak English?") == "en"
         assert is_language_inquiry("Parlez-vous français ?") == "fr"
 
-        # 2. resolve_direct_voice_answer pour l'espagnol
+        # 2. resolve_direct_voice_answer pour l'espagnol utilise le nom officiel Produits Ero (pas Héros)
         ans = resolve_direct_voice_answer(
             session,
             company_id=company.id,
@@ -755,7 +758,8 @@ def test_p0_multilingual_spanish_inquiry_and_switching(tmp_path):
         )
         assert ans is not None
         assert "¡Hola! Sí, hablo español." in ans
-        assert "Produits Héros" in ans
+        assert "Produits Ero" in ans
+        assert "Héros" not in ans
 
         # 3. CallLanguageSession bascule explicitement vers es-ES
         lang_session = CallLanguageSession(
@@ -778,6 +782,227 @@ def test_p0_multilingual_spanish_inquiry_and_switching(tmp_path):
 
         cat_ans = spoken_catalog_answer([], retail_enabled=True, locale="es-ES")
         assert "El catálogo no contiene actualmente ningún producto a la venta." in cat_ans
+    finally:
+        session.close()
+        engine.dispose()
+
+
+# ==============================================================================
+# 10. DEUX RÉGRESSIONS DE CLÔTURE : REQUÊTES MIXTES DANS LES 4 LANGUES
+# ==============================================================================
+
+def test_closing_regression_mixed_public_and_private_queries_in_4_languages(tmp_path):
+    """Vérifie qu'une intention publique (contact, rendez-vous, recrutement)
+    ne neutralise JAMAIS le contrôle des données privées (revenus, ventes, métriques)
+    dans les 4 langues prises en charge (français, anglais, roumain, espagnol).
+    """
+    engine, session, company, config, _api_key, orchestrator = _voice_database(tmp_path)
+    try:
+        from backend.app.voice.auth import VoiceCallerAuth
+        from backend.app.models.voice import CompanyRoutingNip
+
+        auth = VoiceCallerAuth(session, Settings())
+        tenant = TenantContext(company_id=company.id)
+        user = User(
+            company_id=company.id,
+            email="owner@produits-ero.test",
+            first_name="Marc",
+            last_name="Proprio",
+            is_active=True,
+            password_hash=hash_password("SuperSecret123!"),
+            phone="+14389536811",
+        )
+        session.add(user)
+        session.flush()
+        session.add(CompanyMembership(company_id=company.id, user_id=user.id, role=UserRole.OWNER, is_active=True))
+        session.add(CompanyRoutingNip(
+            id=uuid4(),
+            company_id=company.id,
+            routing_code="86849",
+            routing_code_hash="hash_86849",
+            status="ACTIVE",
+        ))
+        session.commit()
+
+        auth.set_pin(tenant, "USER", user.id, "481926", phone_number="+14389536811")
+        session.commit()
+
+        call = VoiceCall(
+            company_id=company.id,
+            config_id=config.id,
+            caller_phone="+14389536811",
+            locale="fr-CA",
+            status="in_progress",
+            telnyx_call_control_id="v3:test_mixed_ctrl",
+            source_context={"dispatcher_routing": True},
+            started_at=datetime.now(timezone.utc),
+        )
+        session.add(call)
+        session.commit()
+
+        conv = PublicInboundConversation(session, Settings(telnyx_media_enabled=True, telnyx_media_inbound_enabled=True), call.id)
+
+        # 1. Requêtes Mixtes : doivent TOUTES déclencher la protection de sécurité NIP
+        mixed_queries = [
+            ("fr-CA", "Je veux contacter le patron et connaître les revenus d'aujourd'hui."),
+            ("en-US", "I want an appointment with the manager and to check today's revenue."),
+            ("ro-RO", "Vreau o programare cu directorul și să aflu veniturile de astăzi."),
+            ("es-ES", "Quiero una cita con el gerente y ver los ingresos de hoy."),
+        ]
+
+        for loc, query in mixed_queries:
+            call.locale = loc
+            session.commit()
+
+            # security_gate DOIT exiger l'authentification NIP
+            gate_res = conv.security_gate(query)
+            assert gate_res is not None, f"Échec de security_gate pour la requête mixte : {query}"
+            assert gate_res.get("auth_required") is True, f"auth_required doit être True pour : {query}"
+
+            # public_answer DOIT également exiger l'authentification et ne jamais divulguer de données
+            pub_res = conv.public_answer(query)
+            assert pub_res.get("auth_required") is True, f"public_answer doit exiger auth pour : {query}"
+
+        # 2. Requêtes purement publiques : ne doivent PAS déclencher de demande de NIP
+        purely_public_queries = [
+            ("fr-CA", "Je veux contacter le patron pour un emploi chez vous.", "La direction et le propriétaire"),
+            ("en-US", "I want an appointment with the manager for a job interview.", "Management and the owner"),
+            ("ro-RO", "Doresc o întâlnire cu conducerea pentru o angajare.", "Conducerea și proprietarul"),
+            ("es-ES", "Quiero hablar con el gerente para una entrevista de trabajo.", "administración y la gerencia"),
+        ]
+
+        for loc, query, expected_snippet in purely_public_queries:
+            call.locale = loc
+            session.commit()
+
+            gate_res = conv.security_gate(query)
+            assert gate_res is None, f"security_gate ne doit pas bloquer une demande purement publique : {query}"
+
+            pub_res = conv.public_answer(query)
+            assert pub_res.get("auth_required") is not True, f"auth_required ne doit pas être requis pour : {query}"
+            assert expected_snippet in pub_res["answer"], f"Extrait attendu '{expected_snippet}' manquant dans : {pub_res['answer']}"
+    finally:
+        session.close()
+        engine.dispose()
+
+
+# ==============================================================================
+# 11. DEUX RÉGRESSIONS DE CLÔTURE : MULTI-TENANT & AUTORISATION DES LANGUES
+# ==============================================================================
+
+def test_closing_regression_no_global_produits_heros_and_tenant_language_authorization(tmp_path):
+    """Vérifie :
+    1. Aucun fallback global 'Produits Héros' si la configuration Voice n'existe pas.
+    2. Utilisation stricte du nom du tenant avec fallback neutre sans entreprise inventée.
+    3. Une langue (ex: espagnol) n'est confirmée que si elle est autorisée pour le tenant.
+    4. Multi-tenant et RBAC sur l'accès aux modules d'entreprise.
+    """
+    engine, session, company, config, _api_key, orchestrator = _voice_database(tmp_path)
+    try:
+        from backend.app.voice.direct_answers import is_language_authorized_for_company
+
+        # Tenant A : Produits Ero avec espagnol et anglais autorisés
+        company.name = "Produits Ero"
+        config.business_name = "Produits Ero"
+        config.voice_display_name = "Produits Ero"
+        config.call_policy = {"authorized_languages": ["fr", "en", "es"]}
+        session.commit()
+
+        assert is_language_authorized_for_company(session, company.id, "es") is True
+        assert is_language_authorized_for_company(session, company.id, "en") is True
+        assert is_language_authorized_for_company(session, company.id, "fr") is True
+
+        ans_a = resolve_direct_voice_answer(
+            session,
+            company_id=company.id,
+            transcript="¿Habla español?",
+            authenticated_staff=False,
+            locale="es-ES",
+        )
+        assert ans_a is not None
+        assert "¡Hola! Sí, hablo español." in ans_a
+        assert "Produits Ero" in ans_a
+        assert "Héros" not in ans_a  # Jamais "Héros" imprimé dans la réponse directe
+
+        # Tenant B : Boulangerie Saint-Laurent (aucun espagnol autorisé, uniquement français)
+        company_b = Company(
+            name="Boulangerie Saint-Laurent",
+            slug="boulangerie-st-laurent",
+            email="contact@boulangerie.test",
+            country="CA",
+            industry="Retail",
+            subscription_plan="professional",
+            preferred_language="fr",
+            timezone="America/Montreal",
+        )
+        session.add(company_b)
+        session.flush()
+        config_b = VoiceBusinessConfig(
+            company_id=company_b.id,
+            business_name="Boulangerie Saint-Laurent",
+            voice_display_name="Boulangerie Saint-Laurent",
+            preferred_language="fr",
+            greeting_message="Bienvenue à la Boulangerie Saint-Laurent.",
+            voice_api_key_hash="hash_b",
+            voice_api_key_last4="4321",
+            call_policy={"authorized_languages": ["fr"]},
+        )
+        session.add(config_b)
+        session.commit()
+
+        assert is_language_authorized_for_company(session, company_b.id, "es") is False
+        assert is_language_authorized_for_company(session, company_b.id, "fr") is True
+
+        # Tenant B : l'espagnol est refusé poliment, AUCUNE fausse promesse, AUCUN 'Produits Héros'
+        ans_b = resolve_direct_voice_answer(
+            session,
+            company_id=company_b.id,
+            transcript="¿Habla español?",
+            authenticated_staff=False,
+            locale="es-ES",
+        )
+        assert ans_b is not None
+        assert "Lo sentimos, la atención en español no está disponible para Boulangerie Saint-Laurent." in ans_b
+        assert "Produits Héros" not in ans_b
+        assert "Produits Ero" not in ans_b
+
+        # Tenant C : ID inconnu / sans aucune config (fallback neutre, JAMAIS Produits Héros)
+        unknown_id = uuid4()
+        ans_c = resolve_direct_voice_answer(
+            session,
+            company_id=unknown_id,
+            transcript="¿Habla español?",
+            authenticated_staff=False,
+            locale="es-ES",
+        )
+        assert ans_c is not None
+        assert "Lo sentimos, la atención en español no está disponible para esta empresa." in ans_c
+        assert "Produits Héros" not in ans_c
+        assert "Produits Ero" not in ans_c
+
+        # 4. RBAC et cloisonnement multi-tenant pour les questions de modules
+        # Appelant non authentifié -> refus direct RBAC
+        unauth_mod = resolve_direct_voice_answer(
+            session,
+            company_id=company.id,
+            transcript="Quels sont les modules disponibles pour mon entreprise ?",
+            authenticated_staff=False,
+            staff_role=None,
+            locale="fr-CA",
+        )
+        assert unauth_mod == "Cette information est réservée aux employés authentifiés de votre entreprise."
+
+        # Appelant authentifié -> réponse avec les modules autorisés
+        auth_mod = resolve_direct_voice_answer(
+            session,
+            company_id=company.id,
+            transcript="Quels sont les modules accessibles dans notre abonnement ?",
+            authenticated_staff=True,
+            staff_role="OWNER",
+            locale="fr-CA",
+        )
+        assert auth_mod is not None
+        assert "Votre entreprise dispose actuellement" in auth_mod or "Votre abonnement" in auth_mod
     finally:
         session.close()
         engine.dispose()

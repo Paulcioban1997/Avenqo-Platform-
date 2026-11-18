@@ -365,23 +365,27 @@ class PublicInboundConversation:
 
         # Check if caller has a public customer intent (appointment, speaking/contacting, recruitment, job application)
         is_public_customer_intent = bool(re.search(
-            r"\b(rendez[- ]vous|rdv|appointment|booking|cita|reunion|programare|rencontrer|rencontre|parler|parle|hablar|vorbi|speak|talk|contacter|contact|message|mensaje|mesaj|recrutement|recruitment|embauche|hiring|emploi|job|empleo|angajare|candidature|postuler|apply|entrevue|interview|entrevista|interviu|joindre|reach)\b",
+            r"\b(rendez[- ]vous|rdv|appointment|booking|cita|reunion|programare|intalnire|intalnirea|rencontrer|rencontre|parler|parle|hablar|vorbi|speak|talk|contacter|contact|message|mensaje|mesaj|recrutement|recruitment|embauche|hiring|emploi|job|empleo|angajare|candidature|postuler|apply|entrevue|interview|entrevista|interviu|joindre|reach)\b",
             normalized,
         ))
 
         # 3. Requests for confidential business, financial or inventory data
-        private_data = None
-        if not is_public_customer_intent:
-            private_data = re.search(
-                r"\b(chiffre d'affaires|ventes du jour|ventes d'aujourd'hui|ventes aujourd'hui|produits vendus|commandes internes|mes clients|autres clients|internal|internes|metriques|metrics|revenus|revenue|credits|abonnement|subscription|retail|comptabilite|accounting|dashboard|factures|invoices)\b"
-                r"|\b(commande|commandes|order|orders)\b.{0,25}\b(recu|recues|aujourd'hui|jour|du jour|recent|recentes|total|nombre|recents|derniere|dernieres|today)\b"
-                r"|\b(combien de commandes|combien de ventes|combien de transactions|combien d'argent)\b"
-                r"|\b(niveau de stock|etat des stocks|stock restant)\b"
-                r"|\b(je suis|i am)\b.{0,15}\b(proprietaire|owner|patron|boss|manager|employe|employee)\b"
-                r"|\b(mode|espace|session|connexion|portail)\b.{0,20}\b(proprietaire|owner|patron|boss|manager|employe|employee|gestion|direction)\b",
-                normalized,
-            )
+        # MUST BE ANALYZED UNCONDITIONALLY across all languages
+        private_data = re.search(
+            r"\b(chiffre d'affaires|ventes du jour|ventes d'aujourd'hui|ventes aujourd'hui|produits vendus|commandes internes|mes clients|autres clients|internal|internes|metriques|metrics|revenus|revenue|credits|abonnement|subscription|retail|comptabilite|accounting|dashboard|factures|invoices)\b"
+            r"|\b(commande|commandes|order|orders)\b.{0,25}\b(recu|recues|aujourd'hui|jour|du jour|recent|recentes|total|nombre|recents|derniere|dernieres|today)\b"
+            r"|\b(combien de commandes|combien de ventes|combien de transactions|combien d'argent)\b"
+            r"|\b(niveau de stock|etat des stocks|stock restant)\b"
+            r"|\b(ingresos|ventas de hoy|pedidos internos|facturas|contabilidad|metricas|cuanto dinero|estado de los stocks|stock restante)\b"
+            r"|\b(cifra de afaceri|venituri(le)?|vanzari(le)? de astazi|comenzi interne|facturi|contabilitate|cati bani|nivelul stocului|stoc ramas)\b"
+            r"|\b(je suis|i am|yo soy|sunt)\b.{0,15}\b(proprietaire|owner|patron|boss|manager|employe|employee|due[nñ]o|gerente|sef|proprietar)\b"
+            r"|\b(mode|espace|session|connexion|portail|acceso|spatiu)\b.{0,20}\b(proprietaire|owner|patron|boss|manager|employe|employee|gestion|direction|due[nñ]o|gerente|conducere)\b",
+            normalized,
+        )
 
+        # PRIORITY RULE: Private data or PIN inquiry ALWAYS takes precedence over public intent.
+        # A mixed request containing both a public intent (e.g. contact/appointment) and private data
+        # (e.g. today's revenue / sales) MUST require authentication or be refused.
         if pin_inquiry or private_data:
             has_pin = self.has_configured_pin(call)
             if has_pin:
@@ -475,20 +479,25 @@ class PublicInboundConversation:
             return {"status": "success", "answer": self.portal_message(), "public": True}
 
         is_public_customer_intent = bool(re.search(
-            r"\b(rendez[- ]vous|rdv|appointment|booking|cita|reunion|programare|rencontrer|rencontre|parler|parle|hablar|vorbi|speak|talk|contacter|contact|message|mensaje|mesaj|recrutement|recruitment|embauche|hiring|emploi|job|empleo|angajare|candidature|postuler|apply|entrevue|interview|entrevista|interviu|joindre|reach)\b",
+            r"\b(rendez[- ]vous|rdv|appointment|booking|cita|reunion|programare|intalnire|intalnirea|rencontrer|rencontre|parler|parle|hablar|vorbi|speak|talk|contacter|contact|message|mensaje|mesaj|recrutement|recruitment|embauche|hiring|emploi|job|empleo|angajare|candidature|postuler|apply|entrevue|interview|entrevista|interviu|joindre|reach)\b",
             normalized,
         ))
         is_management_contact = bool(re.search(
-            r"\b(proprietaire|owner|patron|boss|manager|direction|due[nñ]o|jefe|gerente|encargado|proprietar|sef)\b", normalized
+            r"\b(proprietaire|owner|patron|boss|manager|direction|due[nñ]o|jefe|gerente|encargado|proprietar|sef|conducere|conducerea|director|directorul)\b", normalized
         ))
-        private = None
-        if not is_public_customer_intent and not is_management_contact:
-            private = re.search(
-                r"\b(chiffre d'affaires|ventes du jour|ventes d'aujourd'hui|ventes aujourd'hui|produits vendus|commandes internes|mes clients|autres clients|internal|internes|metriques|metrics|revenus|revenue|credits|abonnement|subscription|retail|comptabilite|accounting|dashboard|factures|invoices)\b"
-                r"|\b(je suis|i am)\b.{0,15}\b(proprietaire|owner|patron|boss|manager|employe|employee)\b"
-                r"|\b(mode|espace|session|connexion|portail)\b.{0,20}\b(proprietaire|owner|patron|boss|manager|employe|employee|gestion|direction)\b",
-                normalized,
-            )
+        # Requests for confidential business, financial or inventory data
+        # MUST BE ANALYZED UNCONDITIONALLY across all languages
+        private = re.search(
+            r"\b(chiffre d'affaires|ventes du jour|ventes d'aujourd'hui|ventes aujourd'hui|produits vendus|commandes internes|mes clients|autres clients|internal|internes|metriques|metrics|revenus|revenue|credits|abonnement|subscription|retail|comptabilite|accounting|dashboard|factures|invoices)\b"
+            r"|\b(commande|commandes|order|orders)\b.{0,25}\b(recu|recues|aujourd'hui|jour|du jour|recent|recentes|total|nombre|recents|derniere|dernieres|today)\b"
+            r"|\b(combien de commandes|combien de ventes|combien de transactions|combien d'argent)\b"
+            r"|\b(niveau de stock|etat des stocks|stock restant)\b"
+            r"|\b(ingresos|ventas de hoy|pedidos internos|facturas|contabilidad|metricas|cuanto dinero|estado de los stocks|stock restante)\b"
+            r"|\b(cifra de afaceri|venituri(le)?|vanzari(le)? de astazi|comenzi interne|facturi|contabilitate|cati bani|nivelul stocului|stoc ramas)\b"
+            r"|\b(je suis|i am|yo soy|sunt)\b.{0,15}\b(proprietaire|owner|patron|boss|manager|employe|employee|due[nñ]o|gerente|sef|proprietar)\b"
+            r"|\b(mode|espace|session|connexion|portail|acceso|spatiu)\b.{0,20}\b(proprietaire|owner|patron|boss|manager|employe|employee|gestion|direction|due[nñ]o|gerente|conducere)\b",
+            normalized,
+        )
         if private:
             prompt = voice_auth_message(call.locale or config.preferred_language, 0)
             return {"status": "success", "answer": prompt + " " + self.portal_message(), "auth_required": True, "public": True}
@@ -2019,9 +2028,13 @@ async def telnyx_media_socket(
             ]
             return any(re.search(p, normalized) for p in patterns)
 
-        from backend.app.voice.direct_answers import resolve_direct_voice_answer, is_language_inquiry
+        from backend.app.voice.direct_answers import (
+            resolve_direct_voice_answer,
+            is_language_inquiry,
+            is_language_authorized_for_company,
+        )
         lang_target = is_language_inquiry(transcript)
-        if lang_target:
+        if lang_target and is_language_authorized_for_company(db, current_company.id, lang_target):
             target_locale_map = {"es": "es-ES", "en": "en-US", "fr": "fr-CA", "ro": "ro-RO"}
             target_loc = target_locale_map.get(lang_target)
             if target_loc:
