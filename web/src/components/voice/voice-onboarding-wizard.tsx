@@ -200,17 +200,23 @@ export function VoiceOnboardingWizard({
     active_sessions_count: number;
   }
 
-  const normalizePinStatus = (data: any): VoicePinStatus => ({
-    configured: Boolean(data?.has_pin ?? data?.configured),
-    enabled: Boolean(data?.phone_access_enabled ?? data?.enabled),
-    has_pin: Boolean(data?.has_pin ?? data?.configured),
-    phone_access_enabled: Boolean(data?.phone_access_enabled ?? data?.enabled),
-    phone_number: data?.phone_number || null,
-    is_locked: Boolean(data?.is_locked || data?.locked_until),
-    failed_attempts: typeof data?.failed_attempts === "number" ? data.failed_attempts : 0,
-    locked_until: data?.locked_until || (data?.is_locked ? "locked" : null),
-    active_sessions_count: typeof data?.active_sessions_count === "number" ? data.active_sessions_count : 0,
-  });
+  const normalizePinStatus = (data: any): VoicePinStatus => {
+    const isConfigured = Boolean(data?.configured ?? data?.has_pin);
+    const rawEnabled = data?.enabled !== undefined ? data.enabled : data?.phone_access_enabled;
+    const isEnabled = isConfigured && rawEnabled !== undefined ? Boolean(rawEnabled) : Boolean(data?.enabled ?? data?.phone_access_enabled);
+    const isLocked = Boolean(data?.is_locked || (data?.locked_until && new Date(data.locked_until).getTime() > Date.now()));
+    return {
+      configured: isConfigured,
+      enabled: isEnabled,
+      has_pin: isConfigured,
+      phone_access_enabled: isEnabled,
+      phone_number: data?.phone_number || null,
+      is_locked: isLocked,
+      failed_attempts: typeof data?.failed_attempts === "number" ? data.failed_attempts : 0,
+      locked_until: data?.locked_until || (isLocked ? "locked" : null),
+      active_sessions_count: typeof data?.active_sessions_count === "number" ? data.active_sessions_count : 0,
+    };
+  };
 
   const [pinStatus, setPinStatus] = useState<VoicePinStatus | null>(null);
   const [lifecycleData, setLifecycleData] = useState<any>(null);

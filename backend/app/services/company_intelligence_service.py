@@ -231,8 +231,14 @@ class CompanyIntelligenceService:
                     freshness_status, is_live_stock = classify_product_freshness(
                         r, connections_by_id, now=datetime.now(timezone.utc)
                     )
-                    in_stock = (raw_count > 0 or status == "instock") if is_live_stock else False
-                    confirmed_inventory_count = raw_count if is_live_stock else None
+                    if is_live_stock:
+                        in_stock = bool(raw_count > 0 or status == "instock")
+                        stock_availability = "IN_STOCK" if in_stock else "OUT_OF_STOCK"
+                        confirmed_inventory_count = raw_count
+                    else:
+                        in_stock = None
+                        stock_availability = "UNKNOWN"
+                        confirmed_inventory_count = None
 
                     stock_status_label = (
                         "live_synced" if freshness_status == "FRESH"
@@ -267,6 +273,7 @@ class CompanyIntelligenceService:
                         "is_live_stock": is_live_stock,
                         "freshness_status": freshness_status,
                         "in_stock": in_stock,
+                        "stock_availability": stock_availability,
                         "inventory_count": confirmed_inventory_count,
                         "historical_reference_units": raw_count if not is_live_stock else None,
                         "stock_status": stock_status_label,

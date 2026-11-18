@@ -59,6 +59,29 @@ from backend.app.core.locale_catalog import resolve_locale, detect_spoken_langua
 from backend.app.dependencies.ai_authorization import get_active_ai_membership
 from backend.app.voice.languages import voice_language_matrix
 from backend.app.voice.auth import VoiceCallerAuth, redact_voice_secrets, validate_voice_pin, utc, normalized_phone
+from backend.app.voice.providers import TelnyxCallEndedError
+
+
+def is_call_already_ended_error(exc: Exception) -> bool:
+    if isinstance(exc, TelnyxCallEndedError):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        if exc.response.status_code == 422:
+            try:
+                data = exc.response.json()
+                for err in data.get("errors", []):
+                    code = str(err.get("code") or "")
+                    msg = (str(err.get("title") or "") + " " + str(err.get("detail") or "")).lower()
+                    if code == "90018" or "already ended" in msg:
+                        return True
+            except Exception:
+                pass
+        err_str = str(exc).lower()
+        if "90018" in err_str or "call has already ended" in err_str:
+            return True
+    return "90018" in str(exc) or "call has already ended" in str(exc).lower()
+
+
 from backend.app.voice.quotes import signed_number_quote, verify_number_quote, valid_cost
 from backend.app.voice.telnyx_media import telnyx_media_socket, media_audio_available, issue_media_client_state
 from backend.app.core.security import verify_password
@@ -245,10 +268,13 @@ def get_user_voice_pin_status(
     is_locked = bool(cred and cred.locked_until and utc(cred.locked_until) > now)
     return {
         "has_pin": cred is not None,
+        "configured": cred is not None,
+        "enabled": bool(cred.enabled) if cred else False,
         "phone_access_enabled": bool(cred.enabled) if cred else False,
         "phone_number": masked_phone,
         "is_locked": is_locked,
         "failed_attempts": cred.failed_attempts if cred else 0,
+        "locked_until": cred.locked_until.isoformat() if (cred and cred.locked_until) else None,
         "active_sessions_count": int(active_sessions),
     }
 
@@ -400,39 +426,6 @@ def revoke_active_voice_sessions(
     return {"status": "REVOKED", "revoked_count": count}
 
 
-@router.put("/auth/phone-access")
-def set_user_phone_access(
-    request: VoicePhoneAccessRequest,
-    identity: CurrentIdentity = Depends(get_current_identity),
-    db: Session = Depends(get_db),
-) -> dict[str, Any]:
-    cred = db.scalar(select(VoiceCallerCredential).where(
-        VoiceCallerCredential.company_id == identity.user.company_id,
-        VoiceCallerCredential.principal_type == "USER",
-        VoiceCallerCredential.principal_id == identity.user.id,
-    ))
-    if cred is None:
-        raise HTTPException(status_code=404, detail="No Voice credential configured yet")
-    cred.enabled = request.enabled
-    if not request.enabled:
-        now = datetime.now(timezone.utc)
-        for session in db.scalars(select(VoiceAuthSession).where(
-            VoiceAuthSession.company_id == identity.user.company_id,
-            VoiceAuthSession.principal_id == identity.user.id,
-            VoiceAuthSession.revoked_at.is_(None),
-        )):
-            session.revoked_at = now
-    AuditLogService(db).record(
-        actor_user_id=identity.user.id,
-        action="voice_phone_access_toggled",
-        target_type="user",
-        target_id=str(identity.user.id),
-        company_id=identity.user.company_id,
-        metadata={"enabled": request.enabled},
-        commit=False,
-    )
-    db.commit()
-    return {"status": "UPDATED", "enabled": cred.enabled}
 
 
 @router.get("/auth/audit", dependencies=[Depends(require_active_subscription)])
@@ -1722,16 +1715,29 @@ def get_voice_auth_pin(
         return VoiceAuthPinStatusResponse(
             configured=False,
             enabled=False,
+            phone_access_enabled=False,
             phone_number=identity.user.phone,
             failed_attempts=0,
             locked_until=None,
+            active_sessions_count=0,
         )
+    now = datetime.now(timezone.utc)
+    active_sessions = db.scalar(
+        select(func.count(VoiceAuthSession.id)).where(
+            VoiceAuthSession.company_id == identity.user.company_id,
+            VoiceAuthSession.principal_id == identity.user.id,
+            VoiceAuthSession.revoked_at.is_(None),
+            VoiceAuthSession.expires_at > now,
+        )
+    ) or 0
     return VoiceAuthPinStatusResponse(
         configured=True,
         enabled=credential.enabled,
+        phone_access_enabled=credential.enabled,
         phone_number=credential.phone_number,
         failed_attempts=credential.failed_attempts,
         locked_until=credential.locked_until,
+        active_sessions_count=int(active_sessions),
     )
 
 
@@ -1888,8 +1894,23 @@ def update_user_phone_access(
     )
     if credential is None:
         raise HTTPException(status_code=404, detail="No Voice PIN credential found for user")
+
+    # If reactivating a disabled credential, require password re-authentication
+    if payload.enabled and not credential.enabled:
+        current_pw = payload.current_password_value
+        if not current_pw:
+            raise HTTPException(
+                status_code=400,
+                detail="Votre mot de passe actuel est requis pour réactiver l'accès téléphonique.",
+            )
+        if not verify_password(current_pw, identity.user.password_hash):
+            raise HTTPException(status_code=403, detail="Le mot de passe actuel est incorrect.")
+
     credential.enabled = payload.enabled
-    if not payload.enabled:
+    if payload.enabled:
+        credential.failed_attempts = 0
+        credential.locked_until = None
+    else:
         now = datetime.now(timezone.utc)
         for session in db.scalars(
             select(VoiceAuthSession).where(
@@ -1899,13 +1920,36 @@ def update_user_phone_access(
             )
         ):
             session.revoked_at = now
+
+    AuditLogService(db).record(
+        actor_user_id=identity.user.id,
+        action="voice_phone_access_toggled",
+        target_type="user",
+        target_id=str(identity.user.id),
+        company_id=identity.user.company_id,
+        metadata={"enabled": payload.enabled, "reauthenticated": bool(payload.current_password)},
+        commit=False,
+    )
     db.commit()
+
+    now = datetime.now(timezone.utc)
+    active_sessions = db.scalar(
+        select(func.count(VoiceAuthSession.id)).where(
+            VoiceAuthSession.company_id == identity.user.company_id,
+            VoiceAuthSession.principal_id == identity.user.id,
+            VoiceAuthSession.revoked_at.is_(None),
+            VoiceAuthSession.expires_at > now,
+        )
+    ) or 0
+
     return VoiceAuthPinStatusResponse(
         configured=True,
         enabled=credential.enabled,
+        phone_access_enabled=credential.enabled,
         phone_number=credential.phone_number,
         failed_attempts=credential.failed_attempts,
         locked_until=credential.locked_until,
+        active_sessions_count=int(active_sessions),
     )
 
 
@@ -2662,19 +2706,29 @@ async def telnyx_webhook(
                 client_state = auth_controller.challenge(call)
                 receipt.result = {**receipt.result, "ivr": "pin_empty_reprompt"}
                 db.commit()
-                await service.telnyx.gather_using_speak(
-                    active_control_id,
-                    text_prompt=re_prompt,
-                    command_id=command_id,
-                    client_state=client_state,
-                    language=ivr_lang,
-                    minimum_digits=6,
-                    maximum_digits=12,
-                    valid_digits="0123456789#",
-                    terminating_digit="#",
-                    timeout_millis=20000,
-                )
-                return {"received": True, "ivr_stage": "pin_reprompted"}
+                try:
+                    await service.telnyx.gather_using_speak(
+                        active_control_id,
+                        text_prompt=re_prompt,
+                        command_id=command_id,
+                        client_state=client_state,
+                        language=ivr_lang,
+                        minimum_digits=6,
+                        maximum_digits=12,
+                        valid_digits="0123456789#",
+                        terminating_digit="#",
+                        timeout_millis=20000,
+                    )
+                    return {"received": True, "ivr_stage": "pin_reprompted"}
+                except Exception as exc:
+                    if is_call_already_ended_error(exc):
+                        logger.info("gather_using_speak reprompt ignored; call %s already ended (Telnyx 90018)", call.id)
+                        call.status = "completed"
+                        if not call.ended_at:
+                            call.ended_at = datetime.now(timezone.utc)
+                        db.commit()
+                        return {"received": True, "status": "CALL_ALREADY_ENDED"}
+                    raise
 
             auth_result = auth_controller.verify_gather(call, digits_str)
             if auth_result.get("authenticated"):
@@ -2749,19 +2803,29 @@ async def telnyx_webhook(
                     client_state = auth_controller.challenge(call)
                     receipt.result = {**receipt.result, "authenticated": False, "retry": True}
                     db.commit()
-                    await service.telnyx.gather_using_speak(
-                        active_control_id,
-                        text_prompt=invalid_msg,
-                        command_id=command_id,
-                        client_state=client_state,
-                        language=ivr_lang,
-                        minimum_digits=6,
-                        maximum_digits=12,
-                        valid_digits="0123456789#",
-                        terminating_digit="#",
-                        timeout_millis=20000,
-                    )
-                    return {"received": True, "authenticated": False, "retry": True}
+                    try:
+                        await service.telnyx.gather_using_speak(
+                            active_control_id,
+                            text_prompt=invalid_msg,
+                            command_id=command_id,
+                            client_state=client_state,
+                            language=ivr_lang,
+                            minimum_digits=6,
+                            maximum_digits=12,
+                            valid_digits="0123456789#",
+                            terminating_digit="#",
+                            timeout_millis=20000,
+                        )
+                        return {"received": True, "authenticated": False, "retry": True}
+                    except Exception as exc:
+                        if is_call_already_ended_error(exc):
+                            logger.info("gather_using_speak retry ignored; call %s already ended (Telnyx 90018)", call.id)
+                            call.status = "completed"
+                            if not call.ended_at:
+                                call.ended_at = datetime.now(timezone.utc)
+                            db.commit()
+                            return {"received": True, "status": "CALL_ALREADY_ENDED"}
+                        raise
 
         # Standard PIN authentication (Customer, Employee, or Owner)
         result = auth_controller.verify_gather(call, digits_str)
@@ -2912,6 +2976,13 @@ async def telnyx_webhook(
         command_id = str(UUID(hashlib.sha256(f"transfer:{call.id}".encode("utf-8")).hexdigest()[:32]))
         await service.telnyx.transfer_call(active_call_control_id, target, config.telnyx_phone_number, command_id=command_id, call_reference=str(call.id))
     except Exception as exc:
+        if is_call_already_ended_error(exc):
+            logger.info("Telnyx inbound routing call already ended (90018); call_id=%s", call.id)
+            call.status = "completed"
+            if not call.ended_at:
+                call.ended_at = datetime.now(timezone.utc)
+            db.commit()
+            return {"received": True, "status": "CALL_ALREADY_ENDED"}
         db.refresh(call)
         if call.ended_at is None:
             call.status = "routing_outcome_unknown"

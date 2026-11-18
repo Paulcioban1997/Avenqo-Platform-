@@ -199,9 +199,16 @@ def build_personality_system_prompt(
         if allow_natural_interruptions
         else "Complete your concise spoken response clearly before waiting for the caller."
     )
+    pronunciation_note = ""
+    if "ero" in company_name.lower() or "éro" in company_name.lower():
+        pronunciation_note = (
+            "PRONUNCIATION INSTRUCTION: Pronounce 'Produits Éro' clearly as 'Éro' (rhymes with 'héros'), "
+            "never with a 'Z' sound ('Zéro' or 'Zero' is strictly prohibited). "
+        )
     prompt = (
         f"You represent the company '{company_name}'. "
         f"Always pronounce and refer to the company strictly as '{company_name}'. "
+        f"{pronunciation_note}"
         "Treat that spelling as a proper name in the caller's language. "
         "Do not read it as a number and do not replace it with an English common noun. "
         f"{persona_desc} "

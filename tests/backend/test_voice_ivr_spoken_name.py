@@ -32,10 +32,10 @@ def test_empty_pronunciation_object_reaches_telnyx_with_a_pause():
         preferred_language="fr",
         call_policy={},
     )
-    assert voice_speech_name(cfg) == "Produits, Ero"
+    assert voice_speech_name(cfg) == "Produits Éro"
     greeting = voice_ivr_greeting(cfg)
-    assert "Bienvenue chez Produits, Ero." in greeting
-    assert "Produits Ero" not in greeting
+    assert "Bienvenue chez Produits Éro." in greeting
+    assert "Produits, Ero" not in greeting
 
 
 def test_ivr_invalid_pronunciation_falls_back_to_display_name():

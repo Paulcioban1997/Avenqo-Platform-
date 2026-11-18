@@ -166,7 +166,8 @@ def voice_speech_name(config) -> str:
         or "Avenqo"
     )
     display = str(display).replace("_", " ").strip()
-    # An empty or unusable alias, including "{}", must not block the pause.
+    if re.search(r"\bProduits[_\s,]+Ero\b", spoken, flags=re.IGNORECASE):
+        return re.sub(r"\bProduits[_\s,]+Ero\b", "Produits Éro", spoken, flags=re.IGNORECASE)
     if spoken.casefold() != display.casefold():
         return spoken
     locale = str(getattr(config, "preferred_language", "fr") or "fr")
@@ -178,6 +179,8 @@ def voice_speech_name(config) -> str:
     last = parts[-1].strip(",.")
     if not last.isalpha() or not (2 <= len(last) <= 3) or last.casefold() in _FR_SHORT_PARTICLES:
         return spoken
+    if last.casefold() in {"ero", "éro"}:
+        return f"{' '.join(parts[:-1])} Éro"
     return f"{' '.join(parts[:-1])}, {last}"
 
 
@@ -215,8 +218,9 @@ def apply_spoken_pronunciation(text: str, config) -> str:
     for name in sorted(set(names), key=len, reverse=True):
         if name.casefold() != spoken.casefold():
             rendered = re.sub(re.escape(name), spoken, rendered, flags=re.IGNORECASE)
-    # Also clean any leftover literal underscores in spoken brand text
-    rendered = re.sub(r"Produits_Ero", "Produits Éro", rendered, flags=re.IGNORECASE)
+    # Also clean any leftover literal underscores or phonetic anomalies in spoken brand text
+    rendered = re.sub(r"\bProduits[_\s,]+Ero\b", "Produits Éro", rendered, flags=re.IGNORECASE)
+    rendered = re.sub(r"\bProduits?[_\s,]+Z[eé]ro\b", "Produits Éro", rendered, flags=re.IGNORECASE)
     return rendered
 
 
@@ -255,4 +259,7 @@ def voice_ivr_greeting(config) -> str:
     ):
         if isinstance(displayed, str) and displayed.strip():
             rendered = rendered.replace(displayed.strip().replace("_", " "), name)
-    return rendered.replace("_", " ").strip()
+    res = rendered.replace("_", " ").strip()
+    res = re.sub(r"\bProduits[_\s,]+Ero\b", "Produits Éro", res, flags=re.IGNORECASE)
+    res = re.sub(r"\bProduits?[_\s,]+Z[eé]ro\b", "Produits Éro", res, flags=re.IGNORECASE)
+    return res

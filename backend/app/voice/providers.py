@@ -153,6 +153,11 @@ class RetellVoiceProvider:
         )
 
 
+class TelnyxCallEndedError(RuntimeError):
+    """Raised when Telnyx returns HTTP 422 with code 90018 (Call has already ended)."""
+    pass
+
+
 class TelnyxClient:
     """Minimal call-control and SMS client; no credential is persisted in tenant config."""
 
@@ -422,5 +427,19 @@ class TelnyxClient:
                 method, _CALL_PATH.sub("/calls/{call_control_id}/", path.split("?")[0]),
                 telnyx_error_summary(response),
             )
+            if response.status_code == 422:
+                try:
+                    err_json = response.json()
+                    errors = err_json.get("errors", [])
+                    for err in errors:
+                        code = str(err.get("code") or "")
+                        title = str(err.get("title") or "").lower()
+                        detail = str(err.get("detail") or "").lower()
+                        if code == "90018" or "already ended" in title or "already ended" in detail:
+                            raise TelnyxCallEndedError("Telnyx call has already ended (code 90018)")
+                except TelnyxCallEndedError:
+                    raise
+                except Exception:
+                    pass
         response.raise_for_status()
         return response.json() if response.content else {}
