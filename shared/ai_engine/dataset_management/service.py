@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from collections import Counter
+from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from shared.ai_engine.dataset_management.types import (
@@ -84,10 +85,17 @@ class DatasetManagementService:
         module_code: str,
         filename: str,
         source_uri: str,
-        content: bytes,
+        content: bytes | Path,
         metadata: Mapping[str, Any] | None = None,
     ) -> DatasetVersionRecord:
-        checksum = hashlib.sha256(content).hexdigest()
+        if isinstance(content, Path):
+            h = hashlib.sha256()
+            with open(content, "rb") as f:
+                while chunk := f.read(65536):
+                    h.update(chunk)
+            checksum = h.hexdigest()
+        else:
+            checksum = hashlib.sha256(content).hexdigest()
         version_label = f"v{version_number}"
         return DatasetVersionRecord(
             dataset_id=dataset_id,

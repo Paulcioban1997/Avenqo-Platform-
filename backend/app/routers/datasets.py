@@ -46,7 +46,13 @@ from backend.app.services.company_dataset_ingestion_service import (
     DatasetNotFoundError as CompanyDatasetNotFoundError,
     InvalidMappingError,
 )
-from backend.app.services.data_import_policy import DataImportPolicy, DataImportQuotaExceeded
+from backend.app.services.data_import_policy import (
+    DataImportFileTooLargeError,
+    DataImportPolicy,
+    DataImportQuotaExceeded,
+    DataImportStorageUnavailableError,
+)
+from backend.app.services.upload_streaming import spool_progressive_upload
 from backend.app.services.dataset_cleaning_service import (
     DatasetCleaningService,
     DatasetNotReadyForExport,
@@ -313,28 +319,31 @@ async def upload_csv(
     tenant: TenantContext = Depends(get_tenant_context),
     service: DatasetImportService = Depends(get_dataset_import_service),
     dispatcher: TrainingDispatcher = Depends(get_training_dispatcher),
+    policy: DataImportPolicy = Depends(get_data_import_policy),
 ) -> DatasetResponse:
     try:
-        # Le parsing/profilage CSV est CPU-bound et bloquerait la boucle
-        # asyncio (donc TOUTE requête concurrente, ex. GET /datasets) si
-        # appelé directement depuis une route async.
-        dataset = await run_in_threadpool(
-            service.import_csv,
-            tenant,
-            module_code,
-            file.filename or "dataset.csv",
-            await file.read(),
-        )
+        # Ingestion progressive par blocs de 1 Mo spoulés sur disque :
+        # Empêche tout crash OOM et protège la RAM face à de volumineux fichiers.
+        async with spool_progressive_upload(file, tenant, policy) as (spool_path, _):
+            dataset = await run_in_threadpool(
+                service.import_csv,
+                tenant,
+                module_code,
+                file.filename or "dataset.csv",
+                spool_path,
+            )
     except ModuleAccessDenied as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
-    except DataImportQuotaExceeded as exc:
+    except (DataImportQuotaExceeded, DataImportFileTooLargeError, DataImportStorageUnavailableError) as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
-    except DatasetImportError as exc:
+    except (DatasetImportError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("dataset_csv_upload_failed tenant_id=%s filename=%r", tenant.company_id, file.filename)
+        raise
 
-    # L'utilisateur ne déclenche jamais manuellement l'entraînement : il
-    # démarre automatiquement dès qu'un import réussit. Un échec de
-    # planification ne doit jamais faire échouer la réponse d'import.
     try:
         dispatcher.dispatch(tenant, dataset)
     except Exception:
@@ -354,40 +363,40 @@ async def upload_company_dataset(
     tenant: TenantContext = Depends(get_tenant_context),
     service: CompanyDatasetIngestionService = Depends(get_company_dataset_ingestion_service),
     dispatcher: TrainingDispatcher = Depends(get_training_dispatcher),
+    policy: DataImportPolicy = Depends(get_data_import_policy),
 ) -> CompanyDatasetUploadResponse:
-    """Ingestion universelle CSV/XLSX/JSON/Parquet (Phase 26)."""
+    """Ingestion universelle CSV/XLSX/JSON/Parquet (Phase 26) avec streaming progressif."""
 
     try:
-        # Idem : l'ingestion universelle (parsing XLSX/JSON/Parquet, mapping
-        # sémantique, profilage) est CPU-bound et doit tourner hors event loop.
-        dataset = await run_in_threadpool(
-            service.upload,
-            tenant,
-            module_code,
-            file.filename or "dataset",
-            await file.read(),
-        )
+        async with spool_progressive_upload(file, tenant, policy) as (spool_path, _):
+            dataset = await run_in_threadpool(
+                service.upload,
+                tenant,
+                module_code,
+                file.filename or "dataset",
+                spool_path,
+            )
     except ModuleAccessDenied as exc:
         logger.warning(
             "dataset_upload_denied tenant_id=%s filename=%r reason=module_entitlement detail=%s",
             tenant.company_id, file.filename, exc,
         )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
-    except DataImportQuotaExceeded as exc:
+    except (DataImportQuotaExceeded, DataImportFileTooLargeError, DataImportStorageUnavailableError) as exc:
         logger.warning(
             "dataset_upload_denied tenant_id=%s filename=%r reason=import_quota detail=%s",
             tenant.company_id, file.filename, exc,
         )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
-    except DatasetIngestionError as exc:
+    except (DatasetIngestionError, ValueError) as exc:
         logger.warning(
             "dataset_upload_rejected tenant_id=%s filename=%r reason=file_validation detail=%s",
             tenant.company_id, file.filename, exc,
         )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except HTTPException:
+        raise
     except Exception:
-        # Preserve the traceback and tenant/request context for production
-        # diagnosis. Never log uploaded contents or auth tokens.
         logger.exception(
             "dataset_upload_failed tenant_id=%s filename=%r",
             tenant.company_id, file.filename,
