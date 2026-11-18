@@ -272,9 +272,8 @@ def get_user_voice_pin_status(
         CompanyMembership.user_id == identity.user.id,
         CompanyMembership.is_active.is_(True),
     ))
-    user_role = membership.role.value if membership and hasattr(membership.role, "value") else (str(membership.role) if membership else getattr(identity.user, "role", "EMPLOYEE"))
-    if hasattr(user_role, "value"):
-        user_role = user_role.value
+    raw_role = membership.role if membership else getattr(identity.user, "role", "EMPLOYEE")
+    user_role = getattr(raw_role, "value", str(raw_role))
     u_phone = identity.user.phone
     masked_u_phone = (u_phone[:4] + " *** **" + u_phone[-2:]) if u_phone and len(u_phone) >= 6 else u_phone
     cred_phone = cred.phone_number if cred else None
@@ -553,7 +552,7 @@ def list_voice_auth_members(
             "first_name": u.first_name,
             "last_name": u.last_name,
             "email": u.email,
-            "role": m.role.value,
+            "role": getattr(m.role, "value", str(m.role)),
             "phone": (u.phone[:4] + " *** **" + u.phone[-2:]) if u.phone and len(u.phone) >= 6 else u.phone,
             "has_pin": cred is not None,
             "phone_access_enabled": cred.enabled if cred else False,
@@ -1774,9 +1773,8 @@ def get_voice_auth_pin(
         CompanyMembership.user_id == identity.user.id,
         CompanyMembership.is_active.is_(True),
     ))
-    user_role = membership.role.value if membership and hasattr(membership.role, "value") else (str(membership.role) if membership else getattr(identity.user, "role", "EMPLOYEE"))
-    if hasattr(user_role, "value"):
-        user_role = user_role.value
+    raw_role = membership.role if membership else getattr(identity.user, "role", "EMPLOYEE")
+    user_role = getattr(raw_role, "value", str(raw_role))
     user_full_name = f"{identity.user.first_name or ''} {identity.user.last_name or ''}".strip() or identity.user.email
     masked_u_phone = (identity.user.phone[:4] + " *** **" + identity.user.phone[-2:]) if identity.user.phone and len(identity.user.phone) >= 6 else identity.user.phone
     cred_phone = credential.phone_number if credential else None
@@ -2971,6 +2969,11 @@ async def telnyx_webhook(
                     return {"received": True, "routed": False, "status": "MEDIA_STREAM_START_FAILED"}
 
         if ivr_stage == "employee_pin":
+            active_pref = resolve_locale(call.locale or config.preferred_language or "fr")
+            is_ro = active_pref.startswith("ro")
+            is_fr = active_pref.startswith("fr")
+            is_es = active_pref.startswith("es")
+            ivr_lang = "ro-RO" if is_ro else ("es-ES" if is_es else ("fr-CA" if is_fr else "en-US"))
             if not digits_str or len(digits_str) < 6:
                 prompt_count = int((call.source_context or {}).get("pin_empty_prompts", 0)) + 1
                 call.source_context = {
@@ -2979,14 +2982,17 @@ async def telnyx_webhook(
                 }
                 flag_modified(call, "source_context")
                 if prompt_count > 2:
-                    goodbye_msg = (
-                        "Aucun code NIP reçu. Au revoir."
-                        if (config.preferred_language or "fr").startswith("fr")
-                        else "No PIN received. Goodbye."
-                    )
+                    if is_ro:
+                        goodbye_msg = "Niciun cod PIN primit. La revedere."
+                    elif is_fr:
+                        goodbye_msg = "Aucun code NIP reçu. Au revoir."
+                    elif is_es:
+                        goodbye_msg = "No se recibió ningún código PIN. Adiós."
+                    else:
+                        goodbye_msg = "No PIN received. Goodbye."
                     command_id = str(UUID(hashlib.sha256(f"pin-timeout-bye:{call.id}:{prompt_count}".encode()).hexdigest()[:32]))
                     try:
-                        await service.telnyx.speak(active_control_id, text_prompt=goodbye_msg, command_id=command_id)
+                        await service.telnyx.speak(active_control_id, text_prompt=goodbye_msg, language=ivr_lang, command_id=command_id)
                         await asyncio.sleep(3.0)
                         await service.telnyx.hangup(active_control_id)
                     except Exception:
@@ -2996,14 +3002,12 @@ async def telnyx_webhook(
                     db.commit()
                     return {"received": True, "status": "PIN_TIMEOUT"}
 
-                active_pref = resolve_locale(call.locale or config.preferred_language or "fr")
-                is_ro = active_pref.startswith("ro")
-                is_fr = active_pref.startswith("fr")
-                ivr_lang = "ro-RO" if is_ro else ("fr-CA" if is_fr else "en-US")
                 if is_ro:
                     re_prompt = "Vă rugăm să introduceți codul PIN personal urmat de tasta diez."
                 elif is_fr:
                     re_prompt = "Veuillez composer votre NIP personnel suivi de la touche dièse."
+                elif is_es:
+                    re_prompt = "Por favor ingrese su PIN personal seguido de la tecla numeral."
                 else:
                     re_prompt = "Please enter your personal PIN followed by pound."
 
@@ -3057,9 +3061,17 @@ async def telnyx_webhook(
                     logger.error("Failed to start staff media stream for call %s: %s", call.id, exc)
                     try:
                         err_cmd = str(UUID(hashlib.sha256(f"media-staff-err:{call.id}".encode()).hexdigest()[:32]))
+                        if is_ro:
+                            err_prompt = "O eroare tehnică împiedică conectarea la spațiul angajatului. Vă rugăm să reveniți mai târziu. La revedere."
+                        elif is_fr:
+                            err_prompt = "Une erreur technique empêche la connexion à l'espace employé. Veuillez rappeler plus tard. Au revoir."
+                        elif is_es:
+                            err_prompt = "Un error técnico impide la conexión al área de empleados. Por favor llame más tarde. Adiós."
+                        else:
+                            err_prompt = "A technical error prevents connecting to the staff workspace. Please call back later. Goodbye."
                         await service.telnyx.speak(
                             active_control_id,
-                            text_prompt="Une erreur technique empêche la connexion à l'espace employé. Veuillez rappeler plus tard. Au revoir.",
+                            text_prompt=err_prompt,
                             language=ivr_lang,
                             command_id=err_cmd,
                         )
@@ -3072,10 +3084,6 @@ async def telnyx_webhook(
                     db.commit()
                     return {"received": True, "routed": False, "status": "MEDIA_STREAM_START_FAILED"}
             else:
-                active_pref = resolve_locale(call.locale or config.preferred_language or "fr")
-                is_ro = active_pref.startswith("ro")
-                is_fr = active_pref.startswith("fr")
-                ivr_lang = "ro-RO" if is_ro else ("fr-CA" if is_fr else "en-US")
                 max_att = getattr(settings, "voice_pin_max_attempts", 5)
                 is_lock = auth_result.get("reason") == "account_locked" or call.verification_attempts >= max_att
 
@@ -3084,6 +3092,8 @@ async def telnyx_webhook(
                         lock_msg = "Numărul maxim de încercări a fost depășit sau accesul este temporar blocat. La revedere."
                     elif is_fr:
                         lock_msg = "Nombre maximal de tentatives de NIP dépassé. Au revoir."
+                    elif is_es:
+                        lock_msg = "Número máximo de intentos de PIN superado o acceso bloqueado. Adiós."
                     else:
                         lock_msg = "Maximum PIN attempts exceeded. Goodbye."
                     command_id = str(UUID(hashlib.sha256(f"lock-hangup:{call.id}".encode()).hexdigest()[:32]))
@@ -3102,6 +3112,8 @@ async def telnyx_webhook(
                         invalid_msg = "Cod PIN nerecunoscut. Vă rugăm să reintroduceți codul PIN personal urmat de tasta diez."
                     elif is_fr:
                         invalid_msg = "NIP non reconnu. Veuillez recomposer votre NIP personnel suivi de la touche dièse."
+                    elif is_es:
+                        invalid_msg = "PIN no reconocido. Por favor vuelva a ingresar su PIN personal seguido de la tecla numeral."
                     else:
                         invalid_msg = "Unrecognized PIN. Please re-enter your personal PIN followed by pound."
                     command_id = str(UUID(hashlib.sha256(f"retry-pin:{call.id}:{call.verification_attempts}".encode()).hexdigest()[:32]))
