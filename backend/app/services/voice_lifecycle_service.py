@@ -329,7 +329,15 @@ class VoiceLifecycleService:
             select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_id)
         )
         if not config:
-            raise ValueError("Voice configuration record not found.")
+            config = VoiceBusinessConfig(
+                company_id=company_id,
+                business_name="Entreprise",
+                greeting_message=ivr_greeting or "Bienvenue",
+                enabled=True,
+                call_policy={"ivr_enabled": ivr_enabled, "ivr_greeting": ivr_greeting},
+            )
+            self.db.add(config)
+            self.db.flush()
 
         policy = dict(config.call_policy or {})
         policy["ivr_enabled"] = ivr_enabled

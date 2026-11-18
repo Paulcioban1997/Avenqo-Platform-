@@ -410,5 +410,11 @@ class VoiceAuthPinStatusResponse(BaseModel):
     phone_number: str | None = None
     failed_attempts: int = 0
     locked_until: datetime | None = None
+    has_pin: bool = False
+
+    @model_validator(mode="after")
+    def sync_has_pin(self) -> VoiceAuthPinStatusResponse:
+        self.has_pin = self.configured
+        return self
 
     model_config = ConfigDict(from_attributes=True)

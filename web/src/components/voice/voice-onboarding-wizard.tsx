@@ -2601,9 +2601,10 @@ export function VoiceOnboardingWizard({
                 tenantId={tenantId}
                 canManage={canManage}
                 businessName={businessName}
+                onRefreshParent={onRefreshStatus}
               />
 
-              <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-white/[0.06]">
+              <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-white/[0.06] flex-wrap gap-3">
                 <button
                   type="button"
                   onClick={() => {
@@ -2615,10 +2616,20 @@ export function VoiceOnboardingWizard({
                   <ArrowLeft className="w-3.5 h-3.5" />
                   <span>{fr ? "Précédent" : "Previous"}</span>
                 </button>
-                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsConfigDropdownOpen(false);
+                    setHasInteractedWithDropdown(true);
+                    onRefreshStatus?.();
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                  className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-md transition flex items-center gap-2 cursor-pointer"
+                >
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>{fr ? "Assistant configuré" : "Wizard completed"}</span>
-                </span>
+                  <span>{fr ? "Terminer et enrouler la configuration" : "Complete & Collapse Setup"}</span>
+                </button>
               </div>
             </div>
           )}

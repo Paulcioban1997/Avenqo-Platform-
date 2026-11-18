@@ -17,6 +17,7 @@ import {
   Lock,
   UserCheck,
   Users,
+  RefreshCw,
 } from "lucide-react";
 import { useLocale } from "@/lib/i18n/locale-context";
 
@@ -47,21 +48,27 @@ interface LifecycleStatus {
 }
 
 interface PinStatus {
-  has_pin: boolean;
+  configured?: boolean;
+  has_pin?: boolean;
+  enabled?: boolean;
   phone_number: string | null;
-  max_attempts: number;
+  max_attempts?: number;
+  failed_attempts?: number;
+  locked_until?: string | null;
 }
 
 interface VoiceLifecycleCardProps {
   tenantId?: string;
   canManage: boolean;
   businessName?: string;
+  onRefreshParent?: () => void;
 }
 
 export function VoiceLifecycleCard({
   tenantId,
   canManage,
   businessName = "Entreprise",
+  onRefreshParent,
 }: VoiceLifecycleCardProps) {
   const { locale } = useLocale();
   const fr = locale.startsWith("fr");
@@ -72,6 +79,12 @@ export function VoiceLifecycleCard({
   const [busy, setBusy] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // Dedicated inline feedbacks and loading states for IVR & PIN sections
+  const [ivrFeedback, setIvrFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [pinFeedback, setPinFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [savingIvr, setSavingIvr] = useState<boolean>(false);
+  const [savingPin, setSavingPin] = useState<boolean>(false);
 
   // IVR Form state
   const [ivrEnabled, setIvrEnabled] = useState<boolean>(true);
@@ -105,7 +118,7 @@ export function VoiceLifecycleCard({
       if (pinRes.ok) {
         const pData = (await pinRes.json()) as PinStatus;
         setPinStatus(pData);
-        if (pData.phone_number) setEmployeePhone(pData.phone_number);
+        if (pData.phone_number && !employeePhone) setEmployeePhone(pData.phone_number);
       }
     } catch {
       setErrorMsg(
@@ -146,6 +159,7 @@ export function VoiceLifecycleCard({
           : "Voice number activated successfully. Public inbound calls are now accepted."
       );
       await loadStatus();
+      onRefreshParent?.();
     } catch (e: any) {
       setErrorMsg(
         e.message ||
@@ -182,6 +196,7 @@ export function VoiceLifecycleCard({
           : "Voice number suspended in fail-closed mode. Public calls are refused."
       );
       await loadStatus();
+      onRefreshParent?.();
     } catch (e: any) {
       setErrorMsg(
         e.message ||
@@ -196,7 +211,8 @@ export function VoiceLifecycleCard({
 
   async function handleSaveIvr() {
     if (!canManage) return;
-    setBusy(true);
+    setSavingIvr(true);
+    setIvrFeedback(null);
     setErrorMsg(null);
     setSuccessMsg(null);
     try {
@@ -210,36 +226,49 @@ export function VoiceLifecycleCard({
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || "IVR update failed");
+        throw new Error(err.detail || (fr ? "Échec de l'enregistrement du standard IVR." : "IVR update failed"));
       }
-      setSuccessMsg(
-        fr
-          ? "Configuration du standard IVR enregistrée."
-          : "IVR routing configuration saved."
-      );
+      const feedbackText = fr
+        ? "Menu IVR enregistré avec succès."
+        : "IVR routing configuration saved successfully.";
+      setSuccessMsg(feedbackText);
+      setIvrFeedback({ type: "success", message: feedbackText });
       await loadStatus();
+      onRefreshParent?.();
     } catch (e: any) {
-      setErrorMsg(
+      const errMsg =
         e.message ||
-          (fr
-            ? "Erreur lors de la mise à jour du standard IVR."
-            : "Error updating IVR settings.")
-      );
+        (fr
+          ? "Erreur lors de la mise à jour du standard IVR."
+          : "Error updating IVR settings.");
+      setErrorMsg(errMsg);
+      setIvrFeedback({ type: "error", message: errMsg });
     } finally {
-      setBusy(false);
+      setSavingIvr(false);
     }
   }
 
   async function handleSavePin() {
-    if (!employeePin || employeePin.length < 6) {
-      setErrorMsg(
-        fr
-          ? "Le NIP personnel doit comporter entre 6 et 12 chiffres."
-          : "Personal PIN must be between 6 and 12 digits."
-      );
+    const cleanPin = employeePin.trim().replace(/\D/g, "");
+    if (!cleanPin || cleanPin.length < 6 || cleanPin.length > 12) {
+      const errMsg = fr
+        ? "Le code NIP personnel doit comporter entre 6 et 12 chiffres."
+        : "Personal PIN must be between 6 and 12 digits.";
+      setPinFeedback({ type: "error", message: errMsg });
       return;
     }
-    setBusy(true);
+
+    // Normalize phone number (E.164: +1XXXXXXXXXX for North America or format automatically)
+    let phoneToUse = employeePhone.trim();
+    const digitsOnly = phoneToUse.replace(/\D/g, "");
+    if (digitsOnly.length === 10) {
+      phoneToUse = `+1${digitsOnly}`;
+    } else if (digitsOnly.length === 11 && digitsOnly.startsWith("1")) {
+      phoneToUse = `+${digitsOnly}`;
+    }
+
+    setSavingPin(true);
+    setPinFeedback(null);
     setErrorMsg(null);
     setSuccessMsg(null);
     try {
@@ -247,30 +276,43 @@ export function VoiceLifecycleCard({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          pin: employeePin,
-          phone_number: employeePhone || null,
+          pin: cleanPin,
+          phone_number: phoneToUse || undefined,
         }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || "PIN update failed");
+        throw new Error(err.detail || (fr ? "Échec de l'enregistrement du NIP." : "PIN update failed"));
       }
-      setSuccessMsg(
-        fr
-          ? "NIP personnel employé enregistré avec succès."
-          : "Personal employee PIN saved successfully."
-      );
+      const data = (await res.json().catch(() => ({}))) as PinStatus;
+      const feedbackText = fr
+        ? "NIP personnel employé et numéro mobile enregistrés avec succès."
+        : "Personal employee PIN and phone number saved successfully.";
+      setSuccessMsg(feedbackText);
+      setPinFeedback({ type: "success", message: feedbackText });
       setEmployeePin("");
+      if (phoneToUse) {
+        setEmployeePhone(phoneToUse);
+      }
+      setPinStatus((prev) => ({
+        ...prev,
+        ...data,
+        configured: true,
+        has_pin: true,
+        phone_number: phoneToUse || data.phone_number || prev?.phone_number || null,
+      }));
       await loadStatus();
+      onRefreshParent?.();
     } catch (e: any) {
-      setErrorMsg(
+      const errMsg =
         e.message ||
-          (fr
-            ? "Erreur lors de la configuration du NIP."
-            : "Error configuring employee PIN.")
-      );
+        (fr
+          ? "Erreur lors de la configuration du NIP."
+          : "Error configuring employee PIN.");
+      setErrorMsg(errMsg);
+      setPinFeedback({ type: "error", message: errMsg });
     } finally {
-      setBusy(false);
+      setSavingPin(false);
     }
   }
 
@@ -348,6 +390,8 @@ export function VoiceLifecycleCard({
       label: fr ? "BROUILLON" : "DRAFT",
     },
   }[status];
+
+  const isPinConfigured = Boolean(pinStatus?.configured || pinStatus?.has_pin);
 
   return (
     <div className="space-y-6">
@@ -562,13 +606,13 @@ export function VoiceLifecycleCard({
           />
         </div>
 
-        <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
+        <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 flex-wrap gap-3">
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
               checked={ivrEnabled}
               onChange={(e) => setIvrEnabled(e.target.checked)}
-              disabled={!canManage}
+              disabled={!canManage || savingIvr}
               className="w-4 h-4 rounded text-[#0076FF] focus:ring-0"
             />
             <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
@@ -578,17 +622,35 @@ export function VoiceLifecycleCard({
 
           <button
             onClick={handleSaveIvr}
-            disabled={busy || !canManage}
-            className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-black dark:bg-white dark:hover:bg-slate-200 text-white dark:text-slate-900 font-bold text-xs transition disabled:opacity-50"
+            disabled={savingIvr || !canManage}
+            className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-black dark:bg-white dark:hover:bg-slate-200 text-white dark:text-slate-900 font-bold text-xs transition disabled:opacity-50 flex items-center gap-2 cursor-pointer shadow-sm"
           >
-            {fr ? "Enregistrer le menu IVR" : "Save IVR Settings"}
+            {savingIvr && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+            <span>{fr ? "Enregistrer le menu IVR" : "Save IVR Settings"}</span>
           </button>
         </div>
+
+        {ivrFeedback && (
+          <div
+            className={`p-3 rounded-xl text-xs font-semibold flex items-center gap-2 border ${
+              ivrFeedback.type === "success"
+                ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200"
+                : "bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800 text-red-800 dark:text-red-200"
+            }`}
+          >
+            {ivrFeedback.type === "success" ? (
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
+            )}
+            <span>{ivrFeedback.message}</span>
+          </div>
+        )}
       </div>
 
       {/* 3. PERSONAL EMPLOYEE PIN CONFIGURATION */}
       <div className="p-6 sm:p-7 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0B132B] shadow-sm space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
             <span className="text-[11px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
               {fr ? "Sécurité Téléphonique des Collaborateurs" : "Employee Phone Security"}
@@ -603,9 +665,23 @@ export function VoiceLifecycleCard({
             </p>
           </div>
 
-          <div className="px-3 py-1 rounded-xl bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 text-xs font-bold flex items-center gap-1.5">
+          <div
+            className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 ${
+              isPinConfigured
+                ? "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300"
+                : "bg-purple-50 dark:bg-purple-950/60 border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300"
+            }`}
+          >
             <Lock className="w-3.5 h-3.5" />
-            <span>{pinStatus?.has_pin ? (fr ? "NIP Configuré" : "PIN Set") : (fr ? "Aucun NIP" : "No PIN")}</span>
+            <span>
+              {isPinConfigured
+                ? fr
+                  ? "NIP Actif et Configuré"
+                  : "PIN Active & Set"
+                : fr
+                ? "Aucun NIP"
+                : "No PIN"}
+            </span>
           </div>
         </div>
 
@@ -619,11 +695,14 @@ export function VoiceLifecycleCard({
               inputMode="numeric"
               pattern="[0-9]*"
               maxLength={12}
-              placeholder="Ex: 849201"
+              placeholder="••••••"
               value={employeePin}
               onChange={(e) => setEmployeePin(e.target.value.replace(/\D/g, ""))}
-              className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden focus:border-purple-500"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden focus:border-purple-500"
             />
+            <p className="text-[10px] text-slate-400 mt-1">
+              {fr ? "Composez ce code au clavier lors de vos appels." : "Dial this code on the keypad during internal calls."}
+            </p>
           </div>
 
           <div>
@@ -632,19 +711,43 @@ export function VoiceLifecycleCard({
             </label>
             <input
               type="tel"
-              placeholder="+15141234567"
+              placeholder="+15142955720"
               value={employeePhone}
               onChange={(e) => setEmployeePhone(e.target.value)}
-              className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden focus:border-purple-500"
+              onBlur={() => {
+                const digits = employeePhone.trim().replace(/\D/g, "");
+                if (digits.length === 10) {
+                  setEmployeePhone(`+1${digits}`);
+                } else if (digits.length === 11 && digits.startsWith("1")) {
+                  setEmployeePhone(`+${digits}`);
+                }
+              }}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-hidden focus:border-purple-500"
             />
+            {pinStatus?.phone_number ? (
+              <p className="mt-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3" />
+                <span>
+                  {fr
+                    ? `Numéro actuellement lié : ${pinStatus.phone_number}`
+                    : `Currently linked number: ${pinStatus.phone_number}`}
+                </span>
+              </p>
+            ) : (
+              <p className="text-[10px] text-slate-400 mt-1">
+                {fr
+                  ? "Numéro de l'appareil à partir duquel vous appellerez le standard."
+                  : "Number of the phone from which you will dial into the system."}
+              </p>
+            )}
           </div>
         </div>
 
         <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 flex-wrap gap-2">
           <button
             onClick={handleRevokeSessions}
-            disabled={busy}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold transition"
+            disabled={busy || savingPin}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold transition cursor-pointer"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span>{fr ? "Révoquer mes sessions actives" : "Revoke Active Sessions"}</span>
@@ -652,12 +755,30 @@ export function VoiceLifecycleCard({
 
           <button
             onClick={handleSavePin}
-            disabled={busy || employeePin.length < 6}
-            className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-md transition disabled:opacity-50"
+            disabled={savingPin || employeePin.length < 6}
+            className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-md transition disabled:opacity-50 flex items-center gap-2 cursor-pointer"
           >
-            {fr ? "Enregistrer mon NIP" : "Save My PIN"}
+            {savingPin && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+            <span>{fr ? "Enregistrer mon NIP" : "Save My PIN"}</span>
           </button>
         </div>
+
+        {pinFeedback && (
+          <div
+            className={`p-3 rounded-xl text-xs font-semibold flex items-center gap-2 border ${
+              pinFeedback.type === "success"
+                ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200"
+                : "bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800 text-red-800 dark:text-red-200"
+            }`}
+          >
+            {pinFeedback.type === "success" ? (
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
+            )}
+            <span>{pinFeedback.message}</span>
+          </div>
+        )}
       </div>
     </div>
   );

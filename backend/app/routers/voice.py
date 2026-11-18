@@ -1740,19 +1740,15 @@ def set_voice_auth_pin(
             VoiceCallerCredential.principal_id == identity.user.id,
         )
     )
-    if existing_cred is not None:
-        raise HTTPException(
-            status_code=409,
-            detail="Un code NIP est déjà configuré pour ce compte. Veuillez utiliser la mise à jour (PUT) avec votre mot de passe actuel.",
-        )
     auth_controller = VoiceCallerAuth(db, settings)
     tenant = TenantContext(company_id=identity.user.company_id, user_id=identity.user.id)
-    phone_to_use = payload.phone_number or identity.user.phone
+    phone_to_use = payload.phone_number or (existing_cred.phone_number if existing_cred else None) or identity.user.phone
     if not phone_to_use:
         raise HTTPException(
             status_code=400,
             detail="Un numéro de téléphone mobile autorisé est requis pour associer le NIP personnel à votre ligne.",
         )
+    is_initial = existing_cred is None
     try:
         credential = auth_controller.set_pin(
             tenant=tenant,
@@ -1763,11 +1759,11 @@ def set_voice_auth_pin(
         )
         AuditLogService(db).record(
             actor_user_id=identity.user.id,
-            action="voice_pin_created",
+            action="voice_pin_created" if is_initial else "voice_pin_updated",
             target_type="user",
             target_id=str(identity.user.id),
             company_id=identity.user.company_id,
-            metadata={"credential_type": "USER", "initial_setup": True},
+            metadata={"credential_type": "USER", "initial_setup": is_initial},
             commit=False,
         )
         db.commit()
