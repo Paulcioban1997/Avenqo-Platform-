@@ -79,6 +79,7 @@ class DatasetImportService:
         if module_code not in MODULES_BY_CODE:
             raise DatasetImportError("Module Avenqo inconnu")
         self._quota.check_dataset_quota(tenant)
+        self._quota.check_storage_quota(tenant, incoming_bytes=len(content) if content else 0)
         if not filename.lower().endswith(".csv"):
             raise DatasetImportError("Seuls les fichiers CSV sont acceptés à cette étape")
         max_upload_bytes = self._quota.max_upload_bytes(tenant, self._max_upload_bytes)

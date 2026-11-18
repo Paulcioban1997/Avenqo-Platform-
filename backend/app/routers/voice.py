@@ -2081,11 +2081,97 @@ def list_voice_premium_features(
             "is_enabled": False,
         },
     ]
+    company_id = getattr(identity.user, "company_id", None)
+    voice_config: VoiceBusinessConfig | None = None
+    if company_id is not None:
+        voice_config = db.scalar(
+            select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_id)
+        )
+
+    for item in features:
+        key = item["key"]
+        p_status = item["status"]
+
+        if company_id is None:
+            item["operational_status"] = "not_entitled"
+            item["operational_status_label_fr"] = "Non inclus"
+            item["operational_status_label_en"] = "Not Included"
+            item["operational_details"] = "Aucune entreprise associée au compte."
+        elif p_status == "testing":
+            item["operational_status"] = "in_testing"
+            item["operational_status_label_fr"] = "En test pilote"
+            item["operational_status_label_en"] = "Pilot Testing"
+            item["operational_details"] = "Fonctionnalité en phase de test pilote supervisé."
+        elif p_status == "coming_soon":
+            item["operational_status"] = "planned"
+            item["operational_status_label_fr"] = "Planifié"
+            item["operational_status_label_en"] = "Planned"
+            item["operational_details"] = "Déploiement prévu selon la feuille de route officielle."
+        else:  # available
+            if key in {"ultra_low_latency_voice", "adaptive_ai_router", "self_healing_voice"}:
+                if voice_config is not None and voice_config.enabled:
+                    item["operational_status"] = "ready"
+                    item["operational_status_label_fr"] = "Opérationnel"
+                    item["operational_status_label_en"] = "Ready"
+                    item["operational_details"] = "Activé et opérationnel sur l'agent vocal de l'entreprise."
+                elif voice_config is not None:
+                    item["operational_status"] = "configuration_required"
+                    item["operational_status_label_fr"] = "Configuration requise"
+                    item["operational_status_label_en"] = "Configuration Required"
+                    item["operational_details"] = "Agent vocal configuré mais actuellement inactif."
+                else:
+                    item["operational_status"] = "configuration_required"
+                    item["operational_status_label_fr"] = "Configuration requise"
+                    item["operational_status_label_en"] = "Configuration Required"
+                    item["operational_details"] = "L'agent vocal doit être configuré pour votre entreprise."
+            elif key == "live_multilingual_assistant":
+                if voice_config is not None and voice_config.enabled:
+                    item["operational_status"] = "ready"
+                    item["operational_status_label_fr"] = "Opérationnel"
+                    item["operational_status_label_en"] = "Ready"
+                    lang = voice_config.preferred_language or "fr"
+                    item["operational_details"] = f"Prise en charge multilingue active (langue principale : {lang})."
+                else:
+                    item["operational_status"] = "configuration_required"
+                    item["operational_status_label_fr"] = "Configuration requise"
+                    item["operational_status_label_en"] = "Configuration Required"
+                    item["operational_details"] = "Configuration de la langue et activation de l'agent requises."
+            elif key == "company_knowledge_brain":
+                has_brain = voice_config is not None and bool(voice_config.business_name and (voice_config.services or voice_config.greeting_message))
+                if has_brain and voice_config is not None and voice_config.enabled:
+                    item["operational_status"] = "ready"
+                    item["operational_status_label_fr"] = "Opérationnel"
+                    item["operational_status_label_en"] = "Ready"
+                    item["operational_details"] = "Connaissances et données d'entreprise connectées à l'IA vocale."
+                else:
+                    item["operational_status"] = "configuration_required"
+                    item["operational_status_label_fr"] = "Configuration requise"
+                    item["operational_status_label_en"] = "Configuration Required"
+                    item["operational_details"] = "Veuillez renseigner les informations et catalogues de votre entreprise."
+            elif key == "smart_human_handoff":
+                if voice_config is not None and voice_config.transfer_phone:
+                    item["operational_status"] = "ready"
+                    item["operational_status_label_fr"] = "Opérationnel"
+                    item["operational_status_label_en"] = "Ready"
+                    item["operational_details"] = f"Transfert d'urgence configuré vers {voice_config.transfer_phone}."
+                else:
+                    item["operational_status"] = "configuration_required"
+                    item["operational_status_label_fr"] = "Configuration requise"
+                    item["operational_status_label_en"] = "Configuration Required"
+                    item["operational_details"] = "Numéro de transfert d'urgence à renseigner dans la configuration vocale."
+            else:
+                item["operational_status"] = "ready"
+                item["operational_status_label_fr"] = "Opérationnel"
+                item["operational_status_label_en"] = "Ready"
+                item["operational_details"] = "Opérationnel."
+
     return {
         "features": features,
         "available_count": sum(1 for f in features if f["status"] == "available"),
         "testing_count": sum(1 for f in features if f["status"] == "testing"),
         "coming_soon_count": sum(1 for f in features if f["status"] == "coming_soon"),
+        "operational_ready_count": sum(1 for f in features if f.get("operational_status") == "ready"),
+        "operational_configuration_required_count": sum(1 for f in features if f.get("operational_status") == "configuration_required"),
     }
 
 

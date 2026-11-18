@@ -127,6 +127,7 @@ class CompanyDatasetIngestionService:
     ) -> Dataset:
         if module_code not in MODULES_BY_CODE:
             raise DatasetIngestionError("Module Avenqo inconnu")
+        self._quota.check_storage_quota(tenant, incoming_bytes=len(content) if content else 0)
         plan_max_bytes = self._quota.max_upload_bytes(tenant, self._max_upload_bytes)
         if not content or len(content) > plan_max_bytes:
             raise DatasetIngestionError("Fichier vide ou taille maximale dépassée pour votre offre")

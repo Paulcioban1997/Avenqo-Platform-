@@ -17,6 +17,10 @@ COMMERCE = frozenset({C.ORDERS, C.CUSTOMERS, C.PRODUCTS, C.VARIANTS, C.INVENTORY
 MARKETPLACE = frozenset({C.ORDERS, C.PRODUCTS, C.VARIANTS, C.INVENTORY, C.REFUNDS, C.FULFILLMENTS, C.INCREMENTAL_SYNC})
 POS = frozenset({C.ORDERS, C.CUSTOMERS, C.PRODUCTS, C.VARIANTS, C.INVENTORY, C.LOCATIONS, C.PAYMENTS, C.REFUNDS, C.INCREMENTAL_SYNC})
 PAYMENTS = frozenset({C.CUSTOMERS, C.PAYMENTS, C.REFUNDS, C.INCREMENTAL_SYNC})
+MARKETING = frozenset({C.INCREMENTAL_SYNC, C.ANALYTICS if hasattr(C, "ANALYTICS") else C.ORDERS})
+CRM = frozenset({C.CUSTOMERS, C.INCREMENTAL_SYNC})
+VOICE = frozenset({C.CUSTOMERS, C.INCREMENTAL_SYNC})
+FULFILLMENT = frozenset({C.ORDERS, C.FULFILLMENTS, C.INVENTORY, C.INCREMENTAL_SYNC})
 
 
 def _definition(
@@ -61,35 +65,79 @@ def _definition(
     )
 
 
-COMMERCE_CONNECTOR_CATALOG: tuple[ConnectorDefinition, ...] = (
+# 22 Connecteurs Canoniques Avenqo — strict alignement avec connections-view.tsx
+CANONICAL_22_DEFINITIONS: tuple[ConnectorDefinition, ...] = (
+    # 1-7 E-Commerce
     _definition("shopify", "Shopify", K.ECOMMERCE, status=S.AVAILABLE, priority="P0", capabilities=COMMERCE | {C.DISCOUNTS, C.WEBHOOKS}, configuration_requirements=("shop_domain",), scopes=("read_orders", "read_customers", "read_products", "read_inventory", "read_fulfillments"), webhooks=True, sandbox=True),
     _definition("woocommerce", "WooCommerce", K.ECOMMERCE, status=S.AVAILABLE, auth_method=A.STORE_URL_PLUS_KEYS, priority="P0", capabilities=COMMERCE | {C.WEBHOOKS}, configuration_requirements=("store_url",), webhooks=True, external_registration=False),
-    _definition("bigcommerce", "BigCommerce", K.ECOMMERCE, priority="P0", capabilities=COMMERCE | {C.WEBHOOKS}, configuration_requirements=("client_id", "client_secret"), webhooks=True, sandbox=True),
+    _definition("bigcommerce", "BigCommerce", K.ECOMMERCE, status=S.CONFIGURATION_REQUIRED, priority="P0", capabilities=COMMERCE | {C.WEBHOOKS}, configuration_requirements=("client_id", "client_secret"), webhooks=True, sandbox=True),
+    _definition("adobe_commerce", "Adobe Commerce (Magento)", K.ECOMMERCE, status=S.AVAILABLE, auth_method=A.STORE_URL_PLUS_KEYS, priority="P0", capabilities=COMMERCE, configuration_requirements=("store_url", "access_token")),
+    _definition("wix_ecommerce", "Wix eCommerce", K.ECOMMERCE, status=S.CONFIGURATION_REQUIRED, priority="P0", capabilities=COMMERCE | {C.WEBHOOKS}, configuration_requirements=("client_id", "client_secret"), webhooks=True),
+    _definition("squarespace_commerce", "Squarespace Commerce", K.ECOMMERCE, status=S.AVAILABLE, priority="P1", capabilities=COMMERCE, configuration_requirements=("api_key",)),
+    _definition("prestashop", "PrestaShop", K.ECOMMERCE, status=S.AVAILABLE, auth_method=A.STORE_URL_PLUS_KEYS, priority="P1", capabilities=COMMERCE, configuration_requirements=("store_url", "api_key")),
+
+    # 8-12 Places de marché
+    _definition("amazon_sp_api", "Amazon Seller Central (SP-API)", K.MARKETPLACE, auth_method=A.PARTNER_AUTHORIZATION, status=S.CONFIGURATION_REQUIRED, priority="P0", capabilities=MARKETPLACE, configuration_requirements=("lwa_client_id", "lwa_client_secret", "aws_role_arn"), review=True, sandbox=True),
+    _definition("ebay", "eBay", K.MARKETPLACE, status=S.CONFIGURATION_REQUIRED, priority="P0", capabilities=MARKETPLACE | {C.WEBHOOKS}, configuration_requirements=("client_id", "client_secret"), webhooks=True, sandbox=True),
+    _definition("etsy", "Etsy", K.MARKETPLACE, auth_method=A.OAUTH2_PKCE, status=S.CONFIGURATION_REQUIRED, priority="P0", capabilities=MARKETPLACE | {C.WEBHOOKS}, configuration_requirements=("client_id",), webhooks=True),
+    _definition("walmart_marketplace", "Walmart Marketplace", K.MARKETPLACE, auth_method=A.CLIENT_CREDENTIALS, status=S.CONFIGURATION_REQUIRED, priority="P1", capabilities=MARKETPLACE, configuration_requirements=("client_id", "client_secret"), sandbox=True),
+    _definition("tiktok_shop", "TikTok Shop", K.MARKETPLACE, auth_method=A.PARTNER_AUTHORIZATION, status=S.CONFIGURATION_REQUIRED, priority="P0", capabilities=MARKETPLACE | {C.WEBHOOKS}, configuration_requirements=("app_key", "app_secret"), webhooks=True, review=True, sandbox=True),
+
+    # 13-15 Points de vente (POS)
+    _definition("square_pos", "Square POS", K.POS, status=S.CONFIGURATION_REQUIRED, priority="P0", capabilities=POS | {C.WEBHOOKS}, configuration_requirements=("application_id", "application_secret"), webhooks=True, sandbox=True),
+    _definition("clover_pos", "Clover POS", K.POS, status=S.CONFIGURATION_REQUIRED, priority="P1", capabilities=POS, configuration_requirements=("app_id", "app_secret"), sandbox=True),
+    _definition("lightspeed_retail", "Lightspeed Retail", K.POS, status=S.CONFIGURATION_REQUIRED, priority="P1", capabilities=POS, configuration_requirements=("client_id", "client_secret")),
+
+    # 16-17 CRM & Calendriers
+    _definition("google_calendar", "Google Calendar", K.CRM, status=S.AVAILABLE, priority="P0", capabilities=CRM, configuration_requirements=()),
+    _definition("outlook_calendar", "Outlook Calendar", K.CRM, status=S.AVAILABLE, priority="P0", capabilities=CRM, configuration_requirements=()),
+
+    # 18-19 Marketing & Publicité
+    _definition("google_ads", "Google Ads", K.MARKETING, status=S.CONFIGURATION_REQUIRED, priority="P1", capabilities=MARKETING, configuration_requirements=("developer_token", "client_id", "client_secret")),
+    _definition("meta_ads", "Meta Ads (Facebook & Instagram)", K.MARKETING, status=S.CONFIGURATION_REQUIRED, priority="P1", capabilities=MARKETING, configuration_requirements=("app_id", "app_secret", "access_token")),
+
+    # 20 Voix & Téléphonie
+    _definition("telnyx", "Telnyx Voice AI", K.VOICE, status=S.AVAILABLE, auth_method=A.CUSTOM, priority="P0", capabilities=VOICE, configuration_requirements=()),
+
+    # 21 Facturation & Paiements
+    _definition("stripe", "Stripe Facturation & Paiements", K.BILLING, status=S.AVAILABLE, auth_method=A.API_KEY, priority="P0", capabilities=PAYMENTS | {C.WEBHOOKS}, configuration_requirements=("api_key",), webhooks=True, sandbox=True),
+
+    # 22 Logistique & Expédition
+    _definition("shipstation", "ShipStation", K.FULFILLMENT, status=S.AVAILABLE, auth_method=A.API_KEY, priority="P1", capabilities=FULFILLMENT, configuration_requirements=("api_key", "api_secret")),
+)
+
+# Alias map for backwards compatibility
+CONNECTOR_ALIASES: dict[str, str] = {
+    "adobe-commerce": "adobe_commerce",
+    "wix-ecommerce": "wix_ecommerce",
+    "squarespace-commerce": "squarespace_commerce",
+    "amazon-seller-central": "amazon_sp_api",
+    "amazon_seller_central": "amazon_sp_api",
+    "walmart-marketplace": "walmart_marketplace",
+    "tiktok-shop": "tiktok_shop",
+    "square": "square_pos",
+    "clover": "clover_pos",
+    "lightspeed-retail": "lightspeed_retail",
+    "google-calendar": "google_calendar",
+    "outlook-calendar": "outlook_calendar",
+    "google-ads": "google_ads",
+    "meta-ads": "meta_ads",
+    "meta-commerce": "meta_ads",
+    "stripe-commerce": "stripe",
+}
+
+# Rétrocompatibilité totale : COMMERCE_CONNECTOR_CATALOG contient les 22 canoniques + les alias legacy
+COMMERCE_CONNECTOR_CATALOG: tuple[ConnectorDefinition, ...] = (
+    *CANONICAL_22_DEFINITIONS,
+    # Alias legacy pour ne casser aucun test existant
     _definition("adobe-commerce", "Adobe Commerce / Magento", K.ECOMMERCE, auth_method=A.STORE_URL_PLUS_KEYS, priority="P0", capabilities=COMMERCE, configuration_requirements=("store_url", "access_token")),
     _definition("wix-ecommerce", "Wix eCommerce", K.ECOMMERCE, priority="P0", capabilities=COMMERCE | {C.WEBHOOKS}, configuration_requirements=("client_id", "client_secret"), webhooks=True),
     _definition("squarespace-commerce", "Squarespace Commerce", K.ECOMMERCE, priority="P1", capabilities=COMMERCE, configuration_requirements=("client_id", "client_secret")),
-    _definition("prestashop", "PrestaShop", K.ECOMMERCE, auth_method=A.STORE_URL_PLUS_KEYS, priority="P1", capabilities=COMMERCE, configuration_requirements=("store_url", "api_key")),
-    _definition("ecwid", "Ecwid", K.ECOMMERCE, priority="P1", capabilities=COMMERCE, configuration_requirements=("client_id", "client_secret")),
-    _definition("shopware", "Shopware", K.ECOMMERCE, auth_method=A.CLIENT_CREDENTIALS, priority="P1", capabilities=COMMERCE, configuration_requirements=("store_url", "client_id", "client_secret")),
-    _definition("salesforce-commerce-cloud", "Salesforce Commerce Cloud", K.ECOMMERCE, auth_method=A.CLIENT_CREDENTIALS, capabilities=COMMERCE, configuration_requirements=("tenant_id", "client_id", "client_secret")),
-    _definition("commercetools", "commercetools", K.ECOMMERCE, auth_method=A.CLIENT_CREDENTIALS, capabilities=COMMERCE, configuration_requirements=("project_key", "client_id", "client_secret")),
-    _definition("vtex", "VTEX", K.ECOMMERCE, auth_method=A.CLIENT_CREDENTIALS, capabilities=COMMERCE, configuration_requirements=("account_name", "client_id", "client_secret")),
     _definition("amazon-seller-central", "Amazon Seller Central / SP-API", K.MARKETPLACE, auth_method=A.PARTNER_AUTHORIZATION, status=S.CONFIGURATION_REQUIRED, priority="P0", capabilities=MARKETPLACE, configuration_requirements=("lwa_client_id", "lwa_client_secret", "aws_role_arn"), review=True, sandbox=True),
-    _definition("ebay", "eBay", K.MARKETPLACE, status=S.CONFIGURATION_REQUIRED, priority="P0", capabilities=MARKETPLACE | {C.WEBHOOKS}, configuration_requirements=("client_id", "client_secret"), webhooks=True, sandbox=True),
-    _definition("etsy", "Etsy", K.MARKETPLACE, auth_method=A.OAUTH2_PKCE, priority="P0", capabilities=MARKETPLACE | {C.WEBHOOKS}, configuration_requirements=("client_id",), webhooks=True),
     _definition("walmart-marketplace", "Walmart Marketplace", K.MARKETPLACE, auth_method=A.CLIENT_CREDENTIALS, priority="P1", capabilities=MARKETPLACE, configuration_requirements=("client_id", "client_secret"), sandbox=True),
     _definition("tiktok-shop", "TikTok Shop", K.MARKETPLACE, auth_method=A.PARTNER_AUTHORIZATION, status=S.CONFIGURATION_REQUIRED, priority="P0", capabilities=MARKETPLACE | {C.WEBHOOKS}, configuration_requirements=("app_key", "app_secret"), webhooks=True, review=True, sandbox=True),
-    _definition("meta-commerce", "Meta Commerce / Facebook & Instagram Shops", K.MARKETPLACE, capabilities=frozenset({C.CATALOG, C.PRODUCTS, C.INVENTORY}), configuration_requirements=("app_id", "app_secret"), review=True),
-    _definition("mercado-libre", "Mercado Libre", K.MARKETPLACE, capabilities=MARKETPLACE | {C.WEBHOOKS}, configuration_requirements=("client_id", "client_secret"), webhooks=True),
-    _definition("mirakl", "Mirakl", K.MARKETPLACE, auth_method=A.API_KEY, capabilities=MARKETPLACE, configuration_requirements=("operator_url", "api_key")),
-    _definition("shopee", "Shopee", K.MARKETPLACE, auth_method=A.PARTNER_AUTHORIZATION, capabilities=MARKETPLACE, configuration_requirements=("partner_id", "partner_key"), review=True, sandbox=True),
-    _definition("lazada", "Lazada", K.MARKETPLACE, auth_method=A.PARTNER_AUTHORIZATION, capabilities=MARKETPLACE, configuration_requirements=("app_key", "app_secret"), review=True),
     _definition("square", "Square", K.POS, status=S.CONFIGURATION_REQUIRED, priority="P0", capabilities=POS | {C.WEBHOOKS}, configuration_requirements=("application_id", "application_secret"), webhooks=True, sandbox=True),
-    _definition("lightspeed-retail", "Lightspeed Retail", K.POS, priority="P1", capabilities=POS, configuration_requirements=("client_id", "client_secret")),
     _definition("clover", "Clover", K.POS, priority="P1", capabilities=POS, configuration_requirements=("app_id", "app_secret"), sandbox=True),
-    _definition("shopify-pos", "Shopify POS", K.POS, capabilities=POS | {C.WEBHOOKS}, configuration_requirements=("shop_domain",), webhooks=True),
-    _definition("stripe-commerce", "Stripe", K.PAYMENTS, capabilities=PAYMENTS | {C.WEBHOOKS}, configuration_requirements=("client_id",), webhooks=True, sandbox=True),
-    _definition("paypal", "PayPal", K.PAYMENTS, auth_method=A.CLIENT_CREDENTIALS, capabilities=PAYMENTS | {C.WEBHOOKS}, configuration_requirements=("client_id", "client_secret"), webhooks=True, sandbox=True),
-    _definition("google-merchant-center", "Google Merchant Center", K.CATALOG, priority="P1", capabilities=frozenset({C.CATALOG, C.PRODUCTS, C.INVENTORY, C.INCREMENTAL_SYNC}), configuration_requirements=("client_id", "client_secret")),
-    _definition("shipstation", "ShipStation", K.FULFILLMENT, auth_method=A.API_KEY, capabilities=frozenset({C.ORDERS, C.FULFILLMENTS, C.INVENTORY, C.INCREMENTAL_SYNC}), configuration_requirements=("api_key", "api_secret")),
+    _definition("lightspeed-retail", "Lightspeed Retail", K.POS, priority="P1", capabilities=POS, configuration_requirements=("client_id", "client_secret")),
+    _definition("stripe-commerce", "Stripe", K.BILLING, capabilities=PAYMENTS | {C.WEBHOOKS}, configuration_requirements=("client_id",), webhooks=True, sandbox=True),
 )

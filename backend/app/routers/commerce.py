@@ -280,6 +280,35 @@ def connector_catalog(
     ]
 
 
+@router.get("/catalog")
+def canonical_connectors_catalog(
+    identity: CurrentIdentity = Depends(require_connector_read),
+    __: TenantContext = Depends(require_active_subscription),
+) -> dict[str, Any]:
+    """Exposes the exact canonical 22 connectors matrix strictly aligned with connections-view.tsx."""
+    from backend.app.services.canonical_connectors import CANONICAL_22_CONNECTORS
+
+    return {
+        "connectors": CANONICAL_22_CONNECTORS,
+        "total_count": len(CANONICAL_22_CONNECTORS),
+        "categories": {
+            "commerce": sum(1 for c in CANONICAL_22_CONNECTORS if c["category"] == "commerce"),
+            "marketplace": sum(1 for c in CANONICAL_22_CONNECTORS if c["category"] == "marketplace"),
+            "pos": sum(1 for c in CANONICAL_22_CONNECTORS if c["category"] == "pos"),
+            "crm": sum(1 for c in CANONICAL_22_CONNECTORS if c["category"] == "crm"),
+            "marketing": sum(1 for c in CANONICAL_22_CONNECTORS if c["category"] == "marketing"),
+            "voice": sum(1 for c in CANONICAL_22_CONNECTORS if c["category"] == "voice"),
+            "billing": sum(1 for c in CANONICAL_22_CONNECTORS if c["category"] == "billing"),
+            "fulfillment": sum(1 for c in CANONICAL_22_CONNECTORS if c["category"] == "fulfillment"),
+        },
+        "available_count": sum(1 for c in CANONICAL_22_CONNECTORS if c["availability"] == "available"),
+        "configuration_required_count": sum(1 for c in CANONICAL_22_CONNECTORS if c["availability"] == "configuration_required"),
+        "partner_approval_pending_count": sum(1 for c in CANONICAL_22_CONNECTORS if c["availability"] == "partner_approval_pending"),
+        "coming_soon_count": sum(1 for c in CANONICAL_22_CONNECTORS if c["availability"] == "coming_soon"),
+    }
+
+
+
 @router.get("/connections", response_model=list[CommerceConnectionResponse])
 def list_connections(
     identity: CurrentIdentity = Depends(require_connector_read),
