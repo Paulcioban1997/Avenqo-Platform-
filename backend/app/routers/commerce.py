@@ -98,8 +98,11 @@ def _connection_response(
         and bool(shop_identity.get("id"))
         and shop_identity.get("domain") == connection.external_account_id
     )
+    is_demo_conn = bool(getattr(connection, "is_demo", False))
     connection_status = (
-        "DISCONNECTED"
+        "DEMO"
+        if is_demo_conn
+        else "DISCONNECTED"
         if connection.status == CommerceConnectionStatus.DISCONNECTED.value
         else "REAUTH_REQUIRED"
         if connection.status == CommerceConnectionStatus.REAUTH_REQUIRED.value
@@ -177,6 +180,7 @@ def _connection_response(
         is_stalled=is_stalled,
         is_enabled=is_enabled,
         selected_entities=selected_entities,
+        is_demo=is_demo_conn,
     )
 
 
@@ -316,7 +320,7 @@ class TenantApiCredentialRequest(BaseModel):
     account_id: str = Field(min_length=3, max_length=255)
     api_key: SecretStr
     api_secret: SecretStr | None = None
-    activate_connection: bool = True
+    activate_connection: bool = False
     load_sample_catalog: bool = False
 
 
@@ -368,7 +372,13 @@ def store_tenant_api_credentials(
         "provider": connection.provider,
         "connection_status": "CONNECTED" if is_connected else "CONNECTING",
         "verified": is_connected,
+        "is_demo": bool(getattr(connection, "is_demo", False)),
         "records_created": connection.records_created,
+        "message": (
+            "Identifiants enregistrés avec succès. Connexion en attente de synchronisation et de vérification."
+            if not is_connected
+            else "Connecteur actif."
+        ),
     }
 
 
@@ -379,29 +389,50 @@ def provision_store(
     _: TenantContext = Depends(require_active_subscription),
     service: CommerceConnectionService = Depends(get_commerce_connection_service),
 ) -> dict[str, object]:
-    """Instantly provisions and loads a test/sandbox store with live catalog products."""
+    """Instantly provisions a test/sandbox demo store with isolated synthetic demo catalog items."""
+    settings = get_settings()
+    if settings.is_production or settings.environment.lower() == "production":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Le provisionnement automatique de boutiques démo est strictement interdit en environnement de production.",
+        )
     provider_clean = request.provider.strip().lower()
     store_id = (request.store_url or request.store_name or f"sandbox-shop-{provider_clean}.avenqo.test").strip()
     try:
-        connection = service.store_unverified_api_credentials(
+        connection = service.provision_demo_store(
             _tenant(identity),
             provider=provider_clean,
-            account_id=store_id,
-            api_key=f"sandbox-key-{uuid4().hex[:12]}",
-            api_secret=f"sandbox-sec-{uuid4().hex[:12]}",
-            activate=True,
-            load_sample_catalog=True,
+            store_name=request.store_name,
+            store_url=store_id,
         )
+    except CommerceAuthorizationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {
         "id": str(connection.id),
         "provider": connection.provider,
         "store_name": connection.display_name,
-        "connection_status": "CONNECTED",
-        "verified": True,
+        "connection_status": "DEMO",
+        "verified": False,
+        "is_demo": True,
         "records_created": connection.records_created,
-        "message": f"Boutique {connection.display_name} connectée avec succès avec son catalogue d'articles en stock.",
+        "message": f"Boutique de démonstration Sandbox ({connection.display_name}) créée avec 4 articles synthétiques. Données fictives isolées des stocks réels.",
+    }
+
+
+@router.delete("/demo-stores", status_code=status.HTTP_200_OK)
+def delete_demo_stores(
+    identity: CurrentIdentity = Depends(manage_connectors),
+    _: TenantContext = Depends(require_active_subscription),
+    service: CommerceConnectionService = Depends(get_commerce_connection_service),
+) -> dict[str, object]:
+    """Purges all Sandbox demo stores and their synthetic products for the tenant."""
+    deleted_count = service.delete_demo_stores(_tenant(identity))
+    return {
+        "success": True,
+        "deleted_stores_count": deleted_count,
+        "message": f"{deleted_count} boutique(s) de démonstration et leurs articles synthétiques ont été supprimés.",
     }
 
 

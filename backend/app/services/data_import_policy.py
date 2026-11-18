@@ -29,11 +29,29 @@ class DataImportPolicy:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def max_upload_bytes(self, tenant: TenantContext, global_ceiling_bytes: int) -> int:
-        """Le plan ne peut jamais dépasser le plafond technique global."""
-
+    def max_upload_bytes(self, tenant: TenantContext, global_ceiling_bytes: int | None = None) -> int:
+        """Le plan définit la taille maximale d'un fichier à charger."""
         limits = data_import_limits_for(self._plan_code(tenant))
-        return min(global_ceiling_bytes, limits.max_file_mb * 1024 * 1024)
+        plan_bytes = limits.max_file_mb * 1024 * 1024
+        if global_ceiling_bytes is not None and global_ceiling_bytes > 0:
+            return min(global_ceiling_bytes, plan_bytes)
+        return plan_bytes
+
+    def storage_quota_for_tenant(self, tenant: TenantContext) -> dict[str, object]:
+        """Retourne les quotas d'import et de stockage alloués pour l'abonnement du tenant."""
+        plan = self._plan_code(tenant)
+        limits = data_import_limits_for(plan)
+        count = self._session.scalar(
+            select(func.count()).select_from(Dataset).where(Dataset.company_id == tenant.company_id)
+        ) or 0
+        return {
+            "plan": plan,
+            "max_storage_gb": limits.max_storage_gb,
+            "max_storage_label": limits.max_storage_label,
+            "max_file_mb": limits.max_file_mb,
+            "max_datasets": limits.max_datasets,
+            "current_datasets_count": count,
+        }
 
     def check_dataset_quota(self, tenant: TenantContext) -> None:
         limits = data_import_limits_for(self._plan_code(tenant))
