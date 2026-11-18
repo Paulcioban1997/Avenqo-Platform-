@@ -500,7 +500,10 @@ class PublicInboundConversation:
         if re.search(r"services|prix|price|tarif", normalized):
             services = [{key: value[key] for key in ("name", "duration_minutes", "price", "currency") if key in value} for value in profile.configured_crm_services if isinstance(value, dict)]
             if services:
-                summary = ", ".join(f"{s.get('name', '')} ({s.get('price', '')} {s.get('currency', '')})".strip() for s in services)
+                def _sym(curr: Any) -> str:
+                    c = str(curr or "").strip().upper()
+                    return "$" if c in ("CAD", "USD", "$") or not c else ("€" if c in ("EUR", "€") else ("£" if c in ("GBP", "£") else c))
+                summary = ", ".join(f"{s.get('name', '')} ({s.get('price', '')} {_sym(s.get('currency'))})".strip() for s in services)
                 answer = ("Nos services: " if french else "Our services: ") + summary
             else:
                 answer = "Les services publics ne sont pas encore renseignés." if french else "Public services have not been supplied yet."

@@ -143,6 +143,7 @@ def _localized_system_instruction(
         "- Retail & Live Catalog Freshness (Public Products): You have direct access to the company's real-time catalog in `company_profile.public_products` and via `get_business_info` and `get_product_detail`. "
         "NEVER state or imply that you do not have access to products when products are present! "
         "Accurately state real product names, verified prices in the company currency, categories, and stock availability strictly based on `public_products` and tool results. "
+        "SPOKEN PRICE & CURRENCY PRONUNCIATION (STRICT VOICE RULE): When stating prices to callers (e.g. for Produits_Ero or any company catalog items), NEVER pronounce the currency code 'CAD' or 'C-A-D'! Always pronounce the price with '$' or 'dollars' (for instance '700 $' or '700 dollars', NEVER '700 CAD'). En français : dites toujours '700 $' ou '700 dollars', et ne dites JAMAIS '700 CAD' ni 'CAD'. "
         "When callers ask open-ended questions like 'Quel est votre produit le moins cher ?', inspect available products in `public_products`, find the item with the lowest unit price, and name it along with its exact price and stock status. "
         "When callers ask to compare two products (e.g. 'Peux-tu comparer le produit A et le produit B ?'), clearly compare their prices, key features/descriptions, and whether both are in stock. "
         "If a product is deleted, archived, or not in the catalog, do NOT offer it for sale; explain clearly that the product is not available in the catalog. "

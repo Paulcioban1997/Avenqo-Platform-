@@ -1146,3 +1146,166 @@ def test_23_role_permissions_rbac_for_retail_data(tmp_path):
     finally:
         session.close()
         engine.dispose()
+
+
+def test_post_and_put_voice_pin_require_valid_password(tmp_path):
+    """Vérifie que POST et PUT /auth/pin exigent tous deux une réauthentification par mot de passe."""
+    from fastapi import HTTPException
+    from backend.app.dependencies.auth import CurrentIdentity
+    from backend.app.routers.voice import set_voice_auth_pin, set_user_voice_pin
+    from backend.app.schemas.voice import VoicePinSetupRequest
+
+    engine, session, company, config, api_key, orchestrator = _voice_database(tmp_path)
+    try:
+        raw_password = "SecretPassword123!"
+        user = User(
+            company_id=company.id,
+            first_name="Jean",
+            last_name="Test",
+            email=f"jean_pin_test_{uuid4().hex[:6]}@example.com",
+            password_hash=hash_password(raw_password),
+            role=UserRole.OWNER,
+            phone="+15142955720",
+            is_active=True,
+        )
+        session.add(user)
+        session.flush()
+        membership = CompanyMembership(company_id=company.id, user_id=user.id, role=UserRole.OWNER, is_active=True)
+        session.add(membership)
+        session.commit()
+
+        identity = CurrentIdentity(auth_session=None, user=user, raw_token="test-token")
+        settings = Settings()
+
+        # 1. POST sans mot de passe -> 400
+        req_no_pw = VoicePinSetupRequest(pin="984210", phone_number="+15142955720")
+        with pytest.raises(HTTPException) as exc_info:
+            set_voice_auth_pin(req_no_pw, identity=identity, db=session, settings=settings)
+        assert exc_info.value.status_code == 400
+        assert "mot de passe" in exc_info.value.detail.lower()
+
+        # 2. POST avec mot de passe erroné -> 403
+        req_wrong_pw = VoicePinSetupRequest(pin="984210", current_password="WrongPassword999", phone_number="+15142955720")
+        with pytest.raises(HTTPException) as exc_info:
+            set_voice_auth_pin(req_wrong_pw, identity=identity, db=session, settings=settings)
+        assert exc_info.value.status_code == 403
+        assert "mot de passe" in exc_info.value.detail.lower()
+
+        # 3. POST valide avec bon mot de passe -> succès
+        req_valid = VoicePinSetupRequest(pin="984210", current_password=raw_password, phone_number="+15142955720")
+        resp = set_voice_auth_pin(req_valid, identity=identity, db=session, settings=settings)
+        assert resp.configured is True
+        assert resp.has_pin is True
+        assert resp.phone_number == "+15142955720"
+
+        # Créer une session active pour tester la révocation
+        call = orchestrator.record_inbound(config, {"call_control_id": f"call-test-pin-{uuid4().hex[:6]}", "from": "+15142955720"})
+        session.commit()
+
+        active_sess = VoiceAuthSession(
+            company_id=company.id,
+            call_id=call.id,
+            caller_type="EMPLOYEE",
+            principal_id=user.id,
+            permissions=["voice:employee"],
+            authenticated_at=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+        )
+        session.add(active_sess)
+        session.commit()
+        assert active_sess.revoked_at is None
+
+        # 4. PUT avec mot de passe erroné -> 403
+        put_wrong = VoicePinRequest(pin="573910", current_password="WrongPassword")
+        with pytest.raises(HTTPException) as exc_info:
+            set_user_voice_pin(put_wrong, identity=identity, membership=membership, db=session, settings=settings)
+        assert exc_info.value.status_code == 403
+
+        # 5. PUT valide avec bon mot de passe -> succès et révocation des sessions
+        put_valid = VoicePinRequest(pin="573910", current_password=raw_password)
+        resp_put = set_user_voice_pin(put_valid, identity=identity, membership=membership, db=session, settings=settings)
+        assert resp_put["status"] == "CONFIGURED"
+
+        session.refresh(active_sess)
+        assert active_sess.revoked_at is not None  # Sessions antérieures révoquées
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_update_ivr_settings_never_prematurely_activates(tmp_path):
+    """Vérifie que update_ivr_settings crée une config désactivée et n'active jamais automatiquement le numéro."""
+    from backend.app.services.voice_lifecycle_service import VoiceLifecycleService, VoiceLifecycleStatus
+
+    engine, session, *_ = _voice_database(tmp_path)
+    try:
+        uid = uuid4().hex[:6]
+        company = Company(
+            name="Produits_Ero_New_IVR",
+            slug=f"produits-ero-new-ivr-{uid}",
+            email=f"contact_{uid}@example.com",
+            country="CA",
+            timezone="America/Toronto",
+            industry="Retail",
+            subscription_plan="professional",
+            currency_code="CAD",
+        )
+        session.add(company)
+        session.flush()
+
+        user = User(
+            company_id=company.id,
+            first_name="Admin",
+            last_name="Ero",
+            email="admin_ivr@example.com",
+            password_hash=hash_password("Pass123!"),
+            role=UserRole.OWNER,
+            phone="+15142955720",
+            is_active=True,
+        )
+        session.add(user)
+        session.flush()
+        session.add(CompanyMembership(company_id=company.id, user_id=user.id, role=UserRole.OWNER, is_active=True))
+        session.commit()
+
+        service = VoiceLifecycleService(session)
+
+        # Avant tout, aucun VoiceBusinessConfig n'existe pour cette nouvelle entreprise
+        config_before = session.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company.id))
+        assert config_before is None
+
+        # Mise à jour IVR
+        status_data = service.update_ivr_settings(
+            company_id=company.id,
+            actor_id=user.id,
+            ivr_enabled=True,
+            ivr_greeting="Bonjour chez Produits Ero. Pour employés tapez 1, pour clients tapez 2.",
+        )
+
+        config_after = session.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company.id))
+        assert config_after is not None
+        assert config_after.enabled is False  # DOIT être désactivé par défaut
+        assert status_data["status"] != VoiceLifecycleStatus.ACTIVE.value  # Ne doit JAMAIS être ACTIVE
+        assert status_data["status"] == VoiceLifecycleStatus.CONFIGURING.value
+    finally:
+        session.close()
+        engine.dispose()
+
+
+def test_spoken_catalog_answer_says_dollars_never_cad():
+    """Vérifie que spoken_catalog_answer prononce les prix en $ et ne mentionne jamais 'CAD'."""
+    from backend.app.voice.direct_answers import spoken_catalog_answer
+
+    products = [
+        {"name": "Snowboard Pro All-Mountain", "price": 700, "currency": "CAD", "in_stock": True, "inventory_count": 5},
+        {"name": "Casque de protection", "price": 120, "currency": "CAD", "in_stock": True, "inventory_count": 10},
+    ]
+
+    answer_fr = spoken_catalog_answer(products, retail_enabled=True, locale="fr-CA", currency="CAD")
+    assert "700 $" in answer_fr
+    assert "120 $" in answer_fr
+    assert "CAD" not in answer_fr  # STRICT : Ne doit jamais prononcer CAD
+
+    answer_en = spoken_catalog_answer(products, retail_enabled=True, locale="en-US", currency="CAD")
+    assert "700 $" in answer_en
+    assert "CAD" not in answer_en

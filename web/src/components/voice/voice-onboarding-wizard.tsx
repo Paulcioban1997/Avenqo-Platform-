@@ -213,6 +213,7 @@ export function VoiceOnboardingWizard({
   });
 
   const [pinStatus, setPinStatus] = useState<VoicePinStatus | null>(null);
+  const [lifecycleData, setLifecycleData] = useState<any>(null);
   const [isConfigDropdownOpen, setIsConfigDropdownOpen] = useState<boolean>(true);
   const [hasInteractedWithDropdown, setHasInteractedWithDropdown] = useState<boolean>(false);
 
@@ -892,6 +893,11 @@ export function VoiceOnboardingWizard({
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/70 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60">
                   <Lock className="w-3.5 h-3.5 text-rose-500" />
                   <span>{fr ? "NIP employé verrouillé" : "Employee PIN locked"}</span>
+                </span>
+              ) : !pinStatus.enabled ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/70 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60">
+                  <Pause className="w-3.5 h-3.5 text-amber-500" />
+                  <span>{fr ? "NIP employé désactivé" : "Employee PIN disabled"}</span>
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60">
@@ -2602,6 +2608,7 @@ export function VoiceOnboardingWizard({
                 canManage={canManage}
                 businessName={businessName}
                 onRefreshParent={onRefreshStatus}
+                onLifecycleChange={setLifecycleData}
               />
 
               <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-white/[0.06] flex-wrap gap-3">
@@ -2617,19 +2624,46 @@ export function VoiceOnboardingWizard({
                   <span>{fr ? "Précédent" : "Previous"}</span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsConfigDropdownOpen(false);
-                    setHasInteractedWithDropdown(true);
-                    onRefreshStatus?.();
-                    window.scrollTo({ top: 0, behavior: "smooth" });
-                  }}
-                  className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-md transition flex items-center gap-2 cursor-pointer"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>{fr ? "Terminer et enrouler la configuration" : "Complete & Collapse Setup"}</span>
-                </button>
+                {(() => {
+                  const isPrerequisitesComplete = Boolean(
+                    lifecycleData?.status === "ACTIVE" ||
+                    lifecycleData?.can_activate ||
+                    (lifecycleData?.checklist?.phone_bound &&
+                     lifecycleData?.checklist?.voice_selected &&
+                     lifecycleData?.checklist?.identity_configured &&
+                     lifecycleData?.checklist?.tenant_valid &&
+                     lifecycleData?.checklist?.subscription_active)
+                  );
+
+                  return isPrerequisitesComplete ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsConfigDropdownOpen(false);
+                        setHasInteractedWithDropdown(true);
+                        onRefreshStatus?.();
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                      }}
+                      className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-md transition flex items-center gap-2 cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>{fr ? "Terminer et enrouler la configuration" : "Complete & Collapse Setup"}</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsConfigDropdownOpen(false);
+                        setHasInteractedWithDropdown(true);
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                      }}
+                      className="px-5 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-800 text-white text-xs font-bold shadow-sm transition flex items-center gap-2 cursor-pointer"
+                    >
+                      <ChevronUp className="w-4 h-4" />
+                      <span>{fr ? "Fermer la configuration" : "Close Setup"}</span>
+                    </button>
+                  );
+                })()}
               </div>
             </div>
           )}

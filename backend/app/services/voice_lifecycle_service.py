@@ -329,12 +329,20 @@ class VoiceLifecycleService:
             select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_id)
         )
         if not config:
+            from backend.app.voice.service import new_voice_api_key, _api_key_hash
+            key = new_voice_api_key()
             config = VoiceBusinessConfig(
                 company_id=company_id,
                 business_name="Entreprise",
                 greeting_message=ivr_greeting or "Bienvenue",
-                enabled=True,
-                call_policy={"ivr_enabled": ivr_enabled, "ivr_greeting": ivr_greeting},
+                voice_api_key_hash=_api_key_hash(key),
+                voice_api_key_last4=key[-4:],
+                enabled=False,
+                call_policy={
+                    "ivr_enabled": ivr_enabled,
+                    "ivr_greeting": ivr_greeting,
+                    "lifecycle_status": VoiceLifecycleStatus.CONFIGURING.value,
+                },
             )
             self.db.add(config)
             self.db.flush()
@@ -343,6 +351,10 @@ class VoiceLifecycleService:
         policy["ivr_enabled"] = ivr_enabled
         if ivr_greeting is not None:
             policy["ivr_greeting"] = ivr_greeting
+        # Security invariant: Saving IVR menu settings NEVER activates the agent automatically.
+        # Activation requires complete pre-flight checklist verification and explicit admin confirmation.
+        if policy.get("lifecycle_status") == VoiceLifecycleStatus.ACTIVE.value and not config.enabled:
+            policy["lifecycle_status"] = VoiceLifecycleStatus.CONFIGURING.value
         config.call_policy = policy
 
         self._record_audit(

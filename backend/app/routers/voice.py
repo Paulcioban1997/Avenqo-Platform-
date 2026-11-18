@@ -323,6 +323,15 @@ def set_user_voice_pin(
             metadata={"credential_type": "USER", "reauthenticated": bool(request.current_password)},
             commit=False,
         )
+        now = datetime.now(timezone.utc)
+        for session in db.scalars(
+            select(VoiceAuthSession).where(
+                VoiceAuthSession.company_id == identity.user.company_id,
+                VoiceAuthSession.principal_id == identity.user.id,
+                VoiceAuthSession.revoked_at.is_(None),
+            )
+        ):
+            session.revoked_at = now
         db.commit()
     except (ValueError, PermissionError) as exc:
         db.rollback()
@@ -1740,9 +1749,40 @@ def set_voice_auth_pin(
             VoiceCallerCredential.principal_id == identity.user.id,
         )
     )
+
+    current_pw = payload.current_password_value
+    if not current_pw:
+        raise HTTPException(
+            status_code=400,
+            detail="Votre mot de passe actuel est requis pour configurer le NIP vocal."
+        )
+
+    if not verify_password(current_pw, identity.user.password_hash):
+        raise HTTPException(status_code=403, detail="Le mot de passe actuel est incorrect.")
+
+    pin_str = payload.pin_value
+    if current_pw and pin_str == current_pw:
+        raise HTTPException(status_code=422, detail="Voice PIN must not be identical to your account password")
+
+    confirm_pin_str = payload.confirm_pin_value
+    if confirm_pin_str and pin_str != confirm_pin_str:
+        raise HTTPException(status_code=422, detail="Voice PIN and confirmation PIN do not match")
+
     auth_controller = VoiceCallerAuth(db, settings)
     tenant = TenantContext(company_id=identity.user.company_id, user_id=identity.user.id)
-    phone_to_use = payload.phone_number or (existing_cred.phone_number if existing_cred else None) or identity.user.phone
+
+    # Clean phone_number: if client sent masked string (e.g. "+151 *** **20" or contains "*"), retain existing
+    req_phone = (payload.phone_number or "").strip()
+    if "*" in req_phone:
+        if existing_cred and existing_cred.phone_number:
+            req_phone = ""
+        else:
+            raise HTTPException(
+                status_code=422,
+                detail="Veuillez saisir un numéro de téléphone complet sans caractères masqués.",
+            )
+
+    phone_to_use = req_phone or (existing_cred.phone_number if existing_cred else None) or identity.user.phone
     if not phone_to_use:
         raise HTTPException(
             status_code=400,
@@ -1754,8 +1794,8 @@ def set_voice_auth_pin(
             tenant=tenant,
             principal_type="USER",
             principal_id=identity.user.id,
-            pin=payload.pin_value,
-            phone_number=phone_to_use,
+            pin=pin_str,
+            phone_number=req_phone or None,
         )
         AuditLogService(db).record(
             actor_user_id=identity.user.id,
@@ -1763,13 +1803,43 @@ def set_voice_auth_pin(
             target_type="user",
             target_id=str(identity.user.id),
             company_id=identity.user.company_id,
-            metadata={"credential_type": "USER", "initial_setup": is_initial},
+            metadata={"credential_type": "USER", "reauthenticated": True, "initial_setup": is_initial},
             commit=False,
         )
+        now = datetime.now(timezone.utc)
+        for session in db.scalars(
+            select(VoiceAuthSession).where(
+                VoiceAuthSession.company_id == identity.user.company_id,
+                VoiceAuthSession.principal_id == identity.user.id,
+                VoiceAuthSession.revoked_at.is_(None),
+            )
+        ):
+            session.revoked_at = now
         db.commit()
     except (ValueError, PermissionError) as exc:
         db.rollback()
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        err_text = str(exc)
+        if "Phone identity is ambiguous" in err_text or "associé à un autre collaborateur" in err_text:
+            raise HTTPException(
+                status_code=422,
+                detail="Ce numéro de téléphone est déjà associé à un autre collaborateur de l'entreprise."
+            ) from None
+        if "A registered tenant principal phone is required" in err_text:
+            raise HTTPException(
+                status_code=400,
+                detail="Un numéro de téléphone portable autorisé est requis pour associer le NIP personnel à votre ligne."
+            ) from None
+        if "Principal is not an active tenant member" in err_text:
+            raise HTTPException(
+                status_code=403,
+                detail="Ce collaborateur n'est pas un membre actif de l'entreprise."
+            ) from None
+        if "Choose a nontrivial Voice PIN" in err_text:
+            raise HTTPException(
+                status_code=422,
+                detail="Veuillez choisir un code NIP plus sécurisé (les suites comme 123456 ou répétitions 111111 sont refusées)."
+            ) from None
+        raise HTTPException(status_code=422, detail=err_text or "Voice credential setup is unavailable") from None
 
     if credential is None:
         raise HTTPException(status_code=500, detail="Voice credential could not be initialized")

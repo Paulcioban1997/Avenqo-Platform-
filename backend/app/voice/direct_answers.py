@@ -71,7 +71,7 @@ def spoken_module_answer(names: list[str], *, plan_code: str | None, locale: str
 
 
 def spoken_catalog_answer(
-    products: list[dict[str, Any]],
+    products: Any,
     *,
     retail_enabled: bool,
     locale: str,
@@ -95,7 +95,15 @@ def spoken_catalog_answer(
     for row in rows[:5]:
         name = str(row["name"]).strip()
         price = row.get("price")
-        unit = str(row.get("currency") or currency or "").strip()
+        raw_unit = str(row.get("currency") or currency or "").strip().upper()
+        if raw_unit in ("CAD", "USD", "$") or not raw_unit:
+            unit = "$"
+        elif raw_unit in ("EUR", "€"):
+            unit = "€"
+        elif raw_unit in ("GBP", "£"):
+            unit = "£"
+        else:
+            unit = raw_unit
         if price is None or price == "":
             price_text = "prix non indiqué" if french else "price not listed"
         else:
@@ -127,6 +135,8 @@ def resolve_direct_voice_answer(
     locale: str,
 ) -> str | None:
     """Return a spoken answer, or None when Central AI should handle the turn."""
+    if db is None:
+        return None
     if is_module_access_question(transcript):
         if not authenticated_staff or not staff_role:
             if locale.lower().startswith("fr"):

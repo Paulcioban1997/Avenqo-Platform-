@@ -149,12 +149,18 @@ class CompanyIntelligenceService:
                     if in_stock is None:
                         in_stock = inventory_count > 0 or status == "instock"
 
+                    curr_str = str(company.currency_code or "").strip().upper()
+                    curr_sym = "$" if curr_str in ("CAD", "USD", "$") or not curr_str else ("€" if curr_str in ("EUR", "€") else ("£" if curr_str in ("GBP", "£") else curr_str))
+                    p_disp = f"{price} {curr_sym}".strip() if price is not None else ""
+
                     products_list.append({
                         "id": str(r.id),
                         "name": str(pname).strip(),
                         "category": pdata.get("product_category") or pdata.get("category") or "",
                         "price": str(price) if isinstance(price, str) else (float(price) if isinstance(price, (int, float)) else None),
                         "currency": company.currency_code,
+                        "currency_symbol": curr_sym,
+                        "price_display": p_disp,
                         "in_stock": bool(in_stock),
                         "inventory_count": inventory_count,
                         "description": pdata.get("description") or pdata.get("body_html") or "",

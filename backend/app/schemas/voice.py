@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, time as datetime_time
+from datetime import date, datetime, time as datetime_time, timezone
 from typing import Any
 from uuid import UUID
 
@@ -406,15 +406,22 @@ class VoiceIvrSettingsRequest(BaseModel):
 
 class VoiceAuthPinStatusResponse(BaseModel):
     configured: bool
-    enabled: bool
+    enabled: bool = True
     phone_number: str | None = None
     failed_attempts: int = 0
     locked_until: datetime | None = None
     has_pin: bool = False
+    is_locked: bool = False
 
     @model_validator(mode="after")
-    def sync_has_pin(self) -> VoiceAuthPinStatusResponse:
+    def sync_pin_status_fields(self) -> VoiceAuthPinStatusResponse:
         self.has_pin = self.configured
+        now = datetime.now(timezone.utc)
+        if self.locked_until:
+            lu = self.locked_until if self.locked_until.tzinfo else self.locked_until.replace(tzinfo=timezone.utc)
+            self.is_locked = bool(lu > now)
+        else:
+            self.is_locked = False
         return self
 
     model_config = ConfigDict(from_attributes=True)

@@ -55,6 +55,7 @@ interface PinStatus {
   max_attempts?: number;
   failed_attempts?: number;
   locked_until?: string | null;
+  is_locked?: boolean;
 }
 
 interface VoiceLifecycleCardProps {
@@ -62,6 +63,7 @@ interface VoiceLifecycleCardProps {
   canManage: boolean;
   businessName?: string;
   onRefreshParent?: () => void;
+  onLifecycleChange?: (lifecycle: LifecycleStatus) => void;
 }
 
 export function VoiceLifecycleCard({
@@ -69,6 +71,7 @@ export function VoiceLifecycleCard({
   canManage,
   businessName = "Entreprise",
   onRefreshParent,
+  onLifecycleChange,
 }: VoiceLifecycleCardProps) {
   const { locale } = useLocale();
   const fr = locale.startsWith("fr");
@@ -91,6 +94,7 @@ export function VoiceLifecycleCard({
   const [ivrGreeting, setIvrGreeting] = useState<string>("");
 
   // Personal PIN Form state
+  const [currentPassword, setCurrentPassword] = useState<string>("");
   const [employeePin, setEmployeePin] = useState<string>("");
   const [employeePhone, setEmployeePhone] = useState<string>("");
 
@@ -105,6 +109,7 @@ export function VoiceLifecycleCard({
       if (res.ok) {
         const data = (await res.json()) as LifecycleStatus;
         setLifecycle(data);
+        onLifecycleChange?.(data);
         setIvrEnabled(Boolean(data.ivr?.enabled));
         setIvrGreeting(
           data.ivr?.greeting ||
@@ -249,6 +254,14 @@ export function VoiceLifecycleCard({
   }
 
   async function handleSavePin() {
+    if (!currentPassword.trim()) {
+      const errMsg = fr
+        ? "Votre mot de passe actuel de compte Avenqo est requis pour sécuriser le NIP."
+        : "Current account password is required to secure the PIN.";
+      setPinFeedback({ type: "error", message: errMsg });
+      return;
+    }
+
     const cleanPin = employeePin.trim().replace(/\D/g, "");
     if (!cleanPin || cleanPin.length < 6 || cleanPin.length > 12) {
       const errMsg = fr
@@ -277,6 +290,7 @@ export function VoiceLifecycleCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           pin: cleanPin,
+          current_password: currentPassword,
           phone_number: phoneToUse || undefined,
         }),
       });
@@ -291,6 +305,7 @@ export function VoiceLifecycleCard({
       setSuccessMsg(feedbackText);
       setPinFeedback({ type: "success", message: feedbackText });
       setEmployeePin("");
+      setCurrentPassword("");
       if (phoneToUse) {
         setEmployeePhone(phoneToUse);
       }
@@ -392,6 +407,13 @@ export function VoiceLifecycleCard({
   }[status];
 
   const isPinConfigured = Boolean(pinStatus?.configured || pinStatus?.has_pin);
+  const isPinLocked = Boolean(
+    pinStatus?.is_locked ||
+    (pinStatus?.locked_until && new Date(pinStatus.locked_until).getTime() > Date.now()) ||
+    (typeof pinStatus?.failed_attempts === "number" && pinStatus.failed_attempts >= 5)
+  );
+  const isPinDisabled = isPinConfigured && pinStatus?.enabled === false;
+  const isPinActive = isPinConfigured && !isPinLocked && !isPinDisabled;
 
   return (
     <div className="space-y-6">
@@ -667,22 +689,51 @@ export function VoiceLifecycleCard({
 
           <div
             className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 ${
-              isPinConfigured
+              isPinLocked
+                ? "bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300"
+                : isPinDisabled
+                ? "bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300"
+                : isPinActive
                 ? "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300"
                 : "bg-purple-50 dark:bg-purple-950/60 border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300"
             }`}
           >
-            <Lock className="w-3.5 h-3.5" />
+            {isPinLocked ? (
+              <ShieldAlert className="w-3.5 h-3.5" />
+            ) : isPinDisabled ? (
+              <Pause className="w-3.5 h-3.5" />
+            ) : (
+              <Lock className="w-3.5 h-3.5" />
+            )}
             <span>
-              {isPinConfigured
-                ? fr
-                  ? "NIP Actif et Configuré"
-                  : "PIN Active & Set"
-                : fr
-                ? "Aucun NIP"
-                : "No PIN"}
+              {isPinLocked
+                ? fr ? "NIP Verrouillé (Sécurité)" : "PIN Locked"
+                : isPinDisabled
+                ? fr ? "NIP Désactivé" : "PIN Disabled"
+                : isPinActive
+                ? fr ? "NIP Actif et Configuré" : "PIN Active & Set"
+                : fr ? "Aucun NIP" : "No PIN"}
             </span>
           </div>
+        </div>
+
+        {/* RE-AUTHENTICATION PASSWORD REQUIREMENT */}
+        <div className="pt-1">
+          <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            {fr ? "Mot de passe actuel de votre compte Avenqo *" : "Current Avenqo Account Password *"}
+          </label>
+          <input
+            type="password"
+            placeholder={fr ? "Mot de passe actuel (requis pour sécuriser le NIP)" : "Current password (required to secure PIN)"}
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            className="w-full sm:max-w-md px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-hidden focus:border-purple-500"
+          />
+          <p className="text-[10px] text-slate-400 mt-1">
+            {fr
+              ? "La réauthentification est obligatoire côté serveur pour toute création ou rotation de NIP employé."
+              : "Re-authentication is strictly enforced on the server for any employee PIN setup or rotation."}
+          </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
@@ -755,7 +806,7 @@ export function VoiceLifecycleCard({
 
           <button
             onClick={handleSavePin}
-            disabled={savingPin || employeePin.length < 6}
+            disabled={savingPin || employeePin.length < 6 || !currentPassword.trim()}
             className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-md transition disabled:opacity-50 flex items-center gap-2 cursor-pointer"
           >
             {savingPin && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
