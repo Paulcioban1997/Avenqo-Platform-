@@ -633,7 +633,7 @@ def test_p0_customer_inbound_request_owner_does_not_trigger_nip(tmp_path):
         session.add(call)
         session.commit()
 
-        settings = Settings(telnyx_media_enabled=True, telnyx_media_inbound_enabled=True)
+        settings = Settings(TELNYX_MEDIA_ENABLED=True, TELNYX_MEDIA_INBOUND_ENABLED=True)
         conv = PublicInboundConversation(session, settings, call.id)
 
         # 1. Phrases publiques qui mentionnent le patron/manager/recrutement
@@ -840,7 +840,7 @@ def test_closing_regression_mixed_public_and_private_queries_in_4_languages(tmp_
         session.add(call)
         session.commit()
 
-        conv = PublicInboundConversation(session, Settings(telnyx_media_enabled=True, telnyx_media_inbound_enabled=True), call.id)
+        conv = PublicInboundConversation(session, Settings(TELNYX_MEDIA_ENABLED=True, TELNYX_MEDIA_INBOUND_ENABLED=True), call.id)
 
         # 1. Requêtes Mixtes : doivent TOUTES déclencher la protection de sécurité NIP
         mixed_queries = [
