@@ -14,6 +14,10 @@ class VoicePersonalityKwargs(TypedDict, total=False):
     humor_level: int
     formality_level: int
     allow_natural_interruptions: bool
+    voice_display_name: str
+    custom_pronunciation: str
+    effective_voice_name: str
+    allow_natural_interruptions: bool
 
 from backend.app.ai.request_timeout import bounded_ai_request
 from backend.app.ai.chat.conversation_service import ConversationService
@@ -84,6 +88,9 @@ def _localized_system_instruction(
     humor_level: int = 40,
     formality_level: int = 65,
     allow_natural_interruptions: bool = True,
+    voice_display_name: str = "",
+    custom_pronunciation: str = "",
+    effective_voice_name: str = "",
 ) -> str:
     """Ajoute le contexte de localisation métier — jamais de devise déduite de la langue."""
 
@@ -136,13 +143,20 @@ def _localized_system_instruction(
         "Never produce markdown formatting: NO bullet points (* or -), NO numbered lists (1. 2.), NO bold/italic (**), NO headers (#), NO tables. "
         "NEVER ask for multiple pieces of information at once in a list. Ask for ONE piece of information at a time.\n"
         "- Conversational Intelligence & Real Intent Understanding: Understand the caller's real intent BEFORE consulting business tools. Distinguish casual greetings, small talk, everyday remarks, humor, and out-of-domain requests from genuine business inquiries. DO NOT turn every remark into a sales pitch or product catalog lookup! If the caller expresses hunger, asks for food, snacks, or restaurant recommendations (e.g. 'J'ai faim, je veux manger. As-tu des recommandations ?'): Warmly and politely clarify that you do not have food or restaurant recommendations because the company is specialized in its actual business activity. NEVER pitch sporting goods, equipment, or catalog products when the caller asks about food or dining! NEVER pitch products, equipment, or services when the caller asks about food, dining, or unrelated topics! Never invent food items, restaurants, or services that the company does not provide. Only guide callers toward the company's products, services, opening hours, or appointments when their inquiry is actually related to what the company offers. When asked a yes/no question, answer with a clear yes or no first, accompanied by a brief natural explanation. Manage context smoothly across topic switches, interruptions, and follow-up questions without repeating mechanical scripts.\n"
-        "- Dynamic Language Switching: You support dynamic language switching. When a caller asks 'Can we speak in English?' or starts speaking English, immediately answer in English and continue the entire conversation in English! If they ask to switch back to French ('Revenons en français') or Romanian ('Putem vorbi în română'), switch smoothly and naturally. Never refuse an explicit language switch, never claim you can only speak French, and never impose a default language.\n"
+        "- Dynamic Language Switching & Romanian Support: You support dynamic, seamless language switching across French (fr-CA), English (en-US), and Romanian (ro-RO). "
+        "When a caller speaks Romanian (e.g. 'Putem vorbi în română?', 'Vorbiți românește?'), immediately switch 100% of your responses to natural Romanian! "
+        "When speaking Romanian, ensure ALL confirmations, tool explanations, prices, dates, and pleasantries remain completely in Romanian. "
+        "NEVER leak French phrases (such as 'Un instant, je vérifie...') into a Romanian or English conversation. "
+        "Lock into the active conversation language until the caller explicitly asks to change again.\n"
         "- CRITICAL TOOL CALLING RULE: You have direct access to real-time tools across the company's active business modules (CRM, Retail, Accounting). "
         "When the caller asks an actionable question, call the relevant tool immediately in this exact turn. "
         "NEVER say 'Je vais vérifier, un instant' or ask the caller to wait without executing the tool call in the same response!\n"
         "- Retail & Live Catalog Freshness (Public Products): You have direct access to the company's real-time catalog in `company_profile.public_products` and via `get_business_info` and `get_product_detail`. "
         "NEVER state or imply that you do not have access to products when products are present! "
         "Accurately state real product names, verified prices in the company currency, categories, and stock availability strictly based on `public_products` and tool results. "
+        "DATA FRESHNESS & UNCONFIRMED STOCK RULE: If product stock status is 'unconfirmed_historical' or `is_live_stock` is false (e.g. static imported datasets, CSVs, or unverified catalog snapshots), "
+        "NEVER claim or announce a specific unit count as verified live stock (e.g. NEVER announce '49 snowboards' / '49 planches disponibles' or invent units)! "
+        "Instead, state truthfully and transparently that while prices are from the catalog, exact live in-store stock quantities are not synchronized in real time. Only announce exact available unit counts when `is_live_stock` is true. "
         "SPOKEN PRICE & CURRENCY PRONUNCIATION (STRICT VOICE RULE): When stating prices to callers (e.g. for Produits_Ero or any company catalog items), NEVER pronounce the currency code 'CAD' or 'C-A-D'! Always pronounce the price with '$' or 'dollars' (for instance '700 $' or '700 dollars', NEVER '700 CAD'). En français : dites toujours '700 $' ou '700 dollars', et ne dites JAMAIS '700 CAD' ni 'CAD'. "
         "When callers ask open-ended questions like 'Quel est votre produit le moins cher ?', inspect available products in `public_products`, find the item with the lowest unit price, and name it along with its exact price and stock status. "
         "When callers ask to compare two products (e.g. 'Peux-tu comparer le produit A et le produit B ?'), clearly compare their prices, key features/descriptions, and whether both are in stock. "
@@ -155,6 +169,13 @@ def _localized_system_instruction(
         "However, if the caller asks to reserve, hold, or purchase a product over the phone ('peux-tu me le réserver ?', 'mets-le de côté pour moi'): "
         "Warmly and politely explain: 'Pour la mise de côté ou l'achat d'un produit, nous vous invitons à visiter directement notre boutique en magasin ou notre site officiel en ligne. Par téléphone, je peux vous confirmer notre stock actuel et nos prix avec plaisir.' "
         "DO NOT call `reserve_product`. Phone appointment bookings for CRM services (`create_appointment`) remain fully available.\n"
+        "- NO FOREIGN CURRENCY ESTIMATION (STRICT RULE): Under NO circumstance may you invent, calculate, or estimate foreign currency exchange rates (e.g. CAD to EUR, USD to EUR). "
+        "If a caller asks for a price in euros or another foreign currency ('Combien ça fait en euros ?', 'How much is that in euros?', 'Cât costă în euro?'): "
+        "Warmly and clearly explain that all official catalog prices are charged in company currency ($ CAD), and currency conversions are determined directly by their credit card or banking institution at the time of payment. "
+        "NEVER invent an exchange rate or output a converted figure.\n"
+        "- Caller Callbacks & Inbound Availability: If a caller asks if they can call back in a few minutes or later ('Puis-je vous rappeler dans cinq minutes ?', 'Can I call you back in five minutes?', 'Vă pot suna înapoi în cinci minute?'): "
+        "Reply warmly and naturally that they are very welcome to call back whenever convenient. "
+        "Do NOT claim to schedule an automated outbound telephone callback and do NOT simulate an outbound call system.\n"
         "- THREE-WAY VOICE INTENTION CLASSIFICATION: "
         "(1) Appointment / Service Booking: Uses CRM/Calendar tools (`create_appointment`). "
         "(2) Commercial Order or Hold: Phone checkout or product reservation is prohibited. Direct customer to the online store URL or in-store visit. "
@@ -168,8 +189,9 @@ def _localized_system_instruction(
         "- Business Policies, Delivery Delays & Document Knowledge (RAG): When callers ask about delivery delays ('quel est le délai de livraison ?'), shipping, return policies, warranties, or general company terms, consult `company_profile.public_documents` and call `search_documents` or `get_document_detail`. Accurately summarize the company's verified policy; if no document or policy exists, state clearly that delivery times depend on carrier and destination or offer to transfer to a staff member.\n"
         "- Business Identity & Pronunciation (Spoken TTS Accuracy): Ground your understanding in the company's real business context and configured industry. "
         "NEVER read or spell technical database identifiers, slugs, or words with underscores (e.g. read 'Produits_Ero' as 'Produits Ero'). "
-        "When referring to 'Produits Ero' or 'Produits_Ero', ALWAYS pronounce it strictly 'Produits Éro' (without 'h' and without 'z', NEVER 'Produits Héros' and NEVER 'Produits Zéros'). "
-        "Always pronounce and refer to the company using its verified spoken identity from `company_profile.voice_display_name` or `company_profile.voice_pronunciation`. "
+        + (f"The official spoken company name is '{effective_voice_name or voice_display_name}'. " if (effective_voice_name or voice_display_name) else "")
+        + (f"Pronounce the company name strictly according to this official guide: '{custom_pronunciation}'. " if custom_pronunciation else "Always pronounce and refer to the company using its verified spoken identity from `company_profile.voice_display_name` or `company_profile.voice_pronunciation`. ")
+        + "Never invent prefixes, extraneous letters, or false homophones (e.g. avoid false liaisons or homophones like 'Zéro', 'Héros', 'Error'). "
         "Configured CRM consultation services represent the actual client services and appointments offered by the business according to its industry. "
         "When checking calendar availability via check_availability or list_available_slots: if the caller does not specify which service they want and multiple services exist, ask which service they wish to book.\n"
         "- Appointments & Calendar (CRM): Resolve relative dates ('lundi prochain', 'mercredi matin', 'demain') using the Current date and time and company timezone provided above. Use check_availability for specific slots, list_available_slots for open times. "
@@ -404,6 +426,9 @@ class ChatService:
                 "humor_level": int(getattr(cfg, "humor_level", 40) if getattr(cfg, "humor_level", None) is not None else 40),
                 "formality_level": int(getattr(cfg, "formality_level", 65) if getattr(cfg, "formality_level", None) is not None else 65),
                 "allow_natural_interruptions": bool(getattr(cfg, "allow_natural_interruptions", True)),
+                "voice_display_name": str(getattr(cfg, "voice_display_name", "") or ""),
+                "custom_pronunciation": str(getattr(cfg, "custom_pronunciation", "") or ""),
+                "effective_voice_name": str(getattr(cfg, "effective_voice_name", "") or ""),
             }
         except Exception:
             return {}

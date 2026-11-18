@@ -46,13 +46,23 @@ def is_open_catalog_question(text: str) -> bool:
 
 
 def spoken_module_answer(names: list[str], *, plan_code: str | None, locale: str) -> str:
-    french = locale.lower().startswith("fr")
+    loc = locale.lower()
+    french = loc.startswith("fr")
+    romanian = loc.startswith("ro")
     unique = []
     for name in names:
         cleaned = str(name).strip()
         if cleaned and cleaned not in unique:
             unique.append(cleaned)
     plan = (plan_code or "").strip()
+    if romanian:
+        if not unique:
+            base = "Compania dumneavoastră nu are în prezent niciun modul activ."
+        else:
+            base = "Compania dumneavoastră dispune în prezent de următoarele module: " + ", ".join(unique) + "."
+        if plan:
+            return f"Abonamentul dumneavoastră {plan} este activ. {base}"
+        return base
     if french:
         if not unique:
             base = "Votre entreprise n'a actuellement aucun module actif."
@@ -77,8 +87,12 @@ def spoken_catalog_answer(
     locale: str,
     currency: str | None = None,
 ) -> str:
-    french = locale.lower().startswith("fr")
+    loc = locale.lower()
+    french = loc.startswith("fr")
+    romanian = loc.startswith("ro")
     if not retail_enabled:
+        if romanian:
+            return "Catalogul de vânzări nu este disponibil pentru compania dumneavoastră."
         return (
             "Le catalogue de vente n'est pas disponible pour votre entreprise."
             if french else
@@ -86,6 +100,8 @@ def spoken_catalog_answer(
         )
     rows = [row for row in products if isinstance(row, dict) and str(row.get("name") or "").strip()]
     if not rows:
+        if romanian:
+            return "Catalogul nu conține în prezent niciun produs de vânzare."
         return (
             "Le catalogue ne contient actuellement aucun produit en vente."
             if french else
@@ -105,21 +121,27 @@ def spoken_catalog_answer(
         else:
             unit = raw_unit
         if price is None or price == "":
-            price_text = "prix non indiqué" if french else "price not listed"
+            price_text = "preț nespecificat" if romanian else ("prix non indiqué" if french else "price not listed")
         else:
             price_text = f"{price} {unit}".strip()
         available = ""
         inventory = row.get("inventory_count")
-        if row.get("in_stock") is True and isinstance(inventory, (int, float)) and inventory > 0:
-            available = ", disponible" if french else ", available"
+        if row.get("is_live_stock") is True and row.get("in_stock") is True and isinstance(inventory, (int, float)) and inventory > 0:
+            available = ", disponibil" if romanian else (", disponible" if french else ", available")
+        elif row.get("is_live_stock") is False:
+            available = ", stoc nesincronizat" if romanian else (", stock en direct non synchronisé" if french else ", live stock unconfirmed")
         spoken.append(f"{name}, {price_text}{available}")
     extra = ""
     if len(rows) > 5:
-        extra = (
-            f" Et {len(rows) - 5} autre{'s' if len(rows) - 5 > 1 else ''} article{'s' if len(rows) - 5 > 1 else ''} au catalogue."
-            if french else
-            f" And {len(rows) - 5} more items in the catalog."
-        )
+        remaining = len(rows) - 5
+        if romanian:
+            extra = f" Și încă {remaining} {'articol' if remaining == 1 else 'articole'} în catalog."
+        elif french:
+            extra = f" Et {remaining} autre{'s' if remaining > 1 else ''} article{'s' if remaining > 1 else ''} au catalogue."
+        else:
+            extra = f" And {remaining} more items in the catalog."
+    if romanian:
+        return "Avem în vânzare: " + " ; ".join(spoken) + "." + extra
     if french:
         return "Nous avons en vente : " + " ; ".join(spoken) + "." + extra
     return "We currently have for sale: " + "; ".join(spoken) + "." + extra

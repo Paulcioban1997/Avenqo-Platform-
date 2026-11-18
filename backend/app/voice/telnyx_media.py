@@ -748,6 +748,7 @@ class TelnyxMediaBridge:
         self._executing_turn = False
         self._in_flight_transcript: str | None = None
         self._last_spoken: str | None = None
+        self._last_filler_time: float = 0.0
         self.phase = "LISTENING"
         self.call_correlation: str | None = None
         self.turn_correlation: str | None = None
@@ -888,13 +889,24 @@ class TelnyxMediaBridge:
             filler_task = None
             async def _play_thinking_filler() -> None:
                 try:
-                    await asyncio.sleep(2.0)
-                    if self._executing_turn and epoch == self.epoch and not self.input_paused:
-                        filler_phrase = (
-                            "Un instant, je vérifie..."
-                            if resolve_locale(self.locale).startswith("fr")
-                            else "One moment, checking that for you..."
-                        )
+                    await asyncio.sleep(3.5)
+                    now_time = asyncio.get_event_loop().time()
+                    if (
+                        self._executing_turn
+                        and epoch == self.epoch
+                        and not self.input_paused
+                        and (now_time - getattr(self, "_last_filler_time", 0.0)) >= 30.0
+                    ):
+                        self._last_filler_time = now_time
+                        loc = resolve_locale(self.locale)
+                        if loc.startswith("ro"):
+                            filler_phrase = "Un moment, verific pentru dumneavoastră..."
+                        elif loc.startswith("fr"):
+                            filler_phrase = "Un instant, je vérifie..."
+                        elif loc.startswith("es"):
+                            filler_phrase = "Un momento, estoy verificando..."
+                        else:
+                            filler_phrase = "One moment, checking that for you..."
                         await self._speak_system(f"filler:{item_id}", filler_phrase)
                 except asyncio.CancelledError:
                     pass
@@ -914,27 +926,46 @@ class TelnyxMediaBridge:
                     "Voice Central AI turn timed out; timeout_seconds=%s count=%s",
                     self.central_ai_timeout, self.central_ai_timeouts,
                 )
-                # A failed lookup must never leave a caller listening to dead air.
-                result = {"status": "success", "answer": (
-                    "Désolé, le traitement de votre demande prend trop de temps. "
-                    "Pouvez-vous reformuler votre question ?"
-                    if resolve_locale(self.locale).startswith("fr")
-                    else "Sorry, your request is taking too long. "
-                         "Could you rephrase your question?"
-                )}
+                loc = resolve_locale(self.locale)
+                if loc.startswith("ro"):
+                    timeout_answer = (
+                        "Ne cerem scuze, procesarea solicitării dumneavoastră durează prea mult. "
+                        "Ați putea reformula întrebarea?"
+                    )
+                elif loc.startswith("fr"):
+                    timeout_answer = (
+                        "Désolé, le traitement de votre demande prend trop de temps. "
+                        "Pouvez-vous reformuler votre question ?"
+                    )
+                else:
+                    timeout_answer = (
+                        "Sorry, your request is taking too long. "
+                        "Could you rephrase your question?"
+                    )
+                result = {"status": "success", "answer": timeout_answer}
             except Exception as exc:
                 self.telemetry["crm_function_failures"] += 1
                 logger.warning(
                     "Voice Central AI execution failed; error=%s",
                     type(exc).__name__,
                 )
-                result = {"status": "success", "answer": (
-                    "Désolé, une erreur technique est survenue lors du traitement de votre demande. "
-                    "Pouvez-vous reformuler votre question ?"
-                    if resolve_locale(self.locale).startswith("fr")
-                    else "Sorry, a technical error occurred while processing your request. "
-                         "Could you rephrase your question?"
-                )}
+                loc = resolve_locale(self.locale)
+                if loc.startswith("ro"):
+                    error_answer = (
+                        "Ne cerem scuze, a apărut o problemă tehnică la procesarea solicitării. "
+                        "Ați putea reformula întrebarea?"
+                    )
+                elif loc.startswith("fr"):
+                    error_answer = (
+                        "Désolé, une erreur technique est survenue lors du traitement de votre demande. "
+                        "Pouvez-vous reformuler votre question ?"
+                    )
+                else:
+                    error_answer = (
+                        "Sorry, a technical error occurred while processing your request. "
+                        "Could you rephrase your question?"
+                    )
+                result = {"status": "success", "answer": error_answer}
             finally:
                 if filler_task is not None and not filler_task.done():
                     filler_task.cancel()
@@ -1877,6 +1908,7 @@ async def telnyx_media_socket(
                 r"\b(goodbye|bye bye|bye-bye|\bbye\b|have a great day|have a good day|have a nice day)\b",
                 r"\b(you can hang up|hang up now|end the call|hang up the call)\b",
                 r"\b(that's all|that is all|that'll be all|that will be all|that's it|that is it)\b",
+                r"\b(la revedere|o zi buna|o zi frumoasa|pa pa|\bpa\b|puteti inchide|inchide apelul|inchideti|asta e tot|atat|nu mai am intrebari)\b",
                 r"\b(adios|hasta luego|chao|puedes colgar)\b",
                 r"\b(auf wiedersehen|tschuss)\b",
                 r"\b(arrivederci|puoi riagganciare)\b",
@@ -1896,25 +1928,36 @@ async def telnyx_media_socket(
             return {"status": "success", "answer": direct_answer}
 
         if is_hangup_request(transcript):
-            french = resolve_locale(current_call.locale or locale).startswith("fr")
+            call_loc = resolve_locale(current_call.locale or locale)
             has_unconfirmed = bool(
                 (current_call.source_context or {}).get("public_appointment_request")
                 and not (current_call.source_context or {}).get("appointment_confirmed")
             )
             farewell = getattr(current_config, "farewell_message", None)
             if not farewell:
-                if has_unconfirmed:
-                    farewell = (
-                        "Veuillez noter que votre demande de réservation n'a pas été confirmée et aucun rendez-vous n'a été créé. Au revoir et bonne journée !"
-                        if french
-                        else "Please note that your booking request was not confirmed and no appointment was created. Goodbye and have a great day!"
-                    )
+                if call_loc.startswith("ro"):
+                    if has_unconfirmed:
+                        farewell = "Vă rugăm să rețineți că cererea de programare nu a fost confirmată și nu a fost creată nicio programare. Vă mulțumim pentru apel. La revedere și o zi frumoasă!"
+                    else:
+                        farewell = "Vă mulțumim pentru apel. La revedere și o zi frumoasă!"
+                elif call_loc.startswith("fr"):
+                    if has_unconfirmed:
+                        farewell = (
+                            "Veuillez noter que votre demande de réservation n'a pas été confirmée et aucun rendez-vous n'a été créé. Au revoir et bonne journée !"
+                        )
+                    else:
+                        farewell = (
+                            "Merci de votre appel. Au revoir et bonne journée !"
+                        )
                 else:
-                    farewell = (
-                        "Merci de votre appel. Au revoir et bonne journée !"
-                        if french
-                        else "Thank you for calling. Goodbye and have a great day!"
-                    )
+                    if has_unconfirmed:
+                        farewell = (
+                            "Please note that your booking request was not confirmed and no appointment was created. Goodbye and have a great day!"
+                        )
+                    else:
+                        farewell = (
+                            "Thank you for calling. Goodbye and have a great day!"
+                        )
             return {"status": "success", "answer": farewell, "hangup": True}
 
         attempts = []

@@ -178,8 +178,12 @@ class GetProductDetailTool(RetailAITool):
                                (arguments.product_id is None and arguments.product_name and arguments.product_name.casefold() in str(p.get("name") or "").casefold())]
                     return ToolResult(success=True, data={"found": bool(matches), "source_type": "dataset",
                         "products": [{"product_id": p["product_id"], "product_name": p.get("name"),
-                                      "inventory_level": p.get("stock_level"), "historical_average_selling_price": p.get("average_selling_price")} for p in matches[:10]],
-                        "stock_is_current": False, "message": "Dataset observations only; missing stock is unknown, not zero.",
+                                      "inventory_level": None, "historical_observed_units": p.get("stock_level"),
+                                      "stock_confirmed": False, "stock_status": "unconfirmed_historical_dataset",
+                                      "price_status": "historical_average_price",
+                                      "historical_average_selling_price": p.get("average_selling_price")} for p in matches[:10]],
+                        "stock_is_current": False,
+                        "message": "Données d'observation historiques (dataset). L'inventaire en direct n'étant pas synchronisé, aucune quantité ne peut être confirmée comme stock actuel.",
                         "data_freshness": DataFreshnessService().for_snapshot(snapshot).as_dict()}, source_refs=(str(source.dataset_id),))
             return ToolResult(
                 success=True,

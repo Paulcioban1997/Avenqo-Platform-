@@ -2647,11 +2647,17 @@ async def telnyx_webhook(
                     db.commit()
                     return {"received": True, "status": "PIN_TIMEOUT"}
 
-                re_prompt = (
-                    "Veuillez composer votre NIP personnel suivi de la touche dièse."
-                    if (config.preferred_language or "fr").startswith("fr")
-                    else "Please enter your personal PIN followed by pound."
-                )
+                active_pref = resolve_locale(call.locale or config.preferred_language or "fr")
+                is_ro = active_pref.startswith("ro")
+                is_fr = active_pref.startswith("fr")
+                ivr_lang = "ro-RO" if is_ro else ("fr-CA" if is_fr else "en-US")
+                if is_ro:
+                    re_prompt = "Vă rugăm să introduceți codul PIN personal urmat de tasta diez."
+                elif is_fr:
+                    re_prompt = "Veuillez composer votre NIP personnel suivi de la touche dièse."
+                else:
+                    re_prompt = "Please enter your personal PIN followed by pound."
+
                 command_id = str(UUID(hashlib.sha256(f"re-prompt-pin:{call.id}:{prompt_count}".encode()).hexdigest()[:32]))
                 client_state = auth_controller.challenge(call)
                 receipt.result = {**receipt.result, "ivr": "pin_empty_reprompt"}
@@ -2661,7 +2667,7 @@ async def telnyx_webhook(
                     text_prompt=re_prompt,
                     command_id=command_id,
                     client_state=client_state,
-                    language="fr-CA" if (config.preferred_language or "fr").startswith("fr") else "en-US",
+                    language=ivr_lang,
                     minimum_digits=6,
                     maximum_digits=12,
                     valid_digits="0123456789#",
@@ -2695,7 +2701,7 @@ async def telnyx_webhook(
                         await service.telnyx.speak(
                             active_control_id,
                             text_prompt="Une erreur technique empêche la connexion à l'espace employé. Veuillez rappeler plus tard. Au revoir.",
-                            language="fr-CA" if (config.preferred_language or "fr").startswith("fr") else "en-US",
+                            language=ivr_lang,
                             command_id=err_cmd,
                         )
                         await asyncio.sleep(4.0)
@@ -2707,12 +2713,23 @@ async def telnyx_webhook(
                     db.commit()
                     return {"received": True, "routed": False, "status": "MEDIA_STREAM_START_FAILED"}
             else:
+                active_pref = resolve_locale(call.locale or config.preferred_language or "fr")
+                is_ro = active_pref.startswith("ro")
+                is_fr = active_pref.startswith("fr")
+                ivr_lang = "ro-RO" if is_ro else ("fr-CA" if is_fr else "en-US")
                 max_att = getattr(settings, "voice_pin_max_attempts", 5)
-                if call.verification_attempts >= max_att:
-                    lock_msg = "Nombre maximal de tentatives de NIP dépassé. Au revoir." if (config.preferred_language or "fr").startswith("fr") else "Maximum PIN attempts exceeded. Goodbye."
+                is_lock = auth_result.get("reason") == "account_locked" or call.verification_attempts >= max_att
+
+                if is_lock:
+                    if is_ro:
+                        lock_msg = "Numărul maxim de încercări a fost depășit sau accesul este temporar blocat. La revedere."
+                    elif is_fr:
+                        lock_msg = "Nombre maximal de tentatives de NIP dépassé. Au revoir."
+                    else:
+                        lock_msg = "Maximum PIN attempts exceeded. Goodbye."
                     command_id = str(UUID(hashlib.sha256(f"lock-hangup:{call.id}".encode()).hexdigest()[:32]))
                     try:
-                        await service.telnyx.speak(active_control_id, text_prompt=lock_msg, command_id=command_id)
+                        await service.telnyx.speak(active_control_id, text_prompt=lock_msg, language=ivr_lang, command_id=command_id)
                         await service.telnyx.hangup(active_control_id)
                     except Exception:
                         pass
@@ -2722,11 +2739,12 @@ async def telnyx_webhook(
                     db.commit()
                     return {"received": True, "authenticated": False, "status": "LOCKED_OUT"}
                 else:
-                    invalid_msg = (
-                        "NIP invalide. Veuillez recomposer votre NIP personnel suivi de la touche dièse."
-                        if (config.preferred_language or "fr").startswith("fr")
-                        else "Invalid PIN. Please re-enter your personal PIN followed by pound."
-                    )
+                    if is_ro:
+                        invalid_msg = "Cod PIN nerecunoscut. Vă rugăm să reintroduceți codul PIN personal urmat de tasta diez."
+                    elif is_fr:
+                        invalid_msg = "NIP non reconnu. Veuillez recomposer votre NIP personnel suivi de la touche dièse."
+                    else:
+                        invalid_msg = "Unrecognized PIN. Please re-enter your personal PIN followed by pound."
                     command_id = str(UUID(hashlib.sha256(f"retry-pin:{call.id}:{call.verification_attempts}".encode()).hexdigest()[:32]))
                     client_state = auth_controller.challenge(call)
                     receipt.result = {**receipt.result, "authenticated": False, "retry": True}
@@ -2736,7 +2754,7 @@ async def telnyx_webhook(
                         text_prompt=invalid_msg,
                         command_id=command_id,
                         client_state=client_state,
-                        language="fr-CA" if (config.preferred_language or "fr").startswith("fr") else "en-US",
+                        language=ivr_lang,
                         minimum_digits=6,
                         maximum_digits=12,
                         valid_digits="0123456789#",

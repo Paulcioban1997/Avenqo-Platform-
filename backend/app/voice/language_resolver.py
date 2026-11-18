@@ -185,7 +185,7 @@ _EXPLICIT_SWITCH_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # Demandes vers l'espagnol
     (re.compile(r"\b(can we (speak|continue|switch to|talk)( in)? spanish|let'?s speak spanish|in spanish please|switch to spanish|parlons (en )?espagnol|en espagnol s'?il vous pla[iî]t|podemos hablar en espa[nñ]ol|hablemos en espa[nñ]ol|en espa[nñ]ol por favor|vorbi[tț]i [iî]n spaniol[aă])\b", re.IGNORECASE), "es-ES"),
     # Demandes vers le roumain
-    (re.compile(r"\b(can we (speak|continue|switch to|talk)( in)? romanian|let'?s speak romanian|in romanian please|switch to romanian|parlons (en )?roumain|en roumain s'?il vous pla[iî]t|putem vorbi [iî]n rom[aâ]n[aă]|vorbi[tț]i [iî]n rom[aâ]n[aă]|vorbim [iî]n rom[aâ]n[aă]|podemos hablar en rumano)\b", re.IGNORECASE), "ro-RO"),
+    (re.compile(r"\b(can we (speak|continue|switch to|talk)( in)? romanian|let'?s speak romanian|in romanian please|switch to romanian|parlons (en )?roumain|en roumain s'?il vous pla[iî]t|putem vorbi [iî]n rom[aâ]n[aă]|vorbi[tț]i [iî]n rom[aâ]n[aă]|vorbi[tț]i rom[aâ]ne[sș]te|putem vorbi rom[aâ]ne[sș]te|[iî]n rom[aâ]n[aă] v[aă] rog|trecem [iî]n rom[aâ]n[aă]|vorbim [iî]n rom[aâ]n[aă]|podemos hablar en rumano)\b", re.IGNORECASE), "ro-RO"),
 ]
 
 

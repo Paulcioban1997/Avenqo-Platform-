@@ -113,6 +113,11 @@ class CompanyIntelligenceService:
             CRMEmployee.is_active.is_(True)).limit(100)).all() if "crm" in active else []
 
         products_list: list[dict] = []
+        active_live_conn_ids = {
+            c.id for c in connections
+            if c.provider in ("shopify", "woocommerce")
+            and str(c.status).upper() in ("READY", "SYNCING", "ACTIVE")
+        }
         if "retail" in active:
             try:
                 from backend.app.models.commerce_connection import NormalizedCommerceRecord
@@ -143,11 +148,11 @@ class CompanyIntelligenceService:
                         inventory = pdata.get("stock_quantity")
                     if inventory is None and isinstance(variants, list) and variants:
                         inventory = sum(v.get("inventory_level", 0) for v in variants if isinstance(v.get("inventory_level"), (int, float)))
-                    inventory_count = int(inventory) if isinstance(inventory, (int, float)) else 0
+                    raw_count = int(inventory) if isinstance(inventory, (int, float)) else 0
 
-                    in_stock = pdata.get("in_stock")
-                    if in_stock is None:
-                        in_stock = inventory_count > 0 or status == "instock"
+                    is_live_stock = bool(r.connection_id and r.connection_id in active_live_conn_ids)
+                    in_stock = (raw_count > 0 or status == "instock") if is_live_stock else False
+                    confirmed_inventory_count = raw_count if is_live_stock else None
 
                     curr_str = str(company.currency_code or "").strip().upper()
                     curr_sym = "$" if curr_str in ("CAD", "USD", "$") or not curr_str else ("€" if curr_str in ("EUR", "€") else ("£" if curr_str in ("GBP", "£") else curr_str))
@@ -161,8 +166,12 @@ class CompanyIntelligenceService:
                         "currency": company.currency_code,
                         "currency_symbol": curr_sym,
                         "price_display": p_disp,
-                        "in_stock": bool(in_stock),
-                        "inventory_count": inventory_count,
+                        "price_status": "verified" if is_live_stock else "historical_catalog",
+                        "is_live_stock": is_live_stock,
+                        "in_stock": in_stock,
+                        "inventory_count": confirmed_inventory_count,
+                        "historical_reference_units": raw_count if not is_live_stock else None,
+                        "stock_status": "live_synced" if is_live_stock else "unconfirmed_historical",
                         "description": pdata.get("description") or pdata.get("body_html") or "",
                     })
             except Exception:

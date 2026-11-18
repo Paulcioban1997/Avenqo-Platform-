@@ -435,6 +435,7 @@ class VoiceCallerAuth:
 
         caller_norm = normalized_phone(call.caller_phone)
         credential = None
+        caller_user: User | None = None
         if identifier:
             id_str = str(identifier).strip()
             # Lookup user by email, phone, or UUID within company
@@ -454,43 +455,99 @@ class VoiceCallerAuth:
                 )
             )
             if user_cand is not None:
+                caller_user = user_cand
                 credential = self.db.scalar(
                     select(VoiceCallerCredential).where(
                         VoiceCallerCredential.company_id == call.company_id,
                         VoiceCallerCredential.principal_type == "USER",
                         VoiceCallerCredential.principal_id == user_cand.id,
-                        VoiceCallerCredential.enabled.is_(True),
                     ).with_for_update()
                 )
 
         if credential is None and not identifier and caller_norm:
+            # 1. Direct lookup by phone number on credential within company
             credential = self.db.scalar(select(VoiceCallerCredential).where(
                 VoiceCallerCredential.company_id == call.company_id,
                 VoiceCallerCredential.phone_number == caller_norm,
-                VoiceCallerCredential.enabled.is_(True),
             ).with_for_update())
 
-        # Insecure fallback iterating over all company credentials is intentionally removed.
-        # PIN authentication requires explicit caller identity matching (by registered caller phone or identifier).
+            # 2. If not found by credential phone, check active company users whose phone matches caller_norm or caller_phone
+            if credential is None:
+                user_candidates = self.db.scalars(
+                    select(User).join(CompanyMembership, CompanyMembership.user_id == User.id)
+                    .where(
+                        User.company_id == call.company_id,
+                        User.is_active.is_(True),
+                        CompanyMembership.company_id == call.company_id,
+                        CompanyMembership.is_active.is_(True),
+                        User.phone.is_not(None),
+                    )
+                ).all()
+                for uc in user_candidates:
+                    if normalized_phone(uc.phone) == caller_norm or uc.phone == call.caller_phone:
+                        caller_user = uc
+                        break
+
+                if caller_user is not None:
+                    credential = self.db.scalar(
+                        select(VoiceCallerCredential).where(
+                            VoiceCallerCredential.company_id == call.company_id,
+                            VoiceCallerCredential.principal_type == "USER",
+                            VoiceCallerCredential.principal_id == caller_user.id,
+                        ).with_for_update()
+                    )
+                    # Legitimate auto-heal: if credential exists and phone number differs, update it to caller_norm with audit
+                    if credential is not None and credential.phone_number != caller_norm:
+                        old_phone = credential.phone_number
+                        credential.phone_number = caller_norm
+                        AuditLogService(self.db).record(
+                            actor_user_id=caller_user.id,
+                            action="voice_credential_phone_synchronized",
+                            target_type="voice_credential",
+                            target_id=str(credential.id),
+                            company_id=call.company_id,
+                            metadata={"previous_phone": old_phone, "synchronized_phone": caller_norm},
+                            commit=False,
+                        )
+                        self.db.flush()
+
+        if caller_user is None and credential is not None and credential.principal_type == "USER":
+            caller_user = self.db.scalar(
+                select(User).join(CompanyMembership, CompanyMembership.user_id == User.id)
+                .where(
+                    User.id == credential.principal_id,
+                    User.company_id == call.company_id,
+                    User.is_active.is_(True),
+                    CompanyMembership.company_id == call.company_id,
+                    CompanyMembership.is_active.is_(True),
+                )
+            )
+
+        caller_matched = caller_user is not None
+        credential_found = credential is not None
+        credential_enabled = bool(credential and credential.enabled)
+        is_locked = bool(credential and credential.locked_until and utc(credential.locked_until) > now)
         matched_in_fallback = False
 
         call.verification_attempts += 1
         logger.info(
-            "VoiceCallerAuth.verify_gather: company_id=%s call_id=%s caller_matched=%s credential_found=%s fallback=%s attempt=%s/%s",
-            call.company_id, call.id, bool(caller_norm), bool(credential), matched_in_fallback, call.verification_attempts, maximum,
+            "VoiceCallerAuth.verify_gather: company_id=%s call_id=%s caller_matched=%s credential_found=%s enabled=%s locked=%s attempt=%s/%s",
+            call.company_id, call.id, caller_matched, credential_found, credential_enabled, is_locked, call.verification_attempts, maximum,
         )
 
-        if credential is None:
+        if credential is None or not credential.enabled:
             verify_password(self._peppered(call.company_id, call.id, pin_clean), hash_password(secrets.token_urlsafe(32)))
             self.db.flush()
-            return failed
-        if credential.locked_until is not None and utc(credential.locked_until) > now:
+            fail_reason = "caller_not_recognized" if not caller_matched else ("pin_not_configured" if not credential_found else "credential_disabled")
+            return {**failed, "reason": fail_reason}
+
+        if is_locked:
             logger.warning(
                 "VoiceCallerAuth.verify_gather: credential locked (company_id=%s, principal_id=%s, locked_until=%s)",
                 call.company_id, credential.principal_id, credential.locked_until,
             )
             self.db.flush()
-            return failed
+            return {**failed, "reason": "account_locked", "locked_until": credential.locked_until.isoformat() if credential.locked_until else None}
         if credential.locked_until is not None:
             credential.failed_attempts = 0
             credential.locked_until = None
@@ -513,17 +570,17 @@ class VoiceCallerAuth:
                     call.company_id, credential.principal_id, credential.failed_attempts,
                 )
             self.db.flush()
-            return failed
+            return {**failed, "reason": "invalid_pin"}
         principal_model = User if credential.principal_type == "USER" else CRMClient
         principal = self.db.get(principal_model, credential.principal_id)
         if principal is None or principal.company_id != call.company_id:
             self.db.flush()
-            return failed
+            return {**failed, "reason": "unauthorized_principal"}
         if credential.principal_type == "USER" and isinstance(principal, User):
             membership = self.db.scalar(select(CompanyMembership).where(CompanyMembership.user_id == principal.id, CompanyMembership.company_id == call.company_id, CompanyMembership.is_active.is_(True)))
             if not principal.is_active or membership is None:
                 self.db.flush()
-                return failed
+                return {**failed, "reason": "inactive_membership"}
             call.caller_type = "OWNER" if membership.role == UserRole.OWNER else "EMPLOYEE"
             call.authenticated_user_id = principal.id
             call.verified_client_id = None
