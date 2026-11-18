@@ -185,6 +185,7 @@ def test_p0_disabled_credential_fails_gather_until_reactivated(tmp_path):
 
         # On désactive le credential explicitement
         cred = session.scalar(select(VoiceCallerCredential).where(VoiceCallerCredential.principal_id == user.id))
+        assert cred is not None
         cred.enabled = False
         session.commit()
 
