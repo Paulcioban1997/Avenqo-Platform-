@@ -282,6 +282,45 @@ def clean_voice_text(text: str) -> str:
     return re.sub(r"\s+", " ", cleaned).strip()
 
 
+_RE_PIN_MGMT = re.compile(
+    r"(creer|configur|changer|modifier|reinitialis|oubli|create|change|set|reset).{0,30}\b(nip|pin)\b"
+)
+_RE_PIN_INQUIRY = re.compile(
+    r"\b(authentifi|authentification|identifier|connexion|login)\b.{0,30}\b(nip|pin|securis)\b"
+    r"|\b(nip|pin)\b.{0,30}\b(securis|authentifi)\b"
+    r"|\b(entrer|composer|saisir|fournir|taper)\b.{0,20}\b(nip|pin)\b"
+    r"|\b(code nip|code pin)\b"
+)
+_RE_PUBLIC_CUSTOMER_INTENT = re.compile(
+    r"\b(rendez[- ]vous|rdv|appointment|booking|cita|reunion|programare|intalnire|intalnirea|rencontrer|rencontre|parler|parle|hablar|vorbi|speak|talk|contacter|contact|message|mensaje|mesaj|recrutement|recruitment|embauche|hiring|emploi|job|empleo|angajare|candidature|postuler|apply|entrevue|interview|entrevista|interviu|joindre|reach)\b"
+)
+_RE_PRIVATE_DATA = re.compile(
+    r"\b(chiffre d'affaires|ventes du jour|ventes d'aujourd'hui|ventes aujourd'hui|produits vendus|commandes internes|mes clients|autres clients|internal|internes|metriques|metrics|revenus|revenue|credits|abonnement|subscription|retail|comptabilite|accounting|dashboard|factures|invoices)\b"
+    r"|\b(commande|commandes|order|orders)\b.{0,25}\b(recu|recues|aujourd'hui|jour|du jour|recent|recentes|total|nombre|recents|derniere|dernieres|today)\b"
+    r"|\b(combien de commandes|combien de ventes|combien de transactions|combien d'argent)\b"
+    r"|\b(niveau de stock|etat des stocks|stock restant)\b"
+    r"|\b(ingresos|ventas de hoy|pedidos internos|facturas|contabilidad|metricas|cuanto dinero|estado de los stocks|stock restante)\b"
+    r"|\b(cifra de afaceri|venituri(le)?|vanzari(le)? de astazi|comenzi interne|facturi|contabilitate|cati bani|nivelul stocului|stoc ramas)\b"
+    r"|\b(je suis|i am|yo soy|sunt)\b.{0,15}\b(proprietaire|owner|patron|boss|manager|employe|employee|due[nñ]o|gerente|sef|proprietar)\b"
+    r"|\b(mode|espace|session|connexion|portail|acceso|spatiu)\b.{0,20}\b(proprietaire|owner|patron|boss|manager|employe|employee|gestion|direction|due[nñ]o|gerente|conducere)\b"
+)
+_RE_MANAGEMENT_CONTACT = re.compile(
+    r"\b(proprietaire|owner|patron|boss|manager|direction|due[nñ]o|jefe|gerente|encargado|proprietar|sef|conducere|conducerea|director|directorul)\b"
+)
+_RE_CUSTOMER_VERIFY = re.compile(
+    r"mes rendez.vous|my appointments|mon dossier client|my record|mis citas"
+)
+_RE_BOOKING_MGMT = re.compile(
+    r"mes rendez.vous|my appointments|mon dossier|my record|mis citas|annuler|cancel|deplacer|reschedule"
+)
+_RE_PICKUP = re.compile(
+    r"reserver|reserve|reservation|cueillette|cueillir|ramassage|ramasser|venir chercher|passer prendre|recuperer|retrait|pick.?up|mettre de cote|bloquer"
+)
+_RE_BOOKING = re.compile(
+    r"rendez[- .]vous|appointment|booking|disponibilit|disponible|availability|available"
+)
+
+
 class PublicInboundConversation:
     def __init__(self, db: Session, settings: Settings, call_id: UUID, telnyx=None):
         self.db = db
@@ -351,37 +390,18 @@ class PublicInboundConversation:
         romanian = loc.startswith("ro")
 
         # 1. PIN creation/configuration/management instructions
-        if re.search(r"(creer|configur|changer|modifier|reinitialis|oubli|create|change|set|reset).{0,30}\b(nip|pin)\b", normalized):
+        if _RE_PIN_MGMT.search(normalized):
             return {"status": "success", "answer": self.portal_message(), "public": True}
 
         # 2. Inquiries specifically about PIN authentication / secure authentication
-        pin_inquiry = bool(re.search(
-            r"\b(authentifi|authentification|identifier|connexion|login)\b.{0,30}\b(nip|pin|securis)\b"
-            r"|\b(nip|pin)\b.{0,30}\b(securis|authentifi)\b"
-            r"|\b(entrer|composer|saisir|fournir|taper)\b.{0,20}\b(nip|pin)\b"
-            r"|\b(code nip|code pin)\b",
-            normalized,
-        ))
+        pin_inquiry = bool(_RE_PIN_INQUIRY.search(normalized))
 
         # Check if caller has a public customer intent (appointment, speaking/contacting, recruitment, job application)
-        is_public_customer_intent = bool(re.search(
-            r"\b(rendez[- ]vous|rdv|appointment|booking|cita|reunion|programare|intalnire|intalnirea|rencontrer|rencontre|parler|parle|hablar|vorbi|speak|talk|contacter|contact|message|mensaje|mesaj|recrutement|recruitment|embauche|hiring|emploi|job|empleo|angajare|candidature|postuler|apply|entrevue|interview|entrevista|interviu|joindre|reach)\b",
-            normalized,
-        ))
+        is_public_customer_intent = bool(_RE_PUBLIC_CUSTOMER_INTENT.search(normalized))
 
         # 3. Requests for confidential business, financial or inventory data
         # MUST BE ANALYZED UNCONDITIONALLY across all languages
-        private_data = re.search(
-            r"\b(chiffre d'affaires|ventes du jour|ventes d'aujourd'hui|ventes aujourd'hui|produits vendus|commandes internes|mes clients|autres clients|internal|internes|metriques|metrics|revenus|revenue|credits|abonnement|subscription|retail|comptabilite|accounting|dashboard|factures|invoices)\b"
-            r"|\b(commande|commandes|order|orders)\b.{0,25}\b(recu|recues|aujourd'hui|jour|du jour|recent|recentes|total|nombre|recents|derniere|dernieres|today)\b"
-            r"|\b(combien de commandes|combien de ventes|combien de transactions|combien d'argent)\b"
-            r"|\b(niveau de stock|etat des stocks|stock restant)\b"
-            r"|\b(ingresos|ventas de hoy|pedidos internos|facturas|contabilidad|metricas|cuanto dinero|estado de los stocks|stock restante)\b"
-            r"|\b(cifra de afaceri|venituri(le)?|vanzari(le)? de astazi|comenzi interne|facturi|contabilitate|cati bani|nivelul stocului|stoc ramas)\b"
-            r"|\b(je suis|i am|yo soy|sunt)\b.{0,15}\b(proprietaire|owner|patron|boss|manager|employe|employee|due[nñ]o|gerente|sef|proprietar)\b"
-            r"|\b(mode|espace|session|connexion|portail|acceso|spatiu)\b.{0,20}\b(proprietaire|owner|patron|boss|manager|employe|employee|gestion|direction|due[nñ]o|gerente|conducere)\b",
-            normalized,
-        )
+        private_data = _RE_PRIVATE_DATA.search(normalized)
 
         # PRIORITY RULE: Private data or PIN inquiry ALWAYS takes precedence over public intent.
         # A mixed request containing both a public intent (e.g. contact/appointment) and private data
@@ -453,7 +473,7 @@ class PublicInboundConversation:
                     )
                 return {"status": "success", "answer": answer, "public": True}
 
-        if re.search(r"mes rendez.vous|my appointments|mon dossier client|my record|mis citas", normalized):
+        if _RE_CUSTOMER_VERIFY.search(normalized):
             if spanish:
                 answer = "Se requiere verificar su identidad de cliente para acceder a sus datos personales o modificar una cita."
             elif french:
@@ -475,34 +495,19 @@ class PublicInboundConversation:
         french = loc.startswith("fr")
         spanish = loc.startswith("es")
         romanian = loc.startswith("ro")
-        if re.search(r"(creer|configur|changer|create|change|set).{0,30}\b(nip|pin)\b", normalized):
+        if _RE_PIN_MGMT.search(normalized):
             return {"status": "success", "answer": self.portal_message(), "public": True}
 
-        is_public_customer_intent = bool(re.search(
-            r"\b(rendez[- ]vous|rdv|appointment|booking|cita|reunion|programare|intalnire|intalnirea|rencontrer|rencontre|parler|parle|hablar|vorbi|speak|talk|contacter|contact|message|mensaje|mesaj|recrutement|recruitment|embauche|hiring|emploi|job|empleo|angajare|candidature|postuler|apply|entrevue|interview|entrevista|interviu|joindre|reach)\b",
-            normalized,
-        ))
-        is_management_contact = bool(re.search(
-            r"\b(proprietaire|owner|patron|boss|manager|direction|due[nñ]o|jefe|gerente|encargado|proprietar|sef|conducere|conducerea|director|directorul)\b", normalized
-        ))
+        is_public_customer_intent = bool(_RE_PUBLIC_CUSTOMER_INTENT.search(normalized))
+        is_management_contact = bool(_RE_MANAGEMENT_CONTACT.search(normalized))
         # Requests for confidential business, financial or inventory data
         # MUST BE ANALYZED UNCONDITIONALLY across all languages
-        private = re.search(
-            r"\b(chiffre d'affaires|ventes du jour|ventes d'aujourd'hui|ventes aujourd'hui|produits vendus|commandes internes|mes clients|autres clients|internal|internes|metriques|metrics|revenus|revenue|credits|abonnement|subscription|retail|comptabilite|accounting|dashboard|factures|invoices)\b"
-            r"|\b(commande|commandes|order|orders)\b.{0,25}\b(recu|recues|aujourd'hui|jour|du jour|recent|recentes|total|nombre|recents|derniere|dernieres|today)\b"
-            r"|\b(combien de commandes|combien de ventes|combien de transactions|combien d'argent)\b"
-            r"|\b(niveau de stock|etat des stocks|stock restant)\b"
-            r"|\b(ingresos|ventas de hoy|pedidos internos|facturas|contabilidad|metricas|cuanto dinero|estado de los stocks|stock restante)\b"
-            r"|\b(cifra de afaceri|venituri(le)?|vanzari(le)? de astazi|comenzi interne|facturi|contabilitate|cati bani|nivelul stocului|stoc ramas)\b"
-            r"|\b(je suis|i am|yo soy|sunt)\b.{0,15}\b(proprietaire|owner|patron|boss|manager|employe|employee|due[nñ]o|gerente|sef|proprietar)\b"
-            r"|\b(mode|espace|session|connexion|portail|acceso|spatiu)\b.{0,20}\b(proprietaire|owner|patron|boss|manager|employe|employee|gestion|direction|due[nñ]o|gerente|conducere)\b",
-            normalized,
-        )
+        private = _RE_PRIVATE_DATA.search(normalized)
         if private:
             prompt = voice_auth_message(call.locale or config.preferred_language, 0)
             return {"status": "success", "answer": prompt + " " + self.portal_message(), "auth_required": True, "public": True}
 
-        if re.search(r"mes rendez.vous|my appointments|mon dossier|my record|mis citas|annuler|cancel|deplacer|reschedule", normalized):
+        if _RE_BOOKING_MGMT.search(normalized):
             if spanish:
                 answer = "Se requiere verificar su identidad de cliente para acceder a sus datos personales o modificar una cita."
             elif french:
@@ -513,14 +518,8 @@ class PublicInboundConversation:
                 answer = "Customer identity verification is required to access personal information or change an appointment."
             return {"status": "success", "answer": answer, "customer_verification_required": True, "public": True}
 
-        is_pickup_reservation = bool(re.search(
-            r"reserver|reserve|reservation|cueillette|cueillir|ramassage|ramasser|venir chercher|passer prendre|recuperer|retrait|pick.?up|mettre de cote|bloquer",
-            normalized,
-        ))
-        is_booking_request = bool(re.search(
-            r"rendez[- .]vous|appointment|booking|disponibilit|disponible|availability|available",
-            normalized,
-        )) or is_pickup_reservation or (is_management_contact and is_public_customer_intent)
+        is_pickup_reservation = bool(_RE_PICKUP.search(normalized))
+        is_booking_request = bool(_RE_BOOKING.search(normalized)) or is_pickup_reservation or (is_management_contact and is_public_customer_intent)
 
         if is_booking_request or (is_management_contact and not private):
             if not profile.has_crm_booking or is_management_contact:
