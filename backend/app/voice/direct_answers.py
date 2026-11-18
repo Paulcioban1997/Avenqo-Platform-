@@ -142,8 +142,8 @@ def spoken_catalog_answer(
         available = ""
         inventory = row.get("inventory_count")
         stock_avail = row.get("stock_availability")
-        if is_live and (stock_avail == "IN_STOCK" or row.get("in_stock") is True):
-            available = ", disponibil" if romanian else (", disponible" if french else ", available")
+        if is_live and (stock_avail == "IN_STOCK" or row.get("in_stock") is True) and isinstance(inventory, (int, float)) and inventory > 0:
+            available = f", {int(inventory)} bucăți disponibile" if romanian else (f", {int(inventory)} en stock" if french else f", {int(inventory)} in stock")
         elif is_live and (stock_avail == "OUT_OF_STOCK" or row.get("in_stock") is False):
             available = ", stoc epuizat" if romanian else (", en rupture de stock" if french else ", out of stock")
         elif freshness == "STALE":
@@ -152,8 +152,6 @@ def spoken_catalog_answer(
             available = ", stoc indisponibil" if romanian else (", stock indisponible" if french else ", stock unavailable")
         elif freshness == "SYNCING":
             available = ", sincronizare stoc în curs" if romanian else (", synchronisation de stock en cours" if french else ", stock syncing in progress")
-        elif freshness == "UNCONFIRMED_HISTORICAL":
-            available = ", stoc nesincronizat" if romanian else (", stock en direct non synchronisé" if french else ", live stock unconfirmed")
         else:
             available = ", stoc direct neconfirmat" if romanian else (", stock direct non confirmé" if french else ", live stock unconfirmed")
         spoken.append(f"{name}, {price_text}{available}")
@@ -178,9 +176,9 @@ def resolve_direct_voice_answer(
     *,
     company_id: UUID,
     transcript: str,
-    authenticated_staff: bool = False,
-    staff_role: str | None = None,
-    locale: str = "en",
+    authenticated_staff: bool,
+    staff_role: str | None,
+    locale: str,
 ) -> str | None:
     """Return a spoken answer, or None when Central AI should handle the turn."""
     if db is None:
