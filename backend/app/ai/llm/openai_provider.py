@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
+from typing import Any
 
 from backend.app.ai.llm.base import LLMProvider
 from backend.app.ai.llm.exceptions import LLMProviderError
@@ -138,7 +139,7 @@ class OpenAIProvider(LLMProvider):
         messages: list[LLMMessage],
         tools: list[ToolDefinition],
     ) -> LLMToolResponse:
-        openai_messages = [{"role": "system", "content": system_instruction}]
+        openai_messages: list[dict[str, Any]] = [{"role": "system", "content": system_instruction}]
         for message in messages:
             if message.role == "tool":
                 openai_messages.append(
