@@ -958,4 +958,5 @@ async def test_telnyx_media_bridge_automatic_midcall_reconnect():
     # Verify reconnect was called automatically
     mock_adapter.reconnect.assert_awaited()
     assert bridge.telemetry.get("reconnect_triggered") is True
-    assert bridge.telemetry.get("reconnect_attempts") >= 1
+    reconnect_attempts = bridge.telemetry.get("reconnect_attempts")
+    assert isinstance(reconnect_attempts, int) and reconnect_attempts >= 1
