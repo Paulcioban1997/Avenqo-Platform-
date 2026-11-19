@@ -45,6 +45,11 @@ VOICE_NATIVE_TOOLS: frozenset[str] = frozenset({
     "request_caller_verification",
     "request_pin_authentication",
     "verify_caller",
+    # Avenqo AI Employee Performance Coach tools (authenticated staff only)
+    "get_my_daily_briefing",
+    "get_my_tasks",
+    "mark_my_task_completed",
+    "get_coaching_advice",
 })
 
 VOICE_WRITE_TOOLS: frozenset[str] = frozenset({
@@ -53,6 +58,7 @@ VOICE_WRITE_TOOLS: frozenset[str] = frozenset({
     "cancel_appointment",
     "book_appointment",
     "reschedule_appointment",
+    "mark_my_task_completed",
 })
 
 # Orchestrator aliases used by Retell, mapped onto the same CRM actions.

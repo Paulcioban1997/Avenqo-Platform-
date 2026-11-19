@@ -38,6 +38,12 @@ from backend.app.ai.tools.business.document_tools import (
     SearchContractsTool,
     SearchDocumentsTool,
 )
+from backend.app.ai.tools.business.coach_tools import (
+    GetMyDailyBriefingTool,
+    GetMyTasksTool,
+    MarkMyTaskCompletedTool,
+    GetCoachingAdviceTool,
+)
 from backend.app.ai.tools.business.marketing_tools import DraftMarketingCampaignTool
 from backend.app.ai.tools.business.memory_tools import (
     SaveEnterpriseMemoryTool,
@@ -180,6 +186,11 @@ def build_business_tool_registry(
     registry.register(GetTradingAssetQuoteTool(session))
     registry.register(GetTradingPredictionsTool(session))
     registry.register(GetTradingPortfolioRiskTool(session))
+    # Avenqo AI Employee Performance Coach Tools
+    registry.register(GetMyDailyBriefingTool(session))
+    registry.register(GetMyTasksTool(session))
+    registry.register(MarkMyTaskCompletedTool(session))
+    registry.register(GetCoachingAdviceTool(session))
     return registry
 
 

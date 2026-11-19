@@ -178,7 +178,7 @@ def voice_speech_name(config) -> str:
     if not last.isalpha() or not (2 <= len(last) <= 3) or last.casefold() in _FR_SHORT_PARTICLES:
         return spoken
     if last.casefold() in {"ero", "éro"}:
-        return f"{' '.join(parts[:-1])} Héros"
+        return f"{' '.join(parts[:-1])} Éro"
     return f"{' '.join(parts[:-1])}, {last}"
 
 

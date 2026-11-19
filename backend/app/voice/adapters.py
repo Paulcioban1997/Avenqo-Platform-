@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import base64
+import logging
 from typing import Any, AsyncIterator, Protocol, cast
 
 from openai import AsyncOpenAI
 
 from backend.app.core.locale_catalog import locale_info
+
+logger = logging.getLogger("avenqo.voice.adapters")
 
 
 class SpeechToTextAdapter(Protocol):
@@ -139,8 +142,18 @@ class OpenAIRealtimeAudioAdapter:
         if not self._config.api_key or not self._model:
             raise ExternalVoiceConfigurationRequired("OPENAI_API_KEY and VOICE_REALTIME_MODEL are required")
         client = AsyncOpenAI(api_key=self._config.api_key, base_url=self._config.base_url)
-        self._manager = client.realtime.connect(model=self._model)
-        self._connection = await self._manager.__aenter__()
+        try:
+            self._manager = client.realtime.connect(model=self._model)
+            self._connection = await self._manager.__aenter__()
+        except Exception as exc:
+            # Fallback transparent et vérifié : gpt-live-1 -> gpt-realtime-2.1
+            if self._model == "gpt-live-1":
+                logger.warning("Primary voice model gpt-live-1 unavailable (%s); falling back to gpt-realtime-2.1", exc)
+                self._model = "gpt-realtime-2.1"
+                self._manager = client.realtime.connect(model=self._model)
+                self._connection = await self._manager.__aenter__()
+            else:
+                raise
         is_preview = "preview" in (self._model or "").lower()
         noise = None if self._config.input_noise_reduction == "off" else {"type": self._config.input_noise_reduction}
         if is_preview:

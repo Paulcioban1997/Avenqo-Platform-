@@ -303,6 +303,7 @@ _RE_PRIVATE_DATA = re.compile(
     r"|\b(cifra de afaceri|venituri(le)?|vanzari(le)? de astazi|comenzi interne|facturi|contabilitate|cati bani|nivelul stocului|stoc ramas)\b"
     r"|\b(je suis|i am|yo soy|sunt)\b.{0,15}\b(proprietaire|owner|patron|boss|manager|employe|employee|due[nñ]o|gerente|sef|proprietar)\b"
     r"|\b(mode|espace|session|connexion|portail|acceso|spatiu)\b.{0,20}\b(proprietaire|owner|patron|boss|manager|employe|employee|gestion|direction|due[nñ]o|gerente|conducere)\b"
+    r"|\b(mon shift|mes taches|mes priorites|briefing employe|coaching employe|my shift|my tasks|my priorities|employee briefing|mis tareas|mi turno|mi coaching|sarcinile mele|tura mea)\b"
 )
 _RE_MANAGEMENT_CONTACT = re.compile(
     r"\b(proprietaire|owner|patron|boss|manager|direction|due[nñ]o|jefe|gerente|encargado|proprietar|sef|conducere|conducerea|director|directorul)\b"
@@ -2056,6 +2057,7 @@ async def telnyx_media_socket(
             authenticated_staff=principal_id is not None,
             staff_role=str(getattr(current_user, "role", "") or "") if principal_id is not None else None,
             locale=current_call.locale or locale,
+            user_id=current_user.id if principal_id is not None else None,
         )
         if direct_answer:
             return {"status": "success", "answer": direct_answer}

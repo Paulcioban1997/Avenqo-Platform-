@@ -174,6 +174,9 @@ def build_personality_system_prompt(
     allow_natural_interruptions: bool = True,
     extra_instructions: str = "",
     custom_pronunciation: str | None = None,
+    is_authenticated_staff: bool = False,
+    staff_name: str | None = None,
+    staff_role: str | None = None,
 ) -> str:
     lang_name = locale_info(locale).english_name
     preset_descriptions = {
@@ -210,10 +213,10 @@ def build_personality_system_prompt(
             f"Always pronounce it strictly as '{pron}' (never pronounce with a 'Z' sound or liaison). "
         )
     elif "ero" in company_name.lower() or "éro" in company_name.lower():
-        spoken_brand = "Produits Héros"
+        spoken_brand = "Produits Éro"
         pronunciation_note = (
-            "PRONUNCIATION INSTRUCTION: Pronounce 'Produits Ero' as 'Produits Héros' (with aspirate H, rhymes with 'héros'), "
-            "never with a 'Z' sound ('Zéro' or 'Zero' is strictly prohibited). "
+            "PRONUNCIATION INSTRUCTION: Pronounce 'Produits Ero' phonetically as 'Produits Éro' with a distinct 'É' (never 'Produits Héros', "
+            "and never with a 'Z' sound like 'Zéro' or 'Zero', which is strictly prohibited). "
         )
     prompt = (
         f"You represent the company '{company_name}'. Spoken name: '{spoken_brand}'. "
@@ -231,6 +234,16 @@ def build_personality_system_prompt(
         "politely invite the caller to visit the physical store or official online website for product holds or purchases, "
         "while happily answering catalog, price, and stock questions or booking CRM service appointments ('create_appointment')."
     )
+    if is_authenticated_staff:
+        staff_display = f"{staff_name} ({staff_role})" if staff_role else (staff_name or "employé")
+        prompt += (
+            f"\n\nAUTHENTICATED STAFF SESSION — AVENQO AI EMPLOYEE PERFORMANCE COACH (Avenqo Performance Coach AI):\n"
+            f"The caller is verified employee '{staff_display}'. "
+            "You act as their personal professional coach available 24/7. "
+            "Provide clear, actionable daily shift briefings ('get_my_daily_briefing'), list their real assigned tasks ('get_my_tasks'), "
+            "mark completed tasks when requested ('mark_my_task_completed'), and offer tailored professional advice ('get_coaching_advice'). "
+            "Tone: motivating, structured, respectful, supportive, and focused on operational efficiency and ethical excellence."
+        )
     if extra_instructions:
         prompt = f"{prompt}\n{extra_instructions.strip()}"
     return prompt

@@ -280,7 +280,12 @@ class Settings(BaseSettings):
     voice_provisioning_worker_enabled: bool = Field(default=False, alias="VOICE_PROVISIONING_WORKER_ENABLED")
     voice_certified_realtime_locales: list[str] = Field(default_factory=list, alias="VOICE_CERTIFIED_REALTIME_LOCALES")
     voice_approved_realtime_models: list[str] = Field(default_factory=list, alias="VOICE_APPROVED_REALTIME_MODELS")
-    voice_realtime_model: str | None = Field(default="gpt-realtime-2.1", alias="VOICE_REALTIME_MODEL")
+    voice_realtime_model: str | None = Field(default="gpt-live-1", alias="VOICE_REALTIME_MODEL")
+    voice_realtime_fallback_model: str = Field(default="gpt-realtime-2.1", alias="VOICE_REALTIME_FALLBACK_MODEL")
+    voice_reasoning_model: str = Field(default="gpt-6.2-astra", alias="VOICE_REASONING_MODEL")
+    voice_reasoning_effort: str = Field(default="medium", alias="VOICE_REASONING_EFFORT")
+    voice_standard_reasoning_model: str = Field(default="gpt-6.2-sol", alias="VOICE_STANDARD_REASONING_MODEL")
+    voice_ai_coach_enabled: bool = Field(default=True, alias="VOICE_AI_COACH_ENABLED")
     gemini_live_model: str = Field(default="gemini-3.8-live", alias="GEMINI_LIVE_MODEL")
     gemini_live_voice: str = Field(default="Aoede", alias="GEMINI_LIVE_VOICE")
     gemini_live_extended_thinking_model: str = Field(

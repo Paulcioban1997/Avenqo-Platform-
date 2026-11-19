@@ -71,10 +71,17 @@ class OpenAIProvider(LLMProvider):
 
     async def generate(self, *, system_instruction: str, prompt: str) -> LLMGeneration:
         try:
-            response = await self._client().chat.completions.create(
-                model=self._model, temperature=self._temperature, max_tokens=self._max_tokens,
-                messages=[{"role": "system", "content": system_instruction}, {"role": "user", "content": prompt}],
-            )
+            req_kwargs: dict[str, Any] = {
+                "model": self._model,
+                "messages": [{"role": "system", "content": system_instruction}, {"role": "user", "content": prompt}],
+            }
+            if "astra" in (self._model or "").lower() or "reasoning" in (self._model or "").lower():
+                req_kwargs["reasoning_effort"] = "medium"
+            else:
+                req_kwargs["temperature"] = self._temperature
+                req_kwargs["max_tokens"] = self._max_tokens
+
+            response = await self._client().chat.completions.create(**req_kwargs)
             usage = _normalize_openai_usage(response, self._model)
             return LLMGeneration(
                 response.choices[0].message.content or "",
@@ -166,13 +173,18 @@ class OpenAIProvider(LLMProvider):
         ]
 
         try:
-            response = await self._client().chat.completions.create(
-                model=self._model,
-                temperature=self._temperature,
-                max_tokens=self._max_tokens,
-                messages=openai_messages,
-                tools=openai_tools or None,
-            )
+            req_kwargs: dict[str, Any] = {
+                "model": self._model,
+                "messages": openai_messages,
+                "tools": openai_tools or None,
+            }
+            if "astra" in (self._model or "").lower() or "reasoning" in (self._model or "").lower():
+                req_kwargs["reasoning_effort"] = "medium"
+            else:
+                req_kwargs["temperature"] = self._temperature
+                req_kwargs["max_tokens"] = self._max_tokens
+
+            response = await self._client().chat.completions.create(**req_kwargs)
             choice = response.choices[0].message
             tool_calls = tuple(
                 ToolCall(id=call.id, name=call.function.name, arguments=json.loads(call.function.arguments or "{}"))
