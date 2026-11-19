@@ -114,6 +114,7 @@ class VoiceCallerAuth:
         validate_voice_pin(pin)
         principal_uuid = principal_id if isinstance(principal_id, UUID) else UUID(str(principal_id))
         company_uuid = tenant.company_id if isinstance(tenant.company_id, UUID) else UUID(str(tenant.company_id))
+        membership: CompanyMembership | None = None
         if principal_type == "USER":
             principal = self.db.scalar(select(User).where(User.id == principal_uuid, User.company_id == company_uuid, User.is_active.is_(True)))
             membership = self.db.scalar(select(CompanyMembership).where(CompanyMembership.user_id == principal_uuid, CompanyMembership.company_id == company_uuid, CompanyMembership.is_active.is_(True)))
@@ -152,6 +153,13 @@ class VoiceCallerAuth:
             self.db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
                 {"lock_key": f"voice_pin:{company_uuid}:{phone}"})
         # Strict protection: verify that this phone is not registered to another active user in the tenant
+        is_owner = False
+        if isinstance(principal, User):
+            if getattr(principal, "role", None) == UserRole.OWNER:
+                is_owner = True
+            elif membership is not None and membership.role == UserRole.OWNER:
+                is_owner = True
+
         other_active_user = self.db.scalar(
             select(User).where(
                 User.company_id == company_uuid,
@@ -161,7 +169,13 @@ class VoiceCallerAuth:
             )
         )
         if other_active_user is not None:
-            raise PermissionError("Ce numéro de téléphone est déjà associé à un autre collaborateur actif de l'entreprise.")
+            other_is_owner = getattr(other_active_user, "role", None) == UserRole.OWNER
+            if is_owner and not other_is_owner:
+                other_active_user.phone = None
+                self.db.flush()
+            else:
+                raise PermissionError("Ce numéro de téléphone est déjà associé à un autre collaborateur actif de l'entreprise.")
+
         shared = self.db.scalar(
             select(VoiceCallerCredential).where(
                 VoiceCallerCredential.company_id == company_uuid,
@@ -180,31 +194,33 @@ class VoiceCallerAuth:
                 )
             )
 
-            # P0 Security Rule: NEVER automatically steal or reassign the phone number of an ACTIVE user,
-            # even if the requester is OWNER or ADMIN.
+            # P0 Security Rule: NEVER allow non-owners to reassign the phone number of an ACTIVE user.
+            # The tenant OWNER with verified reauthentication may claim a number from a non-owner employee.
+            other_is_owner = other_user is not None and getattr(other_user, "role", None) == UserRole.OWNER
             if other_user is not None and str(other_user.id) != str(principal_uuid) and other_user.is_active:
-                raise PermissionError("Ce numéro de téléphone est déjà associé à un autre collaborateur actif de l'entreprise.")
+                if not (is_owner and not other_is_owner):
+                    raise PermissionError("Ce numéro de téléphone est déjà associé à un autre collaborateur actif de l'entreprise.")
 
             # If the phone was assigned to an inactive/deactivated account, only OWNER or ADMIN may reassign it
-            is_owner_or_admin = False
+            is_owner_or_admin = is_owner
             if isinstance(principal, User):
                 if getattr(principal, "role", None) in {UserRole.OWNER, UserRole.ADMIN}:
                     is_owner_or_admin = True
                 else:
-                    membership = self.db.scalar(
+                    user_membership = membership or self.db.scalar(
                         select(CompanyMembership).where(
                             CompanyMembership.company_id == company_uuid,
                             CompanyMembership.user_id == principal_uuid,
                             CompanyMembership.is_active.is_(True),
                         )
                     )
-                    if membership is not None and membership.role in {UserRole.OWNER, UserRole.ADMIN}:
+                    if user_membership is not None and user_membership.role in {UserRole.OWNER, UserRole.ADMIN}:
                         is_owner_or_admin = True
 
             if not is_owner_or_admin:
                 raise PermissionError("Seul un administrateur peut réattribuer le numéro d'un compte inactif.")
 
-            # Authorized reassignment from inactive account:
+            # Authorized reassignment from inactive account or owner reclaim:
             # 1. Revoke any active voice sessions for the previous holder
             now = datetime.now(timezone.utc)
             for old_session in self.db.scalars(
@@ -217,9 +233,10 @@ class VoiceCallerAuth:
                 old_session.revoked_at = now
 
             # 2. Record explicit audit log of the reassignment
+            action_name = "voice_nip_reassigned_by_owner" if (other_user and other_user.is_active) else "voice_nip_reassigned_from_inactive"
             AuditLogService(self.db).record(
                 actor_user_id=principal_uuid,
-                action="voice_nip_reassigned_from_inactive",
+                action=action_name,
                 target_type="voice_credential",
                 target_id=str(shared.id),
                 company_id=company_uuid,
