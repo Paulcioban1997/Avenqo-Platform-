@@ -157,14 +157,14 @@ _DEFAULT_RATES: dict[tuple[str, str], dict[str, str]] = {
     },
     ("openai", "gpt-6.2-astra"): {
         "input_cost_per_million_usd": "8.00",
-        "cached_input_cost_per_million_usd": "2.00",
+        "cached_input_cost_per_million_usd": "4.00",
         "output_cost_per_million_usd": "40.00",
         "tool_call_cost_usd": "0",
     },
     ("openai", "gpt-6.2-sol"): {
         "input_cost_per_million_usd": "2.00",
-        "cached_input_cost_per_million_usd": "0.50",
-        "output_cost_per_million_usd": "8.00",
+        "cached_input_cost_per_million_usd": "1.00",
+        "output_cost_per_million_usd": "10.00",
         "tool_call_cost_usd": "0",
     },
     ("anthropic", "claude-haiku-5-5"): {
@@ -350,11 +350,11 @@ _KNOWN_MODEL_PROFILES: dict[tuple[str, str], dict[str, object]] = {
         "pricing_effective_from": "2026-11-01",
     },
     ("openai", "gpt-6.2-sol"): {
-        "capabilities": ["text", "tool_calling", "structured_output", "reasoning", "long_context", "vision"],
+        "capabilities": ["text", "tool_calling", "structured_output", "reasoning", "long_context", "vision", "fast_response"],
         "context_window": 1_048_576,
         "max_output_tokens": 32_768,
         "quality_tier": 3,
-        "speed_tier": 2,
+        "speed_tier": 1,
         "task_suitability": ["business_question", "business_reasoning", "tool_orchestration"],
         "pricing_source": "https://openai.com/api/",
         "pricing_version": "gpt-6.2-sol-standard-2026-11",

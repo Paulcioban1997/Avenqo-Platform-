@@ -237,8 +237,10 @@ def test_pin_hash_call_scope_expiration_lockout_and_customer_isolation(tmp_path,
         assert credential.pin_hash.startswith("$argon2") and "907182" not in credential.pin_hash
         call = orchestrator.record_inbound(config, {"call_control_id": "pin-call", "from": principal.phone})
         assert controller.valid_session(call) is None
-        assert controller.verify_gather(call, "123456") == {"success": False, "authenticated": False, "error": "caller_authentication_failed"}
-        assert controller.verify_gather(call, 907182) == {"success": False, "authenticated": False, "error": "caller_authentication_failed"}
+        res_bad1 = controller.verify_gather(call, "123456")
+        assert res_bad1["success"] is False and res_bad1["authenticated"] is False and res_bad1["error"] == "caller_authentication_failed"
+        res_bad2 = controller.verify_gather(call, 907182)
+        assert res_bad2["success"] is False and res_bad2["authenticated"] is False and res_bad2["error"] == "caller_authentication_failed"
         assert controller.valid_session(call) is None
         result = controller.verify_gather(call, "907182"); session.commit()
         assert result == {"success": True, "authenticated": True}

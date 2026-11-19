@@ -34,13 +34,13 @@ def voice_pricing_catalog(rate_card: dict[str, dict[str, object]] | None = None)
         },
         "gpt-6.2-astra": {
             "input_cost_per_million_usd": "8.00",
-            "cached_input_cost_per_million_usd": "2.00",
+            "cached_input_cost_per_million_usd": "4.00",
             "output_cost_per_million_usd": "40.00",
         },
         "gpt-6.2-sol": {
             "input_cost_per_million_usd": "2.00",
-            "cached_input_cost_per_million_usd": "0.50",
-            "output_cost_per_million_usd": "8.00",
+            "cached_input_cost_per_million_usd": "1.00",
+            "output_cost_per_million_usd": "10.00",
         },
         "gpt-realtime-2.1": {
             "input_cost_per_million_usd": "4",

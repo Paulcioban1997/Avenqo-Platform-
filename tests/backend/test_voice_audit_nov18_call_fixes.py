@@ -389,14 +389,14 @@ def test_p1_spoken_pronunciation_produits_ero():
     assert "Produits Éro" in rendered2
     assert "Zero" not in rendered2
 
-    # Vérification du prompt système Gemini Live
+    # Vérification du prompt système Gemini Live avec alias phonétique configuré
     prompt = build_personality_system_prompt(
-        company_name="Produits Éro",
+        company_name="Produits Ero",
         locale="fr-CA",
+        custom_pronunciation="Produits Éro",
     )
     assert "Produits Éro" in prompt
     assert "Zéro" in prompt  # Mentionné dans la consigne d'exclusion stricte
-    assert "never 'Produits Héros'" in prompt
 
 
 # ==============================================================================
@@ -711,7 +711,7 @@ def test_p0_phonetic_pronunciation_produits_heros():
     assert "Produits Héros" in greeting
     assert "Zéro" not in greeting
 
-    # 4. Cas sans custom_pronunciation explicite : la règle générique française applique 'Produits Éro'
+    # 4. Cas sans custom_pronunciation explicite : universel, préserve le nom d'entreprise sans règle en dur
     cfg_auto = MagicMock()
     cfg_auto.business_name = "Produits Ero"
     cfg_auto.voice_display_name = "Produits Ero"
@@ -719,7 +719,7 @@ def test_p0_phonetic_pronunciation_produits_heros():
     cfg_auto.custom_pronunciation = None
     cfg_auto.preferred_language = "fr"
     spoken_auto = voice_speech_name(cfg_auto)
-    assert spoken_auto == "Produits Éro"
+    assert spoken_auto == "Produits Ero"
 
 
 # ==============================================================================

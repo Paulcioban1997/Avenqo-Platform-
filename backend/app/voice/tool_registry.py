@@ -44,7 +44,8 @@ class VoiceToolRegistryService:
             granted_tools = granted_voice_tools
 
         write_allowed = "crm:appointments:write" in perms
-        if not write_allowed and tenant.user_id is not None:
+        membership = None
+        if tenant.user_id is not None:
             membership = self._session.scalar(
                 select(CompanyMembership).where(
                     CompanyMembership.user_id == tenant.user_id,
@@ -53,7 +54,7 @@ class VoiceToolRegistryService:
                 )
             )
             if membership is not None:
-                write_allowed = "crm:appointments:write" in permissions_for(membership.role)
+                write_allowed = write_allowed or ("crm:appointments:write" in permissions_for(membership.role))
 
         from backend.app.services.company_intelligence_service import CompanyIntelligenceService, BOOKING_TOOLS
         intel_profile = CompanyIntelligenceService(self._session).get_profile(tenant.company_id)
@@ -70,14 +71,54 @@ class VoiceToolRegistryService:
             owners["get_business_info"] = "voice"
         elif tenant.user_id is not None:
             # Avenqo AI Employee Performance Coach tools for authenticated staff
-            for coach_tool in (
-                "get_my_daily_briefing",
-                "get_my_tasks",
-                "mark_my_task_completed",
-                "get_coaching_advice",
-            ):
-                names.add(coach_tool)
-                owners[coach_tool] = "coach"
+            from backend.app.config.settings import get_settings
+            from backend.app.models.voice import VoiceBusinessConfig
+            from backend.app.models.company import Company
+            from backend.app.models.user import User
+            from backend.app.models.base import CompanyStatus, UserRole
+
+            coach_globally_enabled = getattr(get_settings(), "voice_ai_coach_enabled", True)
+            voice_cfg = self._session.scalar(
+                select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == tenant.company_id)
+            )
+            coach_tenant_enabled = getattr(voice_cfg, "ai_coach_enabled", True) if voice_cfg is not None else True
+            company_obj = self._session.get(Company, tenant.company_id)
+            company_status_str = str(getattr(company_obj, "status", "")).lower()
+            company_active = company_obj is not None and (
+                company_status_str in {"active", "companystatus.active"}
+                or getattr(company_obj, "status", None) == CompanyStatus.ACTIVE
+            )
+            user_obj = self._session.get(User, tenant.user_id)
+            user_active = user_obj is not None and getattr(user_obj, "is_active", True)
+            membership_active = (
+                membership.is_active
+                if membership is not None
+                else (user_obj is not None and user_obj.company_id == tenant.company_id)
+            )
+
+            if coach_globally_enabled and coach_tenant_enabled and company_active and user_active and membership_active:
+                for coach_read_tool in (
+                    "get_my_daily_briefing",
+                    "get_my_tasks",
+                    "get_coaching_advice",
+                ):
+                    names.add(coach_read_tool)
+                    owners[coach_read_tool] = "coach"
+
+                # Check write permission for mark_my_task_completed
+                user_role = getattr(membership, "role", None) or getattr(user_obj, "role", None)
+                user_perms = set(perms or ())
+                if user_role:
+                    user_perms.update(permissions_for(user_role))
+                has_task_write = (
+                    "tasks:own" in user_perms
+                    or "tasks:write" in user_perms
+                    or "workspace:tasks:write" in user_perms
+                    or "crm:appointments:write" in user_perms
+                )
+                if has_task_write and user_role != UserRole.VIEWER:
+                    names.add("mark_my_task_completed")
+                    owners["mark_my_task_completed"] = "coach"
         for defn in self._agents.list_authorized(active):
             if defn.category in {"platform", "platform_support"} or defn.slug in {
                 "tenant_capabilities",

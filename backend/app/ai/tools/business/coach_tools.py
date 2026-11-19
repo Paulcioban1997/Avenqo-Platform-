@@ -2,19 +2,86 @@
 
 Provides authenticated telephone callers with their personal daily shift briefing,
 task progress inspection, task completion mutation, and role-adapted coaching advice.
-Strictly requires authenticated staff identity (fail-closed if anonymous).
+Strictly requires authenticated staff identity (fail-closed if anonymous), active
+company subscription, active employee membership, and RBAC write permissions.
 """
 
 from __future__ import annotations
 
 from typing import Any
 from pydantic import Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.ai.tools.base import AITool, ToolArguments
 from backend.app.ai.tools.contracts import ToolExecutionContext, ToolResult
+from backend.app.config.settings import get_settings
+from backend.app.models.base import UserRole
+from backend.app.models.company import Company
+from backend.app.models.company_membership import CompanyMembership
 from backend.app.models.user import User
+from backend.app.models.voice import VoiceBusinessConfig
 from backend.app.services.employee_coach_service import EmployeeCoachService
+
+
+def _verify_coach_access(
+    session: Session,
+    context: ToolExecutionContext,
+    *,
+    write: bool = False,
+) -> tuple[bool, str | None, User | None]:
+    """Strict authorization gate for coach tools: tenant, user, company status, active membership, RBAC."""
+    if not context.tenant.user_id:
+        return False, "Le coaching employé requiert une authentification téléphonique préalable par NIP.", None
+
+    if not getattr(get_settings(), "voice_ai_coach_enabled", True):
+        return False, "Le module Performance Coach est désactivé sur la plateforme.", None
+
+    voice_cfg = session.scalar(
+        select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == context.tenant.company_id)
+    )
+    if voice_cfg is not None and not getattr(voice_cfg, "ai_coach_enabled", True):
+        return False, "Le coaching employé est désactivé pour cette entreprise.", None
+
+    company = session.get(Company, context.tenant.company_id)
+    company_status_str = str(getattr(company, "status", "")).lower()
+    if company is None or company_status_str not in {"active", "companystatus.active"}:
+        return False, "Entreprise introuvable ou abonnement inactif.", None
+
+    actor = session.get(User, context.tenant.user_id)
+    if actor is None or actor.company_id != context.tenant.company_id:
+        return False, "Collaborateur non trouvé ou non autorisé pour cette entreprise.", None
+
+    if not getattr(actor, "is_active", True):
+        return False, "Le compte de ce collaborateur est inactif ou désactivé.", None
+
+    membership = session.scalar(
+        select(CompanyMembership).where(
+            CompanyMembership.user_id == actor.id,
+            CompanyMembership.company_id == company.id,
+        )
+    )
+    if membership is not None and not getattr(membership, "is_active", True):
+        return False, "Collaborateur désactivé ou suspendu dans cette entreprise.", None
+    if membership is None and actor.company_id != company.id:
+        return False, "Collaborateur sans appartenance active à cette entreprise.", None
+
+    if write:
+        user_role = getattr(membership, "role", None) or getattr(actor, "role", None)
+        if user_role == UserRole.VIEWER:
+            return False, "Les comptes en lecture seule ne sont pas autorisés à modifier des tâches.", None
+        perms = set(context.permissions or ())
+        has_perm = (
+            "tasks:own" in perms
+            or "tasks:write" in perms
+            or "workspace:tasks:write" in perms
+            or "crm:appointments:write" in perms
+            or user_role in {UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER}
+        )
+        if not has_perm:
+            return False, "Permission insuffisante pour modifier des tâches.", None
+
+    return True, None, actor
 
 
 class EmptyCoachArgs(ToolArguments):
@@ -29,6 +96,10 @@ class CompleteTaskArgs(ToolArguments):
     task_identifier: str = Field(
         ...,
         description="Identifiant UUID de la tâche ou mot-clé caractéristique de son titre",
+    )
+    confirmed: bool = Field(
+        default=False,
+        description="Doit être mis à True UNIQUEMENT après confirmation explicite de l'employé au téléphone",
     )
 
 
@@ -56,18 +127,9 @@ class GetMyDailyBriefingTool(AITool):
         self._session = session
 
     async def run(self, context: ToolExecutionContext, arguments: EmptyCoachArgs) -> ToolResult:
-        if not context.tenant.user_id:
-            return ToolResult(
-                success=False,
-                error="Le coaching employé requiert une authentification téléphonique par NIP préalable.",
-            )
-
-        actor = self._session.get(User, context.tenant.user_id)
-        if actor is None or actor.company_id != context.tenant.company_id:
-            return ToolResult(
-                success=False,
-                error="Collaborateur non trouvé ou non autorisé pour cette entreprise.",
-            )
+        ok, err, actor = _verify_coach_access(self._session, context, write=False)
+        if not ok or actor is None:
+            return ToolResult(success=False, error=err or "unauthorized")
 
         coach = EmployeeCoachService(self._session)
         locale = getattr(context, "locale", "fr-CA") or "fr-CA"
@@ -96,15 +158,9 @@ class GetMyTasksTool(AITool):
         self._session = session
 
     async def run(self, context: ToolExecutionContext, arguments: TaskStatusArgs) -> ToolResult:
-        if not context.tenant.user_id:
-            return ToolResult(
-                success=False,
-                error="La consultation des tâches internes requiert une authentification préalable par NIP.",
-            )
-
-        actor = self._session.get(User, context.tenant.user_id)
-        if actor is None or actor.company_id != context.tenant.company_id:
-            return ToolResult(success=False, error="unauthorized")
+        ok, err, actor = _verify_coach_access(self._session, context, write=False)
+        if not ok or actor is None:
+            return ToolResult(success=False, error=err or "unauthorized")
 
         coach = EmployeeCoachService(self._session)
         tasks = coach.get_my_tasks(actor, status=arguments.status)
@@ -119,36 +175,42 @@ class MarkMyTaskCompletedTool(AITool):
     name = "mark_my_task_completed"
     description = (
         "Marque comme terminée une tâche assignée au collaborateur authentifié, "
-        "par son identifiant UUID ou un mot-clé précis de son titre."
+        "par son identifiant UUID ou un mot-clé précis de son titre, avec confirmation explicite requise."
     )
     input_schema = CompleteTaskArgs
-    required_permissions = ("ai:use",)
+    required_permissions = ("ai:use", "tasks:own")
     read_only = False
     mutates = True
+    mutation_capabilities = frozenset({"workspace:tasks:write", "tasks:own"})
+    confirmation_policy = "explicit_user_confirmation"
+    confirmation_field = "confirmed"
     agent_ids = frozenset({"voice", "coach", "central"})
 
     def __init__(self, session: Session) -> None:
         self._session = session
 
     async def run(self, context: ToolExecutionContext, arguments: CompleteTaskArgs) -> ToolResult:
-        if not context.tenant.user_id:
-            return ToolResult(
-                success=False,
-                error="La modification des tâches internes requiert une authentification par NIP.",
-            )
-
-        actor = self._session.get(User, context.tenant.user_id)
-        if actor is None or actor.company_id != context.tenant.company_id:
-            return ToolResult(success=False, error="unauthorized")
+        ok, err, actor = _verify_coach_access(self._session, context, write=True)
+        if not ok or actor is None:
+            return ToolResult(success=False, error=err or "unauthorized")
 
         coach = EmployeeCoachService(self._session)
-        result = coach.complete_task(actor, arguments.task_identifier)
+        result = coach.complete_task(actor, arguments.task_identifier, confirmed=arguments.confirmed)
+
+        if result.get("status") in {"ambiguous", "requires_confirmation"}:
+            return ToolResult(
+                success=False,
+                error=result.get("status"),
+                data=result,
+                metadata={"message": result.get("message", "")},
+            )
 
         if result.get("status") == "error":
             return ToolResult(
                 success=False,
-                error=result.get("message") or result.get("error") or "mutation_failed",
+                error=result.get("error", "mutation_failed"),
                 data=result,
+                metadata={"message": result.get("message", "")},
             )
 
         return ToolResult(
@@ -174,15 +236,9 @@ class GetCoachingAdviceTool(AITool):
         self._session = session
 
     async def run(self, context: ToolExecutionContext, arguments: CoachingAdviceArgs) -> ToolResult:
-        if not context.tenant.user_id:
-            return ToolResult(
-                success=False,
-                error="Les conseils de coaching personnalisés requièrent une authentification préalable par NIP.",
-            )
-
-        actor = self._session.get(User, context.tenant.user_id)
-        if actor is None or actor.company_id != context.tenant.company_id:
-            return ToolResult(success=False, error="unauthorized")
+        ok, err, actor = _verify_coach_access(self._session, context, write=False)
+        if not ok or actor is None:
+            return ToolResult(success=False, error=err or "unauthorized")
 
         coach = EmployeeCoachService(self._session)
         locale = getattr(context, "locale", "fr-CA") or "fr-CA"
