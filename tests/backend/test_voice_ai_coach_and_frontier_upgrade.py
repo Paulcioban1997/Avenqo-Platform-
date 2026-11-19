@@ -258,7 +258,7 @@ def test_employee_coach_task_mutation(tmp_path):
         assert my_tasks[0]["title"] == "Inspecter le matériel reçu ce matin"
 
         # 1. Complete task by keyword without confirmation -> requires confirmation with server token
-        res_conf = coach.complete_task(user, "matériel", confirmed=False)
+        res_conf = coach.complete_task(user, "matériel", confirmed=False, session_id="call-sess-001", turn_id=1)
         assert res_conf["status"] == "requires_confirmation"
         assert "confirmez-vous" in res_conf["message"].lower()
         token = res_conf.get("confirmation_token")
@@ -269,7 +269,7 @@ def test_employee_coach_task_mutation(tmp_path):
         assert t_row is not None and t_row.status == "open"
 
         # 2. Try to complete with confirmed=True but without server token -> rejected with requires_confirmation!
-        res_unproven = coach.complete_task(user, "matériel", confirmed=True, confirmation_token="fake-unissued-token")
+        res_unproven = coach.complete_task(user, "matériel", confirmed=True, confirmation_token="fake-unissued-token", session_id="call-sess-001", turn_id=2)
         assert res_unproven["status"] == "requires_confirmation"
         token2 = res_unproven.get("confirmation_token")
         assert token2 is not None
@@ -278,8 +278,8 @@ def test_employee_coach_task_mutation(tmp_path):
         t_row2 = session.get(EmployeeTask, task.id)
         assert t_row2 is not None and t_row2.status == "open"
 
-        # 3. Complete task with explicit confirmation and genuine server token -> success
-        res = coach.complete_task(user, "matériel", confirmed=True, confirmation_token=token2)
+        # 3. Complete task with explicit confirmation and genuine server token in subsequent turn -> success
+        res = coach.complete_task(user, "matériel", confirmed=True, confirmation_token=token2, session_id="call-sess-001", turn_id=3)
         assert res["status"] == "success"
         assert res["status_after"] == "done"
 
@@ -729,14 +729,14 @@ def test_coach_task_ambiguity_gating_and_audit(tmp_path):
         assert t2_check is not None and t2_check.status == "open"
 
         # Specific keyword "contrat" matches only task1 -> requires confirmation
-        res_one = coach.complete_task(user, "contrat", confirmed=False)
+        res_one = coach.complete_task(user, "contrat", confirmed=False, session_id="call-sess-disam", turn_id=1)
         assert res_one["status"] == "requires_confirmation"
         t1_after_pre = session.get(EmployeeTask, task1.id)
         assert t1_after_pre is not None and t1_after_pre.status == "open"
         token = res_one.get("confirmation_token")
 
         # Specific keyword "contrat" with confirmed=True mutates task1
-        res_done = coach.complete_task(user, "contrat", confirmed=True, confirmation_token=token)
+        res_done = coach.complete_task(user, "contrat", confirmed=True, confirmation_token=token, session_id="call-sess-disam", turn_id=2)
         assert res_done["status"] == "success"
         t1_done = session.get(EmployeeTask, task1.id)
         t2_still_open = session.get(EmployeeTask, task2.id)
@@ -989,12 +989,32 @@ async def test_employee_coach_session_id_strict_binding(tmp_path):
 
         coach = EmployeeCoachService(session)
 
-        # 1. Demande de confirmation rattachée à la session call-438
+        # 0. Test du cas None -> None (token émis sans session, confirmation sans session) -> REJET STRICT
+        pre_none = coach.complete_task(
+            user,
+            "compresseur",
+            confirmed=False,
+            session_id=None,
+        )
+        assert pre_none["status"] == "requires_confirmation"
+        token_none = pre_none["confirmation_token"]
+        assert token_none is not None
+        res_none_none = coach.complete_task(
+            user,
+            "compresseur",
+            confirmed=True,
+            confirmation_token=token_none,
+            session_id=None,
+        )
+        assert res_none_none["status"] == "requires_confirmation"
+
+        # 1. Demande de confirmation rattachée à la session call-438 et turn_id=1
         pre = coach.complete_task(
             user,
             "compresseur",
             confirmed=False,
             session_id="call-438",
+            turn_id=1,
         )
         assert pre["status"] == "requires_confirmation"
         token = pre["confirmation_token"]
@@ -1007,15 +1027,17 @@ async def test_employee_coach_session_id_strict_binding(tmp_path):
             confirmed=True,
             confirmation_token=token,
             session_id=None,
+            turn_id=2,
         )
         assert res_no_session["status"] == "requires_confirmation"
 
-        # 3. Demande à nouveau avec call-438
+        # 3. Demande à nouveau avec call-438 et turn_id=1
         pre2 = coach.complete_task(
             user,
             "compresseur",
             confirmed=False,
             session_id="call-438",
+            turn_id=1,
         )
         token2 = pre2["confirmation_token"]
 
@@ -1026,25 +1048,66 @@ async def test_employee_coach_session_id_strict_binding(tmp_path):
             confirmed=True,
             confirmation_token=token2,
             session_id="call-999",
+            turn_id=2,
         )
         assert res_wrong_session["status"] == "requires_confirmation"
 
-        # 5. Demande à nouveau avec call-438
+        # 5. Tentative sur le même tour vocal (turn_id=1 au lieu d'un tour ultérieur) -> REJET OBLIGATOIRE
+        pre_turn = coach.complete_task(
+            user,
+            "compresseur",
+            confirmed=False,
+            session_id="call-438",
+            turn_id=1,
+        )
+        token_turn = pre_turn["confirmation_token"]
+        res_same_turn = coach.complete_task(
+            user,
+            "compresseur",
+            confirmed=True,
+            confirmation_token=token_turn,
+            session_id="call-438",
+            turn_id=1,
+        )
+        assert res_same_turn["status"] == "requires_confirmation"
+
+        # 6. Tentative avec tour antérieur (turn_id=0) -> REJET OBLIGATOIRE
+        pre_past = coach.complete_task(
+            user,
+            "compresseur",
+            confirmed=False,
+            session_id="call-438",
+            turn_id=2,
+        )
+        token_past = pre_past["confirmation_token"]
+        res_past_turn = coach.complete_task(
+            user,
+            "compresseur",
+            confirmed=True,
+            confirmation_token=token_past,
+            session_id="call-438",
+            turn_id=1,
+        )
+        assert res_past_turn["status"] == "requires_confirmation"
+
+        # 7. Demande avec call-438 et turn_id=3
         pre3 = coach.complete_task(
             user,
             "compresseur",
             confirmed=False,
             session_id="call-438",
+            turn_id=3,
         )
         token3 = pre3["confirmation_token"]
 
-        # 6. Tentative avec la session exacte légitime "call-438" -> SUCCÈS
+        # 8. Tentative avec session exacte "call-438" et tour ultérieur vérifié (turn_id=4) -> SUCCÈS
         res_valid = coach.complete_task(
             user,
             "compresseur",
             confirmed=True,
             confirmation_token=token3,
             session_id="call-438",
+            turn_id=4,
         )
         assert res_valid["status"] == "success"
         assert res_valid["status_after"] == "done"

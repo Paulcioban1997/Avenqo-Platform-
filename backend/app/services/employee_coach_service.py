@@ -65,10 +65,21 @@ class EmployeeCoachService:
             return False
         expected_session = str(pending.get("session_id") or "").strip()
         provided_session = str(session_id or "").strip()
-        if expected_session and provided_session != expected_session:
+
+        # Rejet strict : un jeton sans session valide, avec session manquante, ou le cas None -> None est toujours refusé
+        if not expected_session or not provided_session or provided_session != expected_session:
             return False
-        if not expected_session and provided_session:
-            return False
+
+        # Vérification du tour vocal ultérieur : la confirmation doit provenir du tour suivant
+        issued_turn = str(pending.get("issued_turn_id") or "").strip()
+        provided_turn = str(turn_id or "").strip() if turn_id is not None else ""
+        if issued_turn and provided_turn:
+            try:
+                if int(provided_turn) <= int(issued_turn):
+                    return False
+            except ValueError:
+                if provided_turn == issued_turn:
+                    return False
         if pending.get("token") == token.strip():
             cls._pending_confirmations.pop(key, None)
             return True

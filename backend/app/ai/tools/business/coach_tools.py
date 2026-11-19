@@ -204,7 +204,12 @@ class MarkMyTaskCompletedTool(AITool):
         if not ok or actor is None:
             return ToolResult(success=False, error=err or "unauthorized")
 
-        session_id = getattr(context, "session_id", None) or getattr(arguments, "session_id", None)
+        session_id = (
+            getattr(context, "session_id", None)
+            or getattr(context.tenant, "session_id", None)
+            or getattr(arguments, "session_id", None)
+            or getattr(context, "request_id", None)
+        )
         turn_id = getattr(context, "turn_id", None) or getattr(arguments, "turn_id", None)
         coach = EmployeeCoachService(self._session)
         result = coach.complete_task(
