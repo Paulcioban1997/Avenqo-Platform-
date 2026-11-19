@@ -23,6 +23,7 @@ from backend.app.routers.dashboard import router as dashboard_router
 from backend.app.routers.dataset_archives import router as dataset_archives_router
 from backend.app.routers.datasets import router as datasets_router
 from backend.app.routers.employees import router as employees_router
+from backend.app.routers.hr import router as hr_router
 from backend.app.routers.fx_display import router as fx_display_router
 from backend.app.routers.health import router as health_router
 from backend.app.routers.internal_commerce import router as internal_commerce_router
@@ -139,6 +140,11 @@ api_router.include_router(
 )
 api_router.include_router(
 	employees_router,
+	prefix="/api/v1",
+	dependencies=[Depends(require_active_subscription)],
+)
+api_router.include_router(
+	hr_router,
 	prefix="/api/v1",
 	dependencies=[Depends(require_active_subscription)],
 )

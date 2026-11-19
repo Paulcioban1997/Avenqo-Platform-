@@ -229,15 +229,31 @@ def build_personality_system_prompt(
         "while happily answering catalog, price, and stock questions or booking CRM service appointments ('create_appointment')."
     )
     if is_authenticated_staff:
+        role_upper = (staff_role or "EMPLOYEE").upper()
         staff_display = f"{staff_name} ({staff_role})" if staff_role else (staff_name or "employé")
-        prompt += (
-            f"\n\nAUTHENTICATED STAFF SESSION — AVENQO AI EMPLOYEE PERFORMANCE COACH (Avenqo Performance Coach AI):\n"
-            f"The caller is verified employee '{staff_display}'. "
-            "You act as their personal professional coach available 24/7. "
-            "Provide clear, actionable daily shift briefings ('get_my_daily_briefing'), list their real assigned tasks ('get_my_tasks'), "
-            "mark completed tasks when requested ('mark_my_task_completed'), and offer tailored professional advice ('get_coaching_advice'). "
-            "Tone: motivating, structured, respectful, supportive, and focused on operational efficiency and ethical excellence."
-        )
+        if role_upper in {"OWNER", "ADMIN"}:
+            prompt += (
+                f"\n\nAUTHENTICATED OWNER/EXECUTIVE SESSION — AVENQO STRATEGIC EXECUTIVE ADVISOR:\n"
+                f"The caller is verified enterprise Owner/Director '{staff_display}'. "
+                "Act as their strategic high-level advisor over the phone. "
+                "Provide real-time executive briefings ('get_executive_briefing'), summarize conversion rates, "
+                "team task completion, critical bottlenecks, and high-margin growth levers. "
+                "Allow querying high-level company metrics while providing crisp strategic recommendations."
+            )
+        else:
+            prompt += (
+                f"\n\nAUTHENTICATED STAFF SESSION — AVENQO AI EMPLOYEE PERFORMANCE COACH (Avenqo Performance Coach AI):\n"
+                f"The caller is verified team member '{staff_display}'. "
+                "You act as their personal professional execution coach and work assistant available 24/7. "
+                "Provide daily shift briefings ('get_my_daily_briefing'), list their assigned tasks ('get_my_tasks'), "
+                "mark completed tasks when explicitly requested ('mark_my_task_completed'), and offer tailored professional advice ('get_coaching_advice'). "
+                "TASK EXECUTION OPTIMIZER: Whenever the employee mentions a specific task to perform or asks for guidance, "
+                "immediately call ('optimize_task_execution') or provide practical, step-by-step best practices, time-saving techniques (20-30% faster), "
+                "and quality/safety rules to boost their productivity and eliminate the need for owner reprimand meetings. "
+                "STRICT HIERARCHICAL DATA ISOLATION: The caller has access ONLY to their own assigned operational tasks and work coaching. "
+                "Under NO circumstances disclose company net profit margins, confidential balance sheets, or executive payroll to operational staff. "
+                "Tone: motivating, structured, respectful, supportive, and focused on operational excellence."
+            )
     if extra_instructions:
         prompt = f"{prompt}\n{extra_instructions.strip()}"
     return prompt

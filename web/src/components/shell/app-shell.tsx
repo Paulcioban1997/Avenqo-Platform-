@@ -233,6 +233,7 @@ export function AppShell({ children }: AppShellProps) {
   const allAiModules: NavItem[] = [
     { href: "/marketing", label: t.navigation.marketingAi, icon: Megaphone, moduleKey: "marketing", permissions: ["marketing:read"] },
     { href: "/voice", label: t.navigation.voiceAi, icon: Mic2, moduleKey: "voice", permissions: ["modules:manage"] },
+    { href: "/hr", label: "Ressources Humaines (HR AI)", icon: Users, moduleKey: "hr", permissions: ["data:read"] },
     { href: "/ocr", label: t.navigation.ocrAi, icon: FileScan, moduleKey: "ocr", permissions: ["ai:use"] },
     { href: "/legal", label: chrome.legal, icon: FileScan, moduleKey: "legal", permissions: ["ai:use"] },
     { href: "/chatbots", label: t.navigation.chatbotsAi, icon: MessagesSquare, moduleKey: "chatbots", permissions: ["ai:use"] },
@@ -246,6 +247,7 @@ export function AppShell({ children }: AppShellProps) {
     { href: "/workspace/modules", label: chrome.modules, icon: Sparkles, permissions: ["modules:manage"] },
     { href: "/connections", label: t.navigation.connections, icon: Plug, permissions: ["data:manage"] },
     { href: "/data", label: t.navigation.dataHub, icon: Database, permissions: ["data:read"] },
+    { href: "/hr", label: "Ressources Humaines (HR)", icon: Users, permissions: ["data:read"] },
     { href: "/employees", label: t.navigation.team, icon: Users },
     { href: "/billing", label: t.navigation.billing, icon: CreditCard, permissions: ["billing:manage"] },
     { href: "/settings/contracts", label: chrome.contracts, icon: FileScan, permissions: ["billing:manage"] },

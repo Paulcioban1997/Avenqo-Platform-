@@ -113,6 +113,17 @@ class CompleteTaskArgs(ToolArguments):
     )
 
 
+class OptimizeTaskArgs(ToolArguments):
+    task_description: str = Field(
+        ...,
+        description="Description détaillée de la tâche ou de l'intervention à réaliser (ex: 'pose de carrelage', 'vidange freins', 'balayage coloration')",
+    )
+    industry_sector: str | None = Field(
+        default=None,
+        description="Secteur métier optionnel (ex: 'construction', 'automobile', 'coiffure_beaute', 'commerce')",
+    )
+
+
 class CoachingAdviceArgs(ToolArguments):
     topic: str | None = Field(
         default=None,
@@ -279,9 +290,85 @@ class GetCoachingAdviceTool(AITool):
         )
 
 
+class OptimizeTaskExecutionTool(AITool):
+    name = "optimize_task_execution"
+    description = (
+        "Fournit à l'employé des recommandations concrètes d'experts pour exécuter et optimiser sa tâche : "
+        "étapes méthodologiques, astuce gain de temps (20-30% plus rapide), règles de conformité/qualité et impact sur le chiffre d'affaires."
+    )
+    input_schema = OptimizeTaskArgs
+    required_permissions = ("ai:use",)
+    read_only = True
+    mutates = False
+    agent_ids = frozenset({"voice", "coach", "central"})
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    async def run(self, context: ToolExecutionContext, arguments: OptimizeTaskArgs) -> ToolResult:
+        ok, err, actor = _verify_coach_access(self._session, context, write=False)
+        if not ok or actor is None:
+            return ToolResult(success=False, error=err or "unauthorized")
+
+        coach = EmployeeCoachService(self._session)
+        locale = getattr(context, "locale", "fr-CA") or "fr-CA"
+        advice = coach.optimize_task_execution(
+            actor,
+            task_description=arguments.task_description,
+            industry_sector=arguments.industry_sector,
+            locale=str(locale),
+        )
+
+        return ToolResult(
+            success=True,
+            data=advice,
+            metadata={
+                "message": advice.get("spoken_summary") or f"Optimisation pour la tâche : {arguments.task_description}",
+                "sector": advice.get("sector"),
+            },
+        )
+
+
+class GetExecutiveBriefingTool(AITool):
+    name = "get_executive_briefing"
+    description = (
+        "Point stratégique d'entreprise réservé au dirigeant ou propriétaire (OWNER/ADMIN) : "
+        "taux de conversion réel, productivité globale de l'équipe, tâches ouvertes et goulots d'étranglement."
+    )
+    input_schema = EmptyCoachArgs
+    required_permissions = ("ai:use",)
+    read_only = True
+    mutates = False
+    agent_ids = frozenset({"voice", "coach", "central"})
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    async def run(self, context: ToolExecutionContext, arguments: EmptyCoachArgs) -> ToolResult:
+        ok, err, actor = _verify_coach_access(self._session, context, write=False)
+        if not ok or actor is None:
+            return ToolResult(success=False, error=err or "unauthorized")
+
+        coach = EmployeeCoachService(self._session)
+        locale = getattr(context, "locale", "fr-CA") or "fr-CA"
+        briefing = coach.get_executive_briefing(actor, locale=str(locale))
+
+        is_restricted = briefing.get("status") == "restricted"
+        return ToolResult(
+            success=not is_restricted,
+            data=briefing,
+            error="restricted" if is_restricted else None,
+            metadata={
+                "message": briefing.get("spoken_summary") or "Point stratégique exécutif disponible.",
+            },
+        )
+
+
 __all__ = [
     "GetMyDailyBriefingTool",
     "GetMyTasksTool",
     "MarkMyTaskCompletedTool",
     "GetCoachingAdviceTool",
+    "OptimizeTaskExecutionTool",
+    "GetExecutiveBriefingTool",
 ]
