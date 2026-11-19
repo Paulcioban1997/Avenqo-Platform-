@@ -8,6 +8,8 @@ Strictly tenant-isolated, role-scoped, and grounded in real database records.
 from __future__ import annotations
 
 import logging
+import secrets
+import time
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
@@ -23,6 +25,33 @@ logger = logging.getLogger("avenqo.voice.employee_coach")
 
 class EmployeeCoachService:
     """Core business intelligence engine for Avenqo Performance Coach AI."""
+
+    _pending_confirmations: dict[tuple[UUID, UUID], dict[str, Any]] = {}
+
+    @classmethod
+    def _issue_confirmation_token(cls, user_id: UUID, task_id: UUID) -> str:
+        token = secrets.token_hex(16)
+        cls._pending_confirmations[(user_id, task_id)] = {
+            "token": token,
+            "expires_at": time.time() + 180.0,
+        }
+        return token
+
+    @classmethod
+    def _validate_and_consume_token(cls, user_id: UUID, task_id: UUID, token: str | None) -> bool:
+        if not token or not isinstance(token, str):
+            return False
+        key = (user_id, task_id)
+        pending = cls._pending_confirmations.get(key)
+        if not pending:
+            return False
+        if time.time() > pending.get("expires_at", 0):
+            cls._pending_confirmations.pop(key, None)
+            return False
+        if pending.get("token") == token.strip():
+            cls._pending_confirmations.pop(key, None)
+            return True
+        return False
 
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -196,6 +225,7 @@ class EmployeeCoachService:
         task_identifier: str,
         *,
         confirmed: bool = False,
+        confirmation_token: str | None = None,
     ) -> dict[str, Any]:
         """Mark a task completed by UUID or title keyword matching with ambiguity detection, confirmation, idempotency, and audit logging."""
         if not actor or not actor.id or not actor.company_id:
@@ -275,12 +305,21 @@ class EmployeeCoachService:
                 "message": f"La tâche « {matched_task.title} » a déjà été marquée comme terminée.",
             }
 
-        # 5. Require explicit confirmation before mutating
-        if not confirmed:
+        # 5. Require explicit server-side confirmation proof before mutating
+        is_server_confirmed = self._validate_and_consume_token(actor.id, matched_task.id, confirmation_token)
+
+        if not confirmed or not is_server_confirmed:
+            token = self._issue_confirmation_token(actor.id, matched_task.id)
+            if confirmed and not is_server_confirmed:
+                logger.warning(
+                    "AUDIT_UNCONFIRMED_TASK_MUTATION_REJECTED: user=%s task_id=%s title=%r reason=missing_or_invalid_server_confirmation_token",
+                    actor.id, matched_task.id, matched_task.title
+                )
             return {
                 "status": "requires_confirmation",
                 "task_id": str(matched_task.id),
                 "title": matched_task.title,
+                "confirmation_token": token,
                 "message": (
                     f"Veuillez confirmer : confirmez-vous la clôture de la tâche « {matched_task.title} » ? "
                     "Dites « Oui, je confirme » pour valider la modification."

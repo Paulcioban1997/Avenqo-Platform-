@@ -90,11 +90,7 @@ class VoiceToolRegistryService:
             )
             user_obj = self._session.get(User, tenant.user_id)
             user_active = user_obj is not None and getattr(user_obj, "is_active", True)
-            membership_active = (
-                membership.is_active
-                if membership is not None
-                else (user_obj is not None and user_obj.company_id == tenant.company_id)
-            )
+            membership_active = membership is not None and bool(getattr(membership, "is_active", False))
 
             if coach_globally_enabled and coach_tenant_enabled and company_active and user_active and membership_active:
                 for coach_read_tool in (

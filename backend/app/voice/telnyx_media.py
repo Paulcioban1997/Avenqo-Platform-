@@ -1266,7 +1266,7 @@ class TelnyxMediaBridge:
                     if delay > 0:
                         await asyncio.sleep(delay)
 
-    async def _provider_events(self) -> None:
+    async def _drain_provider_events(self) -> None:
         async for event in self.adapter.events():
             kind = getattr(event, "type", "")
             if kind == "session.updated":
@@ -1409,6 +1409,47 @@ class TelnyxMediaBridge:
                 self.telemetry["provider_error"] = str(code or "unknown")
                 logger.error("Audio provider error event: %s", getattr(event, "error", event))
                 raise InvalidMediaFrame("Audio provider unavailable")
+
+    async def _provider_events(self) -> None:
+        reconnect_attempts = 0
+        max_reconnects = 2
+        while not self._stop_event.is_set():
+            try:
+                await self._drain_provider_events()
+                if not self._stop_event.is_set() and hasattr(self.adapter, "reconnect") and reconnect_attempts < max_reconnects:
+                    reconnect_attempts += 1
+                    logger.warning(
+                        "Audio provider stream ended unexpectedly mid-call; attempting automatic reconnect (%d/%d)...",
+                        reconnect_attempts, max_reconnects,
+                    )
+                    self.telemetry["reconnect_triggered"] = True
+                    self.telemetry["reconnect_attempts"] = reconnect_attempts
+                    await self.adapter.reconnect(
+                        fallback_model=getattr(self.adapter, "fallback_model", "gpt-realtime-2.1"),
+                        locale=self.locale,
+                    )
+                    continue
+                break
+            except Exception as exc:
+                if self._stop_event.is_set() or isinstance(exc, asyncio.CancelledError):
+                    break
+                if hasattr(self.adapter, "reconnect") and reconnect_attempts < max_reconnects:
+                    reconnect_attempts += 1
+                    logger.warning(
+                        "Audio provider stream error (%s); automatically reconnecting mid-call (%d/%d)...",
+                        type(exc).__name__, reconnect_attempts, max_reconnects,
+                    )
+                    self.telemetry["reconnect_triggered"] = True
+                    self.telemetry["reconnect_attempts"] = reconnect_attempts
+                    try:
+                        await self.adapter.reconnect(
+                            fallback_model=getattr(self.adapter, "fallback_model", "gpt-realtime-2.1"),
+                            locale=self.locale,
+                        )
+                        continue
+                    except Exception as rec_err:
+                        logger.error("Automatic mid-call reconnect failed: %s", rec_err)
+                raise
 
     async def _send_inbound_audio(self, pcm: bytes) -> None:
         if self.input_paused:

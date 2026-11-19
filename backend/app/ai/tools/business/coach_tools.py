@@ -59,12 +59,11 @@ def _verify_coach_access(
         select(CompanyMembership).where(
             CompanyMembership.user_id == actor.id,
             CompanyMembership.company_id == company.id,
+            CompanyMembership.is_active.is_(True),
         )
     )
-    if membership is not None and not getattr(membership, "is_active", True):
-        return False, "Collaborateur désactivé ou suspendu dans cette entreprise.", None
-    if membership is None and actor.company_id != company.id:
-        return False, "Collaborateur sans appartenance active à cette entreprise.", None
+    if membership is None:
+        return False, "Adhésion active (CompanyMembership) obligatoire et introuvable pour ce collaborateur.", None
 
     if write:
         user_role = getattr(membership, "role", None) or getattr(actor, "role", None)
@@ -100,6 +99,10 @@ class CompleteTaskArgs(ToolArguments):
     confirmed: bool = Field(
         default=False,
         description="Doit être mis à True UNIQUEMENT après confirmation explicite de l'employé au téléphone",
+    )
+    confirmation_token: str | None = Field(
+        default=None,
+        description="Jeton de confirmation émis par le serveur lors de la demande préalable. Preuve obligatoire pour valider la mutation.",
     )
 
 
@@ -195,14 +198,23 @@ class MarkMyTaskCompletedTool(AITool):
             return ToolResult(success=False, error=err or "unauthorized")
 
         coach = EmployeeCoachService(self._session)
-        result = coach.complete_task(actor, arguments.task_identifier, confirmed=arguments.confirmed)
+        result = coach.complete_task(
+            actor,
+            arguments.task_identifier,
+            confirmed=arguments.confirmed,
+            confirmation_token=arguments.confirmation_token,
+        )
 
         if result.get("status") in {"ambiguous", "requires_confirmation"}:
             return ToolResult(
                 success=False,
                 error=result.get("status"),
                 data=result,
-                metadata={"message": result.get("message", "")},
+                metadata={
+                    "message": result.get("message", ""),
+                    "confirmation_token": result.get("confirmation_token"),
+                    "task_id": result.get("task_id"),
+                },
             )
 
         if result.get("status") == "error":
