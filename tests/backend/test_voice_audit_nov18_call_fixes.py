@@ -529,6 +529,18 @@ def test_p0_nip_logging_identifies_matched_principal_and_unlinking(tmp_path, cap
             auth.set_pin(tenant2, "USER", user2.id, "739264", phone_number="+15145550001")
         assert "déjà associé à un autre collaborateur" in str(exc_info.value)
 
+        # 1b. Le Propriétaire (OWNER) peut réattribuer un numéro détenu par un collaborateur non-propriétaire
+        auth.set_pin(tenant2, "USER", user2.id, "739264", phone_number="+15145550009")
+        session.commit()
+        # Le Propriétaire s'attribue le numéro de user2 -> SUCCÈS
+        reassigned_cred = auth.set_pin(tenant1, "USER", user1.id, "868490", phone_number="+15145550009")
+        session.commit()
+        assert reassigned_cred.phone_number == "+15145550009"
+        assert user2.phone is None
+        # Rétablir le numéro d'origine pour la suite du test
+        auth.set_pin(tenant1, "USER", user1.id, "481926", phone_number="+15145550001")
+        session.commit()
+
         # 2. Appel avec mauvais NIP: vérifier que les logs identifient le principal_id et principal_role
         call = VoiceCall(
             company_id=company.id,
