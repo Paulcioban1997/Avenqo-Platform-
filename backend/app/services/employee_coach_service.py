@@ -190,8 +190,14 @@ class EmployeeCoachService:
             })
         return results
 
-    def complete_task(self, actor: User, task_identifier: str) -> dict[str, Any]:
-        """Mark a task completed by UUID or title keyword matching."""
+    def complete_task(
+        self,
+        actor: User,
+        task_identifier: str,
+        *,
+        confirmed: bool = False,
+    ) -> dict[str, Any]:
+        """Mark a task completed by UUID or title keyword matching with ambiguity detection, confirmation, idempotency, and audit logging."""
         if not actor or not actor.id or not actor.company_id:
             return {"status": "error", "error": "unauthenticated"}
 
@@ -202,7 +208,7 @@ class EmployeeCoachService:
         tasks = self._workspace.list_tasks(actor, mine=True)
         matched_task = None
 
-        # Check if UUID
+        # 1. Check if UUID
         try:
             target_uuid = UUID(ident)
             for t in tasks:
@@ -212,29 +218,90 @@ class EmployeeCoachService:
         except ValueError:
             pass
 
-        # If not UUID, match by title substring
+        # 2. If not UUID, match by title keyword among open tasks
         if matched_task is None:
             norm_ident = ident.lower()
             open_tasks = [t for t in tasks if t.status != "done"]
-            for t in open_tasks:
-                if norm_ident in t.title.lower():
-                    matched_task = t
-                    break
+            matches = [t for t in open_tasks if norm_ident in t.title.lower()]
 
+            if len(matches) > 1:
+                # Ambiguous recognition: refuse to mutate and list candidates
+                logger.warning(
+                    "AUDIT_TASK_COMPLETION_AMBIGUOUS: user=%s keyword=%r count=%d matches=%r",
+                    actor.id, ident, len(matches), [t.title for t in matches]
+                )
+                return {
+                    "status": "ambiguous",
+                    "error": "ambiguous_match",
+                    "matches": [{"id": str(t.id), "title": t.title} for t in matches],
+                    "message": (
+                        f"Reconnaissance ambiguë : {len(matches)} tâches ouvertes correspondent à '{ident}'. "
+                        "Veuillez préciser le titre exact ou l'identifiant pour éviter toute erreur."
+                    ),
+                }
+
+            if len(matches) == 1:
+                matched_task = matches[0]
+
+        # 3. Check if no open task was found, but a completed task exists (Idempotency / repeated commands)
         if matched_task is None:
+            done_tasks = [t for t in tasks if t.status == "done"]
+            for t in done_tasks:
+                if str(t.id) == ident or (ident.lower() in t.title.lower()):
+                    logger.info(
+                        "AUDIT_TASK_ALREADY_COMPLETED: user=%s task_id=%s title=%r",
+                        actor.id, t.id, t.title
+                    )
+                    return {
+                        "status": "already_completed",
+                        "task_id": str(t.id),
+                        "title": t.title,
+                        "status_after": "done",
+                        "message": f"La tâche « {t.title} » a déjà été marquée comme terminée.",
+                    }
             return {
                 "status": "error",
                 "error": "not_found",
-                "message": f"Aucune tâche ouverte correspondant à '{ident}' n'a été trouvée pour votre compte.",
+                "message": f"Aucune tâche correspondant à '{ident}' n'a été trouvée pour votre compte.",
             }
 
+        # 4. If matched task is already done
+        if matched_task.status == "done":
+            return {
+                "status": "already_completed",
+                "task_id": str(matched_task.id),
+                "title": matched_task.title,
+                "status_after": "done",
+                "message": f"La tâche « {matched_task.title} » a déjà été marquée comme terminée.",
+            }
+
+        # 5. Require explicit confirmation before mutating
+        if not confirmed:
+            return {
+                "status": "requires_confirmation",
+                "task_id": str(matched_task.id),
+                "title": matched_task.title,
+                "message": (
+                    f"Veuillez confirmer : confirmez-vous la clôture de la tâche « {matched_task.title} » ? "
+                    "Dites « Oui, je confirme » pour valider la modification."
+                ),
+            }
+
+        # 6. Execute task completion
         completed = self._workspace.complete_task(actor, matched_task.id)
+
+        # 7. Audit log
+        logger.info(
+            "AUDIT_VOICE_TASK_COMPLETED: tenant_id=%s user_id=%s task_id=%s title=%r channel=voice",
+            actor.company_id, actor.id, completed.id, completed.title
+        )
+
         return {
             "status": "success",
             "task_id": str(completed.id),
             "title": completed.title,
             "status_after": completed.status,
-            "message": f"La tâche '{completed.title}' a été marquée comme terminée avec succès.",
+            "message": f"La tâche « {completed.title} » a été marquée comme terminée avec succès.",
         }
 
     def get_coaching_advice(

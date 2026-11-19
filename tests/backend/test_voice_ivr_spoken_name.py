@@ -32,9 +32,9 @@ def test_empty_pronunciation_object_reaches_telnyx_with_a_pause():
         preferred_language="fr",
         call_policy={},
     )
-    assert voice_speech_name(cfg) in {"Produits Héros", "Produits Éro"}
+    assert voice_speech_name(cfg) in {"Produits Ero", "Produits Éro"}
     greeting = voice_ivr_greeting(cfg)
-    assert ("Bienvenue chez Produits Héros." in greeting or "Bienvenue chez Produits Éro." in greeting)
+    assert ("Bienvenue chez Produits Ero." in greeting or "Bienvenue chez Produits Éro." in greeting)
     assert "Produits, Ero" not in greeting
 
 

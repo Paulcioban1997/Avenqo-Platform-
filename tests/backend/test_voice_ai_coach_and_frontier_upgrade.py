@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
@@ -246,8 +247,17 @@ def test_employee_coach_task_mutation(tmp_path):
         assert len(my_tasks) == 1
         assert my_tasks[0]["title"] == "Inspecter le matériel reçu ce matin"
 
-        # Complete task by keyword substring
-        res = coach.complete_task(user, "matériel")
+        # 1. Complete task by keyword without confirmation -> requires confirmation
+        res_conf = coach.complete_task(user, "matériel", confirmed=False)
+        assert res_conf["status"] == "requires_confirmation"
+        assert "confirmez-vous" in res_conf["message"].lower()
+
+        # Task remains open before confirmation
+        t_row = session.get(EmployeeTask, task.id)
+        assert t_row is not None and t_row.status == "open"
+
+        # 2. Complete task with explicit confirmation -> success
+        res = coach.complete_task(user, "matériel", confirmed=True)
         assert res["status"] == "success"
         assert res["status_after"] == "done"
 
@@ -256,6 +266,12 @@ def test_employee_coach_task_mutation(tmp_path):
         assert updated is not None
         assert updated.status == "done"
         assert updated.completed_at is not None
+
+        # 3. Repeated command -> already_completed (idempotency)
+        res_repeat = coach.complete_task(user, "matériel", confirmed=True)
+        assert res_repeat["status"] == "already_completed"
+        assert "déjà" in res_repeat["message"].lower()
+        assert "terminée" in res_repeat["message"].lower()
     finally:
         session.close()
         engine.dispose()
@@ -410,9 +426,14 @@ async def test_coach_ai_tools_succeed_when_authenticated(tmp_path):
         assert r2.success is True
         assert r2.data["count"] == 1
 
-        # Complete task
+        # Complete task requires explicit confirmation
         t3 = MarkMyTaskCompletedTool(session)
-        r3 = await t3.run(auth_context, CompleteTaskArgs(task_identifier="Dupont"))
+        r3_pre = await t3.run(auth_context, CompleteTaskArgs(task_identifier="Dupont", confirmed=False))
+        assert r3_pre.success is False
+        assert r3_pre.error == "requires_confirmation"
+
+        # Complete task with confirmation
+        r3 = await t3.run(auth_context, CompleteTaskArgs(task_identifier="Dupont", confirmed=True))
         assert r3.success is True
 
         # Advice
@@ -533,17 +554,32 @@ def test_settings_voice_model_defaults_and_reasoning():
 
 
 def test_frontier_models_in_catalog_and_registry():
-    """Vérifie la présence et la tarification de gpt-6.2-astra et gpt-live-1."""
-    # LLM Model Registry
+    """Vérifie la présence et la tarification de gpt-6.2-astra, gpt-6.2-sol et gpt-live-1."""
+    # LLM Model Registry Astra
     assert ("openai", "gpt-6.2-astra") in _KNOWN_MODEL_PROFILES
     assert ("openai", "gpt-6.2-astra") in _DEFAULT_RATES
     pricing_astra = _DEFAULT_RATES[("openai", "gpt-6.2-astra")]
     assert pricing_astra["input_cost_per_million_usd"] == "8.00"
+    assert pricing_astra["cached_input_cost_per_million_usd"] == "4.00"
     assert pricing_astra["output_cost_per_million_usd"] == "40.00"
+    assert _KNOWN_MODEL_PROFILES[("openai", "gpt-6.2-astra")]["speed_tier"] == 2
+
+    # LLM Model Registry Sol (officiel: 2 $ entrée, 10 $ sortie, 1 $ cache, speed tier 1 fast reasoning)
+    assert ("openai", "gpt-6.2-sol") in _KNOWN_MODEL_PROFILES
+    assert ("openai", "gpt-6.2-sol") in _DEFAULT_RATES
+    pricing_sol = _DEFAULT_RATES[("openai", "gpt-6.2-sol")]
+    assert pricing_sol["input_cost_per_million_usd"] == "2.00"
+    assert pricing_sol["cached_input_cost_per_million_usd"] == "1.00"
+    assert pricing_sol["output_cost_per_million_usd"] == "10.00"
+    assert _KNOWN_MODEL_PROFILES[("openai", "gpt-6.2-sol")]["speed_tier"] == 1
 
     # Voice Pricing Catalog
     catalog = voice_pricing_catalog()
     assert catalog is not None
+    entry_sol = catalog.lookup("openai", "gpt-6.2-sol")
+    assert entry_sol is not None
+    assert entry_sol.output_cost_per_million_usd == Decimal("10.00")
+    assert entry_sol.cached_input_cost_per_million_usd == Decimal("1.00")
 
 
 # ==============================================================================
@@ -560,12 +596,14 @@ def test_voice_business_config_coach_extensions(tmp_path):
         session.refresh(config)
 
         assert config.ai_coach_enabled is True
-        assert config.ai_coach_config["daily_briefing_time"] == "08:30"
+        coach_dict = config.ai_coach_config or {}
+        assert coach_dict.get("daily_briefing_time") == "08:30"
 
         # Check public_config dictionary
         pub = orchestrator.public_config(config)
         assert pub["ai_coach_enabled"] is True
-        assert pub["ai_coach_config"]["daily_briefing_time"] == "08:30"
+        pub_coach = pub["ai_coach_config"] or {}
+        assert pub_coach.get("daily_briefing_time") == "08:30"
     finally:
         session.close()
         engine.dispose()
@@ -587,3 +625,193 @@ def test_build_personality_system_prompt_universal_pronunciation():
     assert "Clinique Du Nord Santé" in p1
     assert "AVENQO AI EMPLOYEE PERFORMANCE COACH" in p1
     assert "Dr. Martin (Médecin)" in p1
+
+    # Default tenant without custom pronunciation preserves exact company_name
+    p2 = build_personality_system_prompt(
+        company_name="Produits Ero",
+        locale="fr-CA",
+        custom_pronunciation=None,
+    )
+    assert "You represent the company 'Produits Ero'. Spoken name: 'Produits Ero'." in p2
+    assert "PRONUNCIATION INSTRUCTION" not in p2
+
+    # Tenant with explicit custom pronunciation gets phonetic instruction
+    p3 = build_personality_system_prompt(
+        company_name="Produits Ero",
+        locale="fr-CA",
+        custom_pronunciation="Produits Éro",
+    )
+    assert "Spoken name: 'Produits Éro'." in p3
+    assert "PRONUNCIATION INSTRUCTION: The official phonetic spoken name for 'Produits Ero' is 'Produits Éro'." in p3
+
+
+# ==============================================================================
+# 6. COACH AMBIGUITY, RBAC GATING & REALTIME ADAPTER TESTS
+# ==============================================================================
+
+def test_coach_task_ambiguity_gating_and_audit(tmp_path):
+    """Vérifie qu'en cas d'ambiguïté vocale, aucune tâche n'est modifiée et une clarification est exigée."""
+    engine, session, company, config, _api_key, _orchestrator = _voice_database(tmp_path)
+    try:
+        user = _create_test_user(
+            session,
+            company.id,
+            first_name="Jean",
+            last_name="Tremblay",
+            email="jean@avenqo.test",
+            job_title="Conseiller Ventes",
+            role=UserRole.USER,
+        )
+        task1 = EmployeeTask(
+            id=uuid4(),
+            company_id=company.id,
+            assignee_user_id=user.id,
+            created_by_user_id=user.id,
+            title="Relancer client Dupont pour contrat annuel",
+            status="open",
+        )
+        task2 = EmployeeTask(
+            id=uuid4(),
+            company_id=company.id,
+            assignee_user_id=user.id,
+            created_by_user_id=user.id,
+            title="Préparer facture Dupont pour la livraison",
+            status="open",
+        )
+        session.add_all([task1, task2])
+        session.commit()
+
+        coach = EmployeeCoachService(session)
+
+        # Ambiguous keyword "Dupont" matches 2 tasks
+        res_ambiguous = coach.complete_task(user, "Dupont", confirmed=True)
+        assert res_ambiguous["status"] == "ambiguous"
+        assert res_ambiguous["error"] == "ambiguous_match"
+        assert len(res_ambiguous["matches"]) == 2
+        assert "Reconnaissance ambiguë" in res_ambiguous["message"]
+
+        # Neither task was mutated
+        t1_check = session.get(EmployeeTask, task1.id)
+        t2_check = session.get(EmployeeTask, task2.id)
+        assert t1_check is not None and t1_check.status == "open"
+        assert t2_check is not None and t2_check.status == "open"
+
+        # Specific keyword "contrat" matches only task1 -> requires confirmation
+        res_one = coach.complete_task(user, "contrat", confirmed=False)
+        assert res_one["status"] == "requires_confirmation"
+        t1_after_pre = session.get(EmployeeTask, task1.id)
+        assert t1_after_pre is not None and t1_after_pre.status == "open"
+
+        # Specific keyword "contrat" with confirmed=True mutates task1
+        res_done = coach.complete_task(user, "contrat", confirmed=True)
+        assert res_done["status"] == "success"
+        t1_done = session.get(EmployeeTask, task1.id)
+        t2_still_open = session.get(EmployeeTask, task2.id)
+        assert t1_done is not None and t1_done.status == "done"
+        assert t2_still_open is not None and t2_still_open.status == "open"
+    finally:
+        session.close()
+        engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_coach_tools_rbac_and_write_permission_gating(tmp_path):
+    """Vérifie le respect strict du RBAC : viewer interdit en écriture, tenant désactivé refusé."""
+    engine, session, company, config, _api_key, _orchestrator = _voice_database(tmp_path)
+    try:
+        viewer_user = _create_test_user(
+            session,
+            company.id,
+            first_name="Stéphane",
+            last_name="Auditeur",
+            email="stephane@avenqo.test",
+            job_title="Auditeur Externe",
+            role=UserRole.VIEWER,
+        )
+        session.add(CompanyMembership(company_id=company.id, user_id=viewer_user.id, role=UserRole.VIEWER, is_active=True))
+        task = EmployeeTask(
+            id=uuid4(),
+            company_id=company.id,
+            assignee_user_id=viewer_user.id,
+            created_by_user_id=viewer_user.id,
+            title="Consulter rapports mensuels",
+            status="open",
+        )
+        session.add(task)
+        session.commit()
+
+        viewer_context = ToolExecutionContext(
+            tenant=TenantContext(company.id, viewer_user.id),
+            user_id=viewer_user.id,
+            permissions=frozenset({"ai:use"}),
+            request_id="req-viewer-1",
+            locale="fr-CA",
+        )
+
+        # Viewer can read tasks
+        get_tasks_tool = GetMyTasksTool(session)
+        r_get = await get_tasks_tool.run(viewer_context, TaskStatusArgs())
+        assert r_get.success is True
+
+        # Viewer cannot mutate tasks
+        complete_tool = MarkMyTaskCompletedTool(session)
+        r_mutate = await complete_tool.run(viewer_context, CompleteTaskArgs(task_identifier="rapports", confirmed=True))
+        assert r_mutate.success is False
+        assert "lecture seule" in (r_mutate.error or "").lower()
+        t_view = session.get(EmployeeTask, task.id)
+        assert t_view is not None and t_view.status == "open"
+
+        # Tenant with ai_coach_enabled=False blocks coach tools
+        config.ai_coach_enabled = False
+        session.commit()
+
+        r_blocked = await get_tasks_tool.run(viewer_context, TaskStatusArgs())
+        assert r_blocked.success is False
+        assert "désactivé" in (r_blocked.error or "").lower()
+    finally:
+        session.close()
+        engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_realtime_audio_adapter_lifecycle_and_fallback():
+    """Vérifie le cycle de vie de l'adaptateur audio OpenAI, le fallback automatique et les interruptions."""
+    from backend.app.voice.adapters import OpenAIAudioConfig, OpenAIRealtimeAudioAdapter
+    from unittest.mock import AsyncMock, MagicMock
+
+    config = OpenAIAudioConfig(api_key="sk-test-fake", tts_voice="marin", speech_speed=1.0)
+    adapter = OpenAIRealtimeAudioAdapter(config, realtime_model="gpt-live-1")
+
+    # Mock connection and manager
+    mock_connection = AsyncMock()
+    mock_manager = AsyncMock()
+    mock_manager.__aenter__.return_value = mock_connection
+
+    adapter._manager = mock_manager
+    adapter._connection = mock_connection
+
+    # Test audio buffer sending
+    await adapter.send_audio(b"\x00\x01\x02")
+    mock_connection.send.assert_awaited()
+    last_call_arg = mock_connection.send.call_args[0][0]
+    assert last_call_arg["type"] == "input_audio_buffer.append"
+
+    # Test speech synthesis trigger
+    await adapter.speak("Bonjour, comment allez-vous ?")
+    last_speak_arg = mock_connection.send.call_args[0][0]
+    assert last_speak_arg["type"] == "response.create"
+    assert "Bonjour" in str(last_speak_arg)
+
+    # Test interruption (barge-in / clear)
+    await adapter.interrupt()
+    last_interrupt_arg = mock_connection.send.call_args[0][0]
+    assert last_interrupt_arg["type"] == "response.cancel"
+
+    # Test clear_input
+    await adapter.clear_input()
+    last_clear_arg = mock_connection.send.call_args[0][0]
+    assert last_clear_arg["type"] == "input_audio_buffer.clear"
+
+    # Test mid-call reconnect
+    await adapter.close()
+    assert adapter._connection is None

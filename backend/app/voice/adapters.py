@@ -51,10 +51,10 @@ class ExternalVoiceConfigurationRequired(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class OpenAIAudioConfig:
-    api_key: str | None
-    stt_model: str | None
-    tts_model: str | None
-    tts_voice: str | None
+    api_key: str | None = None
+    stt_model: str | None = None
+    tts_model: str | None = None
+    tts_voice: str | None = None
     base_url: str = "https://api.openai.com/v1"
     speech_speed: float = 1.0
     input_noise_reduction: str = "off"
@@ -255,6 +255,13 @@ class OpenAIRealtimeAudioAdapter:
             await self._manager.__aexit__(None, None, None)
         self._manager = None
         self._connection = None
+
+    async def reconnect(self, fallback_model: str = "gpt-realtime-2.1", locale: str = "fr-CA") -> None:
+        """Mid-call failover and reconnection if primary session drops."""
+        logger.warning("Reconnecting realtime audio adapter to fallback model=%s", fallback_model)
+        await self.close()
+        self._model = fallback_model
+        await self.open(locale=locale)
 
     async def events(self):
         if self._connection is None:

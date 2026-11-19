@@ -210,13 +210,7 @@ def build_personality_system_prompt(
         spoken_brand = pron
         pronunciation_note = (
             f"PRONUNCIATION INSTRUCTION: The official phonetic spoken name for '{company_name}' is '{pron}'. "
-            f"Always pronounce it strictly as '{pron}' (never pronounce with a 'Z' sound or liaison). "
-        )
-    elif "ero" in company_name.lower() or "éro" in company_name.lower():
-        spoken_brand = "Produits Éro"
-        pronunciation_note = (
-            "PRONUNCIATION INSTRUCTION: Pronounce 'Produits Ero' phonetically as 'Produits Éro' with a distinct 'É' (never 'Produits Héros', "
-            "and never with a 'Z' sound like 'Zéro' or 'Zero', which is strictly prohibited). "
+            f"Always pronounce it strictly as '{pron}' (never pronounce with a 'Z' sound like 'Zéro' or liaison). "
         )
     prompt = (
         f"You represent the company '{company_name}'. Spoken name: '{spoken_brand}'. "

@@ -154,32 +154,10 @@ _FR_SHORT_PARTICLES = frozenset({
 def voice_speech_name(config) -> str:
     """Name sent to TTS. The stored brand is never rewritten.
 
-    A saved pronunciation alias wins. Otherwise a French pause is inserted
-    before a very short final token so engines do not read it as a number
-    or as an English common noun. The rule is generic for every tenant.
+    A saved pronunciation alias wins. Without a custom alias, the official
+    effective voice name is returned verbatim, without hardcoded company-specific rules.
     """
-    spoken = voice_ivr_spoken_name(config)
-    display = (
-        getattr(config, "voice_display_name", None)
-        or getattr(config, "business_name", None)
-        or getattr(config, "effective_voice_name", None)
-        or "Avenqo"
-    )
-    display = str(display).replace("_", " ").strip()
-    if spoken.casefold() != display.casefold():
-        return spoken
-    locale = str(getattr(config, "preferred_language", "fr") or "fr")
-    if not locale.startswith("fr"):
-        return spoken
-    parts = spoken.split()
-    if len(parts) < 2:
-        return spoken
-    last = parts[-1].strip(",.")
-    if not last.isalpha() or not (2 <= len(last) <= 3) or last.casefold() in _FR_SHORT_PARTICLES:
-        return spoken
-    if last.casefold() in {"ero", "éro"}:
-        return f"{' '.join(parts[:-1])} Éro"
-    return f"{' '.join(parts[:-1])}, {last}"
+    return voice_ivr_spoken_name(config)
 
 
 def pronunciation_preview(config) -> dict[str, str]:
