@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -22,6 +23,7 @@ from backend.app.models import (
     Mapping,
     ModelRegistry,
     TrainingJob,
+    User,
 )
 from backend.app.services.tenant_analytics_service import TenantAnalyticsService
 from backend.app.services import tenant_dashboard_service
@@ -44,7 +46,7 @@ class _PreparedIngestion:
 
 
 def _dashboard_service(session, prepared_by_id):
-    analytics = TenantAnalyticsService(session, _PreparedIngestion(prepared_by_id))
+    analytics = TenantAnalyticsService(session, cast(Any, _PreparedIngestion(prepared_by_id)))
     products = TenantProductsService(analytics)
     recommendations = TenantRecommendationsService(analytics, products, None)
     return TenantDashboardService(analytics, recommendations), recommendations
@@ -509,7 +511,7 @@ def test_dashboard_endpoint_ignores_tenant_query_override(tmp_path) -> None:
     app.dependency_overrides[get_tenant_context] = lambda: tenant
     app.dependency_overrides[get_current_identity] = lambda: CurrentIdentity(
         auth_session=None,
-        user=SimpleNamespace(id=uuid4(), company_id=company.id, role="owner", is_active=True),
+        user=cast(User, SimpleNamespace(id=uuid4(), company_id=company.id, role="owner", is_active=True)),
         raw_token="test-token",
     )
     app.dependency_overrides[get_tenant_dashboard_service] = lambda: SimpleNamespace(build=build)
