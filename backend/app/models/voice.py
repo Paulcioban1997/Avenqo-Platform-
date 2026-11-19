@@ -78,13 +78,15 @@ class VoiceBusinessConfig(TimestampMixin, Base):
     response_length: Mapped[str] = mapped_column(String(32), nullable=False, default="adaptive")
     allow_natural_interruptions: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     preferred_accent: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    realtime_provider: Mapped[str] = mapped_column(String(32), nullable=False, default="gemini_live")
-    gemini_live_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    realtime_provider: Mapped[str] = mapped_column(String(32), nullable=False, default="openai")
+    gemini_live_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     voice_display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     custom_pronunciation: Mapped[str | None] = mapped_column(String(255), nullable=True)
     farewell_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     enabled: Mapped[bool] = mapped_column(nullable=False, default=False)
     call_policy: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    ai_coach_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    ai_coach_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     @property
     def effective_voice_name(self) -> str:

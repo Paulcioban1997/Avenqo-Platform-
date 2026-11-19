@@ -32,6 +32,26 @@ def is_module_access_question(text: str) -> bool:
     return modules and access
 
 
+def is_coach_briefing_question(text: str) -> bool:
+    words = _words(text)
+    is_briefing = bool(words & {
+        "briefing", "shift", "priorite", "priorites", "priority", "priorities",
+        "focus", "journee", "today", "programme", "matinee", "shift",
+    })
+    is_guidance = bool(words & {
+        "faire", "ameliorer", "performance", "performances", "commencer", "commence",
+        "start", "do", "improve", "conseil", "conseils", "guide", "guider",
+    })
+    return (is_briefing and is_guidance) or ("briefing" in words)
+
+
+def is_coach_tasks_question(text: str) -> bool:
+    words = _words(text)
+    is_task = bool(words & {"tache", "taches", "task", "tasks", "a faire"})
+    is_inquiry = bool(words & {"mes", "quelles", "quel", "liste", "my", "what", "which", "list", "combien"})
+    return is_task and is_inquiry
+
+
 def is_open_catalog_question(text: str) -> bool:
     words = _words(text)
     products = bool(words & {
@@ -258,10 +278,44 @@ def resolve_direct_voice_answer(
     authenticated_staff: bool,
     staff_role: str | None = None,
     locale: str,
+    user_id: UUID | None = None,
 ) -> str | None:
     """Return a spoken answer, or None when Central AI should handle the turn."""
     if db is None:
         return None
+
+    # Performance Coach AI questions (Shift briefing, tasks, priorities)
+    if is_coach_briefing_question(transcript) or is_coach_tasks_question(transcript):
+        if not authenticated_staff or user_id is None:
+            if locale.lower().startswith("es"):
+                return "El coaching de desempeño y las prioridades de trabajo están reservados para colaboradores autenticados con NIP."
+            if locale.lower().startswith("ro"):
+                return "Coaching-ul de performanță și sarcinile de serviciu sunt rezervate angajaților autentificați prin PIN."
+            if locale.lower().startswith("fr"):
+                return "Le coaching de performance et vos priorités professionnelles sont réservés aux employés authentifiés par NIP."
+            return "Performance coaching and internal shift priorities are reserved for employees authenticated with a PIN."
+
+        from backend.app.models.user import User
+        from backend.app.services.employee_coach_service import EmployeeCoachService
+
+        actor = db.get(User, user_id)
+        if actor is not None and actor.company_id == company_id:
+            coach = EmployeeCoachService(db)
+            if is_coach_briefing_question(transcript):
+                briefing = coach.get_daily_briefing(actor, locale=locale)
+                summary = briefing.get("spoken_summary")
+                if summary:
+                    return str(summary)
+            else:
+                tasks = coach.get_my_tasks(actor, status="open")
+                if not tasks:
+                    if locale.lower().startswith("fr"):
+                        return f"Bonjour {actor.first_name} ! Vous n'avez aucune tâche ouverte en attente dans votre espace de travail."
+                    return f"Hello {actor.first_name}! You have no open tasks pending in your workspace."
+                task_titles = [f"'{t['title']}'" for t in tasks[:3]]
+                if locale.lower().startswith("fr"):
+                    return f"Vous avez {len(tasks)} tâche(s) ouverte(s). Les principales sont : {', '.join(task_titles)}."
+                return f"You have {len(tasks)} open task(s). The main ones are: {', '.join(task_titles)}."
     lang_inquiry = is_language_inquiry(transcript)
     if lang_inquiry:
         from sqlalchemy import select

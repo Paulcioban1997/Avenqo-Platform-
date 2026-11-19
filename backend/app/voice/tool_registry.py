@@ -68,6 +68,16 @@ class VoiceToolRegistryService:
         if public_caller:
             names.add("get_business_info")
             owners["get_business_info"] = "voice"
+        elif tenant.user_id is not None:
+            # Avenqo AI Employee Performance Coach tools for authenticated staff
+            for coach_tool in (
+                "get_my_daily_briefing",
+                "get_my_tasks",
+                "mark_my_task_completed",
+                "get_coaching_advice",
+            ):
+                names.add(coach_tool)
+                owners[coach_tool] = "coach"
         for defn in self._agents.list_authorized(active):
             if defn.category in {"platform", "platform_support"} or defn.slug in {
                 "tenant_capabilities",

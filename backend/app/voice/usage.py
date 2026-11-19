@@ -23,6 +23,25 @@ def voice_pricing_catalog(rate_card: dict[str, dict[str, object]] | None = None)
     configured = rate_card or {}
     entries = []
     defaults = {
+        "gpt-live-1": {
+            "input_cost_per_million_usd": "2.50",
+            "cached_input_cost_per_million_usd": "0.625",
+            "output_cost_per_million_usd": "10.00",
+            "audio_input_cost_per_second_usd": "0.0008333",
+            "audio_output_cost_per_second_usd": "0.0008333",
+            "audio_input_cost_per_million_usd": "30",
+            "audio_output_cost_per_million_usd": "60",
+        },
+        "gpt-6.2-astra": {
+            "input_cost_per_million_usd": "8.00",
+            "cached_input_cost_per_million_usd": "2.00",
+            "output_cost_per_million_usd": "40.00",
+        },
+        "gpt-6.2-sol": {
+            "input_cost_per_million_usd": "2.00",
+            "cached_input_cost_per_million_usd": "0.50",
+            "output_cost_per_million_usd": "8.00",
+        },
         "gpt-realtime-2.1": {
             "input_cost_per_million_usd": "4",
             "cached_input_cost_per_million_usd": "0.4",

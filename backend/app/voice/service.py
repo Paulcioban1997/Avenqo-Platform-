@@ -229,6 +229,8 @@ class VoiceOrchestrator:
             "custom_pronunciation": getattr(config, "custom_pronunciation", None),
             "farewell_message": getattr(config, "farewell_message", None),
             "enabled": config.enabled,
+            "ai_coach_enabled": getattr(config, "ai_coach_enabled", True),
+            "ai_coach_config": getattr(config, "ai_coach_config", None),
         }
 
     async def upsert_config(

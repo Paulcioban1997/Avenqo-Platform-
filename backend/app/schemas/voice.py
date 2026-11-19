@@ -35,6 +35,8 @@ class VoiceConfigRequest(BaseModel):
     personality_tone: str = Field(default="professionnel", min_length=1, max_length=64)
     voice_display_name: str | None = Field(default=None, max_length=255)
     voice_pronunciation: str | None = Field(default=None, max_length=255)
+    ai_coach_enabled: bool = True
+    ai_coach_config: dict[str, Any] | None = None
     custom_pronunciation: str | None = Field(default=None, max_length=255)
     farewell_message: str | None = Field(default=None, max_length=1000)
     enabled: bool = False
@@ -93,6 +95,8 @@ class VoiceConfigResponse(BaseModel):
     custom_pronunciation: str | None = None
     farewell_message: str | None = None
     enabled: bool
+    ai_coach_enabled: bool = True
+    ai_coach_config: dict[str, Any] | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

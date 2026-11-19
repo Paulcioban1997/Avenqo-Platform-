@@ -1041,6 +1041,8 @@ def get_voice_status(
         "dispatcher_number": getattr(settings, "voice_shared_dispatcher_number", "+14386075438"),
         "voice_display_name": getattr(config, "voice_display_name", None) or (config.effective_voice_name if config else (identity.user.company.name if identity.user.company else "Avenqo").replace("_", " ")),
         "voice_pronunciation": getattr(config, "custom_pronunciation", None) if config else None,
+        "ai_coach_enabled": getattr(config, "ai_coach_enabled", True) if config else True,
+        "ai_coach_config": getattr(config, "ai_coach_config", None) if config else None,
         "active_modules": list(ModuleEntitlementService(db).get_active_modules(TenantContext(company_id))),
         "data_sources": [
             {
@@ -1646,6 +1648,10 @@ async def update_voice_config(
         config.realtime_provider = str(request["realtime_provider"])
     if "gemini_live_enabled" in request and request["gemini_live_enabled"] is not None:
         config.gemini_live_enabled = bool(request["gemini_live_enabled"])
+    if "ai_coach_enabled" in request and request["ai_coach_enabled"] is not None:
+        config.ai_coach_enabled = bool(request["ai_coach_enabled"])
+    if "ai_coach_config" in request and isinstance(request["ai_coach_config"], dict):
+        config.ai_coach_config = request["ai_coach_config"]
 
     # If full VoiceConfigRequest fields (business_name, etc.) are present, run full upsert
     if "business_name" in request:
