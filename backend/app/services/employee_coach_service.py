@@ -29,16 +29,23 @@ class EmployeeCoachService:
     _pending_confirmations: dict[tuple[UUID, UUID], dict[str, Any]] = {}
 
     @classmethod
-    def _issue_confirmation_token(cls, user_id: UUID, task_id: UUID) -> str:
+    def _issue_confirmation_token(cls, user_id: UUID, task_id: UUID, session_id: str | None = None) -> str:
         token = secrets.token_hex(16)
         cls._pending_confirmations[(user_id, task_id)] = {
             "token": token,
+            "session_id": str(session_id) if session_id else "",
             "expires_at": time.time() + 180.0,
         }
         return token
 
     @classmethod
-    def _validate_and_consume_token(cls, user_id: UUID, task_id: UUID, token: str | None) -> bool:
+    def _validate_and_consume_token(
+        cls,
+        user_id: UUID,
+        task_id: UUID,
+        token: str | None,
+        session_id: str | None = None,
+    ) -> bool:
         if not token or not isinstance(token, str):
             return False
         key = (user_id, task_id)
@@ -47,6 +54,9 @@ class EmployeeCoachService:
             return False
         if time.time() > pending.get("expires_at", 0):
             cls._pending_confirmations.pop(key, None)
+            return False
+        expected_session = pending.get("session_id")
+        if expected_session and session_id and expected_session != str(session_id):
             return False
         if pending.get("token") == token.strip():
             cls._pending_confirmations.pop(key, None)
@@ -226,6 +236,7 @@ class EmployeeCoachService:
         *,
         confirmed: bool = False,
         confirmation_token: str | None = None,
+        session_id: str | None = None,
     ) -> dict[str, Any]:
         """Mark a task completed by UUID or title keyword matching with ambiguity detection, confirmation, idempotency, and audit logging."""
         if not actor or not actor.id or not actor.company_id:
@@ -306,20 +317,23 @@ class EmployeeCoachService:
             }
 
         # 5. Require explicit server-side confirmation proof before mutating
-        is_server_confirmed = self._validate_and_consume_token(actor.id, matched_task.id, confirmation_token)
+        is_server_confirmed = self._validate_and_consume_token(
+            actor.id, matched_task.id, confirmation_token, session_id=session_id
+        )
 
         if not confirmed or not is_server_confirmed:
-            token = self._issue_confirmation_token(actor.id, matched_task.id)
+            token = self._issue_confirmation_token(actor.id, matched_task.id, session_id=session_id)
             if confirmed and not is_server_confirmed:
                 logger.warning(
-                    "AUDIT_UNCONFIRMED_TASK_MUTATION_REJECTED: user=%s task_id=%s title=%r reason=missing_or_invalid_server_confirmation_token",
-                    actor.id, matched_task.id, matched_task.title
+                    "AUDIT_UNCONFIRMED_TASK_MUTATION_REJECTED: user=%s task_id=%s title=%r reason=missing_or_invalid_server_confirmation_token session=%s",
+                    actor.id, matched_task.id, matched_task.title, session_id
                 )
             return {
                 "status": "requires_confirmation",
                 "task_id": str(matched_task.id),
                 "title": matched_task.title,
                 "confirmation_token": token,
+                "session_id": session_id,
                 "message": (
                     f"Veuillez confirmer : confirmez-vous la clôture de la tâche « {matched_task.title} » ? "
                     "Dites « Oui, je confirme » pour valider la modification."

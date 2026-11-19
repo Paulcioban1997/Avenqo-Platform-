@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from backend.app.ai.tools.base import AITool, ToolArguments
 from backend.app.ai.tools.contracts import ToolExecutionContext, ToolResult
 from backend.app.config.settings import get_settings
+from backend.app.core.permissions import permissions_for
 from backend.app.models.base import UserRole
 from backend.app.models.company import Company
 from backend.app.models.company_membership import CompanyMembership
@@ -70,14 +71,12 @@ def _verify_coach_access(
         if user_role == UserRole.VIEWER:
             return False, "Les comptes en lecture seule ne sont pas autorisés à modifier des tâches.", None
         perms = set(context.permissions or ())
-        has_perm = (
-            "tasks:own" in perms
-            or "tasks:write" in perms
-            or "workspace:tasks:write" in perms
-            or "crm:appointments:write" in perms
-            or user_role in {UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER, UserRole.USER}
+        if user_role:
+            perms.update(permissions_for(user_role))
+        has_task_write = bool(
+            {"tasks:own", "tasks:write", "workspace:tasks:write"} & perms
         )
-        if not has_perm:
+        if not has_task_write:
             return False, "Permission insuffisante pour modifier des tâches.", None
 
     return True, None, actor
@@ -103,6 +102,10 @@ class CompleteTaskArgs(ToolArguments):
     confirmation_token: str | None = Field(
         default=None,
         description="Jeton de confirmation émis par le serveur lors de la demande préalable. Preuve obligatoire pour valider la mutation.",
+    )
+    session_id: str | None = Field(
+        default=None,
+        description="Identifiant de session d'appel téléphonique rattachée.",
     )
 
 
@@ -197,12 +200,14 @@ class MarkMyTaskCompletedTool(AITool):
         if not ok or actor is None:
             return ToolResult(success=False, error=err or "unauthorized")
 
+        session_id = getattr(context, "session_id", None) or getattr(arguments, "session_id", None)
         coach = EmployeeCoachService(self._session)
         result = coach.complete_task(
             actor,
             arguments.task_identifier,
             confirmed=arguments.confirmed,
             confirmation_token=arguments.confirmation_token,
+            session_id=str(session_id) if session_id else None,
         )
 
         if result.get("status") in {"ambiguous", "requires_confirmation"}:
