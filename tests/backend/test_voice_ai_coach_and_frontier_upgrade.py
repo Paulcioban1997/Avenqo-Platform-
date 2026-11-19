@@ -960,3 +960,94 @@ async def test_telnyx_media_bridge_automatic_midcall_reconnect():
     assert bridge.telemetry.get("reconnect_triggered") is True
     reconnect_attempts = bridge.telemetry.get("reconnect_attempts")
     assert isinstance(reconnect_attempts, int) and reconnect_attempts >= 1
+
+
+@pytest.mark.asyncio
+async def test_employee_coach_session_id_strict_binding(tmp_path):
+    """Vérifie que la confirmation de tâche exige une session strictement identique, rejetant toute session absente ou différente."""
+    engine, session, company, config, _api_key, _orchestrator = _voice_database(tmp_path)
+    try:
+        user = _create_test_user(
+            session,
+            company.id,
+            first_name="Jean",
+            last_name="Tremblay",
+            email="jean.tremblay@avenqo.test",
+            job_title="Technicien",
+            role=UserRole.USER,
+        )
+        task = EmployeeTask(
+            id=uuid4(),
+            company_id=company.id,
+            assignee_user_id=user.id,
+            created_by_user_id=user.id,
+            title="Vérifier le compresseur atelier",
+            status="open",
+        )
+        session.add(task)
+        session.commit()
+
+        coach = EmployeeCoachService(session)
+
+        # 1. Demande de confirmation rattachée à la session call-438
+        pre = coach.complete_task(
+            user,
+            "compresseur",
+            confirmed=False,
+            session_id="call-438",
+        )
+        assert pre["status"] == "requires_confirmation"
+        token = pre["confirmation_token"]
+        assert token is not None
+
+        # 2. Tentative avec token valide mais session_id absent (None) -> REJET OBLIGATOIRE
+        res_no_session = coach.complete_task(
+            user,
+            "compresseur",
+            confirmed=True,
+            confirmation_token=token,
+            session_id=None,
+        )
+        assert res_no_session["status"] == "requires_confirmation"
+
+        # 3. Demande à nouveau avec call-438
+        pre2 = coach.complete_task(
+            user,
+            "compresseur",
+            confirmed=False,
+            session_id="call-438",
+        )
+        token2 = pre2["confirmation_token"]
+
+        # 4. Tentative avec session différente ("call-999") -> REJET OBLIGATOIRE
+        res_wrong_session = coach.complete_task(
+            user,
+            "compresseur",
+            confirmed=True,
+            confirmation_token=token2,
+            session_id="call-999",
+        )
+        assert res_wrong_session["status"] == "requires_confirmation"
+
+        # 5. Demande à nouveau avec call-438
+        pre3 = coach.complete_task(
+            user,
+            "compresseur",
+            confirmed=False,
+            session_id="call-438",
+        )
+        token3 = pre3["confirmation_token"]
+
+        # 6. Tentative avec la session exacte légitime "call-438" -> SUCCÈS
+        res_valid = coach.complete_task(
+            user,
+            "compresseur",
+            confirmed=True,
+            confirmation_token=token3,
+            session_id="call-438",
+        )
+        assert res_valid["status"] == "success"
+        assert res_valid["status_after"] == "done"
+    finally:
+        session.close()
+        engine.dispose()
