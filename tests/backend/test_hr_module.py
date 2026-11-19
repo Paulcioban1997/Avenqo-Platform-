@@ -211,20 +211,49 @@ def test_hr_performance_review(hr_db_session):
     session, company, owner, manager, technician = hr_db_session
     service = HRService(session)
 
-    rev = service.create_review(
+    # 1. Données opérationnelles insuffisantes (< 2 tâches) : message véridique exigé
+    rev_insufficient = service.create_review(
         company_id=company.id,
         user_id=technician.id,
         reviewer_user_id=manager.id,
         review_period="Q4 2026",
         rating=4.8,
-        strengths="Excellente rapidité d'exécution sur le freinage et diagnostic précis.",
+        strengths="Excellente rapidité d'exécution sur le freinage.",
         growth_areas="Continuer à optimiser le temps de check-list.",
         goals="Obtenir la certification niveau 2 sur véhicules hybrides.",
     )
-    assert rev.rating == 4.8
-    assert rev.employee_name == "Marc Technicien"
-    assert "Voice Coach" in rev.ai_coach_notes
+    assert rev_insufficient.rating == 4.8
+    assert rev_insufficient.employee_name == "Marc Technicien"
+    assert rev_insufficient.data_sufficient is False
+    assert rev_insufficient.ai_coach_notes == "Données insuffisantes pour produire une évaluation personnalisée fiable."
 
+    # 2. Données suffisantes (ajout de tâches réelles complétées)
+    session.add(
+        EmployeeTask(
+            id=uuid4(),
+            company_id=company.id,
+            assignee_user_id=technician.id,
+            created_by_user_id=manager.id,
+            title="Purge circuit hydraulique",
+            status="completed",
+        )
+    )
+    session.commit()
+
+    rev_sufficient = service.create_review(
+        company_id=company.id,
+        user_id=technician.id,
+        reviewer_user_id=manager.id,
+        review_period="Q4 2026",
+        rating=4.9,
+        strengths="Maîtrise complète de l'atelier.",
+        growth_areas="Superviser les apprentis.",
+        goals="Former 1 nouveau technicien.",
+    )
+    assert rev_sufficient.data_sufficient is True
+    assert "Voice Coach" in rev_sufficient.ai_coach_notes
+    assert "ne constitue pas une décision RH formelle" in rev_sufficient.ai_coach_notes
+
+    # 3. Liste des revues
     reviews = service.list_reviews(company.id)
-    assert len(reviews) == 1
-    assert reviews[0].id == rev.id
+    assert len(reviews) == 2

@@ -58,8 +58,25 @@ class HRSkillItem(BaseModel):
     category: str  # "Technique", "Commercial", "Sécurité", "Outils"
     level: int  # 1 à 5
     certified: bool
+    status: str = "not_assessed"  # "verified", "self_declared", "ai_suggested", "not_assessed"
+    evidence_url_or_note: str | None = None
+    verified_at: datetime | None = None
+    verified_by: str | None = None
     employee_id: UUID
     employee_name: str
+
+
+class HRSkillDeclareRequest(BaseModel):
+    name: str = Field(..., min_length=2, max_length=120)
+    category: str = Field(default="Technique", max_length=64)
+    level: int = Field(default=1, ge=1, le=5)
+    evidence_url_or_note: str | None = None
+
+
+class HRSkillVerifyRequest(BaseModel):
+    level: int | None = Field(default=None, ge=1, le=5)
+    evidence_url_or_note: str | None = None
+    certified: bool = True
 
 
 class HRLeaveRequest(BaseModel):
@@ -95,6 +112,7 @@ class HRPerformanceReviewCreate(BaseModel):
     strengths: str
     growth_areas: str
     goals: str
+    is_demo: bool = False
 
 
 class HRPerformanceReviewItem(BaseModel):
@@ -108,4 +126,6 @@ class HRPerformanceReviewItem(BaseModel):
     growth_areas: str | None
     goals: str | None
     ai_coach_notes: str | None
+    is_demo: bool = False
+    data_sufficient: bool = True
     created_at: datetime

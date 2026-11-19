@@ -19,7 +19,12 @@ from backend.app.models.company import Company
 from backend.app.models.company_membership import CompanyMembership
 from backend.app.models.user import User
 from backend.app.models.voice import VoiceCallerCredential
-from backend.app.models.workspace import EmployeeLeave, EmployeePerformanceReview, EmployeeTask
+from backend.app.models.workspace import (
+    EmployeeLeave,
+    EmployeePerformanceReview,
+    EmployeeSkill,
+    EmployeeTask,
+)
 from backend.app.schemas.hr import (
     HREmployeeItem,
     HRJobDescriptionSOP,
@@ -426,36 +431,166 @@ class HRService:
         employees = self.list_employees(company_id)
         skills: list[HRSkillItem] = []
 
+        # 1. Compétences réelles stockées en base (vérifiées ou auto-déclarées)
+        stored_skills = self._session.scalars(
+            select(EmployeeSkill)
+            .where(EmployeeSkill.company_id == company_id)
+            .order_by(EmployeeSkill.created_at.desc())
+        ).all()
+
+        stored_by_user: dict[UUID, list[EmployeeSkill]] = {}
+        for s in stored_skills:
+            stored_by_user.setdefault(s.user_id, []).append(s)
+
         for emp in employees:
-            job_lower = emp.job_title.lower()
+            emp_skills = stored_by_user.get(emp.id, [])
             emp_name = f"{emp.first_name} {emp.last_name}".strip() or emp.email
 
-            # Assign realistic competencies adapted to their role
-            if "mécani" in job_lower or "auto" in job_lower or "maintenance" in job_lower or "auto" in ind_lower or "mécani" in ind_lower:
-                skills.append(HRSkillItem(id=f"{emp.id}-1", name="Diagnostic Électronique OBD", category="Technique", level=5, certified=True, employee_id=emp.id, employee_name=emp_name))
-                skills.append(HRSkillItem(id=f"{emp.id}-2", name="Freinage & Sécurité Active", category="Sécurité", level=4, certified=True, employee_id=emp.id, employee_name=emp_name))
-                skills.append(HRSkillItem(id=f"{emp.id}-3", name="Chiffrage & Devis Pièces", category="Commercial", level=4, certified=False, employee_id=emp.id, employee_name=emp_name))
-            elif "chantier" in job_lower or "travaux" in job_lower or "construct" in job_lower:
-                skills.append(HRSkillItem(id=f"{emp.id}-1", name="Lecture de Plans & Cotes", category="Technique", level=5, certified=True, employee_id=emp.id, employee_name=emp_name))
-                skills.append(HRSkillItem(id=f"{emp.id}-2", name="Normes Sécurité CNESST / OSHA", category="Sécurité", level=5, certified=True, employee_id=emp.id, employee_name=emp_name))
-                skills.append(HRSkillItem(id=f"{emp.id}-3", name="Gestion des Matériaux & Stocks", category="Outils", level=4, certified=False, employee_id=emp.id, employee_name=emp_name))
-            elif "coiff" in job_lower or "styliste" in job_lower or "esthét" in job_lower:
-                skills.append(HRSkillItem(id=f"{emp.id}-1", name="Techniques Coloration & Balayage", category="Technique", level=5, certified=True, employee_id=emp.id, employee_name=emp_name))
-                skills.append(HRSkillItem(id=f"{emp.id}-2", name="Conseil Vente Soins à Domicile", category="Commercial", level=4, certified=True, employee_id=emp.id, employee_name=emp_name))
-                skills.append(HRSkillItem(id=f"{emp.id}-3", name="Hygiène & Stérilisation Outils", category="Sécurité", level=5, certified=True, employee_id=emp.id, employee_name=emp_name))
+            if emp_skills:
+                for s in emp_skills:
+                    is_certified = (s.status == "verified" and s.verified_at is not None)
+                    verifier_name = None
+                    if s.verified_by_user_id:
+                        verifier = self._session.get(User, s.verified_by_user_id)
+                        verifier_name = f"{verifier.first_name} {verifier.last_name}".strip() if verifier else None
+
+                    skills.append(
+                        HRSkillItem(
+                            id=str(s.id),
+                            name=s.name,
+                            category=s.category,
+                            level=s.level,
+                            certified=is_certified,
+                            status=s.status,
+                            evidence_url_or_note=s.evidence_url_or_note,
+                            verified_at=s.verified_at,
+                            verified_by=verifier_name,
+                            employee_id=s.user_id,
+                            employee_name=emp_name,
+                        )
+                    )
             else:
-                skills.append(HRSkillItem(id=f"{emp.id}-1", name="Service & Relation Client", category="Commercial", level=4, certified=True, employee_id=emp.id, employee_name=emp_name))
-                skills.append(HRSkillItem(id=f"{emp.id}-2", name="Rigueur & Organisation des Tâches", category="Outils", level=4, certified=False, employee_id=emp.id, employee_name=emp_name))
-                skills.append(HRSkillItem(id=f"{emp.id}-3", name="Utilisation Voice AI Coach", category="Technique", level=5, certified=True, employee_id=emp.id, employee_name=emp_name))
+                # Aucune certification inventée sans preuve réelle.
+                # Statut explicite 'not_assessed' (Non Évalué) avec niveau 1 et certified=False.
+                job_lower = emp.job_title.lower()
+                if "mécani" in job_lower or "auto" in job_lower or "maintenance" in job_lower or "auto" in ind_lower or "mécani" in ind_lower:
+                    skills.append(HRSkillItem(id=f"{emp.id}-1", name="Diagnostic Électronique OBD", category="Technique", level=1, certified=False, status="not_assessed", employee_id=emp.id, employee_name=emp_name))
+                    skills.append(HRSkillItem(id=f"{emp.id}-2", name="Freinage & Sécurité Active", category="Sécurité", level=1, certified=False, status="not_assessed", employee_id=emp.id, employee_name=emp_name))
+                    skills.append(HRSkillItem(id=f"{emp.id}-3", name="Chiffrage & Devis Pièces", category="Commercial", level=1, certified=False, status="not_assessed", employee_id=emp.id, employee_name=emp_name))
+                elif "chantier" in job_lower or "travaux" in job_lower or "construct" in job_lower:
+                    skills.append(HRSkillItem(id=f"{emp.id}-1", name="Lecture de Plans & Cotes", category="Technique", level=1, certified=False, status="not_assessed", employee_id=emp.id, employee_name=emp_name))
+                    skills.append(HRSkillItem(id=f"{emp.id}-2", name="Normes Sécurité CNESST / OSHA", category="Sécurité", level=1, certified=False, status="not_assessed", employee_id=emp.id, employee_name=emp_name))
+                    skills.append(HRSkillItem(id=f"{emp.id}-3", name="Gestion des Matériaux & Stocks", category="Outils", level=1, certified=False, status="not_assessed", employee_id=emp.id, employee_name=emp_name))
+                elif "coiff" in job_lower or "styliste" in job_lower or "esthét" in job_lower:
+                    skills.append(HRSkillItem(id=f"{emp.id}-1", name="Techniques Coloration & Balayage", category="Technique", level=1, certified=False, status="not_assessed", employee_id=emp.id, employee_name=emp_name))
+                    skills.append(HRSkillItem(id=f"{emp.id}-2", name="Conseil Vente Soins à Domicile", category="Commercial", level=1, certified=False, status="not_assessed", employee_id=emp.id, employee_name=emp_name))
+                    skills.append(HRSkillItem(id=f"{emp.id}-3", name="Hygiène & Stérilisation Outils", category="Sécurité", level=1, certified=False, status="not_assessed", employee_id=emp.id, employee_name=emp_name))
+                else:
+                    skills.append(HRSkillItem(id=f"{emp.id}-1", name="Service & Relation Client", category="Commercial", level=1, certified=False, status="not_assessed", employee_id=emp.id, employee_name=emp_name))
+                    skills.append(HRSkillItem(id=f"{emp.id}-2", name="Rigueur & Organisation des Tâches", category="Outils", level=1, certified=False, status="not_assessed", employee_id=emp.id, employee_name=emp_name))
+                    skills.append(HRSkillItem(id=f"{emp.id}-3", name="Utilisation Voice AI Coach", category="Technique", level=1, certified=False, status="not_assessed", employee_id=emp.id, employee_name=emp_name))
 
         return skills
 
-    def list_leaves(self, company_id: UUID) -> list[HRLeaveItem]:
-        leaves = self._session.scalars(
-            select(EmployeeLeave)
-            .where(EmployeeLeave.company_id == company_id)
-            .order_by(EmployeeLeave.created_at.desc())
-        ).all()
+    def declare_skill(
+        self,
+        company_id: UUID,
+        user_id: UUID,
+        name: str,
+        category: str = "Technique",
+        level: int = 1,
+        evidence_url_or_note: str | None = None,
+    ) -> HRSkillItem:
+        """Enregistre une compétence auto-déclarée par un collaborateur (non certifiée par défaut)."""
+        skill = EmployeeSkill(
+            id=uuid4(),
+            company_id=company_id,
+            user_id=user_id,
+            name=name.strip(),
+            category=category.strip(),
+            level=max(1, min(level, 5)),
+            status="self_declared",
+            evidence_url_or_note=evidence_url_or_note,
+            verified_at=None,
+            verified_by_user_id=None,
+        )
+        self._session.add(skill)
+        self._session.commit()
+        self._session.refresh(skill)
+
+        user = self._session.get(User, user_id)
+        emp_name = f"{user.first_name} {user.last_name}".strip() if user else "Collaborateur"
+
+        return HRSkillItem(
+            id=str(skill.id),
+            name=skill.name,
+            category=skill.category,
+            level=skill.level,
+            certified=False,
+            status="self_declared",
+            evidence_url_or_note=skill.evidence_url_or_note,
+            verified_at=None,
+            verified_by=None,
+            employee_id=skill.user_id,
+            employee_name=emp_name,
+        )
+
+    def verify_skill(
+        self,
+        company_id: UUID,
+        skill_id: UUID,
+        verifier_user_id: UUID,
+        level: int | None = None,
+        evidence_url_or_note: str | None = None,
+    ) -> HRSkillItem:
+        """Valide et certifie formellement une compétence avec preuve et horodatage auditable."""
+        skill = self._session.get(EmployeeSkill, skill_id)
+        if skill is None or skill.company_id != company_id:
+            raise ValueError("Compétence introuvable pour cette entreprise.")
+
+        skill.status = "verified"
+        skill.verified_at = datetime.now(timezone.utc)
+        skill.verified_by_user_id = verifier_user_id
+        if level is not None:
+            skill.level = max(1, min(level, 5))
+        if evidence_url_or_note:
+            skill.evidence_url_or_note = evidence_url_or_note
+
+        self._session.commit()
+        self._session.refresh(skill)
+
+        user = self._session.get(User, skill.user_id)
+        emp_name = f"{user.first_name} {user.last_name}".strip() if user else "Collaborateur"
+        verifier = self._session.get(User, verifier_user_id)
+        verifier_name = f"{verifier.first_name} {verifier.last_name}".strip() if verifier else "Direction"
+
+        return HRSkillItem(
+            id=str(skill.id),
+            name=skill.name,
+            category=skill.category,
+            level=skill.level,
+            certified=True,
+            status="verified",
+            evidence_url_or_note=skill.evidence_url_or_note,
+            verified_at=skill.verified_at,
+            verified_by=verifier_name,
+            employee_id=skill.user_id,
+            employee_name=emp_name,
+        )
+
+    def list_leaves(
+        self,
+        company_id: UUID,
+        user_id: UUID | None = None,
+        department: str | None = None,
+    ) -> list[HRLeaveItem]:
+        query = select(EmployeeLeave).where(EmployeeLeave.company_id == company_id)
+        if user_id is not None:
+            query = query.where(EmployeeLeave.user_id == user_id)
+        elif department is not None:
+            query = query.join(User, EmployeeLeave.user_id == User.id).where(User.department == department)
+
+        leaves = self._session.scalars(query.order_by(EmployeeLeave.created_at.desc())).all()
 
         results: list[HRLeaveItem] = []
         for l in leaves:
@@ -532,6 +667,9 @@ class HRService:
         if leave is None or leave.company_id != company_id:
             raise ValueError("Demande de congé introuvable pour cette entreprise.")
 
+        if leave.user_id == approver_user_id:
+            raise PermissionError("Vous ne pouvez pas approuver votre propre demande de congé.")
+
         leave.status = new_status
         leave.approved_by_user_id = approver_user_id
         self._session.commit()
@@ -556,12 +694,19 @@ class HRService:
             created_at=leave.created_at,
         )
 
-    def list_reviews(self, company_id: UUID) -> list[HRPerformanceReviewItem]:
-        reviews = self._session.scalars(
-            select(EmployeePerformanceReview)
-            .where(EmployeePerformanceReview.company_id == company_id)
-            .order_by(EmployeePerformanceReview.created_at.desc())
-        ).all()
+    def list_reviews(
+        self,
+        company_id: UUID,
+        user_id: UUID | None = None,
+        department: str | None = None,
+    ) -> list[HRPerformanceReviewItem]:
+        query = select(EmployeePerformanceReview).where(EmployeePerformanceReview.company_id == company_id)
+        if user_id is not None:
+            query = query.where(EmployeePerformanceReview.user_id == user_id)
+        elif department is not None:
+            query = query.join(User, EmployeePerformanceReview.user_id == User.id).where(User.department == department)
+
+        reviews = self._session.scalars(query.order_by(EmployeePerformanceReview.created_at.desc())).all()
 
         results: list[HRPerformanceReviewItem] = []
         for r in reviews:
@@ -582,6 +727,8 @@ class HRService:
                     growth_areas=r.growth_areas,
                     goals=r.goals,
                     ai_coach_notes=r.ai_coach_notes,
+                    is_demo=getattr(r, "is_demo", False),
+                    data_sufficient=getattr(r, "data_sufficient", True),
                     created_at=r.created_at,
                 )
             )
@@ -597,13 +744,49 @@ class HRService:
         strengths: str,
         growth_areas: str,
         goals: str,
+        is_demo: bool = False,
     ) -> HRPerformanceReviewItem:
-        # Notes intelligentes générées par le Coach Vocal
-        ai_coach_notes = (
-            f"Excellente dynamique d'équipe. Performance notée à {rating}/5. "
-            "Le Voice Coach suggère de poursuivre les rituels matinaux d'optimisation "
-            "de tâches pour maximiser le chiffre d'affaires et l'autonomie opérationnelle."
-        )
+        if user_id == reviewer_user_id:
+            raise ValueError("Un collaborateur ne peut pas s'évaluer lui-même.")
+
+        target_user = self._session.get(User, user_id)
+        if target_user is None or target_user.company_id != company_id:
+            raise ValueError("Collaborateur introuvable dans cette entreprise.")
+
+        # Vérification stricte des données opérationnelles réelles pour Voice Coach
+        tasks_count = self._session.scalar(
+            select(func.count(EmployeeTask.id)).where(
+                EmployeeTask.company_id == company_id,
+                EmployeeTask.assignee_user_id == user_id,
+            )
+        ) or 0
+        completed_tasks = self._session.scalar(
+            select(func.count(EmployeeTask.id)).where(
+                EmployeeTask.company_id == company_id,
+                EmployeeTask.assignee_user_id == user_id,
+                EmployeeTask.status == "completed",
+            )
+        ) or 0
+
+        if is_demo:
+            data_sufficient = True
+            ai_coach_notes = (
+                f"[DÉMONSTRATION] Synthèse de performance simulée ({rating}/5). "
+                "Recommandation consultative issue de l'analyse opérationnelle IA — "
+                "ne constitue pas une décision RH formelle."
+            )
+        elif tasks_count < 2:
+            data_sufficient = False
+            ai_coach_notes = "Données insuffisantes pour produire une évaluation personnalisée fiable."
+        else:
+            data_sufficient = True
+            completion_rate = round((completed_tasks / tasks_count) * 100) if tasks_count > 0 else 0
+            ai_coach_notes = (
+                f"Recommandation Voice Coach basée sur {completed_tasks}/{tasks_count} tâches validées ({completion_rate}% d'achèvement). "
+                f"Rythme opérationnel conforme aux objectifs du département {target_user.department or 'Opérations'}. "
+                "Recommandation consultative issue de l'analyse opérationnelle IA — "
+                "ne constitue pas une décision RH formelle."
+            )
 
         review = EmployeePerformanceReview(
             id=uuid4(),
@@ -616,14 +799,15 @@ class HRService:
             growth_areas=growth_areas,
             goals=goals,
             ai_coach_notes=ai_coach_notes,
+            is_demo=is_demo,
+            data_sufficient=data_sufficient,
         )
         self._session.add(review)
         self._session.commit()
         self._session.refresh(review)
 
-        user = self._session.get(User, user_id)
         reviewer = self._session.get(User, reviewer_user_id)
-        user_name = f"{user.first_name} {user.last_name}".strip() if user else "Collaborateur"
+        user_name = f"{target_user.first_name} {target_user.last_name}".strip() or target_user.email
         rev_name = f"{reviewer.first_name} {reviewer.last_name}".strip() if reviewer else "Direction"
 
         return HRPerformanceReviewItem(
@@ -637,5 +821,7 @@ class HRService:
             growth_areas=review.growth_areas,
             goals=review.goals,
             ai_coach_notes=review.ai_coach_notes,
+            is_demo=review.is_demo,
+            data_sufficient=review.data_sufficient,
             created_at=review.created_at,
         )

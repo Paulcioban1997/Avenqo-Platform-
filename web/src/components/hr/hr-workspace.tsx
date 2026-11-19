@@ -77,8 +77,28 @@ interface HRSkillItem {
   category: string;
   level: number;
   certified: boolean;
+  status: "verified" | "self_declared" | "ai_suggested" | "not_assessed";
+  evidence_url_or_note?: string | null;
+  verified_at?: string | null;
+  verified_by?: string | null;
   employee_id: string;
   employee_name: string;
+}
+
+interface HRPerformanceReviewItem {
+  id: string;
+  user_id: string;
+  employee_name: string;
+  reviewer_name: string;
+  review_period: string;
+  rating: number;
+  strengths?: string | null;
+  growth_areas?: string | null;
+  goals?: string | null;
+  ai_coach_notes?: string | null;
+  is_demo?: boolean;
+  data_sufficient?: boolean;
+  created_at: string;
 }
 
 interface HRLeaveItem {
@@ -105,6 +125,7 @@ export function HRWorkspace() {
   const [skills, setSkills] = useState<HRSkillItem[]>([]);
   const [leaves, setLeaves] = useState<HRLeaveItem[]>([]);
   const [selectedSector, setSelectedSector] = useState<string>("automobile");
+  const [moduleInactive, setModuleInactive] = useState(false);
 
   // Filters & Search
   const [teamSearch, setTeamSearch] = useState("");
@@ -133,6 +154,15 @@ export function HRWorkspace() {
         apiFetch("/api/v1/hr/skills", { headers }),
         apiFetch("/api/v1/hr/leaves", { headers }),
       ]);
+
+      if (resOverview.status === 403) {
+        const errData = await resOverview.json().catch(() => ({}));
+        if (JSON.stringify(errData).includes("module_inactive")) {
+          setModuleInactive(true);
+          setLoading(false);
+          return;
+        }
+      }
 
       if (resOverview.ok) setOverview(await resOverview.json());
       if (resEmployees.ok) setEmployees(await resEmployees.json());
@@ -245,37 +275,57 @@ export function HRWorkspace() {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-2 border-b border-white/[0.08] overflow-x-auto pb-px">
-        {[
-          { key: "overview", label: "Vue d'ensemble", icon: Layers },
-          { key: "team", label: "Organigramme & Équipe", icon: Users },
-          { key: "sops", label: "Fiches de poste & SOPs", icon: Briefcase },
-          { key: "skills", label: "Matrice de Compétences", icon: Award },
-          { key: "leaves", label: "Congés & Absences", icon: Calendar },
-        ].map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.key;
-          return (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key as any)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-xs font-bold transition border-b-2 whitespace-nowrap ${
-                isActive
-                  ? "border-[#0076FF] text-[#0076FF] bg-blue-500/10"
-                  : "border-transparent text-slate-400 hover:text-white hover:bg-white/[0.02]"
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              <span>{tab.label}</span>
-              {tab.key === "leaves" && overview && overview.pending_leaves_count > 0 && (
-                <span className="w-4 h-4 rounded-full bg-amber-500 text-black text-[10px] font-extrabold flex items-center justify-center">
-                  {overview.pending_leaves_count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+      {moduleInactive ? (
+        <div className="p-8 rounded-3xl bg-[#0B132B]/80 border border-white/[0.08] text-center max-w-xl mx-auto space-y-4 my-8">
+          <div className="w-12 h-12 rounded-2xl bg-blue-500/10 text-blue-400 flex items-center justify-center mx-auto border border-blue-500/20">
+            <Layers className="w-6 h-6" />
+          </div>
+          <h3 className="text-lg font-bold text-white">Module HR AI non activé</h3>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Le module Ressources Humaines (Hiérarchie d'équipe, SOPs métiers universels, gestion des compétences et congés)
+            n'est pas activé pour cette entreprise. Vous pouvez l'activer directement dans vos paramètres selon vos quotas.
+          </p>
+          <a
+            href="/settings"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold bg-[#0076FF] hover:bg-blue-600 text-white transition shadow-sm"
+          >
+            <span>Gérer les modules dans Paramètres</span>
+            <ArrowRight className="w-4 h-4" />
+          </a>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center gap-2 border-b border-white/[0.08] overflow-x-auto pb-px">
+            {[
+              { key: "overview", label: "Vue d'ensemble", icon: Layers },
+              { key: "team", label: "Organigramme & Équipe", icon: Users },
+              { key: "sops", label: "Fiches de poste & SOPs", icon: Briefcase },
+              { key: "skills", label: "Matrice de Compétences", icon: Award },
+              { key: "leaves", label: "Congés & Absences", icon: Calendar },
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key as any)}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-xs font-bold transition border-b-2 whitespace-nowrap ${
+                    isActive
+                      ? "border-[#0076FF] text-[#0076FF] bg-blue-500/10"
+                      : "border-transparent text-slate-400 hover:text-white hover:bg-white/[0.02]"
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  <span>{tab.label}</span>
+                  {tab.key === "leaves" && overview && overview.pending_leaves_count > 0 && (
+                    <span className="w-4 h-4 rounded-full bg-amber-500 text-black text-[10px] font-extrabold flex items-center justify-center">
+                      {overview.pending_leaves_count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
 
       {/* TAB 1: OVERVIEW */}
       {activeTab === "overview" && (
@@ -655,14 +705,38 @@ export function HRWorkspace() {
                     ))}
                   </div>
 
-                  {skill.certified ? (
-                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                      Certifié
-                    </span>
-                  ) : (
-                    <span className="text-[10px] text-slate-500">En cours</span>
-                  )}
+                  <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                    {skill.status === "verified" || skill.certified ? (
+                      <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                        <Check className="w-3 h-3" />
+                        <span>Vérifié</span>
+                      </span>
+                    ) : skill.status === "self_declared" ? (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                        Auto-déclaré
+                      </span>
+                    ) : skill.status === "ai_suggested" ? (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20">
+                        Suggéré IA
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-slate-400 px-2 py-0.5 rounded bg-white/[0.04] border border-white/[0.06]">
+                        Non Évalué
+                      </span>
+                    )}
+                  </div>
                 </div>
+
+                {skill.evidence_url_or_note && (
+                  <p className="text-[11px] text-slate-400 bg-black/20 p-2 rounded-lg border border-white/[0.04] italic">
+                    Preuve : {skill.evidence_url_or_note}
+                  </p>
+                )}
+                {skill.verified_by && (
+                  <p className="text-[10px] text-emerald-400/80">
+                    Certifié par {skill.verified_by}
+                  </p>
+                )}
               </div>
             ))}
           </div>
@@ -751,6 +825,8 @@ export function HRWorkspace() {
             )}
           </div>
         </div>
+      )}
+        </>
       )}
 
       {/* LEAVE REQUEST MODAL */}

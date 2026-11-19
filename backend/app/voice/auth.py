@@ -165,12 +165,15 @@ class VoiceCallerAuth:
                 User.company_id == company_uuid,
                 User.id != principal_uuid,
                 User.is_active.is_(True),
-                or_(User.phone == phone, User.phone == raw_phone),
+                or_(
+                    User.phone == phone,
+                    User.phone == raw_phone,
+                    User.phone == (phone[2:] if phone and phone.startswith("+1") else None),
+                ),
             )
         )
         if other_active_user is not None:
-            other_is_owner = getattr(other_active_user, "role", None) == UserRole.OWNER
-            if is_owner and not other_is_owner:
+            if is_owner:
                 other_active_user.phone = None
                 self.db.flush()
             else:
@@ -195,10 +198,9 @@ class VoiceCallerAuth:
             )
 
             # P0 Security Rule: NEVER allow non-owners to reassign the phone number of an ACTIVE user.
-            # The tenant OWNER with verified reauthentication may claim a number from a non-owner employee.
-            other_is_owner = other_user is not None and getattr(other_user, "role", None) == UserRole.OWNER
+            # The tenant OWNER with verified password reauthentication may reclaim a number in their tenant.
             if other_user is not None and str(other_user.id) != str(principal_uuid) and other_user.is_active:
-                if not (is_owner and not other_is_owner):
+                if not is_owner:
                     raise PermissionError("Ce numéro de téléphone est déjà associé à un autre collaborateur actif de l'entreprise.")
 
             # If the phone was assigned to an inactive/deactivated account, only OWNER or ADMIN may reassign it
