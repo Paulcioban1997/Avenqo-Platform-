@@ -134,18 +134,21 @@ class RotatingRealtimeAdapter:
         async with self.lock:
             if self.closed:
                 return
-            if self.adapter is not None and hasattr(self.adapter, "reconnect"):
-                await self.adapter.reconnect(fallback_model=fallback_model, locale=locale)
-                return
             if self.pump is not None:
                 self.pump.cancel()
                 await asyncio.gather(self.pump, return_exceptions=True)
+            self.generation += 1
+            self.opened_at = self.clock()
+            self.locale = locale
+            if self.adapter is not None and hasattr(self.adapter, "reconnect"):
+                await self.adapter.reconnect(fallback_model=fallback_model, locale=locale)
+                self.pump = asyncio.create_task(self._events(self.adapter, self.generation))
+                return
             if self.adapter is not None:
                 try:
                     await asyncio.wait_for(self.adapter.close(), 5)
                 except Exception:
                     pass
-            self.locale = locale
             await self._connect()
 
     async def events(self):

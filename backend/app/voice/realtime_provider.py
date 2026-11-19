@@ -246,6 +246,7 @@ def build_personality_system_prompt(
 class RealtimeProviderType(StrEnum):
     RETELL = "retell"
     TELNYX = "telnyx"
+    OPENAI = "openai"
     GEMINI_LIVE = "gemini_live"
 
 
@@ -1832,32 +1833,34 @@ class VoiceRealtimeRouter:
         self._interruptions = NaturalInterruptionManager()
 
     def resolve_provider(self, config: VoiceBusinessConfig | None) -> VoiceRealtimeProvider:
-        """Résout le fournisseur à utiliser avec Gemini 3.8 Live comme moteur universel prioritaire."""
-        requested = getattr(config, "realtime_provider", RealtimeProviderType.GEMINI_LIVE) if config is not None else RealtimeProviderType.GEMINI_LIVE
-        gemini_enabled = bool(getattr(config, "gemini_live_enabled", True)) if config is not None else True
+        """Résout le fournisseur vocal temps réel (OpenAI gpt-live-1 par défaut, Gemini Live optionnel si activé)."""
+        requested = (
+            getattr(config, "realtime_provider", RealtimeProviderType.TELNYX)
+            if config is not None
+            else RealtimeProviderType.TELNYX
+        )
+        gemini_enabled = (
+            bool(getattr(config, "gemini_live_enabled", False))
+            if config is not None
+            else False
+        )
 
-        # 1. Priorité universelle : Google Gemini Live si disponible
-        if (requested == RealtimeProviderType.GEMINI_LIVE or gemini_enabled) and self._gemini.is_available():
+        # 1. Optionnel : Gemini Live si expressément demandé et activé pour l'entreprise
+        if requested == RealtimeProviderType.GEMINI_LIVE and gemini_enabled and self._gemini.is_available():
             return self._gemini
 
-        # 2. Si Telnyx/OpenAI est configuré et demandé
-        if requested == RealtimeProviderType.TELNYX and self._telnyx.is_available():
-            return self._telnyx
-
-        # 3. Si Retell est configuré et demandé
+        # 2. Optionnel : Retell si expressément demandé et disponible
         if requested == RealtimeProviderType.RETELL and self._retell.is_available():
             return self._retell
 
-        # 4. Fallback vers le fournisseur disponible (ordre : Gemini -> Telnyx -> Retell)
-        if self._gemini.is_available():
-            return self._gemini
+        # 3. Moteur vocal primaire par défaut : OpenAI (gpt-live-1 via Telnyx Media)
         if self._telnyx.is_available():
             return self._telnyx
-        if self._retell.is_available():
-            return self._retell
 
-        # Défaut
-        return self._gemini if self._gemini.is_available() else self._telnyx
+        # Fallback de secours si OpenAI n'est pas disponible
+        if self._gemini.is_available() and (gemini_enabled or requested == RealtimeProviderType.GEMINI_LIVE):
+            return self._gemini
+        return self._telnyx
 
     def build_realtime_adapter(
         self,
@@ -1868,16 +1871,24 @@ class VoiceRealtimeRouter:
     ) -> RealtimeAudioAdapter:
         """Construit l'adaptateur audio temps réel pour `TelnyxMediaBridge`.
 
-        - Priorité absolue : `GeminiLiveRealtimeAudioAdapter` (Gemini 3.8 Live)
-          encapsulé dans `FallbackRealtimeAudioAdapter` (repli automatique initial et en cours d'appel vers `fallback_factory`).
-        - Si la clé Gemini n'est pas disponible, bascule directement sur `fallback_factory()` (OpenAI Realtime / Telnyx).
+        - Moteur primaire par défaut : OpenAI `gpt-live-1` (via `fallback_factory`,
+          avec bascule automatique vers `gpt-realtime-2.1`).
+        - Optionnel : Gemini Live si explicitement configuré et activé pour le tenant.
         """
-        requested = getattr(config, "realtime_provider", RealtimeProviderType.GEMINI_LIVE) if config is not None else RealtimeProviderType.GEMINI_LIVE
-        gemini_enabled = bool(getattr(config, "gemini_live_enabled", True)) if config is not None else True
+        requested = (
+            getattr(config, "realtime_provider", RealtimeProviderType.TELNYX)
+            if config is not None
+            else RealtimeProviderType.TELNYX
+        )
+        gemini_enabled = (
+            bool(getattr(config, "gemini_live_enabled", False))
+            if config is not None
+            else False
+        )
 
-        if (gemini_enabled or requested == RealtimeProviderType.GEMINI_LIVE) and self._gemini.is_available():
+        if requested == RealtimeProviderType.GEMINI_LIVE and gemini_enabled and self._gemini.is_available():
             logger.info(
-                "voice_realtime_route provider=gemini_live model=%s company_id=%s universal_priority=True",
+                "voice_realtime_route provider=gemini_live model=%s company_id=%s optional_override=True",
                 self._gemini.model_name,
                 getattr(config, "company_id", None),
             )
@@ -1885,10 +1896,10 @@ class VoiceRealtimeRouter:
                 primary_factory=lambda: self._gemini.create_audio_adapter(config, audio_config),
                 fallback_factory=fallback_factory,
             )
+
         logger.info(
-            "voice_realtime_route provider=fallback_pipeline requested=%s gemini_enabled=%s company_id=%s",
-            requested,
-            gemini_enabled,
+            "voice_realtime_route provider=openai_primary model=%s company_id=%s universal_priority=True",
+            getattr(self.settings, "voice_realtime_model", "gpt-live-1"),
             getattr(config, "company_id", None),
         )
         return fallback_factory()

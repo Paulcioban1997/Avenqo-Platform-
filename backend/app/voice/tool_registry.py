@@ -106,11 +106,8 @@ class VoiceToolRegistryService:
                 user_perms = set(perms or ())
                 if user_role:
                     user_perms.update(permissions_for(user_role))
-                has_task_write = (
-                    "tasks:own" in user_perms
-                    or "tasks:write" in user_perms
-                    or "workspace:tasks:write" in user_perms
-                    or "crm:appointments:write" in user_perms
+                has_task_write = bool(
+                    {"tasks:own", "tasks:write", "workspace:tasks:write"} & user_perms
                 )
                 if has_task_write and user_role != UserRole.VIEWER:
                     names.add("mark_my_task_completed")
