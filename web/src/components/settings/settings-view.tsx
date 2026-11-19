@@ -964,7 +964,7 @@ export function SettingsView() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {entitlements.modules.filter(mod => ["crm", "voice", "retail", "accounting", "marketing", "ocr"].includes(mod.key)).map((mod) => {
+            {entitlements.modules.filter(mod => ["crm", "voice", "retail", "accounting", "marketing", "ocr", "trading", "hr"].includes(mod.key)).map((mod) => {
               const isUpdating = updatingKey === mod.key;
               const isLocked = mod.state === "upgrade_required";
 
@@ -1033,6 +1033,10 @@ export function SettingsView() {
                           mod.key === "marketing" ? "/marketing" :
                           mod.key === "retail" ? "/retail" :
                           mod.key === "crm" ? "/crm" :
+                          mod.key === "voice" ? "/voice" :
+                          mod.key === "trading" ? "/trading" :
+                          mod.key === "ocr" ? "/ocr" :
+                          mod.key === "hr" ? "/hr" :
                           "/dashboard"
                         }
                         className="text-[#0076FF] hover:underline flex items-center gap-1 font-medium"
