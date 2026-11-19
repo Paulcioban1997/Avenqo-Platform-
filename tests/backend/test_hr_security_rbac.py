@@ -553,3 +553,117 @@ def test_hr_skills_matrix_integrity_and_verification_flow(rbac_env):
     assert verified_data["status"] == "verified"
     assert verified_data["verified_by"] == "Bob Manager"
     assert verified_data["verified_at"] is not None
+
+
+def test_hr_skills_matrix_peer_isolation_and_departmental_scope(rbac_env):
+    """GET /hr/skills respecte strictement le cloisonnement par employé et par département."""
+    env = rbac_env
+    client = env["client"]
+
+    # 1. Employé standard emp_a1 (Atelier) ne voit QUE ses propres compétences
+    env["current_test_user"][0] = env["emp_a1"]
+    resp_emp1 = client.get("/hr/skills")
+    assert resp_emp1.status_code == 200
+    skills_emp1 = resp_emp1.json()
+    assert len(skills_emp1) > 0
+    for s in skills_emp1:
+        assert s["employee_id"] == str(env["emp_a1"].id)
+
+    # 2. Employé standard emp_a2 (Ventes) ne voit QUE ses propres compétences
+    env["current_test_user"][0] = env["emp_a2"]
+    resp_emp2 = client.get("/hr/skills")
+    assert resp_emp2.status_code == 200
+    skills_emp2 = resp_emp2.json()
+    assert len(skills_emp2) > 0
+    for s in skills_emp2:
+        assert s["employee_id"] == str(env["emp_a2"].id)
+
+    # 3. Manager Atelier ne voit QUE les membres du département Atelier (Bob Manager & Charlie Mécano)
+    env["current_test_user"][0] = env["manager_atelier"]
+    resp_mgr_atelier = client.get("/hr/skills")
+    assert resp_mgr_atelier.status_code == 200
+    skills_atelier = resp_mgr_atelier.json()
+    allowed_atelier_ids = {str(env["manager_atelier"].id), str(env["emp_a1"].id)}
+    for s in skills_atelier:
+        assert s["employee_id"] in allowed_atelier_ids
+    # Doit contenir les compétences d'Atelier et aucune de Ventes
+    assert any(s["employee_id"] == str(env["emp_a1"].id) for s in skills_atelier)
+    assert not any(s["employee_id"] == str(env["emp_a2"].id) for s in skills_atelier)
+
+    # 4. Le Directeur / Owner voit l'ensemble des compétences de l'entreprise
+    env["current_test_user"][0] = env["owner_a"]
+    resp_owner = client.get("/hr/skills")
+    assert resp_owner.status_code == 200
+    skills_owner = resp_owner.json()
+    all_emp_ids = {s["employee_id"] for s in skills_owner}
+    assert str(env["emp_a1"].id) in all_emp_ids
+    assert str(env["emp_a2"].id) in all_emp_ids
+
+
+def test_hr_skills_verification_rbac_and_boundaries(rbac_env):
+    """POST /hr/skills/{skill_id}/verify bloque l'auto-certification et le débordement inter-départemental."""
+    env = rbac_env
+    client = env["client"]
+
+    # Charlie Mécano (emp_a1, Atelier) déclare une compétence
+    env["current_test_user"][0] = env["emp_a1"]
+    resp_decl = client.post(
+        "/hr/skills/declare",
+        json={"name": "Soudure MIG / TIG", "category": "Technique", "level": 2},
+    )
+    assert resp_decl.status_code == 201
+    skill_charlie_id = resp_decl.json()["id"]
+
+    # 1. Charlie ne peut pas valider sa propre compétence (403 car non-manager)
+    resp_self = client.post(f"/hr/skills/{skill_charlie_id}/verify", json={"level": 5})
+    assert resp_self.status_code == 403
+
+    # 2. David Vendeur (emp_a2, non-manager) ne peut pas valider (403)
+    env["current_test_user"][0] = env["emp_a2"]
+    resp_peer = client.post(f"/hr/skills/{skill_charlie_id}/verify", json={"level": 5})
+    assert resp_peer.status_code == 403
+
+    # 3. Manager Vente (Alice Vente, département Ventes) essaie de valider la compétence de Charlie (Atelier) -> 403
+    env["current_test_user"][0] = env["manager_vente"]
+    resp_wrong_dept = client.post(f"/hr/skills/{skill_charlie_id}/verify", json={"level": 4})
+    assert resp_wrong_dept.status_code == 403
+    assert "département" in resp_wrong_dept.json()["detail"]
+
+    # 4. Bob Manager (Atelier) auto-déclare une compétence pour lui-même
+    env["current_test_user"][0] = env["manager_atelier"]
+    resp_decl_mgr = client.post(
+        "/hr/skills/declare",
+        json={"name": "Gestion Atelier Lean", "category": "Gestion", "level": 3},
+    )
+    assert resp_decl_mgr.status_code == 201
+    skill_bob_id = resp_decl_mgr.json()["id"]
+
+    # Bob Manager tente d'auto-certifier sa propre compétence -> 403
+    resp_mgr_self_verify = client.post(f"/hr/skills/{skill_bob_id}/verify", json={"level": 5})
+    assert resp_mgr_self_verify.status_code == 403
+    assert "propres compétences" in resp_mgr_self_verify.json()["detail"]
+
+    # 5. Tentative de vérification d'un UUID inexistant -> 404
+    resp_not_found = client.post(f"/hr/skills/{uuid4()}/verify", json={"level": 4})
+    assert resp_not_found.status_code == 404
+
+    # 6. Bob Manager valide la compétence de Charlie (même département Atelier) -> 200 OK
+    resp_valid = client.post(
+        f"/hr/skills/{skill_charlie_id}/verify",
+        json={"level": 4, "evidence_url_or_note": "Formation soudure réussie avec mention"},
+    )
+    assert resp_valid.status_code == 200
+    assert resp_valid.json()["certified"] is True
+    assert resp_valid.json()["status"] == "verified"
+    assert resp_valid.json()["verified_by"] == "Bob Manager"
+
+    # 7. La Direction / Owner peut valider la compétence de Bob Manager (cross-department) -> 200 OK
+    env["current_test_user"][0] = env["owner_a"]
+    resp_owner_valid = client.post(
+        f"/hr/skills/{skill_bob_id}/verify",
+        json={"level": 5, "evidence_url_or_note": "Validation par la Direction Générale"},
+    )
+    assert resp_owner_valid.status_code == 200
+    assert resp_owner_valid.json()["certified"] is True
+    assert resp_owner_valid.json()["verified_by"] == "Alice Owner"
+

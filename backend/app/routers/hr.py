@@ -16,7 +16,7 @@ from backend.app.database import get_db
 from backend.app.dependencies.auth import CurrentIdentity, get_current_identity
 from backend.app.models.base import UserRole
 from backend.app.models.user import User
-from backend.app.models.workspace import EmployeeLeave
+from backend.app.models.workspace import EmployeeLeave, EmployeeSkill
 from backend.app.schemas.hr import (
     HREmployeeItem,
     HRLeaveItem,
@@ -134,9 +134,15 @@ def get_skills_matrix(
     identity: CurrentIdentity = Depends(require_hr_entitlement),
     db: Session = Depends(get_db),
 ) -> list[HRSkillItem]:
-    """Retourne la matrice des compétences réelles et vérifiées (sans données inventées)."""
+    """Retourne la matrice des compétences selon le périmètre d'autorisation du rôle."""
     service = HRService(db)
-    return service.get_skills_matrix(identity.company_id)
+    if _is_owner_or_admin(identity):
+        return service.get_skills_matrix(identity.company_id)
+    elif _is_manager(identity):
+        caller_dept = getattr(identity.user, "department", None)
+        return service.get_skills_matrix(identity.company_id, department=caller_dept)
+    else:
+        return service.get_skills_matrix(identity.company_id, user_id=identity.user_id)
 
 
 @router.post("/skills/declare", response_model=HRSkillItem, status_code=status.HTTP_201_CREATED)
@@ -170,6 +176,33 @@ def verify_skill(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Seuls les managers ou administrateurs peuvent certifier une compétence.",
         )
+
+    # 1. Vérifier l'existence et l'isolation tenant
+    skill = db.get(EmployeeSkill, skill_id)
+    if skill is None or skill.company_id != identity.company_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Compétence introuvable pour cette entreprise.",
+        )
+
+    # 2. Interdiction absolue d'auto-certification
+    if skill.user_id == identity.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Un gestionnaire ne peut pas certifier ses propres compétences.",
+        )
+
+    # 3. Cloisonnement départemental : un manager hors Direction/Admin ne peut certifier que son département
+    if not _is_owner_or_admin(identity):
+        caller_dept = getattr(identity.user, "department", None)
+        target_user = db.get(User, skill.user_id)
+        target_dept = getattr(target_user, "department", None) if target_user else None
+        if not caller_dept or caller_dept != target_dept:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Vous ne pouvez certifier que les compétences des collaborateurs de votre département.",
+            )
+
     service = HRService(db)
     try:
         return service.verify_skill(
@@ -180,7 +213,7 @@ def verify_skill(
             evidence_url_or_note=payload.evidence_url_or_note,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
 @router.get("/leaves", response_model=list[HRLeaveItem])

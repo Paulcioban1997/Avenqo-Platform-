@@ -425,17 +425,31 @@ class HRService:
             job_descriptions=roles,
         )
 
-    def get_skills_matrix(self, company_id: UUID) -> list[HRSkillItem]:
+    def get_skills_matrix(
+        self,
+        company_id: UUID,
+        user_id: UUID | None = None,
+        department: str | None = None,
+    ) -> list[HRSkillItem]:
         company = self._session.get(Company, company_id)
         ind_lower = str(getattr(company, "industry", "")).lower()
         employees = self.list_employees(company_id)
+        if user_id is not None:
+            employees = [e for e in employees if e.id == user_id]
+        elif department is not None:
+            employees = [e for e in employees if e.department == department]
+
         skills: list[HRSkillItem] = []
 
         # 1. Compétences réelles stockées en base (vérifiées ou auto-déclarées)
+        query = select(EmployeeSkill).where(EmployeeSkill.company_id == company_id)
+        if user_id is not None:
+            query = query.where(EmployeeSkill.user_id == user_id)
+        elif department is not None:
+            query = query.join(User, EmployeeSkill.user_id == User.id).where(User.department == department)
+
         stored_skills = self._session.scalars(
-            select(EmployeeSkill)
-            .where(EmployeeSkill.company_id == company_id)
-            .order_by(EmployeeSkill.created_at.desc())
+            query.order_by(EmployeeSkill.created_at.desc())
         ).all()
 
         stored_by_user: dict[UUID, list[EmployeeSkill]] = {}
@@ -547,6 +561,9 @@ class HRService:
         skill = self._session.get(EmployeeSkill, skill_id)
         if skill is None or skill.company_id != company_id:
             raise ValueError("Compétence introuvable pour cette entreprise.")
+
+        if skill.user_id == verifier_user_id:
+            raise ValueError("Un collaborateur ne peut pas certifier ses propres compétences.")
 
         skill.status = "verified"
         skill.verified_at = datetime.now(timezone.utc)
