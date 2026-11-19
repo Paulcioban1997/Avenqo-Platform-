@@ -79,6 +79,9 @@ interface DashboardConversion {
   available: boolean;
   reason?: string | null;
   value: number | null;
+  type?: string | null;
+  basis?: string | null;
+  label?: string | null;
 }
 
 export function DashboardView({
@@ -393,12 +396,21 @@ export function DashboardView({
             {(() => {
               const ordersCount = Number(kpis.orders?.value ?? 0);
               const hasConversion = Boolean(conversion.available && conversion.value != null);
-              const displayVal = conversion.available && conversion.value != null
+              const displayVal = hasConversion && conversion.value != null
                 ? `${conversion.value.toFixed(1)}%`
                 : "—";
               const displayTitle = t.dashboard.conversionRate;
+              const subLabel = conversion.type === "repeat_customers"
+                ? t.dashboard.conversionRepeatSub
+                : conversion.type === "sessions"
+                ? t.dashboard.conversionSessionsSub
+                : conversion.type === "crm_leads"
+                ? t.dashboard.conversionCrmSub
+                : conversion.type === "ads"
+                ? t.dashboard.conversionAdsSub
+                : null;
               const displaySub = hasConversion
-                ? periodLabel
+                ? (subLabel ? `${subLabel} • ${periodLabel}` : periodLabel)
                 : t.dashboard.conversionUnavailable;
               return (
                 <MetricCard

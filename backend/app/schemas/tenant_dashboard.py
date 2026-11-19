@@ -86,6 +86,9 @@ class DashboardConversionResponse(BaseModel):
     available: bool = False
     reason: str | None = None
     value: float | None = None
+    type: str | None = None
+    basis: str | None = None
+    label: str | None = None
 
 
 class TenantDashboardResponse(BaseModel):

@@ -139,6 +139,10 @@ export type AppTranslations = {
     categorySplitTitle: string;
     regionalSalesTitle: string;
     conversionUnavailable: string;
+    conversionRepeatSub: string;
+    conversionSessionsSub: string;
+    conversionCrmSub: string;
+    conversionAdsSub: string;
     categorySplitUnavailable: string;
     regionalSalesUnavailable: string;
     aiInsightTitle: string;
@@ -467,6 +471,10 @@ const frApp: AppTranslations = {
     categorySplitTitle: "Répartition des ventes par catégorie",
     regionalSalesTitle: "Performance des ventes régionales",
     conversionUnavailable: "Indisponible : cette source n’inclut pas les visites ou sessions.",
+    conversionRepeatSub: "Taux de réachat client",
+    conversionSessionsSub: "Commandes / Visites",
+    conversionCrmSub: "Prospects convertis",
+    conversionAdsSub: "Conversions pub",
     categorySplitUnavailable: "Aucune colonne de catégorie n’est présente dans cette source.",
     regionalSalesUnavailable: "Aucune colonne de région ou de pays n’est présente dans cette source.",
     aiInsightTitle: "Insight IA Avenqo",
@@ -795,6 +803,10 @@ const enApp: AppTranslations = {
     categorySplitTitle: "Sales breakdown by category",
     regionalSalesTitle: "Regional sales distribution",
     conversionUnavailable: "Unavailable: this source has no visit or session data.",
+    conversionRepeatSub: "Repeat Customer Rate",
+    conversionSessionsSub: "Orders / Visits",
+    conversionCrmSub: "Converted Leads",
+    conversionAdsSub: "Ad Conversions",
     categorySplitUnavailable: "No category column is present in this source.",
     regionalSalesUnavailable: "No region or country column is present in this source.",
     aiInsightTitle: "Avenqo AI Insight",

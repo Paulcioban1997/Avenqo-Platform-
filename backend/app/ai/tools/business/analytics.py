@@ -140,33 +140,76 @@ def compute_conversion_rate(
         sample,
         extra_aliases=_SESSION_ALIASES,
     )
-    if session_column is None:
-        return {"available": False, "reason": "missing_sessions", "value": None}
     rows = filter_rows_by_date(prepared.rows, reverse, date_from, date_to)
     if not rows:
         return {"available": False, "reason": "no_data", "value": None}
 
-    sessions: set[str] = set()
-    orders: set[str] = set()
-    order_rows = 0
-    for row in rows:
-        session = row.get(session_column)
-        if session not in {None, ""}:
-            sessions.add(str(session).strip())
-        order_id = _value(row, reverse, "order_id")
-        if order_id is not None and str(order_id).strip():
-            orders.add(str(order_id).strip())
-        else:
-            order_rows += 1
+    if session_column is not None:
+        sessions: set[str] = set()
+        orders: set[str] = set()
+        order_rows = 0
+        for row in rows:
+            session = row.get(session_column)
+            if session not in {None, ""}:
+                sessions.add(str(session).strip())
+            order_id = _value(row, reverse, "order_id")
+            if order_id is not None and str(order_id).strip():
+                orders.add(str(order_id).strip())
+            else:
+                order_rows += 1
 
-    if not sessions:
-        return {"available": False, "reason": "missing_sessions", "value": None}
-    order_count = len(orders) or order_rows
-    return {
-        "available": True,
-        "reason": None,
-        "value": round((order_count / len(sessions)) * 100, 1),
-    }
+        if sessions:
+            order_count = len(orders) or order_rows
+            return {
+                "available": True,
+                "reason": None,
+                "value": round((order_count / len(sessions)) * 100, 1),
+                "type": "sessions",
+                "basis": "orders_per_session",
+                "label": "Taux de conversion",
+            }
+
+    # If sessions are not available, evaluate customer repeat purchase conversion rate
+    customer_column = resolve_canonical_source_column(
+        "customer_id",
+        prepared.canonical_columns,
+        sample,
+        extra_aliases=_CUSTOMER_ID_FALLBACK_COLUMNS,
+    )
+    has_customer_data = customer_column is not None or "customer_id" in reverse or any(
+        col in sample for col in _CUSTOMER_ID_FALLBACK_COLUMNS
+    )
+    if has_customer_data:
+        customer_orders: dict[str, set[str]] = {}
+        customer_order_rows: dict[str, int] = {}
+        for row in rows:
+            cust = _value(row, reverse, "customer_id")
+            if cust is None or str(cust).strip() == "":
+                continue
+            cid = str(cust).strip()
+            order_id = _value(row, reverse, "order_id")
+            if order_id is not None and str(order_id).strip():
+                customer_orders.setdefault(cid, set()).add(str(order_id).strip())
+            else:
+                customer_order_rows[cid] = customer_order_rows.get(cid, 0) + 1
+
+        total_customers = len(customer_orders) or len(customer_order_rows)
+        if total_customers > 0:
+            if customer_orders:
+                repeat_count = sum(1 for ords in customer_orders.values() if len(ords) >= 2)
+            else:
+                repeat_count = sum(1 for cnt in customer_order_rows.values() if cnt >= 2)
+            repeat_rate = round((repeat_count / total_customers) * 100, 1)
+            return {
+                "available": True,
+                "reason": None,
+                "value": repeat_rate,
+                "type": "repeat_customers",
+                "basis": "repeat_purchase_rate",
+                "label": "Taux de conversion",
+            }
+
+    return {"available": False, "reason": "missing_sessions_or_customers", "value": None}
 
 
 def with_dataset_rows(prepared: PreparedCompanyDataset, rows) -> PreparedCompanyDataset:
