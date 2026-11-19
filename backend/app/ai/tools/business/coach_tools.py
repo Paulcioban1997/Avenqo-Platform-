@@ -107,6 +107,10 @@ class CompleteTaskArgs(ToolArguments):
         default=None,
         description="Identifiant de session d'appel téléphonique rattachée.",
     )
+    turn_id: str | None = Field(
+        default=None,
+        description="Identifiant ou numéro de tour vocal de dialogue.",
+    )
 
 
 class CoachingAdviceArgs(ToolArguments):
@@ -201,6 +205,7 @@ class MarkMyTaskCompletedTool(AITool):
             return ToolResult(success=False, error=err or "unauthorized")
 
         session_id = getattr(context, "session_id", None) or getattr(arguments, "session_id", None)
+        turn_id = getattr(context, "turn_id", None) or getattr(arguments, "turn_id", None)
         coach = EmployeeCoachService(self._session)
         result = coach.complete_task(
             actor,
@@ -208,6 +213,7 @@ class MarkMyTaskCompletedTool(AITool):
             confirmed=arguments.confirmed,
             confirmation_token=arguments.confirmation_token,
             session_id=str(session_id) if session_id else None,
+            turn_id=str(turn_id) if turn_id is not None else None,
         )
 
         if result.get("status") in {"ambiguous", "requires_confirmation"}:

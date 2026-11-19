@@ -29,11 +29,18 @@ class EmployeeCoachService:
     _pending_confirmations: dict[tuple[UUID, UUID], dict[str, Any]] = {}
 
     @classmethod
-    def _issue_confirmation_token(cls, user_id: UUID, task_id: UUID, session_id: str | None = None) -> str:
+    def _issue_confirmation_token(
+        cls,
+        user_id: UUID,
+        task_id: UUID,
+        session_id: str | None = None,
+        turn_id: str | int | None = None,
+    ) -> str:
         token = secrets.token_hex(16)
         cls._pending_confirmations[(user_id, task_id)] = {
             "token": token,
-            "session_id": str(session_id) if session_id else "",
+            "session_id": str(session_id).strip() if session_id else "",
+            "issued_turn_id": str(turn_id).strip() if turn_id is not None else "",
             "expires_at": time.time() + 180.0,
         }
         return token
@@ -45,6 +52,7 @@ class EmployeeCoachService:
         task_id: UUID,
         token: str | None,
         session_id: str | None = None,
+        turn_id: str | int | None = None,
     ) -> bool:
         if not token or not isinstance(token, str):
             return False
@@ -55,8 +63,11 @@ class EmployeeCoachService:
         if time.time() > pending.get("expires_at", 0):
             cls._pending_confirmations.pop(key, None)
             return False
-        expected_session = pending.get("session_id")
-        if expected_session and session_id and expected_session != str(session_id):
+        expected_session = str(pending.get("session_id") or "").strip()
+        provided_session = str(session_id or "").strip()
+        if expected_session and provided_session != expected_session:
+            return False
+        if not expected_session and provided_session:
             return False
         if pending.get("token") == token.strip():
             cls._pending_confirmations.pop(key, None)
@@ -237,6 +248,7 @@ class EmployeeCoachService:
         confirmed: bool = False,
         confirmation_token: str | None = None,
         session_id: str | None = None,
+        turn_id: str | int | None = None,
     ) -> dict[str, Any]:
         """Mark a task completed by UUID or title keyword matching with ambiguity detection, confirmation, idempotency, and audit logging."""
         if not actor or not actor.id or not actor.company_id:
@@ -318,11 +330,20 @@ class EmployeeCoachService:
 
         # 5. Require explicit server-side confirmation proof before mutating
         is_server_confirmed = self._validate_and_consume_token(
-            actor.id, matched_task.id, confirmation_token, session_id=session_id
+            actor.id,
+            matched_task.id,
+            confirmation_token,
+            session_id=session_id,
+            turn_id=turn_id,
         )
 
         if not confirmed or not is_server_confirmed:
-            token = self._issue_confirmation_token(actor.id, matched_task.id, session_id=session_id)
+            token = self._issue_confirmation_token(
+                actor.id,
+                matched_task.id,
+                session_id=session_id,
+                turn_id=turn_id,
+            )
             if confirmed and not is_server_confirmed:
                 logger.warning(
                     "AUDIT_UNCONFIRMED_TASK_MUTATION_REJECTED: user=%s task_id=%s title=%r reason=missing_or_invalid_server_confirmation_token session=%s",
@@ -334,6 +355,7 @@ class EmployeeCoachService:
                 "title": matched_task.title,
                 "confirmation_token": token,
                 "session_id": session_id,
+                "turn_id": turn_id,
                 "message": (
                     f"Veuillez confirmer : confirmez-vous la clôture de la tâche « {matched_task.title} » ? "
                     "Dites « Oui, je confirme » pour valider la modification."
