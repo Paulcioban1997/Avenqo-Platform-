@@ -157,13 +157,13 @@ _DEFAULT_RATES: dict[tuple[str, str], dict[str, str]] = {
     },
     ("openai", "gpt-6.2-astra"): {
         "input_cost_per_million_usd": "8.00",
-        "cached_input_cost_per_million_usd": "4.00",
+        "cached_input_cost_per_million_usd": "0.40",
         "output_cost_per_million_usd": "40.00",
         "tool_call_cost_usd": "0",
     },
     ("openai", "gpt-6.2-sol"): {
         "input_cost_per_million_usd": "2.00",
-        "cached_input_cost_per_million_usd": "1.00",
+        "cached_input_cost_per_million_usd": "0.10",
         "output_cost_per_million_usd": "10.00",
         "tool_call_cost_usd": "0",
     },

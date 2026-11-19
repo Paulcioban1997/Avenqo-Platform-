@@ -129,6 +129,25 @@ class RotatingRealtimeAdapter:
             await asyncio.wait_for(self.adapter.clear_input(), 5)
             self.speech_pending = False
 
+    async def reconnect(self, fallback_model: str = "gpt-realtime-2.1", locale: str = "fr-CA"):
+        """Mid-call automatic failover and reconnect for rotating adapter."""
+        async with self.lock:
+            if self.closed:
+                return
+            if self.adapter is not None and hasattr(self.adapter, "reconnect"):
+                await self.adapter.reconnect(fallback_model=fallback_model, locale=locale)
+                return
+            if self.pump is not None:
+                self.pump.cancel()
+                await asyncio.gather(self.pump, return_exceptions=True)
+            if self.adapter is not None:
+                try:
+                    await asyncio.wait_for(self.adapter.close(), 5)
+                except Exception:
+                    pass
+            self.locale = locale
+            await self._connect()
+
     async def events(self):
         while not self.closed:
             event = await self.queue.get()

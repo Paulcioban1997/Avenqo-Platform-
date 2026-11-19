@@ -193,12 +193,14 @@ def apply_spoken_pronunciation(text: str, config) -> str:
             names.append(raw.strip().replace("_", " "))
     for name in sorted(set(names), key=len, reverse=True):
         if name.casefold() != spoken.casefold():
-            rendered = re.sub(re.escape(name), spoken, rendered, flags=re.IGNORECASE)
-    # Also clean any leftover literal underscores or phonetic anomalies in spoken brand text
-    if spoken:
-        rendered = re.sub(r"\bProduits?[_\s,]+Z[eé]ro\b", spoken, rendered, flags=re.IGNORECASE)
-        rendered = re.sub(r"\bProduits[_\s,]+Ero\b", spoken, rendered, flags=re.IGNORECASE)
-        rendered = re.sub(r"\bProduits[_\s,]+Éro\b", spoken, rendered, flags=re.IGNORECASE)
+            rendered = re.sub(r"\b" + re.escape(name) + r"\b", spoken, rendered, flags=re.IGNORECASE)
+        # Dynamic phonetic anti-liaison cleanup derived from the tenant's actual brand words
+        tokens = re.split(r"[\s_]+", name)
+        if len(tokens) >= 2 and tokens[1] and tokens[1][0].lower() in "aeiouéèêàâîôû":
+            first_stem = re.escape(tokens[0].rstrip("stST"))
+            second_stem = re.escape(tokens[1].lstrip("aeiouéèêàâîôûAEIOUÉÈÊÀÂÎÔÛ"))
+            liaison_pat = r"\b" + first_stem + r"[stST]?[_\s,]+[Zz][eé]?" + second_stem + r"\b"
+            rendered = re.sub(liaison_pat, spoken, rendered, flags=re.IGNORECASE)
     return rendered
 
 
@@ -242,9 +244,10 @@ def voice_ivr_greeting(config) -> str:
     ):
         if isinstance(displayed, str) and displayed.strip():
             rendered = rendered.replace(displayed.strip().replace("_", " "), name)
-    res = rendered.replace("_", " ").strip()
-    if name:
-        res = re.sub(r"\bProduits?[_\s,]+Z[eé]ro\b", name, res, flags=re.IGNORECASE)
-        res = re.sub(r"\bProduits[_\s,]+Ero\b", name, res, flags=re.IGNORECASE)
-        res = re.sub(r"\bProduits[_\s,]+Éro\b", name, res, flags=re.IGNORECASE)
-    return res
+            tokens = re.split(r"[\s_]+", displayed.strip())
+            if len(tokens) >= 2 and tokens[1] and tokens[1][0].lower() in "aeiouéèêàâîôû":
+                first_stem = re.escape(tokens[0].rstrip("stST"))
+                second_stem = re.escape(tokens[1].lstrip("aeiouéèêàâîôûAEIOUÉÈÊÀÂÎÔÛ"))
+                liaison_pat = r"\b" + first_stem + r"[stST]?[_\s,]+[Zz][eé]?" + second_stem + r"\b"
+                rendered = re.sub(liaison_pat, name, rendered, flags=re.IGNORECASE)
+    return rendered.replace("_", " ").strip()

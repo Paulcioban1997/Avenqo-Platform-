@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
@@ -67,7 +68,7 @@ from shared.ai_engine.contracts import TenantContext
 from tests.backend.test_voice_agent import _voice_database
 
 
-def _create_test_user(session, company_id: UUID, **kwargs) -> User:
+def _create_test_user(session, company_id: UUID, create_membership: bool = True, **kwargs) -> User:
     defaults = {
         "id": uuid4(),
         "company_id": company_id,
@@ -82,6 +83,15 @@ def _create_test_user(session, company_id: UUID, **kwargs) -> User:
     user = User(**defaults)
     session.add(user)
     session.flush()
+    if create_membership:
+        membership = CompanyMembership(
+            user_id=user.id,
+            company_id=company_id,
+            role=user.role,
+            is_active=True,
+        )
+        session.add(membership)
+        session.flush()
     return user
 
 
@@ -247,17 +257,29 @@ def test_employee_coach_task_mutation(tmp_path):
         assert len(my_tasks) == 1
         assert my_tasks[0]["title"] == "Inspecter le matériel reçu ce matin"
 
-        # 1. Complete task by keyword without confirmation -> requires confirmation
+        # 1. Complete task by keyword without confirmation -> requires confirmation with server token
         res_conf = coach.complete_task(user, "matériel", confirmed=False)
         assert res_conf["status"] == "requires_confirmation"
         assert "confirmez-vous" in res_conf["message"].lower()
+        token = res_conf.get("confirmation_token")
+        assert token is not None
 
         # Task remains open before confirmation
         t_row = session.get(EmployeeTask, task.id)
         assert t_row is not None and t_row.status == "open"
 
-        # 2. Complete task with explicit confirmation -> success
-        res = coach.complete_task(user, "matériel", confirmed=True)
+        # 2. Try to complete with confirmed=True but without server token -> rejected with requires_confirmation!
+        res_unproven = coach.complete_task(user, "matériel", confirmed=True, confirmation_token="fake-unissued-token")
+        assert res_unproven["status"] == "requires_confirmation"
+        token2 = res_unproven.get("confirmation_token")
+        assert token2 is not None
+
+        # Task still remains open
+        t_row2 = session.get(EmployeeTask, task.id)
+        assert t_row2 is not None and t_row2.status == "open"
+
+        # 3. Complete task with explicit confirmation and genuine server token -> success
+        res = coach.complete_task(user, "matériel", confirmed=True, confirmation_token=token2)
         assert res["status"] == "success"
         assert res["status_after"] == "done"
 
@@ -267,7 +289,7 @@ def test_employee_coach_task_mutation(tmp_path):
         assert updated.status == "done"
         assert updated.completed_at is not None
 
-        # 3. Repeated command -> already_completed (idempotency)
+        # 4. Repeated command -> already_completed (idempotency)
         res_repeat = coach.complete_task(user, "matériel", confirmed=True)
         assert res_repeat["status"] == "already_completed"
         assert "déjà" in res_repeat["message"].lower()
@@ -426,14 +448,23 @@ async def test_coach_ai_tools_succeed_when_authenticated(tmp_path):
         assert r2.success is True
         assert r2.data["count"] == 1
 
-        # Complete task requires explicit confirmation
+        # Complete task requires explicit confirmation with server token
         t3 = MarkMyTaskCompletedTool(session)
         r3_pre = await t3.run(auth_context, CompleteTaskArgs(task_identifier="Dupont", confirmed=False))
         assert r3_pre.success is False
         assert r3_pre.error == "requires_confirmation"
+        token = r3_pre.data.get("confirmation_token")
+        assert token is not None
 
-        # Complete task with confirmation
-        r3 = await t3.run(auth_context, CompleteTaskArgs(task_identifier="Dupont", confirmed=True))
+        # Trying confirmed=True without token fails
+        r3_fake = await t3.run(auth_context, CompleteTaskArgs(task_identifier="Dupont", confirmed=True, confirmation_token=None))
+        assert r3_fake.success is False
+        assert r3_fake.error == "requires_confirmation"
+        token2 = r3_fake.data.get("confirmation_token")
+        assert token2 is not None
+
+        # Complete task with confirmation and genuine server token
+        r3 = await t3.run(auth_context, CompleteTaskArgs(task_identifier="Dupont", confirmed=True, confirmation_token=token2))
         assert r3.success is True
 
         # Advice
@@ -452,6 +483,7 @@ def test_voice_tool_registry_distinguishes_public_vs_staff(tmp_path):
         user = _create_test_user(
             session,
             company.id,
+            create_membership=False,
             email="staff@avenqo.test",
             role=UserRole.USER,
         )
@@ -555,21 +587,21 @@ def test_settings_voice_model_defaults_and_reasoning():
 
 def test_frontier_models_in_catalog_and_registry():
     """Vérifie la présence et la tarification de gpt-6.2-astra, gpt-6.2-sol et gpt-live-1."""
-    # LLM Model Registry Astra
+    # LLM Model Registry Astra (officiel standard: 8 $ entrée, 40 $ sortie, 0,40 $ cache, tier 2)
     assert ("openai", "gpt-6.2-astra") in _KNOWN_MODEL_PROFILES
     assert ("openai", "gpt-6.2-astra") in _DEFAULT_RATES
     pricing_astra = _DEFAULT_RATES[("openai", "gpt-6.2-astra")]
     assert pricing_astra["input_cost_per_million_usd"] == "8.00"
-    assert pricing_astra["cached_input_cost_per_million_usd"] == "4.00"
+    assert pricing_astra["cached_input_cost_per_million_usd"] == "0.40"
     assert pricing_astra["output_cost_per_million_usd"] == "40.00"
     assert _KNOWN_MODEL_PROFILES[("openai", "gpt-6.2-astra")]["speed_tier"] == 2
 
-    # LLM Model Registry Sol (officiel: 2 $ entrée, 10 $ sortie, 1 $ cache, speed tier 1 fast reasoning)
+    # LLM Model Registry Sol (officiel standard: 2 $ entrée, 10 $ sortie, 0,10 $ cache, speed tier 1 fast reasoning)
     assert ("openai", "gpt-6.2-sol") in _KNOWN_MODEL_PROFILES
     assert ("openai", "gpt-6.2-sol") in _DEFAULT_RATES
     pricing_sol = _DEFAULT_RATES[("openai", "gpt-6.2-sol")]
     assert pricing_sol["input_cost_per_million_usd"] == "2.00"
-    assert pricing_sol["cached_input_cost_per_million_usd"] == "1.00"
+    assert pricing_sol["cached_input_cost_per_million_usd"] == "0.10"
     assert pricing_sol["output_cost_per_million_usd"] == "10.00"
     assert _KNOWN_MODEL_PROFILES[("openai", "gpt-6.2-sol")]["speed_tier"] == 1
 
@@ -579,7 +611,7 @@ def test_frontier_models_in_catalog_and_registry():
     entry_sol = catalog.lookup("openai", "gpt-6.2-sol")
     assert entry_sol is not None
     assert entry_sol.output_cost_per_million_usd == Decimal("10.00")
-    assert entry_sol.cached_input_cost_per_million_usd == Decimal("1.00")
+    assert entry_sol.cached_input_cost_per_million_usd == Decimal("0.10")
 
 
 # ==============================================================================
@@ -701,9 +733,10 @@ def test_coach_task_ambiguity_gating_and_audit(tmp_path):
         assert res_one["status"] == "requires_confirmation"
         t1_after_pre = session.get(EmployeeTask, task1.id)
         assert t1_after_pre is not None and t1_after_pre.status == "open"
+        token = res_one.get("confirmation_token")
 
         # Specific keyword "contrat" with confirmed=True mutates task1
-        res_done = coach.complete_task(user, "contrat", confirmed=True)
+        res_done = coach.complete_task(user, "contrat", confirmed=True, confirmation_token=token)
         assert res_done["status"] == "success"
         t1_done = session.get(EmployeeTask, task1.id)
         t2_still_open = session.get(EmployeeTask, task2.id)
@@ -722,6 +755,7 @@ async def test_coach_tools_rbac_and_write_permission_gating(tmp_path):
         viewer_user = _create_test_user(
             session,
             company.id,
+            create_membership=False,
             first_name="Stéphane",
             last_name="Auditeur",
             email="stephane@avenqo.test",
@@ -815,3 +849,113 @@ async def test_realtime_audio_adapter_lifecycle_and_fallback():
     # Test mid-call reconnect
     await adapter.close()
     assert adapter._connection is None
+
+
+def test_employee_coach_strict_active_company_membership_required(tmp_path):
+    """Vérifie que l'adhésion active (CompanyMembership) est strictement obligatoire pour accéder au Coach."""
+    from backend.app.ai.tools.business.coach_tools import _verify_coach_access
+
+    engine, session, company, config, _api_key, _orchestrator = _voice_database(tmp_path)
+    try:
+        # User without CompanyMembership
+        user_no_membership = _create_test_user(
+            session,
+            company.id,
+            create_membership=False,
+            first_name="Orphan",
+            last_name="User",
+            email="orphan@avenqo.test",
+        )
+        context_no_mem = ToolExecutionContext(
+            tenant=TenantContext(company.id, user_no_membership.id),
+            user_id=user_no_membership.id,
+            permissions=frozenset({"ai:use"}),
+            request_id="req-orphan-1",
+            locale="fr-CA",
+        )
+        ok, err, actor = _verify_coach_access(session, context_no_mem, write=False)
+        assert ok is False
+        assert "adhésion active" in (err or "").lower()
+
+        # Tool registry must not offer coach tools to user without active membership
+        registry = VoiceToolRegistryService(session, AssistantRegistry())
+        tools, _ = registry.allowed_tools(TenantContext(company.id, user_no_membership.id), permissions=frozenset({"ai:use"}))
+        assert "get_my_daily_briefing" not in tools
+        assert "mark_my_task_completed" not in tools
+
+        # User with inactive CompanyMembership (is_active=False)
+        inactive_mem = CompanyMembership(
+            user_id=user_no_membership.id,
+            company_id=company.id,
+            role=user_no_membership.role,
+            is_active=False,
+        )
+        session.add(inactive_mem)
+        session.commit()
+
+        ok2, err2, _ = _verify_coach_access(session, context_no_mem, write=False)
+        assert ok2 is False
+        assert "adhésion active" in (err2 or "").lower()
+
+        # Activate membership -> immediately succeeds
+        inactive_mem.is_active = True
+        session.commit()
+
+        ok3, err3, act = _verify_coach_access(session, context_no_mem, write=False)
+        assert ok3 is True
+        assert act is not None
+    finally:
+        session.close()
+        engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_telnyx_media_bridge_automatic_midcall_reconnect():
+    """Vérifie que la session Telnyx déclenche automatiquement reconnect() lors d'une déconnexion audio."""
+    from backend.app.voice.telnyx_media import TelnyxMediaBridge
+
+    mock_socket = AsyncMock()
+    mock_adapter = AsyncMock()
+    mock_adapter.fallback_model = "gpt-realtime-2.1"
+    mock_adapter.reconnect = AsyncMock()
+
+    # Generator simulating 1 event then an error, followed by reconnect
+    event_count = 0
+    async def mock_events():
+        nonlocal event_count
+        if event_count == 0:
+            event_count += 1
+            yield SimpleNamespace(type="session.updated")
+            # Simulate unexpected provider disconnection
+            raise ConnectionError("Provider stream closed unexpectedly")
+        else:
+            yield SimpleNamespace(type="session.updated")
+
+    mock_adapter.events = mock_events
+
+    bridge = TelnyxMediaBridge(
+        socket=mock_socket,
+        adapter=mock_adapter,
+        locale="fr-CA",
+        validate_start=AsyncMock(),
+        authorize=AsyncMock(),
+        execute_turn=AsyncMock(),
+        stt_model="whisper-large-v3",
+        realtime_model="gpt-live-1",
+    )
+
+    # Run _provider_events task briefly
+    task = asyncio.create_task(bridge._provider_events())
+    await asyncio.sleep(0.05)
+    bridge._stop_event.set()
+    await asyncio.sleep(0.05)
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    # Verify reconnect was called automatically
+    mock_adapter.reconnect.assert_awaited()
+    assert bridge.telemetry.get("reconnect_triggered") is True
+    assert bridge.telemetry.get("reconnect_attempts") >= 1
