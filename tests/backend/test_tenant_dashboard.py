@@ -10,7 +10,7 @@ from sqlalchemy import create_engine, delete
 from sqlalchemy.orm import sessionmaker
 
 from backend.app.database import get_db
-from backend.app.dependencies.auth import get_tenant_context
+from backend.app.dependencies.auth import CurrentIdentity, get_current_identity, get_tenant_context
 from backend.app.dependencies.dashboard import get_tenant_dashboard_service
 from backend.app.models import (
     Base,
@@ -507,6 +507,11 @@ def test_dashboard_endpoint_ignores_tenant_query_override(tmp_path) -> None:
 
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[get_tenant_context] = lambda: tenant
+    app.dependency_overrides[get_current_identity] = lambda: CurrentIdentity(
+        auth_session=None,
+        user=SimpleNamespace(id=uuid4(), company_id=company.id, role="owner", is_active=True),
+        raw_token="test-token",
+    )
     app.dependency_overrides[get_tenant_dashboard_service] = lambda: SimpleNamespace(build=build)
     with TestClient(app) as client:
         response = client.get(
@@ -542,7 +547,14 @@ def test_dashboard_splits_category_and_region_from_source_columns(tmp_path) -> N
         service, _ = _dashboard_service(session, {dataset.id: prepared})
         dashboard = service.build(TenantContext(company.id), "all")
 
-    assert dashboard["conversion"] == {"available": False, "reason": "missing_sessions", "value": None}
+    assert dashboard["conversion"] == {
+        "available": True,
+        "reason": None,
+        "value": 0.0,
+        "type": "repeat_customers",
+        "basis": "repeat_purchase_rate",
+        "label": "Taux de conversion",
+    }
     categories = {item["label"]: item for item in dashboard["category_split"]["items"]}
     assert dashboard["category_split"]["available"] is True
     assert categories["Technology"]["revenue"] == 400
@@ -551,3 +563,66 @@ def test_dashboard_splits_category_and_region_from_source_columns(tmp_path) -> N
     assert dashboard["regional_split"]["available"] is True
     assert regions["East"]["orders"] == 2
     assert regions["West"]["revenue"] == 100
+
+
+def test_dashboard_conversion_repeat_customers(tmp_path) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'dashboard-conversion-repeat.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory() as session:
+        company = _company(session, "Repeat Tenant", "CAD")
+        dataset = _dataset(session, company, "orders.csv")
+        prepared = _prepared(
+            company.id,
+            dataset.id,
+            [
+                {"date": "2026-01-01", "sale": "O1", "client": "C1", "amount": 100},
+                {"date": "2026-01-02", "sale": "O2", "client": "C1", "amount": 150},  # C1 repeat
+                {"date": "2026-01-03", "sale": "O3", "client": "C2", "amount": 200},  # C2 single
+            ],
+            canonical_columns={
+                "date": "order_timestamp",
+                "sale": "order_id",
+                "client": "customer_id",
+                "amount": "total_amount",
+            },
+        )
+        service, _ = _dashboard_service(session, {dataset.id: prepared})
+        dashboard = service.build(TenantContext(company.id), "all")
+
+    assert dashboard["conversion"]["available"] is True
+    assert dashboard["conversion"]["value"] == 50.0  # 1 repeat out of 2 customers
+    assert dashboard["conversion"]["type"] == "repeat_customers"
+    assert dashboard["conversion"]["basis"] == "repeat_purchase_rate"
+
+
+def test_dashboard_conversion_web_sessions(tmp_path) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'dashboard-conversion-sessions.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory() as session:
+        company = _company(session, "Session Tenant", "CAD")
+        dataset = _dataset(session, company, "web.csv")
+        prepared = _prepared(
+            company.id,
+            dataset.id,
+            [
+                {"date": "2026-01-01", "sale": "O1", "session": "S1", "amount": 100},
+                {"date": "2026-01-01", "sale": "O2", "session": "S2", "amount": 200},
+                {"date": "2026-01-02", "sale": None, "session": "S3", "amount": 0},
+                {"date": "2026-01-02", "sale": None, "session": "S4", "amount": 0},
+            ],
+            canonical_columns={
+                "date": "order_timestamp",
+                "sale": "order_id",
+                "session": "session_id",
+                "amount": "total_amount",
+            },
+        )
+        service, _ = _dashboard_service(session, {dataset.id: prepared})
+        dashboard = service.build(TenantContext(company.id), "all")
+
+    assert dashboard["conversion"]["available"] is True
+    assert dashboard["conversion"]["value"] == 50.0  # 2 orders / 4 sessions
+    assert dashboard["conversion"]["type"] == "sessions"
+    assert dashboard["conversion"]["basis"] == "orders_per_session"

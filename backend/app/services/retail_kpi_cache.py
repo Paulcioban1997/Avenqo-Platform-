@@ -56,7 +56,7 @@ def descriptor(tenant, dataset):
     except OSError:
         return None
     return {
-        "format": 6, "company": str(tenant.company_id), "dataset": str(dataset.id),
+        "format": 7, "company": str(tenant.company_id), "dataset": str(dataset.id),
         "version": version.version_number, "version_id": version.id,
         "artifact": str(path.resolve()), "checksum": version.checksum,
         "size": stat.st_size, "mtime": stat.st_mtime_ns,
@@ -189,10 +189,13 @@ def build(spec):
             "revenue": Decimal(0),
             "orders": set(),
             "customers": set(),
+            "customer_orders": {},
+            "sessions": set(),
             "rows": 0,
         }
         for name in ranges
     }
+    overall_customer_orders: dict[str, set[str]] = {}
     trend_buckets: dict[str, dict[str, dict[str, Any]]] = {
         name: {} for name in ranges
     }
@@ -203,6 +206,7 @@ def build(spec):
     category_col = reverse.get("product_category")
     region_col = reverse.get("customer_region")
     country_col = reverse.get("customer_country")
+    session_col = reverse.get("session_id")
     header_resolved = False
     for row in rows(path):
         if not header_resolved:
@@ -216,6 +220,9 @@ def build(spec):
             )
             country_col = country_col or resolve_canonical_source_column(
                 "customer_country", mapping, sample
+            )
+            session_col = session_col or resolve_canonical_source_column(
+                "session_id", mapping, sample, extra_aliases=("session_id", "session", "visit_id", "ga_session_id")
             )
             header_resolved = True
         value = _extract_row_ts(row)
@@ -247,6 +254,7 @@ def build(spec):
         customer_column = reverse.get("customer_id")
         order_value = row.get(order_column) if order_column else None
         customer_value = row.get(customer_column) if customer_column else None
+        session_value = row.get(session_col) if session_col else None
         for bucket_name in included:
             bucket = buckets[bucket_name]
             bucket["rows"] += 1
@@ -254,7 +262,17 @@ def build(spec):
             if order_value is not None and str(order_value).strip():
                 bucket["orders"].add(str(order_value).strip())
             if customer_value is not None and str(customer_value).strip():
-                bucket["customers"].add(str(customer_value).strip())
+                cid = str(customer_value).strip()
+                bucket["customers"].add(cid)
+                if order_value is not None and str(order_value).strip():
+                    oid = str(order_value).strip()
+                    bucket["customer_orders"].setdefault(cid, set()).add(oid)
+                    overall_customer_orders.setdefault(cid, set()).add(oid)
+                else:
+                    bucket["customer_orders"].setdefault(cid, set()).add(f"r_{bucket['rows']}")
+                    overall_customer_orders.setdefault(cid, set()).add(f"r_{buckets['all']['rows']}")
+            if session_value is not None and str(session_value).strip():
+                bucket["sessions"].add(str(session_value).strip())
             if value is not None:
                 granularity = (
                     "day" if bucket_name == "last_7_days"
@@ -321,10 +339,50 @@ def build(spec):
                 "change_percent": None,
             })
         return points
+    def conversion_for(bucket: dict[str, Any]) -> dict[str, Any]:
+        if bucket["sessions"]:
+            orders_count = len(bucket["orders"]) or bucket["rows"]
+            rate = round((orders_count / len(bucket["sessions"])) * 100, 1)
+            return {
+                "available": True,
+                "reason": None,
+                "value": rate,
+                "type": "sessions",
+                "basis": "orders_per_session",
+                "label": "Taux de conversion",
+            }
+        total_customers = len(bucket["customers"])
+        if total_customers > 0:
+            repeat_count = sum(
+                1 for cid in bucket["customers"]
+                if len(overall_customer_orders.get(cid, set())) >= 2
+                or len(bucket["customer_orders"].get(cid, set())) >= 2
+            )
+            repeat_rate = round((repeat_count / total_customers) * 100, 1)
+            return {
+                "available": True,
+                "reason": None,
+                "value": repeat_rate,
+                "type": "repeat_customers",
+                "basis": "repeat_purchase_rate",
+                "label": "Taux de conversion",
+            }
+        return {
+            "available": False,
+            "reason": "missing_sessions_or_customers",
+            "value": None,
+            "type": None,
+            "basis": None,
+            "label": None,
+        }
     payload = {"source": spec,
                "period_metrics": {
                    key: metrics(bucket) for key, bucket in buckets.items()
                },
+               "period_conversions": {
+                   key: conversion_for(bucket) for key, bucket in buckets.items()
+               },
+               "conversion": conversion_for(buckets["source_current"]),
                "current": metrics(buckets["source_current"]),
                "period_trends": {key: trend(key) for key in ranges},
                "period_splits": {

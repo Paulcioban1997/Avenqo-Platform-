@@ -221,14 +221,41 @@ class TenantDashboardService:
         summary_key = period_key or "last_30_days"
         for summary in snapshot.retail_summaries:
             cached = ((summary.get("period_conversions") or {}).get(summary_key))
-            if isinstance(cached, dict):
+            if isinstance(cached, dict) and cached.get("available") and cached.get("value") is not None:
                 return cached
+            if summary_key in {"last_30_days", "source_current"} and isinstance(summary.get("conversion"), dict) and summary["conversion"].get("available"):
+                return summary["conversion"]
         source = snapshot.source_for(BUSINESS_METRIC_FIELDS["orders"])
-        if source is None:
-            return {"available": False, "reason": "missing_sessions", "value": None}
-        date_from = None if period_key == "all" else period.get("start")
-        date_to = None if period_key == "all" else period.get("end")
-        return compute_conversion_rate(source, date_from=date_from, date_to=date_to)
+        if source is not None:
+            date_from = None if period_key == "all" else period.get("start")
+            date_to = None if period_key == "all" else period.get("end")
+            conv = compute_conversion_rate(source, date_from=date_from, date_to=date_to)
+            if conv.get("available") and conv.get("value") is not None:
+                return conv
+        if hasattr(self, "_analytics") and getattr(self._analytics, "_session", None) is not None:
+            try:
+                from backend.app.models.crm import CRMLead
+                from sqlalchemy import select
+                company_id = snapshot.company.id if snapshot.company else None
+                if company_id is not None:
+                    leads = list(self._analytics._session.scalars(
+                        select(CRMLead).where(CRMLead.company_id == company_id)
+                    ).all())
+                    if leads:
+                        total_leads = len(leads)
+                        qualified = sum(1 for l in leads if getattr(l, "status", None) in {"qualified", "converted", "won"})
+                        if total_leads > 0:
+                            return {
+                                "available": True,
+                                "reason": None,
+                                "value": round((qualified / total_leads) * 100, 1),
+                                "type": "crm_leads",
+                                "basis": "lead_conversion_rate",
+                                "label": "Taux de conversion",
+                            }
+            except Exception:
+                pass
+        return {"available": False, "reason": "missing_sessions_or_customers", "value": None}
 
     def _kpi(
         self,
