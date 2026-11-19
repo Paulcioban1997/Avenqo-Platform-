@@ -43,6 +43,8 @@ from backend.app.ai.tools.business.coach_tools import (
     GetMyTasksTool,
     MarkMyTaskCompletedTool,
     GetCoachingAdviceTool,
+    OptimizeTaskExecutionTool,
+    GetExecutiveBriefingTool,
 )
 from backend.app.ai.tools.business.marketing_tools import DraftMarketingCampaignTool
 from backend.app.ai.tools.business.memory_tools import (
@@ -191,6 +193,8 @@ def build_business_tool_registry(
     registry.register(GetMyTasksTool(session))
     registry.register(MarkMyTaskCompletedTool(session))
     registry.register(GetCoachingAdviceTool(session))
+    registry.register(OptimizeTaskExecutionTool(session))
+    registry.register(GetExecutiveBriefingTool(session))
     return registry
 
 

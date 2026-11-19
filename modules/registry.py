@@ -36,7 +36,7 @@ BUSINESS_MODULE_REGISTRY: tuple[BusinessModuleDefinition, ...] = (
     BusinessModuleDefinition("appointments", "Appointments AI", "Standalone booking product. Scheduling is available today inside CRM AI.", ModuleAvailability.COMING_SOON, "operations"),
     BusinessModuleDefinition("accounting", "Accounting AI", "Accounting workflow intelligence.", ModuleAvailability.AVAILABLE, "finance"),
     BusinessModuleDefinition("ocr", "OCR / Documents AI", "Secure upload, text extraction, classification and export.", ModuleAvailability.AVAILABLE, "documents"),
-    BusinessModuleDefinition("hr", "HR AI", "Workforce intelligence beyond employee management.", ModuleAvailability.COMING_SOON, "people"),
+    BusinessModuleDefinition("hr", "HR AI", "Gestion de la hiérarchie d'équipe, SOPs métiers, compétences, congés et coaching vocal.", ModuleAvailability.AVAILABLE, "people"),
     BusinessModuleDefinition("voice", "Voice AI", "Voice interaction automation.", ModuleAvailability.AVAILABLE, "communication", premium=True, credit_multiplier=2.0),
     BusinessModuleDefinition("media", "Media AI", "Authorized text generation with credit tracking and history.", ModuleAvailability.AVAILABLE, "content", premium=True, credit_multiplier=2.0),
     BusinessModuleDefinition("legal", "Legal AI", "Document analysis with explicit non-advice limits.", ModuleAvailability.AVAILABLE, "legal"),

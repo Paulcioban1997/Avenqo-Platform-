@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -217,3 +217,50 @@ class AutomationRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     workflow: Mapped[AutomationWorkflow] = relationship(back_populates="runs")
+
+
+class EmployeeLeave(TimestampMixin, Base):
+    """Demandes de congés et absences des collaborateurs."""
+
+    __tablename__ = "employee_leaves"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    leave_type: Mapped[str] = mapped_column(String(32), nullable=False, default="vacation")
+    start_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    end_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    days_count: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="pending")  # pending, approved, rejected
+    approved_by_user_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+
+class EmployeePerformanceReview(TimestampMixin, Base):
+    """Évaluations de performance périodiques et coaching de progression."""
+
+    __tablename__ = "employee_performance_reviews"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    reviewer_user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    review_period: Mapped[str] = mapped_column(String(64), nullable=False, default="2026")
+    rating: Mapped[float] = mapped_column(Float, nullable=False, default=4.5)  # 1.0 à 5.0
+    strengths: Mapped[str | None] = mapped_column(Text, nullable=True)
+    growth_areas: Mapped[str | None] = mapped_column(Text, nullable=True)
+    goals: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ai_coach_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+

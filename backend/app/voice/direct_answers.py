@@ -52,6 +52,20 @@ def is_coach_tasks_question(text: str) -> bool:
     return is_task and is_inquiry
 
 
+def is_coach_optimize_task_question(text: str) -> bool:
+    words = _words(text)
+    optimize = bool(words & {"optimiser", "optimise", "comment", "conseille", "conseil", "mieux", "vite", "efficace", "astuce", "recommandation", "ameliorer"})
+    task_word = bool(words & {"tache", "travail", "intervention", "pose", "reparation", "coupe", "devis", "reclamation", "chantier", "client", "frein", "vidange", "carrelage"})
+    return optimize and task_word
+
+
+def is_executive_strategic_question(text: str) -> bool:
+    words = _words(text)
+    strategic = bool(words & {"strategique", "strategie", "executif", "direction", "situation", "bilan", "conversion", "chiffre", "affaires", "chiffre d'affaires"})
+    point = bool(words & {"point", "briefing", "etat", "resume", "vue", "dashboard", "taux", "comment"})
+    return strategic and point
+
+
 def is_open_catalog_question(text: str) -> bool:
     words = _words(text)
     products = bool(words & {
@@ -284,8 +298,13 @@ def resolve_direct_voice_answer(
     if db is None:
         return None
 
-    # Performance Coach AI questions (Shift briefing, tasks, priorities)
-    if is_coach_briefing_question(transcript) or is_coach_tasks_question(transcript):
+    # Performance Coach AI questions (Shift briefing, tasks, priorities, task optimization, executive strategic point)
+    if (
+        is_coach_briefing_question(transcript)
+        or is_coach_tasks_question(transcript)
+        or is_coach_optimize_task_question(transcript)
+        or is_executive_strategic_question(transcript)
+    ):
         if not authenticated_staff or user_id is None:
             if locale.lower().startswith("es"):
                 return "El coaching de desempeño y las prioridades de trabajo están reservados para colaboradores autenticados con NIP."
@@ -301,6 +320,24 @@ def resolve_direct_voice_answer(
         actor = db.get(User, user_id)
         if actor is not None and actor.company_id == company_id:
             coach = EmployeeCoachService(db)
+
+            # Strict hierarchical access check for financial/executive topics
+            allowed, denial_reason = coach.check_hierarchical_data_access(actor, transcript)
+            if not allowed:
+                return denial_reason
+
+            if is_executive_strategic_question(transcript):
+                exec_briefing = coach.get_executive_briefing(actor, locale=locale)
+                summary = exec_briefing.get("spoken_summary")
+                if summary:
+                    return str(summary)
+
+            if is_coach_optimize_task_question(transcript):
+                opt = coach.optimize_task_execution(actor, task_description=transcript, locale=locale)
+                summary = opt.get("spoken_summary")
+                if summary:
+                    return str(summary)
+
             if is_coach_briefing_question(transcript):
                 briefing = coach.get_daily_briefing(actor, locale=locale)
                 summary = briefing.get("spoken_summary")
