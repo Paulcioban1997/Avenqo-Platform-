@@ -4,9 +4,12 @@ The audio adapter has no tools or business conversation memory. The existing
 tenant-owned Central conversation survives in the caller, outside this socket.
 Renewal can cause an audible gap; a mid-turn disconnect terminates safely.
 """
+from __future__ import annotations
+
 import asyncio
 import copy
 import time
+from typing import Any
 
 
 class RotatingRealtimeAdapter:
@@ -17,15 +20,16 @@ class RotatingRealtimeAdapter:
             raise ValueError("Renewal must precede the provider session limit")
         self.factory, self.authorize = factory, authorize
         self.rotation_seconds, self.clock = rotation_seconds, clock
-        self.adapter = None
+        self.adapter: Any = None
         self.generation = 0
-        self.opened_at = 0
-        self.locale = None
+        self.opened_at = 0.0
+        self.locale: str | None = None
         self.speech_pending = self.response_pending = False
         self.closed = False
         self.lock = asyncio.Lock()
-        self.queue = asyncio.Queue(maxsize=256)
-        self.pump = self.timer = None
+        self.queue: asyncio.Queue[Any] = asyncio.Queue(maxsize=256)
+        self.pump: asyncio.Task[Any] | None = None
+        self.timer: asyncio.Task[Any] | None = None
 
     async def open(self, *, locale):
         self.locale = locale
@@ -85,9 +89,11 @@ class RotatingRealtimeAdapter:
                     raise TimeoutError("No safe renewal boundary before provider expiry")
                 return False
             await self.authorize()
-            self.pump.cancel()
-            await asyncio.gather(self.pump, return_exceptions=True)
-            await asyncio.wait_for(self.adapter.close(), 5)
+            if self.pump is not None:
+                self.pump.cancel()
+                await asyncio.gather(self.pump, return_exceptions=True)
+            if self.adapter is not None:
+                await asyncio.wait_for(self.adapter.close(), 5)
             for attempt in range(3):
                 try:
                     await self._connect()
@@ -110,23 +116,29 @@ class RotatingRealtimeAdapter:
             # Safe exception class only; no provider bodies or keys in diagnostics.
             await self.queue.put(RuntimeError("Realtime renewal stopped: " + type(exc).__name__))
 
-    async def send_audio(self, audio):
+    async def send_audio(self, audio: bytes) -> None:
         async with self.lock:
+            if self.adapter is None:
+                raise ConnectionError("Realtime session is not open")
             await asyncio.wait_for(self.adapter.send_audio(audio), 5)
 
-    async def speak(self, text):
+    async def speak(self, text: str) -> None:
         async with self.lock:
             await self.authorize()
             self.response_pending = True
+            if self.adapter is None:
+                raise ConnectionError("Realtime session is not open")
             await asyncio.wait_for(self.adapter.speak(text), 5)
 
-    async def interrupt(self):
+    async def interrupt(self) -> None:
         async with self.lock:
-            await asyncio.wait_for(self.adapter.interrupt(), 5)
+            if self.adapter is not None:
+                await asyncio.wait_for(self.adapter.interrupt(), 5)
 
-    async def clear_input(self):
+    async def clear_input(self) -> None:
         async with self.lock:
-            await asyncio.wait_for(self.adapter.clear_input(), 5)
+            if self.adapter is not None:
+                await asyncio.wait_for(self.adapter.clear_input(), 5)
             self.speech_pending = False
 
     async def reconnect(self, fallback_model: str = "gpt-realtime-2.1", locale: str = "fr-CA"):

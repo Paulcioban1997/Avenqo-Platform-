@@ -1899,10 +1899,14 @@ class VoiceRealtimeRouter:
 
         logger.info(
             "voice_realtime_route provider=openai_primary model=%s company_id=%s universal_priority=True",
-            getattr(self.settings, "voice_realtime_model", "gpt-live-1"),
+            getattr(self._settings, "voice_realtime_model", "gpt-live-1"),
             getattr(config, "company_id", None),
         )
         return fallback_factory()
+
+    @property
+    def settings(self) -> Settings:
+        return self._settings
 
     @property
     def interruptions(self) -> NaturalInterruptionManager:
