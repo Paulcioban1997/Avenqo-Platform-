@@ -267,4 +267,32 @@ class EmployeePerformanceReview(TimestampMixin, Base):
     growth_areas: Mapped[str | None] = mapped_column(Text, nullable=True)
     goals: Mapped[str | None] = mapped_column(Text, nullable=True)
     ai_coach_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    data_sufficient: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class EmployeeSkill(TimestampMixin, Base):
+    """Compétences des collaborateurs, statut de validation et traçabilité des preuves."""
+
+    __tablename__ = "employee_skills"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    company_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    category: Mapped[str] = mapped_column(String(64), nullable=False, default="Technique")
+    level: Mapped[int] = mapped_column(Integer, nullable=False, default=1)  # 1 à 5
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="not_assessed"
+    )  # "verified", "self_declared", "ai_suggested", "not_assessed"
+    evidence_url_or_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    verified_by_user_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
 
