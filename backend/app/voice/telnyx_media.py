@@ -1950,7 +1950,7 @@ async def telnyx_media_socket(
         await authorize()
 
     async def execute_turn(item_id: str, transcript: str) -> dict:
-        nonlocal ledger
+        nonlocal ledger, principal_id, auth_epoch
         if public_conversation is not None and principal_id is None:
             security_check = public_conversation.security_gate(transcript)
             if security_check is not None:
@@ -1974,6 +1974,7 @@ async def telnyx_media_socket(
                     }
                     db.commit()
                 principal_id = None
+                auth_epoch = None
                 call_loc = resolve_locale(current_call.locale if current_call and current_call.locale else locale)
                 if call_loc.startswith("fr"):
                     handover_answer = "Très bien. Pour des raisons de sécurité, le nouvel employé doit s'authentifier. Veuillez saisir votre NIP sur le clavier de votre téléphone."
