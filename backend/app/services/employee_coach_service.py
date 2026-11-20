@@ -537,7 +537,23 @@ class EmployeeCoachService:
         task_text = (task_description or "").lower()
 
         # Detailed sector & task pattern matching
-        if any(w in task_text for w in ("frein", "vidange", "pneu", "moteur", "garage", "mécan", "atelier", "diag")):
+        standard_sectors = {
+            "automobile", "construction", "coiffure", "commerce", "logistique", "marketing",
+            "santé", "sante", "industrie", "hôtellerie", "hotellerie", "conseil", "finance", "general", "unspecified",
+        }
+        is_custom_industry = bool(industry_sector and industry_sector.strip() and industry_sector.lower().strip() not in standard_sectors)
+        if is_custom_industry:
+            sector_label = industry_sector.strip().title()
+            steps = [
+                "1. Définir précisément l'objectif et les spécifications techniques de la tâche.",
+                "2. Vérifier les instruments, données et protocoles opératoires avant de débuter.",
+                "3. Exécuter l'intervention avec rigueur selon les standards de qualité de l'organisation.",
+                "4. Consigner les relevés obtenus, valider les tolérances et clore la fiche opérationnelle.",
+            ]
+            time_tip = "Préparez l'ensemble des protocoles et équipements avant l'opération : cela supprime les temps d'arrêt."
+            quality_rule = "Contrôle métrologique strict et respect scrupuleux des normes de sécurité opérationnelle."
+            revenue_booster = "L'excellence opérationnelle et la précision d'exécution garantissent la rentabilité et la réputation de l'organisation."
+        elif any(w in task_text for w in ("frein", "vidange", "pneu", "moteur", "garage", "mécanicien", "véhicule", "auto", "carrosser")):
             sector_label = "Automobile & Mécanique"
             steps = [
                 "1. Vérifier la conformité du bon d'intervention et inspecter visuellement les pièces reçues avant démontage.",
@@ -592,7 +608,7 @@ class EmployeeCoachService:
             time_tip = "Avoir la référence de suivi et le bon de commande sous les yeux dès la première seconde évite les transferts d'appels et fait gagner 10 minutes."
             quality_rule = "Toujours noter le nom de l'agent de quai ou du transporteur et récapituler l'heure convenue avant de raccrocher."
             revenue_booster = "Anticiper et fluidifier les arrivages permet d'éviter les ruptures et de respecter les promesses clients à forte marge."
-        elif any(w in task_text for w in ("devis", "relanc", "client", "prospect", "négoc", "vent", "offre", "contrat")):
+        elif any(w in task_text for w in ("devis", "relanc", "prospect", "négoc", "vent", "offre commerciale", "contrat commercial")):
             sector_label = "Commerce & Relations Clients"
             steps = [
                 "1. Consulter la fiche CRM du client, ses précédents achats et ses points d'intérêt prioritaires.",
@@ -614,6 +630,50 @@ class EmployeeCoachService:
             time_tip = "Préparez vos emballages et rubans adhésifs en amont : le batch-picking multi-commandes réduit le temps de trajet de 35%."
             quality_rule = "Double scan obligatoire pour garantir 0 erreur de référence envoyée."
             revenue_booster = "Un colis soigné et expédié sans erreur fidélise 85% des acheteurs dès la première commande."
+        elif any(w in task_text for w in ("patient", "soin", "clinique", "médic", "ordonn", "stéril", "triag", "consult")):
+            sector_label = "Santé & Clinique Médicale"
+            steps = [
+                "1. Vérifier l'identité du patient et l'exhaustivité des antécédents médicaux dans le dossier informatisé.",
+                "2. Préparer le matériel stérile, les consommables et les appareils de diagnostic avant la prise en charge.",
+                "3. Conduire l'acte ou l'examen selon les protocoles cliniques et les règles d'asepsie strictes.",
+                "4. Consigner immédiatement les observations et planifier la visite de contrôle ou le suivi.",
+            ]
+            time_tip = "Préparez les plateaux de consultation par avance : cela fluidifie les transitions entre patients et réduit le temps d'attente en salle."
+            quality_rule = "Respect absolu du secret médical et double vérification de l'identité et des allergies du patient."
+            revenue_booster = "Un suivi préventif rigoureux et un accueil empathique fidélisent la patientèle et maximisent le taux d'assiduité aux soins."
+        elif any(w in task_text for w in ("usin", "manufactur", "product", "assembl", "machin", "ligne", "calibr", "5s")):
+            sector_label = "Industrie & Production Manufacturière"
+            steps = [
+                "1. Contrôler le bon de fabrication (OF), les spécifications de tolérance et les équipements de protection individuelle.",
+                "2. Vérifier l'approvisionnement matière en amont de la machine pour éviter toute rupture de ligne.",
+                "3. Réaliser la gamme d'usinage ou d'assemblage en validant la première pièce produite au banc de mesure.",
+                "4. Noter la cadence sur le tableau de suivi et nettoyer le poste selon les standards 5S.",
+            ]
+            time_tip = "Organisez le poste selon les principes 5S (outils identifiés à portée de main) : cela élimine les micro-arrêts et accroît le rendement de 15%."
+            quality_rule = "Contrôle qualité systématique aux cotes critiques : zéro pièce non conforme tolérée en sortie de poste."
+            revenue_booster = "Réduire le taux de rebuts et les arrêts imprévus augmente directement la marge brute de chaque lot produit."
+        elif any(w in task_text for w in ("hôtel", "hotel", "chamb", "séjour", "check-in", "checkin", "héberg", "gouvern")):
+            sector_label = "Hôtellerie & Hébergement"
+            steps = [
+                "1. Consulter les fiches clients et les demandes spéciales (étage, préférences, arrivées anticipées).",
+                "2. Réaliser la préparation ou l'inspection de la chambre selon la grille d'excellence de l'établissement.",
+                "3. Accueillir le client avec professionnalisme et chaleur en confirmant les services réservés.",
+                "4. Assurer un suivi proactif pendant le séjour et faciliter le départ avec facture détaillée.",
+            ]
+            time_tip = "Vérifiez les chambres par étage en suivant un plan de passage linéaire pour diviser par deux le temps de déplacement."
+            quality_rule = "Excellence irréprochable de propreté et traitement immédiat de toute demande client sous 10 minutes."
+            revenue_booster = "Présentez les services haut de gamme de l'établissement (restauration, spa, surclassement) : cela optimise le revenu par chambre."
+        elif any(w in task_text for w in ("jurid", "avocat", "plaidoir", "audit", "conseil", "consulting", "synthès")):
+            sector_label = "Conseil & Professions Libérales"
+            steps = [
+                "1. Cadrer précisément la demande client, les pièces justificatives et les échéances légales ou contractuelles.",
+                "2. Structurer l'analyse juridique, financière ou stratégique avec rigueur documentaire.",
+                "3. Rédiger une synthèse claire et exploitable avec recommandations actionnables.",
+                "4. Valider en relecture croisée avant envoi au client et archiver le dossier.",
+            ]
+            time_tip = "Isolez les phases de rédaction juridique ou de synthèse dans un créneau sans notification : la concentration continue divise le temps d'écriture par deux."
+            quality_rule = "Double vérification des sources, références réglementaires et clauses engageantes avant communication."
+            revenue_booster = "Une valeur de conseil démontrée ouvre la porte à des mandats récurrents et des honoraires valorisés."
         elif any(w in task_text for w in ("factur", "rapproch", "compta", "paie", "déclarat", "tva", "tps", "fiscal")):
             sector_label = "Finance & Comptabilité"
             steps = [
@@ -626,7 +686,8 @@ class EmployeeCoachService:
             quality_rule = "Vérification stricte des mentions obligatoires et du numéro de TVA/TPS sur chaque facture fournisseur."
             revenue_booster = "Une comptabilité à jour en temps réel permet d'anticiper la trésorerie et d'éviter toute pénalité fiscale."
         else:
-            sector_label = "Excellence Opérationnelle"
+            custom_industry = industry_sector or (getattr(company, "industry", None) if company else None)
+            sector_label = custom_industry.strip().title() if custom_industry and custom_industry.strip() and custom_industry.lower() != "general" else "Excellence Opérationnelle"
             steps = [
                 "1. Clarifier l'objectif exact et les livrables attendus pour cette tâche.",
                 "2. Rassembler l'ensemble des informations, accès et outils requis avant de commencer.",

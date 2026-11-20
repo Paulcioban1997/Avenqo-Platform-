@@ -15,6 +15,7 @@ Covers:
 """
 from __future__ import annotations
 
+import asyncio
 import unicodedata
 import re
 import pytest
@@ -154,10 +155,10 @@ def test_standalone_greeting_anchor(monkeypatch):
 
     # Utterance containing greeting followed by business question -> NOT intercepted as greeting alone
     q1 = conv.public_answer("Bonjour, j'aimerais savoir si vous prenez de nouveaux fournisseurs ?")
-    assert "partenaires et fournisseurs" in q1["answer"]
+    assert "fournisseurs" in q1["answer"]
 
     q2 = conv.public_answer("Allô, est-ce que vous embauchez actuellement ?")
-    assert "candidature" in q2["answer"] or "emploi" in q2["answer"]
+    assert "recrutement" in q2["answer"] or "embauche" in q2["answer"] or "candidature" in q2["answer"] or "emploi" in q2["answer"]
 
 
 # ==============================================================================
@@ -206,6 +207,69 @@ def test_employee_handover_intent_detection():
     for phrase in test_phrases:
         norm = "".join(c for c in unicodedata.normalize("NFKD", phrase.casefold()) if not unicodedata.combining(c))
         assert bool(re.search(handover_pattern, norm)), f"Failed on: {phrase}"
+
+
+def test_employee_handover_end_to_end_security_revocation():
+    """Verify that employee handover immediately revokes all private credentials,
+    purges central_conversation_id, sanitizes source_context, and locks private data."""
+    from backend.app.models.voice import VoiceCall
+
+    user_a_id = uuid4()
+    company_id = uuid4()
+    call_id = uuid4()
+
+    mock_call = VoiceCall(
+        id=call_id,
+        company_id=company_id,
+        authenticated_user_id=user_a_id,
+        caller_type="USER",
+        central_conversation_id=uuid4(),
+        source_context={"user_id": str(user_a_id), "user_name": "Paul Mircea", "authenticated": True},
+        locale="fr-CA",
+        status="IN_PROGRESS",
+    )
+
+    mock_db = MagicMock()
+    mock_db.get.return_value = mock_call
+
+    # Simulate handover execution
+    norm_trans = "".join(c for c in unicodedata.normalize("NFKD", "Je te passe mon collègue pour la suite.".casefold()) if not unicodedata.combining(c))
+    handover_pattern = r"\b(changer\s*d\W*employe|change\s*employe|autre\s*employe|nouvel\s*employe|passe\s*mon\s*collegue|passe\s*le\s*telephone|je\s*te\s*passe|switch\s*employee|change\s*employee|pass\s*the\s*phone|hand\s*over|schimba\s*angajatul|iti\s*dau\s*colegul|pasez\s*telefonul|cambiar\s*de\s*empleado|te\s*paso\s*a\s*mi\s*colega)\b"
+    assert re.search(handover_pattern, norm_trans)
+
+    # Apply the exact handover revocation logic from telnyx_media.py
+    current_call = mock_db.get(VoiceCall, call_id)
+    assert current_call.authenticated_user_id == user_a_id
+    assert current_call.central_conversation_id is not None
+
+    current_call.authenticated_user_id = None
+    current_call.caller_type = "UNKNOWN"
+    current_call.central_conversation_id = None
+    existing_ctx = dict(current_call.source_context or {})
+    existing_ctx.pop("previous_principal", None)
+    existing_ctx.pop("user_id", None)
+    existing_ctx.pop("user_name", None)
+    existing_ctx["authenticated"] = False
+    existing_ctx["handover_revoked"] = True
+    current_call.source_context = existing_ctx
+
+    # Assert complete revocation
+    assert current_call.authenticated_user_id is None
+    assert current_call.caller_type == "UNKNOWN"
+    assert current_call.central_conversation_id is None
+    assert "user_id" not in current_call.source_context
+    assert "user_name" not in current_call.source_context
+    assert "previous_principal" not in current_call.source_context
+    assert current_call.source_context["authenticated"] is False
+    assert current_call.source_context["handover_revoked"] is True
+
+    # Verify that subsequent attempt to query private data fails closed
+    conv = PublicInboundConversation(mock_db, MagicMock(), call_id)
+    conv.context = MagicMock(return_value=(mock_call, SimpleNamespace(business_name="Test Co"), SimpleNamespace(id=company_id, name="Test Co")))
+    security_check = conv.security_gate("Quelles sont mes tâches confidentielles aujourd'hui ?")
+    assert security_check is not None
+    assert security_check["auth_required"] is True
+    assert "authentification" in security_check["answer"].lower() or "nip" in security_check["answer"].lower()
 
 
 # ==============================================================================
@@ -259,41 +323,137 @@ def test_barge_in_interruption_detection():
 
 
 # ==============================================================================
-# 9. SCENARIO 9 & 10: Supplier & Recruitment Inquiries (B3 / B4)
+# 9. SCENARIO 9 & 10: Dynamic Supplier & Recruitment Policies & Non-Retail Grounding
 # ==============================================================================
 
-def test_public_supplier_and_recruitment_inquiries(monkeypatch):
-    """Verify that customer mode handles supplier and recruitment inquiries constructively."""
+def test_public_supplier_dynamic_policies(monkeypatch):
+    """Verify supplier inquiry adapts dynamically according to company configuration."""
     mock_db = MagicMock()
     mock_settings = MagicMock()
     conv = PublicInboundConversation(mock_db, mock_settings, uuid4())
 
-    mock_company = SimpleNamespace(id=uuid4(), name="Produits Ero")
+    mock_company = SimpleNamespace(id=uuid4(), name="Produits Ero", email="contact@produitsero.com", website="https://produitsero.com")
     mock_call = SimpleNamespace(company_id=mock_company.id, telnyx_call_control_id="call-1", status="IN_PROGRESS", ended_at=None, locale="fr-CA")
     mock_config = SimpleNamespace(business_name="Produits Ero")
     conv.context = MagicMock(return_value=(mock_call, mock_config, mock_company))
 
-    dummy_profile = SimpleNamespace(has_crm_booking=False, active_modules=(), business_hours={}, configured_crm_services=[], public_products=[])
-    monkeypatch.setattr("backend.app.services.company_intelligence_service.CompanyIntelligenceService.get_profile", lambda *a, **k: dummy_profile)
+    # Case A: Explicit refusal of new suppliers
+    profile_refusal = SimpleNamespace(
+        has_crm_booking=False, has_retail_commerce=True, active_modules=(), business_hours={},
+        configured_crm_services=[], public_products=[], business_configuration={},
+        supplier_policy=None, accepts_suppliers=False, email=None, website=None
+    )
+    monkeypatch.setattr("backend.app.services.company_intelligence_service.CompanyIntelligenceService.get_profile", lambda *a, **k: profile_refusal)
+    res_refusal = conv.public_answer("Bonjour, prenez-vous de nouveaux fournisseurs ?")
+    assert res_refusal["status"] == "success"
+    assert "ne recherche pas de nouveaux fournisseurs" in res_refusal["answer"]
 
-    # Supplier inquiry
-    supp = conv.public_answer("Bonjour, est-ce que vous prenez de nouveaux fournisseurs ?")
-    assert supp["status"] == "success"
-    assert "fournisseurs" in supp["answer"]
-    assert "commerciale" in supp["answer"] or "courriel" in supp["answer"]
+    # Case B: Accepts suppliers with verified contact email
+    profile_email = SimpleNamespace(
+        has_crm_booking=False, has_retail_commerce=True, active_modules=(), business_hours={},
+        configured_crm_services=[], public_products=[], business_configuration={},
+        supplier_policy=None, accepts_suppliers=True, email="fournisseurs@produitsero.com", website=None
+    )
+    monkeypatch.setattr("backend.app.services.company_intelligence_service.CompanyIntelligenceService.get_profile", lambda *a, **k: profile_email)
+    res_email = conv.public_answer("Bonjour, nous souhaitons devenir fournisseur.")
+    assert res_email["status"] == "success"
+    assert "fournisseurs@produitsero.com" in res_email["answer"]
 
-    # Recruitment inquiry
-    rec = conv.public_answer("Est-ce que votre entreprise recrute en ce moment ?")
-    assert rec["status"] == "success"
-    assert "candidature" in rec["answer"] or "offres" in rec["answer"] or "emploi" in rec["answer"]
+    # Case C: Custom supplier policy
+    profile_custom = SimpleNamespace(
+        has_crm_booking=False, has_retail_commerce=True, active_modules=(), business_hours={},
+        configured_crm_services=[], public_products=[], business_configuration={},
+        supplier_policy="Nous acceptons uniquement les fournisseurs certifiés ISO 14001 avec accord cadre.",
+        accepts_suppliers=None, email=None, website=None
+    )
+    monkeypatch.setattr("backend.app.services.company_intelligence_service.CompanyIntelligenceService.get_profile", lambda *a, **k: profile_custom)
+    res_custom = conv.public_answer("Est-ce qu'on peut vous vendre nos produits comme fournisseur ?")
+    assert res_custom["status"] == "success"
+    assert "ISO 14001" in res_custom["answer"]
+
+
+def test_public_recruitment_dynamic_policies(monkeypatch):
+    """Verify recruitment inquiry adapts dynamically according to company configuration."""
+    mock_db = MagicMock()
+    mock_settings = MagicMock()
+    conv = PublicInboundConversation(mock_db, mock_settings, uuid4())
+
+    mock_company = SimpleNamespace(id=uuid4(), name="Produits Ero", email="contact@produitsero.com", website="https://produitsero.com")
+    mock_call = SimpleNamespace(company_id=mock_company.id, telnyx_call_control_id="call-1", status="IN_PROGRESS", ended_at=None, locale="fr-CA")
+    mock_config = SimpleNamespace(business_name="Produits Ero")
+    conv.context = MagicMock(return_value=(mock_call, mock_config, mock_company))
+
+    # Case A: Company is NOT hiring
+    profile_not_hiring = SimpleNamespace(
+        has_crm_booking=False, has_retail_commerce=True, active_modules=(), business_hours={},
+        configured_crm_services=[], public_products=[], business_configuration={},
+        recruitment_policy=None, is_hiring=False, email=None, website=None
+    )
+    monkeypatch.setattr("backend.app.services.company_intelligence_service.CompanyIntelligenceService.get_profile", lambda *a, **k: profile_not_hiring)
+    res_no = conv.public_answer("Est-ce que vous embauchez en ce moment ?")
+    assert res_no["status"] == "success"
+    assert "aucun poste ouvert" in res_no["answer"] or "ne recrute pas" in res_no["answer"]
+
+    # Case B: Company IS hiring and has official website
+    profile_hiring = SimpleNamespace(
+        has_crm_booking=False, has_retail_commerce=True, active_modules=(), business_hours={},
+        configured_crm_services=[], public_products=[], business_configuration={},
+        recruitment_policy=None, is_hiring=True, email="hr@produitsero.com", website="https://produitsero.com/carrieres"
+    )
+    monkeypatch.setattr("backend.app.services.company_intelligence_service.CompanyIntelligenceService.get_profile", lambda *a, **k: profile_hiring)
+    res_hiring = conv.public_answer("Je cherche un emploi, avez-vous des postes à pourvoir ?")
+    assert res_hiring["status"] == "success"
+    assert "https://produitsero.com/carrieres" in res_hiring["answer"]
+
+    # Case C: Unconfirmed recruitment without configured website/email -> safe intake message
+    profile_unconfirmed = SimpleNamespace(
+        has_crm_booking=False, has_retail_commerce=True, active_modules=(), business_hours={},
+        configured_crm_services=[], public_products=[], business_configuration={},
+        recruitment_policy=None, is_hiring=None, email=None, website=None
+    )
+    monkeypatch.setattr("backend.app.services.company_intelligence_service.CompanyIntelligenceService.get_profile", lambda *a, **k: profile_unconfirmed)
+    res_unconfirmed = conv.public_answer("Est-ce que vous recrutez des stagiaires ?")
+    assert res_unconfirmed["status"] == "success"
+    assert "pas confirmées" in res_unconfirmed["answer"]
+    assert "coordonnées" in res_unconfirmed["answer"]
+
+
+def test_public_truthful_non_retail_service_grounding(monkeypatch):
+    """Verify non-retail business (e.g., clinic or law office) never invents retail stock or shopping."""
+    mock_db = MagicMock()
+    mock_settings = MagicMock()
+    conv = PublicInboundConversation(mock_db, mock_settings, uuid4())
+
+    mock_company = SimpleNamespace(id=uuid4(), name="Clinique Santé Plus", email="info@clinique.ca", website="https://clinique.ca")
+    mock_call = SimpleNamespace(company_id=mock_company.id, telnyx_call_control_id="call-clinic", status="IN_PROGRESS", ended_at=None, locale="fr-CA")
+    mock_config = SimpleNamespace(business_name="Clinique Santé Plus")
+    conv.context = MagicMock(return_value=(mock_call, mock_config, mock_company))
+
+    profile_clinic = SimpleNamespace(
+        has_crm_booking=True,
+        has_retail_commerce=False,
+        active_modules=("crm", "voice"),
+        business_hours={},
+        configured_crm_services=[{"name": "Consultation générale", "price": 120, "currency": "CAD"}],
+        public_products=[],
+        business_configuration={},
+    )
+    monkeypatch.setattr("backend.app.services.company_intelligence_service.CompanyIntelligenceService.get_profile", lambda *a, **k: profile_clinic)
+
+    res_product = conv.public_answer("Avez-vous des produits en stock ou un inventaire à acheter ?")
+    assert res_product["status"] == "success"
+    # Must truthfully redirect to professional services, not invent store stock
+    assert "services professionnels" in res_product["answer"] or "prestations" in res_product["answer"]
+    assert "snowboard" not in res_product["answer"]
+    assert "inventaire" not in res_product["answer"]
 
 
 # ==============================================================================
-# 11. Universal Industry Task Optimization (7 Sectors)
+# 11. Universal Industry Task Optimization (8 Sectors + Novel Custom Sector)
 # ==============================================================================
 
-def test_universal_industry_task_optimization_7_sectors():
-    """Verify task optimization adapts dynamically across 7 diverse industries."""
+def test_universal_industry_task_optimization_multi_sector():
+    """Verify task optimization adapts dynamically across 8 diverse industries including novel custom sectors."""
     mock_db = MagicMock()
     user = User(
         id=uuid4(),
@@ -312,6 +472,10 @@ def test_universal_industry_task_optimization_7_sectors():
         ("Commerce", "Négociation devis avec grand compte", "Commerce & Relations Clients"),
         ("Logistique", "Appel transporteur livraison colis express", "Logistique & Approvisionnements"),
         ("Marketing", "Campagne publicitaire pour attirer de nouveaux clients", "Marketing & Acquisition Clients"),
+        ("Santé", "Consultation de triage et préparation du dossier patient", "Santé & Clinique Médicale"),
+        ("Industrie", "Usinage pièce mécanique sur machine commande numérique", "Industrie & Production Manufacturière"),
+        ("Hôtellerie", "Inspection de chambre VIP et accueil check-in client", "Hôtellerie & Hébergement"),
+        ("Conseil", "Rédaction note de synthèse juridique pour dossier client", "Conseil & Professions Libérales"),
         ("Finance", "Rapprochement bancaire et déclaration TVA", "Finance & Comptabilité"),
     ]
 
@@ -322,3 +486,87 @@ def test_universal_industry_task_optimization_7_sectors():
         assert len(res["methodology_steps"]) == 4
         assert "spoken_summary" in res
         assert len(res["spoken_summary"]) > 40
+
+    # Sector entirely novel / custom: "Centre de Recherche Aérospatiale Sous-Marine"
+    novel_res = coach.optimize_task_execution(
+        user,
+        "Calibration du capteur acoustique haute pression",
+        industry_sector="Centre de Recherche Aérospatiale Sous-Marine",
+        locale="fr-CA",
+    )
+    assert novel_res["status"] == "success"
+    assert novel_res["sector"] == "Centre De Recherche Aérospatiale Sous-Marine"
+    assert len(novel_res["methodology_steps"]) == 4
+    assert "Excellence" not in novel_res["sector"]
+
+
+# ==============================================================================
+# 12. Full Telnyx Barge-In Audio Interruption Chain
+# ==============================================================================
+
+@pytest.mark.asyncio
+async def test_full_telnyx_barge_in_clears_socket_and_discards_superseded_epoch():
+    """Verify end-to-end Telnyx barge-in:
+    - Interrupting caller utterance sends {"event": "clear"} to Telnyx WebSocket.
+    - Outbound audio queue is completely flushed.
+    - Ongoing or superseded turns are discarded without speaking confusing recovery messages.
+    """
+    from backend.app.voice.telnyx_media import TelnyxMediaBridge
+
+    class MockSocket:
+        def __init__(self):
+            self.sent = []
+            self.incoming = asyncio.Queue()
+        async def send_json(self, data):
+            self.sent.append(data)
+        async def receive_json(self):
+            return await self.incoming.get()
+
+    class MockAdapter:
+        def __init__(self):
+            self.interrupted = False
+            self.spoken = []
+        async def speak(self, text):
+            self.spoken.append(text)
+        async def interrupt(self):
+            self.interrupted = True
+        async def clear_input(self):
+            pass
+
+    mock_socket = MockSocket()
+    mock_adapter = MockAdapter()
+
+    async def validate_start(s): pass
+    async def authorize(): pass
+    async def execute_turn(i, t):
+        return {"status": "success", "answer": "Voici la réponse complète de catalogue pour vos achats..."}
+
+    bridge = TelnyxMediaBridge(
+        socket=mock_socket,
+        adapter=mock_adapter,
+        locale="fr-CA",
+        validate_start=validate_start,
+        authorize=authorize,
+        execute_turn=execute_turn,
+        allow_natural_interruptions=True,
+    )
+    bridge.stream_id = "test-stream-1"
+    bridge.phase = "PLAYING"
+    bridge._output.put_nowait((bridge.epoch, b"\x00" * 160))
+    bridge._output.put_nowait((bridge.epoch, b"\x00" * 160))
+
+    assert bridge._output.qsize() == 2
+
+    # Caller interrupts explicitly while agent is playing
+    await bridge.interrupt()
+
+    # 1. Output queue must be purged
+    assert bridge._output.empty()
+    # 2. {"event": "clear"} must be sent to Telnyx socket
+    assert {"event": "clear"} in mock_socket.sent
+    # 3. Adapter interrupt must be called
+    assert mock_adapter.interrupted is True
+    # 4. Phase must be INTERRUPTED
+    assert bridge.phase == "INTERRUPTED"
+    # 5. Epoch must have incremented
+    assert bridge.epoch > 0

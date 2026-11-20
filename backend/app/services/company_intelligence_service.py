@@ -132,6 +132,11 @@ class CompanyIntelligenceProfile:
     has_inventory_reservation_support: bool = False
     phone: str | None = None
     website: str | None = None
+    email: str | None = None
+    supplier_policy: str | None = None
+    recruitment_policy: str | None = None
+    accepts_suppliers: bool | None = None
+    is_hiring: bool | None = None
     voice_display_name: str | None = None
     voice_pronunciation: str | None = None
     has_online_store: bool = False
@@ -362,6 +367,12 @@ class CompanyIntelligenceService:
                      "online_store_url": store_url, "documents": [d["id"] for d in public_docs]}
         signature["resources"] = [(str(r.id), r.name, r.working_hours) for r in resources]
         version = hashlib.sha256(json.dumps(signature, sort_keys=True, default=str).encode()).hexdigest()[:24]
+        biz_policy = (config.call_policy if config and isinstance(config.call_policy, dict) else {}) or {}
+        supp_policy = business.get("supplier_policy") or biz_policy.get("supplier_policy")
+        rec_policy = business.get("recruitment_policy") or biz_policy.get("recruitment_policy")
+        acc_suppliers = business.get("accepts_suppliers") if "accepts_suppliers" in business else biz_policy.get("accepts_suppliers")
+        is_recruiting = business.get("is_hiring") if "is_hiring" in business else biz_policy.get("is_hiring")
+
         return CompanyIntelligenceProfile(
             company_id=company_id, company_name=company.name,
             business_name=(config.business_name if config else None) or company.name,
@@ -383,6 +394,11 @@ class CompanyIntelligenceService:
             has_inventory_reservation_support=False,
             phone=company.phone or (config.transfer_phone if config else None),
             website=company.website,
+            email=getattr(company, "email", None) or getattr(company, "billing_email", None),
+            supplier_policy=supp_policy,
+            recruitment_policy=rec_policy,
+            accepts_suppliers=acc_suppliers,
+            is_hiring=is_recruiting,
             voice_display_name=voice_spoken_name,
             voice_pronunciation=voice_pronun or voice_spoken_name,
             has_online_store=has_store,
