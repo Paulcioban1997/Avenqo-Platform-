@@ -678,7 +678,7 @@ class PublicInboundConversation:
         if re.search(r"commande|order|produit|product|stock|inventaire|inventory|magasin|boutique|retail", normalized):
             if not profile.has_retail_commerce and not profile.public_products:
                 if profile.has_crm_booking:
-                    answer = "Notre établissement propose principalement des services professionnels. Je peux vous renseigner sur nos prestations ou planifier un rendez-vous. Que souhaitez-vous savoir ?" if french else "Our company primarily provides professional services. I can assist you with our services or booking. What would you like to know?"
+                    answer = "Notre établissement propose principalement des services professionnels plutôt que des produits en vente directe. Je peux vous renseigner sur nos prestations ou planifier un rendez-vous. Que souhaitez-vous savoir ?" if french else "Our company primarily provides professional services rather than retail products. I can assist you with our services or booking. What would you like to know?"
                 else:
                     answer = "Notre entreprise ne propose pas de vente directe de produits ou d'inventaire en ligne. Pour toute information générale, je reste à votre disposition." if french else "Our company does not offer retail product sales or online inventory. For general inquiries, I am here to help."
                 return {"status": "success", "answer": answer, "public": True}
@@ -1009,7 +1009,7 @@ class TelnyxMediaBridge:
         cancel_response = (
             self.response_id is not None
             or self.pending_epoch is not None
-            or self.phase in {"PLAYING", "SYNTHESIZING", "THINKING"}
+            or self.phase in {"PLAYING", "SYNTHESIZING"}
             or not self._output.empty()
         )
         session_key = str(self.stream_id or "default")
@@ -1049,6 +1049,16 @@ class TelnyxMediaBridge:
         if pause_input:
             self.input_paused = True
             await self.adapter.clear_input()
+
+    async def _speak_system(self, item_id: str, answer: str) -> None:
+        if self.usage is not None and not self.usage.reserve(item_id):
+            raise PermissionError("Voice usage quota unavailable")
+        self.pending_epoch = self.epoch
+        self._pending_speech.append((item_id, self.epoch, self.usage))
+        self.telemetry["tts_generated"] = True
+        self.telemetry["tts_request_started"] += 1
+        self._set_phase("SYNTHESIZING")
+        await self.adapter.speak(self._spoken(answer))
 
     async def _execute(self, item_id: str, transcript: str, epoch: int) -> None:
         requested_audio = False
@@ -1367,14 +1377,13 @@ class TelnyxMediaBridge:
                     )
                     continue
                 if decision == "replace":
-                    active_turn = (
+                    playing = (
                         self.response_id is not None
                         or self.pending_epoch is not None
                         or not self._output.empty()
-                        or self.phase in {"PLAYING", "SYNTHESIZING", "THINKING"}
-                        or self._executing_turn
+                        or self.phase == "PLAYING"
                     )
-                    if active_turn and self.allow_natural_interruptions:
+                    if playing and self.allow_natural_interruptions:
                         if self.interruption_manager is not None:
                             self.interruption_manager.on_caller_speech_detected(
                                 str(self.stream_id or "default"),
@@ -1382,6 +1391,13 @@ class TelnyxMediaBridge:
                                 allow_interruptions=True,
                             )
                         await self.interrupt()
+                    elif self._executing_turn:
+                        self.epoch += 1
+                        logger.info(
+                            "Voice in-flight answer superseded by a confirmed question; call=%s epoch=%s",
+                            self.call_correlation,
+                            self.epoch,
+                        )
                 try:
                     self._turns.put_nowait((item_id, transcript, self.epoch))
                 except asyncio.QueueFull:
@@ -1557,16 +1573,6 @@ class TelnyxMediaBridge:
                 pcm_frames = self.reorder_buffer.push(number, self.codec.inbound_pcm(media.get("payload")))
                 for pcm in pcm_frames:
                     await self._send_inbound_audio(pcm)
-
-    async def _speak_system(self, item_id: str, answer: str) -> None:
-        if self.usage is not None and not self.usage.reserve(item_id):
-            raise PermissionError("Voice usage quota unavailable")
-        self.pending_epoch = self.epoch
-        self._pending_speech.append((item_id, self.epoch, self.usage))
-        self.telemetry["tts_generated"] = True
-        self.telemetry["tts_request_started"] += 1
-        self._set_phase("SYNTHESIZING")
-        await self.adapter.speak(self._spoken(answer))
 
     async def _finish_pin(self, status: str) -> None:
         item_id = self._pin_turn or "pin-result"

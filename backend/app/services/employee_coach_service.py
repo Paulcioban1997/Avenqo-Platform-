@@ -541,9 +541,10 @@ class EmployeeCoachService:
             "automobile", "construction", "coiffure", "commerce", "logistique", "marketing",
             "santé", "sante", "industrie", "hôtellerie", "hotellerie", "conseil", "finance", "general", "unspecified",
         }
-        is_custom_industry = bool(industry_sector and industry_sector.strip() and industry_sector.lower().strip() not in standard_sectors)
-        if is_custom_industry:
-            sector_label = industry_sector.strip().title()
+        clean_industry = (industry_sector or "").strip()
+        is_custom_industry = bool(clean_industry and clean_industry.lower() not in standard_sectors)
+        if clean_industry and is_custom_industry:
+            sector_label = clean_industry.title()
             steps = [
                 "1. Définir précisément l'objectif et les spécifications techniques de la tâche.",
                 "2. Vérifier les instruments, données et protocoles opératoires avant de débuter.",
