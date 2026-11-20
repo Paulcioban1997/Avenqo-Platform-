@@ -319,6 +319,8 @@ class Settings(BaseSettings):
 
     voice_pin_max_attempts: int = Field(default=5, ge=3, le=10, alias="VOICE_PIN_MAX_ATTEMPTS")
     voice_pin_lockout_seconds: int = Field(default=900, ge=60, le=86400, alias="VOICE_PIN_LOCKOUT_SECONDS")
+    voice_tenant_max_failed_auth_per_window: int = Field(default=30, ge=5, le=500, alias="VOICE_TENANT_MAX_FAILED_AUTH_PER_WINDOW")
+    voice_pin_max_scan_candidates: int = Field(default=20, ge=1, le=100, alias="VOICE_PIN_MAX_SCAN_CANDIDATES")
     voice_shared_dispatcher_number: str = Field(default="+14386075438", alias="VOICE_SHARED_DISPATCHER_NUMBER")
     voice_routing_nip_max_attempts: int = Field(default=3, ge=1, le=10, alias="VOICE_ROUTING_NIP_MAX_ATTEMPTS")
     telnyx_webhook_max_age_seconds: int = Field(default=300, ge=30, le=3600, alias="TELNYX_WEBHOOK_MAX_AGE_SECONDS")
