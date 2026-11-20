@@ -624,14 +624,20 @@ class PublicInboundConversation:
         if re.search(r"commande|order|produit|product|stock|inventaire|inventory|magasin|boutique|retail", normalized):
             answer = "Pour toute question sur vos commandes, nos produits ou notre inventaire, je peux vous renseigner. Que souhaitez-vous savoir ?" if french else "For questions about orders, products, or inventory, I can help. What would you like to know?"
             return {"status": "success", "answer": answer, "public": True}
-        if not profile.has_crm_booking:
-            answer = "Je peux vous renseigner sur notre entreprise. Les données de ventes et de stock nécessitent une authentification personnelle." if french else "I can help with business information. Sales and internal stock require personal authentication."
-            return {"status": "success", "answer": answer, "public": True}
         if re.search(r"parler|quelqu.un|agent|humain|reception|personne|speak|someone|representative|human", normalized):
             answer = "Je peux prendre votre message ou vous renseigner sur nos services, horaires et rendez-vous. Comment puis-je vous aider ?" if french else "I can take a message or assist with services, hours, and appointments. How can I help you?"
             return {"status": "success", "answer": answer, "public": True}
-        if re.search(r"^\s*(bonjour|salut|allo|bon matin|bonsoir|oui bonjour|hello|hi|hey)\b", normalized):
+        if re.search(r"fournisseur\w*|fournir|vendre nos produits|devenir fournisseur|supplier\w*|vendor\w*|furnizor\w*|proveedor\w*", normalized):
+            answer = "Nous sommes toujours à l'écoute de nouveaux partenaires et fournisseurs. Vous pouvez nous transmettre votre proposition par courriel ou via notre site officiel, ou je peux prendre un message pour l'équipe commerciale." if french else "We are always open to new partners and suppliers. You can send your proposal by email or through our official website, or I can take a message for our procurement team."
+            return {"status": "success", "answer": answer, "public": True}
+        if re.search(r"recrut\w*|embauch\w*|postul\w*|candidat\w*|emploi\w*|job\w*|hiring|career\w*|angajar\w*|angajat\w*|empleo\w*|contrat\w*", normalized):
+            answer = "Pour toute demande d'emploi ou candidature, vous pouvez consulter nos offres sur notre site officiel ou envoyer votre curriculum vitae à notre adresse courriel officielle. Souhaitez-vous laisser vos coordonnées ?" if french else "For job openings and applications, please visit our official website or send your resume to our official company email. Would you like to leave your contact details?"
+            return {"status": "success", "answer": answer, "public": True}
+        if re.search(r"^\s*(bonjour|salut|allo|allô|bon matin|bonsoir|oui bonjour|hello|hi|hey)\s*[.!?]?\s*$", normalized):
             return {"status": "success", "answer": "Bonjour ! Comment puis-je vous aider aujourd'hui ?" if french else "Hello! How can I help you today?", "public": True}
+        if not profile.has_crm_booking:
+            answer = "Je peux vous renseigner sur notre entreprise. Les données de ventes et de stock nécessitent une authentification personnelle." if french else "I can help with business information. Sales and internal stock require personal authentication."
+            return {"status": "success", "answer": answer, "public": True}
         answer = "Je peux vous renseigner sur nos heures d'ouverture, nos produits, ou pour une réservation et cueillette en magasin. Comment puis-je vous aider ?" if french else "I can help with our opening hours, products, or a booking and store pickup. How can I help you?"
         return {"status": "success", "answer": answer, "public": True}
 
@@ -1951,6 +1957,34 @@ async def telnyx_media_socket(
                 return security_check
 
         if principal_id is not None:
+            norm_trans = unicodedata.normalize("NFKD", transcript.casefold())
+            norm_trans = "".join(c for c in norm_trans if not unicodedata.combining(c))
+            handover_pattern = r"\b(changer\s*d\W*employe|change\s*employe|autre\s*employe|nouvel\s*employe|passe\s*mon\s*collegue|passe\s*le\s*telephone|je\s*te\s*passe|switch\s*employee|change\s*employee|pass\s*the\s*phone|hand\s*over|schimba\s*angajatul|iti\s*dau\s*colegul|pasez\s*telefonul|cambiar\s*de\s*empleado|te\s*paso\s*a\s*mi\s*colega)\b"
+            if re.search(handover_pattern, norm_trans):
+                logger.info("Voice employee handover requested; revoking authenticated context for call=%s", call_id)
+                current_call = db.get(VoiceCall, call_id)
+                if current_call is not None:
+                    current_call.authenticated_user_id = None
+                    current_call.caller_type = "UNKNOWN"
+                    current_call.source_context = {
+                        **(current_call.source_context or {}),
+                        "authenticated": False,
+                        "handover": True,
+                        "previous_principal": str(principal_id),
+                    }
+                    db.commit()
+                principal_id = None
+                call_loc = resolve_locale(current_call.locale if current_call and current_call.locale else locale)
+                if call_loc.startswith("fr"):
+                    handover_answer = "Très bien. Pour des raisons de sécurité, le nouvel employé doit s'authentifier. Veuillez saisir votre NIP sur le clavier de votre téléphone."
+                elif call_loc.startswith("es"):
+                    handover_answer = "Muy bien. Por motivos de seguridad, el nuevo empleado debe autenticarse. Por favor, ingrese su PIN en el teclado de su teléfono."
+                elif call_loc.startswith("ro"):
+                    handover_answer = "Foarte bine. Din motive de securitate, noul angajat trebuie să se autentifice. Vă rugăm să introduceți codul PIN pe tastatura telefonului."
+                else:
+                    handover_answer = "Understood. For security reasons, the new employee must authenticate. Please enter your PIN on your phone keypad."
+                return {"status": "success", "answer": handover_answer, "auth_required": True}
+
             current_call, current_config, current_company, current_user, permissions, _auth = media_call_context(
                 db, settings, call_id, allow_statuses=_SESSION_MEDIA_STATUSES,
             )

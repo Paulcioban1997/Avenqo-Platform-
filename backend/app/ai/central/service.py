@@ -316,11 +316,12 @@ class CentralAIService:
             permissions=permissions,
             tenant=tenant,
         )
+        is_voice = bool(page_context and page_context.startswith("/voice"))
         if central_is_included(tenant.company_id) and context.subscription_status.lower() not in {"active", "trialing"}:
             agent = None
             tool_scope = (frozenset(), {})
         if tool_scope is None:
-            if central_is_included(tenant.company_id):
+            if is_voice or central_is_included(tenant.company_id):
                 agent = None
                 tool_scope = (frozenset(), {})
         if tool_scope is None:
@@ -334,7 +335,6 @@ class CentralAIService:
             return result
         allowed_tool_names, authorized_tool_agents = tool_scope
 
-        is_voice = bool(page_context and page_context.startswith("/voice"))
         if is_voice and agent is None:
             if "cross_agent" in context.active_modules and {"crm", "retail", "accounting"}.issubset(context.active_modules):
                 fallback_agent_id = "cross_agent"

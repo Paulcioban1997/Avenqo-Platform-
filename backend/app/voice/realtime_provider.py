@@ -302,6 +302,9 @@ class VoiceTurnContext:
     allow_natural_interruptions: bool
     formality_level: int = 65
     is_dtmf_pin_entry: bool = False
+    is_authenticated_staff: bool = False
+    staff_name: str | None = None
+    staff_role: str | None = None
     system_instruction: str = ""
     allowed_tools: frozenset[str] = field(default_factory=frozenset)
 
@@ -1453,6 +1456,9 @@ class GoogleGeminiLiveRealtimeProvider:
             allow_natural_interruptions=context.allow_natural_interruptions,
             extra_instructions=context.system_instruction,
             custom_pronunciation=getattr(context, "custom_pronunciation", None) or getattr(context, "voice_pronunciation", None),
+            is_authenticated_staff=getattr(context, "is_authenticated_staff", False),
+            staff_name=getattr(context, "staff_name", None),
+            staff_role=getattr(context, "staff_role", None),
         )
         safe_tools = self.sanitize_authorized_tools(authorized_tools)
         try:

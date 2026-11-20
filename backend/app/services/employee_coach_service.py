@@ -570,6 +570,28 @@ class EmployeeCoachService:
             time_tip = "Pendant le temps de pause du soin ou de la coloration, préparez le poste de travail pour le rendez-vous suivant : cela évite tout retard sur le planning."
             quality_rule = "Vérifiez systématiquement la tolérance cutanée et l'homogénéité de la nuance sous un éclairage neutre."
             revenue_booster = "Conseillez les deux produits de soins adaptés pour préserver le résultat à domicile : cela augmente le panier moyen de 20 à 35%."
+        elif any(w in task_text for w in ("market", "publi", "campagn", "attir", "visib", "notori", "promot", "reseau", "social")):
+            sector_label = "Marketing & Acquisition Clients"
+            steps = [
+                "1. Définir l'offre prioritaire ou l'avantage distinctif à mettre en valeur auprès de votre audience.",
+                "2. Cibler en priorité vos clients existants avec une offre privilège ou un rappel personnalisé.",
+                "3. Rédiger un message percutant avec un appel à l'action direct (visite, appel, réservation).",
+                "4. Mesurer les retours et assurer un suivi sous 48 heures pour maximiser la conversion.",
+            ]
+            time_tip = "Réactiver un ancien client satisfait coûte 5 fois moins cher qu'en acquérir un nouveau : commencez par vos contacts existants."
+            quality_rule = "L'offre doit être limpide, sans condition masquée ni ambiguïté pour le client."
+            revenue_booster = "Une campagne ciblée sur les produits ou services à forte marge génère un impact immédiat sur le chiffre d'affaires hebdomadaire."
+        elif any(w in task_text for w in ("transport", "livrais", "fret", "coursier", "délai", "fourniss", "récept")):
+            sector_label = "Logistique & Approvisionnements"
+            steps = [
+                "1. Rassembler le numéro de bon de livraison ou de suivi (tracking) et la date convenue.",
+                "2. Formuler un appel courtois, clair et ferme : rappeler la référence et demander la localisation exacte du véhicule ou colis.",
+                "3. Insister poliment sur les impératifs de planning ou d'engagements clients sans agressivité.",
+                "4. Noter le nom de votre interlocuteur et convenir d'un créneau horaire précis ou d'une confirmation écrite.",
+            ]
+            time_tip = "Avoir la référence de suivi et le bon de commande sous les yeux dès la première seconde évite les transferts d'appels et fait gagner 10 minutes."
+            quality_rule = "Toujours noter le nom de l'agent de quai ou du transporteur et récapituler l'heure convenue avant de raccrocher."
+            revenue_booster = "Anticiper et fluidifier les arrivages permet d'éviter les ruptures et de respecter les promesses clients à forte marge."
         elif any(w in task_text for w in ("devis", "relanc", "client", "prospect", "négoc", "vent", "offre", "contrat")):
             sector_label = "Commerce & Relations Clients"
             steps = [
@@ -581,7 +603,7 @@ class EmployeeCoachService:
             time_tip = "Regroupez vos appels de relance sur un bloc dédié de 45 minutes sans distraction : le taux de conversion grimpe de 30% grâce au momentum."
             quality_rule = "Ne quittez jamais un appel sans accord mutuel sur une date et heure précise de suivi."
             revenue_booster = "Identifiez le besoin non satisfait du client pour lui proposer une option complémentaire à forte valeur ajoutée."
-        elif any(w in task_text for w in ("stock", "invent", "réassort", "colis", "expéd", "livrais", "carton", "picking")):
+        elif any(w in task_text for w in ("stock", "invent", "réassort", "carton", "picking")):
             sector_label = "Logistique & E-commerce"
             steps = [
                 "1. Vérifier le bon de commande ou de réassort sur le scanner ou l'application avant manutention.",

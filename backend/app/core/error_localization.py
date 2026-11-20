@@ -1021,9 +1021,9 @@ def http_error_message(
     ):
         if "choose a nontrivial voice pin" in detail_text:
             return (
-                "Veuillez choisir un code NIP plus sécurisé (évitez les suites comme 123456 ou chiffres répétés)."
+                "Veuillez choisir un code NIP plus sécurisé (évitez les suites séquentielles ou chiffres répétés)."
                 if locale.startswith("fr")
-                else "Please choose a more secure PIN (avoid sequential sequences like 123456 or repeated digits)."
+                else "Please choose a more secure PIN (avoid sequential sequences or repeated digits)."
             )
         if "pin and confirmation pin do not match" in detail_text:
             return (

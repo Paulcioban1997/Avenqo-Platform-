@@ -54,6 +54,21 @@ def is_backchannel(text: str) -> bool:
     return False
 
 
+def is_explicit_interruption(text: str) -> bool:
+    """Detect clear caller barge-in cues intended to halt agent playback."""
+    normalized = _normalize(text)
+    if not normalized:
+        return False
+    patterns = [
+        r"\b(excusez\s*moi|excuse\s*moi|pardon|desole)\b.{0,25}\b(couper|coupe|interrompre|interromps|arreter|arrete|parler)\b",
+        r"\b(attendez|attends|stop|arretez|arrete|une seconde|une minute|un instant|pause)\b",
+        r"\b(wait|hold on|stop talking|excuse me for interrupting|let me speak)\b",
+        r"\b(stai|stai putin|opriti|opreste|scuzati|scuza ma ca te intrerup)\b",
+        r"\b(espera|espere|para|disculpe que lo interrumpa)\b",
+    ]
+    return any(re.search(p, normalized) for p in patterns)
+
+
 def adjudicate_transcript(
     transcript: str,
     *,
@@ -76,6 +91,8 @@ def adjudicate_transcript(
     active = phase in {"THINKING", "SYNTHESIZING", "PLAYING"}
     if not active:
         return "accept"
+    if is_explicit_interruption(transcript):
+        return "replace" if allow_barge_in else "accept"
     if is_backchannel(transcript):
         return "ignore"
     if phase == "PLAYING" and not allow_barge_in:
