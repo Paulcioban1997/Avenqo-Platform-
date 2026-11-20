@@ -620,7 +620,7 @@ class EmployeeCoachService:
             time_tip = "Regroupez vos appels de relance sur un bloc dédié de 45 minutes sans distraction : le taux de conversion grimpe de 30% grâce au momentum."
             quality_rule = "Ne quittez jamais un appel sans accord mutuel sur une date et heure précise de suivi."
             revenue_booster = "Identifiez le besoin non satisfait du client pour lui proposer une option complémentaire à forte valeur ajoutée."
-        elif any(w in task_text for w in ("stock", "invent", "réassort", "carton", "picking")):
+        elif any(w in task_text for w in ("stock", "invent", "réassort", "carton", "picking", "colis", "expéd", "exped", "emball", "conditionn")):
             sector_label = "Logistique & E-commerce"
             steps = [
                 "1. Vérifier le bon de commande ou de réassort sur le scanner ou l'application avant manutention.",

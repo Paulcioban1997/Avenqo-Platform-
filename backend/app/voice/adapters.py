@@ -42,6 +42,8 @@ class RealtimeAudioAdapter(Protocol):
 
     async def close(self) -> None: ...
 
+    def update_staff_identity(self, is_authenticated: bool, staff_name: str | None = None, staff_role: str | None = None) -> None: ...
+
     def events(self) -> AsyncIterator[Any]: ...
 
 
@@ -124,6 +126,9 @@ class UnconfiguredRealtimeAudioAdapter:
     async def close(self) -> None:
         return None
 
+    def update_staff_identity(self, is_authenticated: bool, staff_name: str | None = None, staff_role: str | None = None) -> None:
+        pass
+
     async def events(self):
         if False:
             yield None
@@ -137,6 +142,14 @@ class OpenAIRealtimeAudioAdapter:
         self._model = realtime_model
         self._manager = None
         self._connection = None
+        self._is_authenticated_staff: bool = False
+        self._staff_name: str | None = None
+        self._staff_role: str | None = None
+
+    def update_staff_identity(self, is_authenticated: bool, staff_name: str | None = None, staff_role: str | None = None) -> None:
+        self._is_authenticated_staff = is_authenticated
+        self._staff_name = staff_name
+        self._staff_role = staff_role
 
     async def open(self, *, locale: str = "fr-CA") -> None:
         if not self._config.api_key or not self._model:

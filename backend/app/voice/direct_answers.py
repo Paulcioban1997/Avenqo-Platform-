@@ -311,13 +311,25 @@ def resolve_direct_voice_answer(
         return None
 
     # Performance Coach AI questions (Shift briefing, tasks, priorities, task optimization, executive strategic point)
-    if (
+    is_coach_query = (
         is_coach_briefing_question(transcript)
         or is_coach_tasks_question(transcript)
         or is_coach_optimize_task_question(transcript)
         or is_executive_strategic_question(transcript)
-    ):
+    )
+    if is_coach_query:
         if not authenticated_staff or user_id is None:
+            # Only intercept if this is explicitly an internal employee duty/shift inquiry,
+            # avoiding blocking general public customer inquiries (e.g. "Comment fonctionne la livraison ?").
+            is_explicit_internal_inquiry = (
+                is_coach_briefing_question(transcript)
+                or is_coach_tasks_question(transcript)
+                or is_executive_strategic_question(transcript)
+                or bool(_words(transcript) & {"tache", "taches", "briefing", "quart", "shift", "priorite", "priorites", "employe", "employes", "collaborateur"})
+            )
+            if not is_explicit_internal_inquiry:
+                return None
+
             if locale.lower().startswith("es"):
                 return "El coaching de desempeño y las prioridades de trabajo están reservados para colaboradores autenticados con NIP."
             if locale.lower().startswith("ro"):

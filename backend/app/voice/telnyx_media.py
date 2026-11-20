@@ -330,8 +330,8 @@ class PublicInboundConversation:
         self.telnyx = telnyx or TelnyxClient(settings)
 
     def context(self):
-        if not self.settings.telnyx_media_inbound_enabled:
-            raise PermissionError("Public inbound media disabled")
+        if not self.settings.telnyx_media_inbound_enabled and not self.settings.telnyx_media_enabled:
+            raise PermissionError("Voice media transport disabled")
         return media_transport_context(self.db, self.settings, self.call_id, allow_statuses=_SESSION_MEDIA_STATUSES)
 
     def greeting(self) -> str:
@@ -648,7 +648,7 @@ class PublicInboundConversation:
                 else:
                     answer = "Les modalités concernant les fournisseurs ne sont pas confirmées pour notre établissement. Je peux prendre votre message et vos coordonnées pour les transmettre à la direction." if french else "Supplier policies are not confirmed for our business. I can take your contact details and message for management."
             return {"status": "success", "answer": answer, "public": True}
-        if re.search(r"recrut\w*|embauch\w*|postul\w*|candidat\w*|emploi\w*|job\w*|hiring|career\w*|angajar\w*|angajat\w*|empleo\w*|contrat\w*", normalized):
+        if re.search(r"recrut\w*|embauch\w*|postul\w*|candidat\w*|emploi\w*|job\w*|hiring|career\w*|angajar\w*|angajat\w*|empleo\w*|contrat\s*(?:de\s*travail|d['’]embauche|de\s*stage|professionnalisation)|work\s*contract|employment\s*contract", normalized):
             rec_pol = getattr(profile, "recruitment_policy", None) or (profile.business_configuration.get("recruitment_policy") if getattr(profile, "business_configuration", None) else None)
             is_hiring = getattr(profile, "is_hiring", None)
             if is_hiring is None and getattr(profile, "business_configuration", None):
@@ -1927,7 +1927,7 @@ async def telnyx_media_socket(
     claim = None
     principal_id = None
     auth_epoch = None
-    public_conversation = PublicInboundConversation(db, settings, call_id) if public_mode else None
+    public_conversation = PublicInboundConversation(db, settings, call_id)
     from backend.app.voice.audio_preferences import phone_audio_config
     from backend.app.voice.realtime_provider import VoiceRealtimeRouter
     tenant_audio = phone_audio_config(db, settings, config)
@@ -1956,7 +1956,8 @@ async def telnyx_media_socket(
                 db, settings, call_id, allow_statuses=_SESSION_MEDIA_STATUSES,
             )
         except PermissionError:
-            if not public_mode or principal_id is not None:
+            is_handover_pending = bool((current_call.source_context or {}).get("handover_revoked"))
+            if principal_id is not None or (not public_mode and not is_handover_pending):
                 raise
             return
         current_epoch = utc(current_auth.authenticated_at).isoformat()
@@ -1982,6 +1983,9 @@ async def telnyx_media_socket(
             bridge.use_ledger(ledger)
         else:
             ledger.attach_identity(current_user.id, current_call.central_conversation_id)
+        if bridge is not None and hasattr(bridge.adapter, "update_staff_identity"):
+            user_role = str(getattr(current_user, "role", "Employee"))
+            bridge.adapter.update_staff_identity(True, current_user.first_name, user_role)
 
     async def validate_start(start: dict) -> None:
         nonlocal ledger, claim
@@ -2017,6 +2021,9 @@ async def telnyx_media_socket(
                     current_call.authenticated_user_id = None
                     current_call.caller_type = "UNKNOWN"
                     current_call.central_conversation_id = None
+                    current_call.verification_attempts = 0
+                    current_call.pin_challenge_hash = None
+                    current_call.pin_challenge_expires_at = None
                     existing_ctx = dict(current_call.source_context or {})
                     existing_ctx.pop("previous_principal", None)
                     existing_ctx.pop("user_id", None)
@@ -2031,6 +2038,8 @@ async def telnyx_media_socket(
                 auth_epoch = None
                 if bridge is not None:
                     asyncio.create_task(bridge.interrupt(pause_input=False))
+                    if hasattr(bridge.adapter, "update_staff_identity"):
+                        bridge.adapter.update_staff_identity(False, None, None)
                 if ledger is not None:
                     ledger.attach_identity(None, None)
                 call_loc = resolve_locale(current_call.locale if current_call and current_call.locale else locale)
@@ -2354,8 +2363,8 @@ async def telnyx_media_socket(
             locale=locale,
             confirm_authentication=(call.source_context or {}).get("ivr_stage") == "staff_authenticated",
         ),
-        begin_pin=begin_pin if public_mode else None, poll_pin=poll_pin if public_mode else None,
-        consume_pending_query=consume_pending_query if public_mode else None,
+        begin_pin=begin_pin, poll_pin=poll_pin,
+        consume_pending_query=consume_pending_query,
         hangup_call=hangup_call,
         max_session_seconds=sandbox_duration,
         idle_seconds=idle_seconds,

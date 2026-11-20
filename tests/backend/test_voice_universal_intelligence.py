@@ -570,3 +570,267 @@ async def test_full_telnyx_barge_in_clears_socket_and_discards_superseded_epoch(
     assert bridge.phase == "INTERRUPTED"
     # 5. Epoch must have incremented
     assert bridge.epoch > 0
+
+
+# ==============================================================================
+# 13. Two Distinct Employees Handover & Succession on the Same Phone
+# ==============================================================================
+
+def test_two_distinct_employees_handover_succession_on_same_phone():
+    """Verify the decisive scenario:
+    Two distinct employees (Employee A, then Employee B) use the exact same phone successively.
+    1. Employee A calls from their phone and is authenticated with their PIN.
+    2. Employee A requests handover ('Je te passe mon collègue').
+    3. Session A is revoked, conversation context detached/cleared, source_context marked handover_revoked.
+    4. Employee B types their OWN distinct PIN on the same handset.
+    5. verify_gather identifies Employee B despite caller_phone belonging to Employee A.
+    6. Employee B is authenticated with their own user ID and role, completely isolated from Employee A.
+    """
+    from backend.app.config.settings import Settings
+    from backend.app.voice.auth import VoiceCallerAuth
+    from backend.app.core.security import hash_password
+    from backend.app.models.user import UserRole
+    from backend.app.models.voice import VoiceCall, VoiceCallerCredential
+
+    company_id = uuid4()
+    user_a = User(
+        id=uuid4(),
+        company_id=company_id,
+        email="employee_a@tenant.com",
+        first_name="Alice",
+        last_name="Manager",
+        phone="+15145550001",
+        role=UserRole.MANAGER,
+        is_active=True,
+    )
+    user_b = User(
+        id=uuid4(),
+        company_id=company_id,
+        email="employee_b@tenant.com",
+        first_name="Bob",
+        last_name="Staff",
+        phone="+15145550002",
+        role=UserRole.USER,
+        is_active=True,
+    )
+    call = VoiceCall(
+        id=uuid4(),
+        company_id=company_id,
+        caller_phone="+15145550001",  # Alice's phone number
+        caller_type="UNKNOWN",
+        status="in_progress",
+        verification_attempts=0,
+    )
+    settings = Settings()
+    settings.auth_jwt_secret = "test-secret-32-chars-minimum-length-key-xyz"
+
+    mock_db = MagicMock()
+    auth = VoiceCallerAuth(mock_db, settings)
+
+    # Alice's credential (PIN: 112233)
+    alice_cred = VoiceCallerCredential(
+        id=uuid4(),
+        company_id=company_id,
+        principal_type="USER",
+        principal_id=user_a.id,
+        phone_number="+15145550001",
+        enabled=True,
+        pin_hash=hash_password(auth._peppered(company_id, user_a.id, "112233")),
+        failed_attempts=0,
+    )
+    # Bob's credential (PIN: 998877)
+    bob_cred = VoiceCallerCredential(
+        id=uuid4(),
+        company_id=company_id,
+        principal_type="USER",
+        principal_id=user_b.id,
+        phone_number="+15145550002",
+        enabled=True,
+        pin_hash=hash_password(auth._peppered(company_id, user_b.id, "998877")),
+        failed_attempts=0,
+    )
+
+    # Step 1: Alice authenticates with her PIN
+    def mock_scalar_fn(query):
+        q_str = str(query).lower()
+        if "company_memberships" in q_str:
+            mem = MagicMock()
+            mem.role = UserRole.MANAGER
+            return mem
+        if "users" in q_str:
+            return user_a
+        if "voice_caller_credentials" in q_str:
+            return alice_cred
+        return None
+
+    mock_db.scalar.side_effect = mock_scalar_fn
+    mock_db.scalars.return_value.all.return_value = [alice_cred, bob_cred]
+    mock_db.get.side_effect = lambda model, uid: user_a if uid == user_a.id else (user_b if uid == user_b.id else None)
+
+    res_a = auth.verify_gather(call, "112233")
+    assert res_a["authenticated"] is True
+    assert call.authenticated_user_id == user_a.id
+
+    # Step 2: Handover happens (Alice passes phone to Bob)
+    call.authenticated_user_id = None
+    call.caller_type = "UNKNOWN"
+    call.central_conversation_id = None
+    call.source_context = {
+        "authenticated": False,
+        "handover_revoked": True,
+        "handover_count": 1,
+    }
+
+    # Step 3: Bob enters his PIN 998877 on Alice's phone (+15145550001)
+    res_b = auth.verify_gather(call, "998877")
+    assert res_b["authenticated"] is True
+    assert call.authenticated_user_id == user_b.id
+    assert call.source_context["user_id"] == str(user_b.id)
+    assert "Bob" in call.source_context["user_name"]
+    assert call.source_context["handover_revoked"] is False
+    assert alice_cred.failed_attempts == 0
+
+
+# ==============================================================================
+# 14. Warehouse Keywords & Public Delivery Routing Integrity
+# ==============================================================================
+
+def test_warehouse_colis_exped_keywords_not_falling_through():
+    """Verify 'Comment expédier les colis plus vite ?' maps to warehouse logistics, not generic advice."""
+    mock_db = MagicMock()
+    user = User(
+        id=uuid4(),
+        company_id=uuid4(),
+        email="warehouse@tenant.com",
+        first_name="Marc",
+        role="Employee",
+    )
+    coach = EmployeeCoachService(mock_db)
+    res = coach.optimize_task_execution(
+        user,
+        "Comment expédier les colis plus vite et optimiser les emballages ?",
+        industry_sector="Logistique",
+        locale="fr-CA",
+    )
+    assert res["status"] == "success"
+    assert res["sector"] == "Logistique & E-commerce"
+    assert any("colis" in s.lower() or "emballage" in s.lower() or "picking" in s.lower() for s in res["methodology_steps"] + [res["spoken_summary"]])
+
+
+def test_public_delivery_inquiry_not_blocked_by_coaching_refusal():
+    """Verify customer questions about delivery policies are not blocked by the employee coaching gatekeeper."""
+    from backend.app.voice.direct_answers import resolve_direct_voice_answer
+
+    mock_db = MagicMock()
+    company_id = uuid4()
+
+    # Public unauthenticated caller asking about delivery
+    ans = resolve_direct_voice_answer(
+        mock_db,
+        company_id=company_id,
+        transcript="Comment fonctionne la livraison chez vous ?",
+        user_id=None,
+        authenticated_staff=False,
+        locale="fr-CA",
+    )
+    # Must NOT return "Le coaching de performance et vos priorités professionnelles sont réservés aux employés"
+    assert ans is None or "réservés aux employés" not in ans
+
+    # But an unauthenticated caller asking for employee task briefing MUST be informed of PIN requirement
+    ans_staff = resolve_direct_voice_answer(
+        mock_db,
+        company_id=company_id,
+        transcript="Donne-moi mes tâches d'employé pour mon quart",
+        user_id=None,
+        authenticated_staff=False,
+        locale="fr-CA",
+    )
+    assert ans_staff is not None
+    assert "réservés aux employés" in ans_staff
+
+
+# ==============================================================================
+# 15. Commercial Contracts vs Recruitment CV Routing
+# ==============================================================================
+
+def test_commercial_contracts_not_intercepted_by_recruitment(monkeypatch):
+    """Verify questions about commercial contracts are not misrouted to job application / CV intake."""
+    from backend.app.config.settings import Settings
+    from backend.app.services.company_intelligence_service import CompanyIntelligenceProfile
+
+    mock_db = MagicMock()
+    mock_call = MagicMock()
+    mock_call.id = uuid4()
+    mock_call.locale = "fr-CA"
+    mock_config = MagicMock()
+    mock_company = MagicMock()
+    mock_company.email = "contact@entreprise.com"
+    mock_company.website = "https://entreprise.com"
+
+    conv = PublicInboundConversation(mock_db, Settings(), mock_call.id)
+    conv.context = MagicMock(return_value=(mock_call, mock_config, mock_company))
+
+    profile = MagicMock(spec=CompanyIntelligenceProfile)
+    profile.company_id = mock_company.id if hasattr(mock_company, "id") else uuid4()
+    profile.company_name = "Entreprise Test"
+    profile.is_hiring = True
+    profile.recruitment_policy = None
+    profile.accepts_suppliers = None
+    profile.online_store_url = None
+    profile.business_configuration = {}
+    monkeypatch.setattr(
+        "backend.app.services.company_intelligence_service.CompanyIntelligenceService.get_profile",
+        lambda self, cid: profile,
+    )
+
+    # Commercial contract inquiry
+    res_commercial = conv.public_answer("Quelle est la durée de mon contrat de service commercial ?")
+    assert "curriculum" not in res_commercial["answer"].lower()
+    assert "cv" not in res_commercial["answer"].lower()
+    assert "recrute" not in res_commercial["answer"].lower()
+
+    # Real recruitment inquiry
+    res_hiring = conv.public_answer("Bonjour, est-ce que vous recrutez actuellement ? J'aimerais déposer ma candidature.")
+    assert "recrute" in res_hiring["answer"].lower() or "emploi" in res_hiring["answer"].lower()
+
+
+# ==============================================================================
+# 16. Gemini Live Realtime Adapter Staff Identity Propagation
+# ==============================================================================
+
+def test_gemini_live_adapter_staff_identity_propagation():
+    """Verify GeminiLiveRealtimeAudioAdapter propagates authenticated staff identity and clears on handover."""
+    from backend.app.config.settings import Settings
+    from backend.app.voice.realtime_provider import GeminiLiveRealtimeAudioAdapter, OpenAIAudioConfig
+
+    config = MagicMock()
+    config.effective_voice_name = "Avenqo Voice"
+    audio_cfg = OpenAIAudioConfig(api_key="mock-key")
+
+    adapter = GeminiLiveRealtimeAudioAdapter(
+        settings=Settings(),
+        config=config,
+        audio_config=audio_cfg,
+        api_key="mock-key",
+    )
+    assert adapter._is_authenticated_staff is False
+    assert adapter._staff_name is None
+
+    # Authenticate employee
+    adapter.update_staff_identity(True, "Paul", "Owner")
+    assert adapter._is_authenticated_staff is True
+    assert adapter._staff_name == "Paul"
+    assert adapter._staff_role == "Owner"
+
+    # Verify _build_live_config includes Paul
+    cfg = adapter._build_live_config("fr-CA")
+    prompt = cfg.system_instruction.parts[0].text if hasattr(cfg, "system_instruction") else str(cfg)
+    assert "Paul" in prompt
+
+    # Handover: clear identity
+    adapter.update_staff_identity(False, None, None)
+    assert adapter._is_authenticated_staff is False
+    assert adapter._staff_name is None
+    cfg_cleared = adapter._build_live_config("fr-CA")
+    prompt_cleared = cfg_cleared.system_instruction.parts[0].text if hasattr(cfg_cleared, "system_instruction") else str(cfg_cleared)
+    assert "Paul" not in prompt_cleared

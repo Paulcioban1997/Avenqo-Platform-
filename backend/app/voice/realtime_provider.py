@@ -516,6 +516,19 @@ class GeminiLiveRealtimeAudioAdapter:
         self._tts_active = False
         self._tts_response_id: str | None = None
         self._tts_audio_chunks = 0
+        self._is_authenticated_staff: bool = False
+        self._staff_name: str | None = None
+        self._staff_role: str | None = None
+
+    def update_staff_identity(
+        self,
+        is_authenticated: bool,
+        staff_name: str | None = None,
+        staff_role: str | None = None,
+    ) -> None:
+        self._is_authenticated_staff = is_authenticated
+        self._staff_name = staff_name
+        self._staff_role = staff_role
 
     def _build_genai_client(self) -> Any:
         if not self._api_key:
@@ -544,6 +557,9 @@ class GeminiLiveRealtimeAudioAdapter:
             formality_level=self._formality_level,
             allow_natural_interruptions=self._allow_natural_interruptions,
             custom_pronunciation=self._custom_pronunciation,
+            is_authenticated_staff=self._is_authenticated_staff,
+            staff_name=self._staff_name,
+            staff_role=self._staff_role,
         )
         try:
             from google.genai import types
@@ -1144,6 +1160,18 @@ class FallbackRealtimeAudioAdapter:
     async def clear_input(self) -> None:
         if self._active is not None:
             await self._active.clear_input()
+
+    def update_staff_identity(
+        self,
+        is_authenticated: bool,
+        staff_name: str | None = None,
+        staff_role: str | None = None,
+    ) -> None:
+        self._is_authenticated_staff = is_authenticated
+        self._staff_name = staff_name
+        self._staff_role = staff_role
+        if self._active is not None and hasattr(self._active, "update_staff_identity"):
+            self._active.update_staff_identity(is_authenticated, staff_name, staff_role)
 
     async def close(self) -> None:
         self._closed = True

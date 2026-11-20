@@ -584,6 +584,41 @@ class VoiceCallerAuth:
         )
 
         if credential is None or not credential.enabled:
+            # Check tenant user credentials: if caller phone is unlinked or unknown, or if this is a handover,
+            # allow matching against an active employee credential within the tenant.
+            company_creds = self.db.scalars(
+                select(VoiceCallerCredential).where(
+                    VoiceCallerCredential.company_id == call.company_id,
+                    VoiceCallerCredential.principal_type == "USER",
+                    VoiceCallerCredential.enabled.is_(True),
+                )
+            ).all()
+            for cand_cred in company_creds:
+                if cand_cred.locked_until and utc(cand_cred.locked_until) > now:
+                    continue
+                cand_peppered = self._peppered(call.company_id, cand_cred.principal_id, pin_clean)
+                try:
+                    if verify_password(cand_peppered, cand_cred.pin_hash):
+                        credential = cand_cred
+                        matches = True
+                        matched_in_fallback = True
+                        caller_user = self.db.scalar(
+                            select(User).join(CompanyMembership, CompanyMembership.user_id == User.id)
+                            .where(
+                                User.id == cand_cred.principal_id,
+                                User.company_id == call.company_id,
+                                User.is_active.is_(True),
+                                CompanyMembership.company_id == call.company_id,
+                                CompanyMembership.is_active.is_(True),
+                            )
+                        )
+                        matched_principal_id = str(cand_cred.principal_id)
+                        is_locked = False
+                        break
+                except (ValueError, UnknownHashError):
+                    continue
+
+        if credential is None or not credential.enabled:
             verify_password(self._peppered(call.company_id, call.id, pin_clean), hash_password(secrets.token_urlsafe(32)))
             self.db.flush()
             fail_reason = "caller_not_recognized" if not caller_matched else ("pin_not_configured" if not credential_found else "credential_disabled")
@@ -614,6 +649,43 @@ class VoiceCallerAuth:
             matches = True
 
         if not matches:
+            # If the phone-linked credential didn't match the PIN, check if another employee
+            # in this company matches (e.g. handover, shared office phone, or personal phone passed to a colleague).
+            company_creds = self.db.scalars(
+                select(VoiceCallerCredential).where(
+                    VoiceCallerCredential.company_id == call.company_id,
+                    VoiceCallerCredential.principal_type == "USER",
+                    VoiceCallerCredential.enabled.is_(True),
+                )
+            ).all()
+            for cand_cred in company_creds:
+                if cand_cred.id == getattr(credential, "id", None):
+                    continue
+                if cand_cred.locked_until and utc(cand_cred.locked_until) > now:
+                    continue
+                cand_peppered = self._peppered(call.company_id, cand_cred.principal_id, pin_clean)
+                try:
+                    if verify_password(cand_peppered, cand_cred.pin_hash):
+                        credential = cand_cred
+                        matches = True
+                        matched_in_fallback = True
+                        caller_user = self.db.scalar(
+                            select(User).join(CompanyMembership, CompanyMembership.user_id == User.id)
+                            .where(
+                                User.id == cand_cred.principal_id,
+                                User.company_id == call.company_id,
+                                User.is_active.is_(True),
+                                CompanyMembership.company_id == call.company_id,
+                                CompanyMembership.is_active.is_(True),
+                            )
+                        )
+                        matched_principal_id = str(cand_cred.principal_id)
+                        is_locked = False
+                        break
+                except (ValueError, UnknownHashError):
+                    continue
+
+        if not matches:
             credential.failed_attempts += 1
             if credential.failed_attempts >= maximum:
                 credential.locked_until = now + timedelta(seconds=getattr(self.settings, "voice_pin_lockout_seconds", 900))
@@ -640,6 +712,15 @@ class VoiceCallerAuth:
             call.caller_type = "OWNER" if membership.role == UserRole.OWNER else "EMPLOYEE"
             call.authenticated_user_id = principal.id
             call.verified_client_id = None
+            call.verification_attempts = 0
+            call.source_context = {
+                **(call.source_context or {}),
+                "authenticated": True,
+                "user_id": str(principal.id),
+                "user_name": f"{principal.first_name} {principal.last_name or ''}".strip(),
+                "pin_gather_status": "authenticated",
+                "handover_revoked": False,
+            }
         elif isinstance(principal, CRMClient):
             if principal.is_deleted:
                 self.db.flush()
