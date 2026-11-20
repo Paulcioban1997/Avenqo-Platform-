@@ -38,6 +38,8 @@ def _setup_real_voice_company(tmp_path):
     settings.voice_pin_max_attempts = 5
     settings.voice_pin_lockout_seconds = 900
     settings.voice_tenant_max_failed_auth_per_window = 30
+    settings.voice_tenant_auth_window_seconds = 60
+    settings.voice_tenant_max_total_auth_per_window = 200
     auth = VoiceCallerAuth(session, settings)
     return session, company, config, settings, auth, orchestrator
 
@@ -688,3 +690,169 @@ def test_redis_rate_limiter_distributed_atomic_operations_and_graceful_fallback(
     # Must not raise, but return local fallback
     fallback_res = limiter_redis.hit("tenant_fail", "tenant_xyz", limit=10)
     assert fallback_res is True
+
+
+# ==============================================================================
+# 11. Centralized Shared Limiter Injection into VoiceCallerAuth
+# ==============================================================================
+
+def test_voice_caller_auth_centralized_shared_limiter_injection(tmp_path):
+    """Verify VoiceCallerAuth automatically injects RedisRateLimiter when REDIS_URL
+    is configured, falls back to _FixedWindowLimiter when unset, and reuses a shared
+    singleton connection pool without recreating clients per call."""
+    from backend.app.core.rate_limit import (
+        RedisRateLimiter,
+        _FixedWindowLimiter,
+        get_voice_auth_rate_limiter,
+        reset_voice_auth_rate_limiter,
+    )
+
+    session, company, config, settings, _, _ = _setup_real_voice_company(tmp_path)
+
+    # 1. Without REDIS_URL -> VoiceCallerAuth uses shared _FixedWindowLimiter
+    reset_voice_auth_rate_limiter(None)
+    settings.redis_url = None
+    auth_local = VoiceCallerAuth(session, settings)
+    assert isinstance(auth_local.limiter, _FixedWindowLimiter)
+
+    # Calling again reuses the exact same instance
+    auth_local_2 = VoiceCallerAuth(session, settings)
+    assert auth_local.limiter is auth_local_2.limiter
+
+    # 2. With REDIS_URL -> VoiceCallerAuth uses shared RedisRateLimiter
+    reset_voice_auth_rate_limiter(None)
+    settings.redis_url = "redis://mock-redis-host:6379/0"
+    auth_redis = VoiceCallerAuth(session, settings)
+    assert isinstance(auth_redis.limiter, RedisRateLimiter)
+    assert auth_redis.limiter._redis_url == "redis://mock-redis-host:6379/0"
+
+    # Calling again reuses the exact same RedisRateLimiter instance (no new connection pool)
+    auth_redis_2 = VoiceCallerAuth(session, settings)
+    assert auth_redis.limiter is auth_redis_2.limiter
+
+    # Cleanup test state
+    reset_voice_auth_rate_limiter(None)
+
+
+# ==============================================================================
+# 12. Two Simulated Instances Sharing Same Redis Coordinate Tenant Quotas
+# ==============================================================================
+
+def test_two_simulated_instances_sharing_redis_coordinate_tenant_quotas(tmp_path):
+    """Verify that two distinct backend server instances (Instance A and Instance B)
+    sharing the same Redis coordinate their tenant quotas:
+    5 failures on Instance A + 5 failures on Instance B = 10 failures total in Redis.
+    The 11th failure on Instance A is immediately rate limited.
+    The 12th failure on Instance B is also immediately rate limited."""
+    from unittest.mock import MagicMock
+    from backend.app.core.rate_limit import RedisRateLimiter
+
+    session, company, config, settings, _, _ = _setup_real_voice_company(tmp_path)
+    settings.voice_tenant_max_failed_auth_per_window = 10
+    settings.voice_tenant_auth_window_seconds = 60
+    tenant_key = str(company.id)
+
+    # In-memory shared Redis mock datastore
+    shared_redis_store: dict[str, int] = {}
+
+    class SharedMockRedisClient:
+        def __init__(self, store: dict[str, int]):
+            self._store = store
+
+        def get(self, key: str):
+            val = self._store.get(key)
+            return str(val) if val is not None else None
+
+        def pipeline(self):
+            return SharedMockPipeline(self._store)
+
+    class SharedMockPipeline:
+        def __init__(self, store: dict[str, int]):
+            self._store = store
+            self._incr_key = None
+
+        def incr(self, key: str):
+            self._incr_key = key
+            return self
+
+        def expire(self, key: str, seconds: int):
+            return self
+
+        def execute(self):
+            if self._incr_key:
+                val = self._store.get(self._incr_key, 0) + 1
+                self._store[self._incr_key] = val
+                return [val, True]
+            return [0, True]
+
+    shared_client = SharedMockRedisClient(shared_redis_store)
+
+    # Server Instance A
+    limiter_instance_a = RedisRateLimiter(redis_client=shared_client)
+    auth_instance_a = VoiceCallerAuth(session, settings, limiter=limiter_instance_a)
+
+    # Server Instance B
+    limiter_instance_b = RedisRateLimiter(redis_client=shared_client)
+    auth_instance_b = VoiceCallerAuth(session, settings, limiter=limiter_instance_b)
+
+    # Create 15 victim employees in DB
+    users = []
+    credentials = []
+    for i in range(1, 16):
+        uid = uuid4()
+        phone = f"+1514666{i:04d}"
+        u = User(id=uid, company_id=company.id, email=f"shared_{i}@target.com", first_name=f"S{i}", last_name="Staff", phone=phone, role=UserRole.USER, password_hash="pw", is_active=True)
+        cred = VoiceCallerCredential(company_id=company.id, principal_type="USER", principal_id=uid, phone_number=phone, enabled=True, pin_hash=hash_password(auth_instance_a._peppered(company.id, uid, "123456")), failed_attempts=0)
+        users.append(u)
+        credentials.append(cred)
+
+    session.add_all(users)
+    session.flush()
+    for u in users:
+        session.add(CompanyMembership(company_id=company.id, user_id=u.id, role=UserRole.USER, is_active=True))
+    session.add_all(credentials)
+    session.commit()
+
+    # Instance A receives 5 failed authentications
+    for i in range(5):
+        u = users[i]
+        call_a = VoiceCall(company_id=company.id, config_id=config.id, caller_phone=u.phone, caller_type="UNKNOWN", status="in_progress", verification_attempts=0)
+        session.add(call_a)
+        session.commit()
+        res_a = auth_instance_a.verify_gather(call_a, f"{u.phone}*000000")
+        assert res_a["authenticated"] is False
+        assert res_a["reason"] == "invalid_pin"
+
+    # Instance B receives 5 failed authentications
+    for i in range(5, 10):
+        u = users[i]
+        call_b = VoiceCall(company_id=company.id, config_id=config.id, caller_phone=u.phone, caller_type="UNKNOWN", status="in_progress", verification_attempts=0)
+        session.add(call_b)
+        session.commit()
+        res_b = auth_instance_b.verify_gather(call_b, f"{u.phone}*000000")
+        assert res_b["authenticated"] is False
+        assert res_b["reason"] == "invalid_pin"
+
+    # Total failures in shared Redis store must be exactly 10
+    assert limiter_instance_a.get_count("voice_auth_tenant_fail", tenant_key, window_seconds=60) == 10
+    assert limiter_instance_b.get_count("voice_auth_tenant_fail", tenant_key, window_seconds=60) == 10
+
+    # 11th attempt on Instance A is rate limited by the coordinated Redis quota!
+    u11 = users[10]
+    call_11 = VoiceCall(company_id=company.id, config_id=config.id, caller_phone=u11.phone, caller_type="UNKNOWN", status="in_progress", verification_attempts=0)
+    session.add(call_11)
+    session.commit()
+    res_11 = auth_instance_a.verify_gather(call_11, f"{u11.phone}*000000")
+    assert res_11["authenticated"] is False
+    assert res_11["error"] == "rate_limited"
+    assert res_11["reason"] == "tenant_auth_rate_limited"
+
+    # 12th attempt on Instance B is ALSO rate limited by the coordinated Redis quota!
+    u12 = users[11]
+    call_12 = VoiceCall(company_id=company.id, config_id=config.id, caller_phone=u12.phone, caller_type="UNKNOWN", status="in_progress", verification_attempts=0)
+    session.add(call_12)
+    session.commit()
+    res_12 = auth_instance_b.verify_gather(call_12, f"{u12.phone}*000000")
+    assert res_12["authenticated"] is False
+    assert res_12["error"] == "rate_limited"
+    assert res_12["reason"] == "tenant_auth_rate_limited"

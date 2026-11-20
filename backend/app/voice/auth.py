@@ -17,13 +17,37 @@ from sqlalchemy.orm import Session
 
 from backend.app.config.settings import Settings
 from backend.app.core.permissions import permissions_for
-from backend.app.core.rate_limit import _FixedWindowLimiter
+from backend.app.core.rate_limit import _FixedWindowLimiter, get_voice_auth_rate_limiter
 from backend.app.core.security import hash_password, verify_password
 from backend.app.models import CompanyMembership, CRMClient, User, UserRole, VoiceAuthSession, VoiceCall, VoiceCallerCredential, VoiceBusinessConfig, VoiceToolAction
 from shared.ai_engine.contracts import TenantContext
 from backend.app.services.audit_log_service import AuditLogService
 
-_tenant_voice_auth_limiter = _FixedWindowLimiter()
+
+class _TenantVoiceAuthLimiterProxy:
+    """Proxy déléguant dynamiquement au limiteur d'authentification configuré (Redis ou Local)."""
+
+    def hit(self, bucket: str, key: str, limit: int, window_seconds: int = 60) -> bool:
+        return get_voice_auth_rate_limiter().hit(bucket, key, limit, window_seconds)
+
+    def is_limited(self, bucket: str, key: str, limit: int, window_seconds: int = 60) -> bool:
+        return get_voice_auth_rate_limiter().is_limited(bucket, key, limit, window_seconds)
+
+    def get_count(self, bucket: str, key: str, window_seconds: int = 60) -> int:
+        return get_voice_auth_rate_limiter().get_count(bucket, key, window_seconds)
+
+    def record_hit(self, bucket: str, key: str, window_seconds: int = 60) -> int:
+        limiter = get_voice_auth_rate_limiter()
+        if hasattr(limiter, "record_hit"):
+            return limiter.record_hit(bucket, key, window_seconds)
+        limiter.hit(bucket, key, 999999, window_seconds)
+        return limiter.get_count(bucket, key, window_seconds)
+
+    def reset(self) -> None:
+        get_voice_auth_rate_limiter().reset()
+
+
+_tenant_voice_auth_limiter = _TenantVoiceAuthLimiterProxy()
 MAX_UNIDENTIFIED_PIN_SCAN = 20
 
 
@@ -77,7 +101,7 @@ class VoiceCallerAuth:
     def __init__(self, db: Session, settings: Settings, limiter: Any = None) -> None:
         self.db = db
         self.settings = settings
-        self.limiter = limiter or _tenant_voice_auth_limiter
+        self.limiter = limiter or get_voice_auth_rate_limiter(settings)
 
     def _record_tenant_failure(self, company_id: Any, is_already_locked_account: bool = False) -> None:
         """Enregistre un échec d'authentification sur le quota d'échecs de l'organisation.

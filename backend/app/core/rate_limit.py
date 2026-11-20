@@ -37,6 +37,8 @@ class RateLimiter(Protocol):
 
     def get_count(self, bucket: str, key: str, window_seconds: int = _WINDOW_SECONDS) -> int: ...
 
+    def record_hit(self, bucket: str, key: str, window_seconds: int = _WINDOW_SECONDS) -> int: ...
+
     def reset(self) -> None: ...
 
 
@@ -181,6 +183,21 @@ class RedisRateLimiter:
         except Exception as exc:
             return self._fallback.get_count(bucket, key, window_seconds)
 
+    def record_hit(self, bucket: str, key: str, window_seconds: int = _WINDOW_SECONDS) -> int:
+        client = self._ensure_client()
+        if client is None:
+            return self._fallback.record_hit(bucket, key, window_seconds)
+        try:
+            window = int(time.time() // window_seconds)
+            redis_key = f"rl:{bucket}:{key}:{window}"
+            pipe = client.pipeline()
+            pipe.incr(redis_key)
+            pipe.expire(redis_key, window_seconds * 2)
+            results = pipe.execute()
+            return int(results[0])
+        except Exception as exc:
+            return self._fallback.record_hit(bucket, key, window_seconds)
+
     def reset(self) -> None:
         self._fallback.reset()
         client = self._ensure_client()
@@ -202,6 +219,49 @@ def create_rate_limiter(settings: Settings | None = None) -> RateLimiter:
     if settings is not None and getattr(settings, "redis_url", None):
         return RedisRateLimiter(redis_url=settings.redis_url)
     return _FixedWindowLimiter()
+
+
+_shared_voice_rate_limiter: RateLimiter | None = None
+_shared_voice_limiter_lock = Lock()
+
+
+def get_voice_auth_rate_limiter(settings: Settings | None = None) -> RateLimiter:
+    """Retourne le limiteur d'authentification vocal partagé (singleton thread-safe).
+
+    - Si REDIS_URL est configuré et que redis est disponible, réutilise une instance
+      unique de RedisRateLimiter avec son pool de connexions (zéro reconnexion par appel).
+    - Sinon, réutilise l'instance singleton _FixedWindowLimiter locale.
+    - Thread-safe, résistant aux pannes avec fallback automatique.
+    """
+    global _shared_voice_rate_limiter
+    if _shared_voice_rate_limiter is not None:
+        return _shared_voice_rate_limiter
+
+    with _shared_voice_limiter_lock:
+        if _shared_voice_rate_limiter is not None:
+            return _shared_voice_rate_limiter
+
+        if settings is None:
+            try:
+                settings = get_settings()
+            except Exception:
+                settings = None
+
+        redis_url = getattr(settings, "redis_url", None) if settings else None
+        if redis_url:
+            _shared_voice_rate_limiter = RedisRateLimiter(redis_url=redis_url)
+        else:
+            _shared_voice_rate_limiter = _FixedWindowLimiter()
+        return _shared_voice_rate_limiter or _FixedWindowLimiter()
+
+
+def reset_voice_auth_rate_limiter(limiter: RateLimiter | None = None) -> None:
+    """Réinitialise ou remplace le limiteur d'authentification vocal partagé (usage : tests)."""
+    global _shared_voice_rate_limiter
+    with _shared_voice_limiter_lock:
+        if _shared_voice_rate_limiter is not None:
+            _shared_voice_rate_limiter.reset()
+        _shared_voice_rate_limiter = limiter
 
 
 _limiter: RateLimiter = _FixedWindowLimiter()
