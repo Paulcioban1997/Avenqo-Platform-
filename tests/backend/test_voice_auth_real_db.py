@@ -461,3 +461,230 @@ def test_real_db_full_two_employee_handover_zero_permission_leakage(tmp_path):
     alice_cred = session.scalar(select(VoiceCallerCredential).where(VoiceCallerCredential.principal_id == alice.id))
     assert alice_cred is not None
     assert alice_cred.failed_attempts == 0
+
+
+# ==============================================================================
+# 7. 50 Consecutive Successful Logins NEVER Trip Failure Limiter
+# ==============================================================================
+
+def test_real_db_50_consecutive_successful_logins_never_trips_failure_limiter(tmp_path):
+    """Verify that 50 consecutive legitimate authentications in an organization
+    succeed without ever incrementing or tripping the tenant failure limiter (voice_auth_tenant_fail)."""
+    session, company, config, settings, auth, _ = _setup_real_voice_company(tmp_path)
+    _tenant_voice_auth_limiter.reset()
+
+    users = []
+    memberships = []
+    credentials = []
+
+    # Seed 50 legitimate employees
+    for i in range(1, 51):
+        uid = uuid4()
+        phone = f"+1514888{i:04d}"
+        pin = f"{100000 + i}"
+        u = User(
+            id=uid,
+            company_id=company.id,
+            email=f"staff_{i}@company.com",
+            first_name=f"Staff{i}",
+            last_name="Member",
+            phone=phone,
+            role=UserRole.USER,
+            password_hash="pw",
+            is_active=True,
+        )
+        mem = CompanyMembership(company_id=company.id, user_id=uid, role=UserRole.USER, is_active=True)
+        cred = VoiceCallerCredential(
+            company_id=company.id,
+            principal_type="USER",
+            principal_id=uid,
+            phone_number=phone,
+            enabled=True,
+            pin_hash=hash_password(auth._peppered(company.id, uid, pin)),
+            failed_attempts=0,
+        )
+        users.append(u)
+        memberships.append(mem)
+        credentials.append(cred)
+
+    session.add_all(users)
+    session.flush()
+    session.add_all(memberships)
+    session.add_all(credentials)
+    session.commit()
+
+    # Authenticate all 50 employees consecutively
+    for i in range(50):
+        u = users[i]
+        pin = f"{100000 + (i + 1)}"
+        call = VoiceCall(
+            company_id=company.id,
+            config_id=config.id,
+            caller_phone=u.phone,
+            caller_type="UNKNOWN",
+            status="in_progress",
+            verification_attempts=0,
+        )
+        session.add(call)
+        session.commit()
+
+        res = auth.verify_gather(call, f"{u.phone}*{pin}")
+        assert res["authenticated"] is True, f"Employee {i+1} failed to authenticate: {res}"
+        assert call.authenticated_user_id == u.id
+
+    # Tenant failure count MUST BE STRICTLY ZERO!
+    tenant_key = str(company.id)
+    failure_count = _tenant_voice_auth_limiter.get_count("voice_auth_tenant_fail", tenant_key)
+    assert failure_count == 0, f"Expected 0 failures recorded, got {failure_count}"
+
+    # 51st authentication also succeeds with zero blockage
+    u50 = users[49]
+    call51 = VoiceCall(company_id=company.id, config_id=config.id, caller_phone=u50.phone, caller_type="UNKNOWN", status="in_progress", verification_attempts=0)
+    session.add(call51)
+    session.commit()
+    res51 = auth.verify_gather(call51, f"{u50.phone}*{100050}")
+    assert res51["authenticated"] is True
+
+
+# ==============================================================================
+# 8. Distributed Brute-Force Attack Across Accounts Trips Tenant Failure Limit
+# ==============================================================================
+
+def test_real_db_distributed_brute_force_attack_across_multiple_accounts_trips_failure_limit(tmp_path):
+    """Verify that when 30 failed authentications occur across multiple accounts in a tenant,
+    Tier 3 tenant-level throttling triggers and blocks further attempts."""
+    session, company, config, settings, auth, _ = _setup_real_voice_company(tmp_path)
+    _tenant_voice_auth_limiter.reset()
+
+    # Create 30 different employees
+    users = []
+    credentials = []
+    for i in range(1, 35):
+        uid = uuid4()
+        phone = f"+1514777{i:04d}"
+        u = User(id=uid, company_id=company.id, email=f"victim_{i}@target.com", first_name=f"V{i}", last_name="User", phone=phone, role=UserRole.USER, password_hash="pw", is_active=True)
+        cred = VoiceCallerCredential(company_id=company.id, principal_type="USER", principal_id=uid, phone_number=phone, enabled=True, pin_hash=hash_password(auth._peppered(company.id, uid, "999999")), failed_attempts=0)
+        users.append(u)
+        credentials.append(cred)
+
+    session.add_all(users)
+    session.flush()
+    for u in users:
+        session.add(CompanyMembership(company_id=company.id, user_id=u.id, role=UserRole.USER, is_active=True))
+    session.add_all(credentials)
+    session.commit()
+
+    # Attacker tries wrong PIN "000000" against 30 distinct accounts
+    for i in range(30):
+        u = users[i]
+        call = VoiceCall(company_id=company.id, config_id=config.id, caller_phone=u.phone, caller_type="UNKNOWN", status="in_progress", verification_attempts=0)
+        session.add(call)
+        session.commit()
+        res = auth.verify_gather(call, f"{u.phone}*000000")
+        assert res["authenticated"] is False
+        assert res["reason"] == "invalid_pin"
+
+    # 31st attempt in the same tenant is blocked by Tier 3 rate limit
+    u31 = users[30]
+    call31 = VoiceCall(company_id=company.id, config_id=config.id, caller_phone=u31.phone, caller_type="UNKNOWN", status="in_progress", verification_attempts=0)
+    session.add(call31)
+    session.commit()
+    res31 = auth.verify_gather(call31, f"{u31.phone}*000000")
+    assert res31["authenticated"] is False
+    assert res31["error"] == "rate_limited"
+    assert res31["reason"] == "tenant_auth_rate_limited"
+
+
+# ==============================================================================
+# 9. Single Locked User Cannot Denial-of-Service Colleagues (Lockout Isolation)
+# ==============================================================================
+
+def test_real_db_single_locked_user_repeated_attempts_do_not_exhaust_tenant_quota(tmp_path):
+    """Verify that when a single user is locked out, their repeated attempts on that locked account
+    do NOT continue burning the company's tenant failure quota, preventing a single rogue caller
+    from locking out other employees."""
+    session, company, config, settings, auth, _ = _setup_real_voice_company(tmp_path)
+    _tenant_voice_auth_limiter.reset()
+
+    # Eve (Rogue user) and Alice (Innocent colleague)
+    eve = User(company_id=company.id, email="eve@victim.com", first_name="Eve", last_name="Attacker", phone="+15145550099", role=UserRole.USER, password_hash="pw", is_active=True)
+    alice = User(company_id=company.id, email="alice@victim.com", first_name="Alice", last_name="Colleague", phone="+15145550001", role=UserRole.USER, password_hash="pw", is_active=True)
+    session.add_all([eve, alice])
+    session.flush()
+    session.add_all([
+        CompanyMembership(company_id=company.id, user_id=eve.id, role=UserRole.USER, is_active=True),
+        CompanyMembership(company_id=company.id, user_id=alice.id, role=UserRole.USER, is_active=True),
+        VoiceCallerCredential(company_id=company.id, principal_type="USER", principal_id=eve.id, phone_number=eve.phone, enabled=True, pin_hash=hash_password(auth._peppered(company.id, eve.id, "111111")), failed_attempts=0),
+        VoiceCallerCredential(company_id=company.id, principal_type="USER", principal_id=alice.id, phone_number=alice.phone, enabled=True, pin_hash=hash_password(auth._peppered(company.id, alice.id, "222222")), failed_attempts=0),
+    ])
+    session.commit()
+
+    call_eve = VoiceCall(company_id=company.id, config_id=config.id, caller_phone=eve.phone, caller_type="UNKNOWN", status="in_progress", verification_attempts=0)
+    session.add(call_eve)
+    session.commit()
+
+    # Eve enters wrong PIN 5 times -> Eve's account is locked (5 failures recorded)
+    for _ in range(5):
+        auth.verify_gather(call_eve, f"{eve.phone}*000000")
+
+    eve_cred = session.scalar(select(VoiceCallerCredential).where(VoiceCallerCredential.principal_id == eve.id))
+    assert eve_cred is not None
+    assert eve_cred.failed_attempts >= 5
+    assert eve_cred.locked_until is not None
+
+    tenant_key = str(company.id)
+    assert _tenant_voice_auth_limiter.get_count("voice_auth_tenant_fail", tenant_key) == 5
+
+    # Eve tries 20 more times on fresh calls while her account is already locked
+    for i in range(20):
+        c = VoiceCall(company_id=company.id, config_id=config.id, caller_phone=eve.phone, caller_type="UNKNOWN", status="in_progress", verification_attempts=0)
+        session.add(c)
+        session.commit()
+        res = auth.verify_gather(c, f"{eve.phone}*000000")
+        assert res["authenticated"] is False
+        assert res["reason"] == "account_locked"
+
+    # Tenant failure count must REMAIN 5, NOT 25!
+    assert _tenant_voice_auth_limiter.get_count("voice_auth_tenant_fail", tenant_key) == 5
+
+    # Alice logs in with her correct PIN: MUST SUCCEED!
+    call_alice = VoiceCall(company_id=company.id, config_id=config.id, caller_phone=alice.phone, caller_type="UNKNOWN", status="in_progress", verification_attempts=0)
+    session.add(call_alice)
+    session.commit()
+    res_alice = auth.verify_gather(call_alice, f"{alice.phone}*222222")
+    assert res_alice["authenticated"] is True
+    assert call_alice.authenticated_user_id == alice.id
+
+
+# ==============================================================================
+# 10. RedisRateLimiter Multi-Instance Architecture & Fallback
+# ==============================================================================
+
+def test_redis_rate_limiter_distributed_atomic_operations_and_graceful_fallback():
+    """Verify RedisRateLimiter handles atomic distributed operations and gracefully falls back
+    to in-memory limiter when Redis is unconfigured, absent, or encounters network drops."""
+    from unittest.mock import MagicMock
+    from backend.app.core.rate_limit import RedisRateLimiter, _FixedWindowLimiter
+
+    # 1. Unconfigured Redis -> delegates smoothly to fallback
+    limiter_unconfigured = RedisRateLimiter(redis_url=None)
+    assert limiter_unconfigured.hit("test_bucket", "key_1", limit=5) is True
+    assert limiter_unconfigured.is_limited("test_bucket", "key_1", limit=5) is False
+    assert limiter_unconfigured.get_count("test_bucket", "key_1") == 1
+
+    # 2. Configured Mock Redis Client with atomic pipeline
+    mock_redis = MagicMock()
+    mock_pipeline = MagicMock()
+    mock_redis.pipeline.return_value = mock_pipeline
+    mock_pipeline.execute.return_value = [1, True]  # [incr_result, expire_result]
+
+    limiter_redis = RedisRateLimiter(redis_client=mock_redis)
+    assert limiter_redis.hit("tenant_fail", "tenant_xyz", limit=10) is True
+    mock_pipeline.incr.assert_called_once()
+    mock_pipeline.expire.assert_called_once()
+
+    # 3. Redis raises connection error -> falls back to local memory without crashing
+    mock_redis.pipeline.side_effect = ConnectionError("Redis host unreachable")
+    # Must not raise, but return local fallback
+    fallback_res = limiter_redis.hit("tenant_fail", "tenant_xyz", limit=10)
+    assert fallback_res is True

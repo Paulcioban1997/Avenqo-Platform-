@@ -74,9 +74,23 @@ def validate_voice_pin(pin: str) -> str:
 
 
 class VoiceCallerAuth:
-    def __init__(self, db: Session, settings: Settings) -> None:
+    def __init__(self, db: Session, settings: Settings, limiter: Any = None) -> None:
         self.db = db
         self.settings = settings
+        self.limiter = limiter or _tenant_voice_auth_limiter
+
+    def _record_tenant_failure(self, company_id: Any, is_already_locked_account: bool = False) -> None:
+        """Enregistre un échec d'authentification sur le quota d'échecs de l'organisation.
+
+        Si la tentative visait un compte déjà verrouillé, nous n'incrémentons pas le quota
+        global de l'entreprise pour éviter qu'un utilisateur verrouillé ne pénalise ses collègues.
+        """
+        if is_already_locked_account or not company_id:
+            return
+        tenant_key = str(company_id)
+        failed_limit = getattr(self.settings, "voice_tenant_max_failed_auth_per_window", 30)
+        window_sec = getattr(self.settings, "voice_tenant_auth_window_seconds", 60)
+        self.limiter.hit("voice_auth_tenant_fail", tenant_key, limit=failed_limit, window_seconds=window_sec)
 
     def _peppered(self, company_id: UUID | str, principal_id: UUID | str, pin: str) -> str:
         value = f"voice-pin:{company_id}:{principal_id}:{pin}".encode()
@@ -465,20 +479,36 @@ class VoiceCallerAuth:
             )
             return {**failed, "reason": "max_attempts_exceeded"}
 
-        # Guardrail Tier 3: Tenant-level failure throttling
-        # Prevents brute-force or dictionary sweeps across an entire organization
+        # Guardrail Tier 3: Tenant-level failure and volumetric throttling
         tenant_key = str(call.company_id)
-        tenant_window_limit = getattr(self.settings, "voice_tenant_max_failed_auth_per_window", 30)
-        if not _tenant_voice_auth_limiter.hit("voice_auth_tenant_fail", tenant_key, limit=tenant_window_limit):
+        failed_limit = getattr(self.settings, "voice_tenant_max_failed_auth_per_window", 30)
+        total_limit = getattr(self.settings, "voice_tenant_max_total_auth_per_window", 120)
+        window_sec = getattr(self.settings, "voice_tenant_auth_window_seconds", 60)
+
+        # 1. Total volume throttle (Anti-flood / DoS protection per tenant)
+        if not self.limiter.hit("voice_auth_tenant_total", tenant_key, limit=total_limit, window_seconds=window_sec):
             logger.warning(
-                "VoiceCallerAuth.verify_gather: tenant-level rate limit exceeded (limit=%s/window) for company_id=%s call_id=%s",
-                tenant_window_limit, call.company_id, call.id,
+                "VoiceCallerAuth.verify_gather: tenant-level total auth rate limit exceeded (limit=%s/%ss) for company_id=%s call_id=%s",
+                total_limit, window_sec, call.company_id, call.id,
+            )
+            return {
+                **failed,
+                "error": "rate_limited",
+                "reason": "tenant_total_auth_rate_limited",
+                "message": "Trop de requêtes d'authentification simultanées pour cette organisation. Veuillez patienter.",
+            }
+
+        # 2. Failure threshold pre-check (inspects failure count WITHOUT incrementing)
+        if self.limiter.is_limited("voice_auth_tenant_fail", tenant_key, limit=failed_limit, window_seconds=window_sec):
+            logger.warning(
+                "VoiceCallerAuth.verify_gather: tenant-level failed auth rate limit exceeded (limit=%s/%ss) for company_id=%s call_id=%s",
+                failed_limit, window_sec, call.company_id, call.id,
             )
             return {
                 **failed,
                 "error": "rate_limited",
                 "reason": "tenant_auth_rate_limited",
-                "message": "Trop de tentatives d'authentification pour cette organisation. Veuillez réessayer plus tard.",
+                "message": "Trop d'échecs d'authentification pour cette organisation. Veuillez réessayer plus tard.",
             }
 
         # Check compound DTMF input format (e.g. "<identifier>*<pin>" or "<identifier>#<pin>")
@@ -504,6 +534,7 @@ class VoiceCallerAuth:
             if pin_clean:
                 call.verification_attempts += 1
                 self.db.flush()
+                self._record_tenant_failure(call.company_id)
             logger.warning(
                 "VoiceCallerAuth.verify_gather: invalid pin format (length=%s, attempts=%s/%s, call_id=%s, company_id=%s)",
                 len(pin_clean), call.verification_attempts, maximum, call.id, call.company_id,
@@ -728,6 +759,7 @@ class VoiceCallerAuth:
             verify_password(self._peppered(call.company_id, call.id, pin_clean), hash_password(secrets.token_urlsafe(32)))
             self.db.flush()
             fail_reason = "caller_not_recognized" if not caller_matched else ("pin_not_configured" if not credential_found else "credential_disabled")
+            self._record_tenant_failure(call.company_id, is_already_locked_account=False)
             logger.warning(
                 "VoiceCallerAuth.verify_gather: rejected (reason=%s, company_id=%s, call_id=%s, principal_id=%s, principal_role=%s)",
                 fail_reason, call.company_id, call.id, matched_principal_id, principal_role_str,
@@ -740,6 +772,7 @@ class VoiceCallerAuth:
                 call.company_id, call.id, credential.principal_id, principal_role_str, credential.locked_until,
             )
             self.db.flush()
+            self._record_tenant_failure(call.company_id, is_already_locked_account=True)
             return {**failed, "reason": "account_locked", "locked_until": credential.locked_until.isoformat() if credential.locked_until else None}
         if credential.locked_until is not None:
             credential.failed_attempts = 0
@@ -768,17 +801,20 @@ class VoiceCallerAuth:
                 call.company_id, call.id, credential.principal_id, principal_role_str, call.verification_attempts, maximum,
             )
             self.db.flush()
+            self._record_tenant_failure(call.company_id, is_already_locked_account=False)
             return {**failed, "reason": "invalid_pin"}
 
         principal_model = User if credential.principal_type == "USER" else CRMClient
         principal = self.db.get(principal_model, credential.principal_id)
         if principal is None or principal.company_id != call.company_id:
             self.db.flush()
+            self._record_tenant_failure(call.company_id, is_already_locked_account=False)
             return {**failed, "reason": "unauthorized_principal"}
         if credential.principal_type == "USER" and isinstance(principal, User):
             membership = self.db.scalar(select(CompanyMembership).where(CompanyMembership.user_id == principal.id, CompanyMembership.company_id == call.company_id, CompanyMembership.is_active.is_(True)))
             if not principal.is_active or membership is None:
                 self.db.flush()
+                self._record_tenant_failure(call.company_id, is_already_locked_account=False)
                 return {**failed, "reason": "inactive_membership"}
             call.caller_type = "OWNER" if membership.role == UserRole.OWNER else "EMPLOYEE"
             call.authenticated_user_id = principal.id
