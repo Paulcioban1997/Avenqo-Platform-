@@ -12,15 +12,43 @@ from uuid import UUID
 logger = logging.getLogger("avenqo.voice.auth")
 
 from pwdlib.exceptions import UnknownHashError
-from sqlalchemy import or_, select, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.orm import Session
 
 from backend.app.config.settings import Settings
 from backend.app.core.permissions import permissions_for
+from backend.app.core.rate_limit import _FixedWindowLimiter, get_voice_auth_rate_limiter
 from backend.app.core.security import hash_password, verify_password
 from backend.app.models import CompanyMembership, CRMClient, User, UserRole, VoiceAuthSession, VoiceCall, VoiceCallerCredential, VoiceBusinessConfig, VoiceToolAction
 from shared.ai_engine.contracts import TenantContext
 from backend.app.services.audit_log_service import AuditLogService
+
+
+class _TenantVoiceAuthLimiterProxy:
+    """Proxy déléguant dynamiquement au limiteur d'authentification configuré (Redis ou Local)."""
+
+    def hit(self, bucket: str, key: str, limit: int, window_seconds: int = 60) -> bool:
+        return get_voice_auth_rate_limiter().hit(bucket, key, limit, window_seconds)
+
+    def is_limited(self, bucket: str, key: str, limit: int, window_seconds: int = 60) -> bool:
+        return get_voice_auth_rate_limiter().is_limited(bucket, key, limit, window_seconds)
+
+    def get_count(self, bucket: str, key: str, window_seconds: int = 60) -> int:
+        return get_voice_auth_rate_limiter().get_count(bucket, key, window_seconds)
+
+    def record_hit(self, bucket: str, key: str, window_seconds: int = 60) -> int:
+        limiter = get_voice_auth_rate_limiter()
+        if hasattr(limiter, "record_hit"):
+            return limiter.record_hit(bucket, key, window_seconds)
+        limiter.hit(bucket, key, 999999, window_seconds)
+        return limiter.get_count(bucket, key, window_seconds)
+
+    def reset(self) -> None:
+        get_voice_auth_rate_limiter().reset()
+
+
+_tenant_voice_auth_limiter = _TenantVoiceAuthLimiterProxy()
+MAX_UNIDENTIFIED_PIN_SCAN = 20
 
 
 def utc(value):
@@ -70,9 +98,23 @@ def validate_voice_pin(pin: str) -> str:
 
 
 class VoiceCallerAuth:
-    def __init__(self, db: Session, settings: Settings) -> None:
+    def __init__(self, db: Session, settings: Settings, limiter: Any = None) -> None:
         self.db = db
         self.settings = settings
+        self.limiter = limiter or get_voice_auth_rate_limiter(settings)
+
+    def _record_tenant_failure(self, company_id: Any, is_already_locked_account: bool = False) -> None:
+        """Enregistre un échec d'authentification sur le quota d'échecs de l'organisation.
+
+        Si la tentative visait un compte déjà verrouillé, nous n'incrémentons pas le quota
+        global de l'entreprise pour éviter qu'un utilisateur verrouillé ne pénalise ses collègues.
+        """
+        if is_already_locked_account or not company_id:
+            return
+        tenant_key = str(company_id)
+        failed_limit = getattr(self.settings, "voice_tenant_max_failed_auth_per_window", 30)
+        window_sec = getattr(self.settings, "voice_tenant_auth_window_seconds", 60)
+        self.limiter.hit("voice_auth_tenant_fail", tenant_key, limit=failed_limit, window_seconds=window_sec)
 
     def _peppered(self, company_id: UUID | str, principal_id: UUID | str, pin: str) -> str:
         value = f"voice-pin:{company_id}:{principal_id}:{pin}".encode()
@@ -459,29 +501,81 @@ class VoiceCallerAuth:
                 "VoiceCallerAuth.verify_gather rejected: call_ended=%s, attempts=%s/%s, call_id=%s, company_id=%s",
                 bool(call.ended_at), call.verification_attempts, maximum, call.id, call.company_id,
             )
-            return failed
+            return {**failed, "reason": "max_attempts_exceeded"}
+
+        # Guardrail Tier 3: Tenant-level failure and volumetric throttling
+        tenant_key = str(call.company_id)
+        failed_limit = getattr(self.settings, "voice_tenant_max_failed_auth_per_window", 30)
+        total_limit = getattr(self.settings, "voice_tenant_max_total_auth_per_window", 120)
+        window_sec = getattr(self.settings, "voice_tenant_auth_window_seconds", 60)
+
+        # 1. Total volume throttle (Anti-flood / DoS protection per tenant)
+        if not self.limiter.hit("voice_auth_tenant_total", tenant_key, limit=total_limit, window_seconds=window_sec):
+            logger.warning(
+                "VoiceCallerAuth.verify_gather: tenant-level total auth rate limit exceeded (limit=%s/%ss) for company_id=%s call_id=%s",
+                total_limit, window_sec, call.company_id, call.id,
+            )
+            return {
+                **failed,
+                "error": "rate_limited",
+                "reason": "tenant_total_auth_rate_limited",
+                "message": "Trop de requêtes d'authentification simultanées pour cette organisation. Veuillez patienter.",
+            }
+
+        # 2. Failure threshold pre-check (inspects failure count WITHOUT incrementing)
+        if self.limiter.is_limited("voice_auth_tenant_fail", tenant_key, limit=failed_limit, window_seconds=window_sec):
+            logger.warning(
+                "VoiceCallerAuth.verify_gather: tenant-level failed auth rate limit exceeded (limit=%s/%ss) for company_id=%s call_id=%s",
+                failed_limit, window_sec, call.company_id, call.id,
+            )
+            return {
+                **failed,
+                "error": "rate_limited",
+                "reason": "tenant_auth_rate_limited",
+                "message": "Trop d'échecs d'authentification pour cette organisation. Veuillez réessayer plus tard.",
+            }
+
+        # Check compound DTMF input format (e.g. "<identifier>*<pin>" or "<identifier>#<pin>")
+        if isinstance(pin, str) and not identifier:
+            raw_stripped = pin.strip().rstrip("#")
+            if "*" in raw_stripped:
+                parts = raw_stripped.split("*", 1)
+                if len(parts) == 2 and parts[0] and parts[1]:
+                    identifier = parts[0].strip()
+                    pin = parts[1].strip()
+            elif "#" in raw_stripped:
+                parts = raw_stripped.split("#", 1)
+                if len(parts) == 2 and parts[0] and parts[1]:
+                    identifier = parts[0].strip()
+                    pin = parts[1].strip()
+
+        if identifier is None and isinstance(call.source_context, dict):
+            identifier = call.source_context.get("pending_auth_identifier") or call.source_context.get("target_user_id")
 
         pin_clean = pin.strip().rstrip("#") if isinstance(pin, str) else ""
-        valid_format = isinstance(pin, str) and bool(re.fullmatch(r"[0-9]{6,12}", pin_clean))
+        valid_format = isinstance(pin, str) and bool(re.fullmatch(r"[0-9]{4,12}", pin_clean))
         if not valid_format:
             if pin_clean:
                 call.verification_attempts += 1
                 self.db.flush()
+                self._record_tenant_failure(call.company_id)
             logger.warning(
                 "VoiceCallerAuth.verify_gather: invalid pin format (length=%s, attempts=%s/%s, call_id=%s, company_id=%s)",
                 len(pin_clean), call.verification_attempts, maximum, call.id, call.company_id,
             )
-            return failed
+            return {**failed, "reason": "invalid_pin_format"}
 
         caller_norm = normalized_phone(call.caller_phone)
         credential = None
         caller_user: User | None = None
         candidate_sync_phone: str | None = None
+        is_handover = bool((call.source_context or {}).get("handover_revoked"))
+
+        # Step 1: Targeted O(1) Lookup by explicit Identifier (phone, email, UUID)
         if identifier:
             id_str = str(identifier).strip()
-            # Lookup user by email, phone, or UUID within company
-            user_filters = [User.email == id_str, User.phone == id_str]
             id_phone_norm = normalized_phone(id_str)
+            user_filters = [User.email == id_str, User.phone == id_str]
             if id_phone_norm:
                 user_filters.append(User.phone == id_phone_norm)
             try:
@@ -504,15 +598,37 @@ class VoiceCallerAuth:
                         VoiceCallerCredential.principal_id == user_cand.id,
                     ).with_for_update()
                 )
+            else:
+                cred_filters = [VoiceCallerCredential.phone_number == id_str]
+                if id_phone_norm:
+                    cred_filters.append(VoiceCallerCredential.phone_number == id_phone_norm)
+                cred_cand = self.db.scalar(
+                    select(VoiceCallerCredential).where(
+                        VoiceCallerCredential.company_id == call.company_id,
+                        VoiceCallerCredential.principal_type == "USER",
+                        or_(*cred_filters),
+                    ).with_for_update()
+                )
+                if cred_cand is not None:
+                    credential = cred_cand
+                    caller_user = self.db.scalar(
+                        select(User).join(CompanyMembership, CompanyMembership.user_id == User.id)
+                        .where(
+                            User.id == cred_cand.principal_id,
+                            User.company_id == call.company_id,
+                            User.is_active.is_(True),
+                            CompanyMembership.company_id == call.company_id,
+                            CompanyMembership.is_active.is_(True),
+                        )
+                    )
 
-        if credential is None and not identifier and caller_norm:
-            # 1. Direct lookup by phone number on credential within company
+        # Step 2: Targeted O(1) Lookup by Caller Phone (when not in handover)
+        if credential is None and not identifier and caller_norm and not is_handover:
             credential = self.db.scalar(select(VoiceCallerCredential).where(
                 VoiceCallerCredential.company_id == call.company_id,
                 VoiceCallerCredential.phone_number == caller_norm,
             ).with_for_update())
 
-            # 2. If not found by credential phone, check active company users whose phone matches caller_norm or caller_phone
             if credential is None:
                 user_candidates = self.db.scalars(
                     select(User).join(CompanyMembership, CompanyMembership.user_id == User.id)
@@ -552,6 +668,87 @@ class VoiceCallerAuth:
                 )
             )
 
+        # Step 3: Unidentified PIN resolution with Performance Guardrail & Ambiguity Detection
+        matched_in_fallback = False
+        max_scan = getattr(self.settings, "voice_pin_max_scan_candidates", MAX_UNIDENTIFIED_PIN_SCAN)
+
+        if credential is None and not identifier:
+            raw_count = self.db.scalar(
+                select(func.count()).select_from(VoiceCallerCredential).where(
+                    VoiceCallerCredential.company_id == call.company_id,
+                    VoiceCallerCredential.principal_type == "USER",
+                    VoiceCallerCredential.enabled.is_(True),
+                )
+            )
+            try:
+                active_count = int(raw_count) if raw_count is not None else 0
+            except (TypeError, ValueError):
+                active_count = 0
+
+            # Performance Guardrail: For enterprises with many employees (e.g. 100, 1000, 10000),
+            # never run an unbounded linear bcrypt search. Mandate employee identifier.
+            if active_count > max_scan:
+                call.verification_attempts += 1
+                self.db.flush()
+                logger.warning(
+                    "VoiceCallerAuth.verify_gather: tenant size (%s) exceeds scan threshold (%s); identifier required (call_id=%s, company_id=%s)",
+                    active_count, max_scan, call.id, call.company_id,
+                )
+                return {
+                    **failed,
+                    "error": "identifier_required",
+                    "reason": "tenant_requires_identifier",
+                    "message": "Dans cette entreprise, veuillez entrer votre identifiant employé ou numéro de téléphone suivi de votre NIP (ex: ID*NIP).",
+                }
+
+            # Small organization team fallback scan
+            company_creds = self.db.scalars(
+                select(VoiceCallerCredential).where(
+                    VoiceCallerCredential.company_id == call.company_id,
+                    VoiceCallerCredential.principal_type == "USER",
+                    VoiceCallerCredential.enabled.is_(True),
+                )
+            ).all()
+
+            matching_candidates: list[VoiceCallerCredential] = []
+            for cand_cred in company_creds:
+                if cand_cred.locked_until and utc(cand_cred.locked_until) > now:
+                    continue
+                cand_peppered = self._peppered(call.company_id, cand_cred.principal_id, pin_clean)
+                try:
+                    if verify_password(cand_peppered, cand_cred.pin_hash):
+                        matching_candidates.append(cand_cred)
+                except (ValueError, UnknownHashError):
+                    continue
+
+            # Ambiguity Check: Ensure identity is mathematically unique
+            if len(matching_candidates) > 1:
+                call.verification_attempts += 1
+                self.db.flush()
+                logger.warning(
+                    "VoiceCallerAuth.verify_gather: ambiguous PIN collision detected (%s employees match PIN) for company_id=%s call_id=%s",
+                    len(matching_candidates), call.company_id, call.id,
+                )
+                return {
+                    **failed,
+                    "error": "ambiguous_pin_identity",
+                    "reason": "ambiguous_identifier_required",
+                    "message": "Plusieurs employés possèdent ce même NIP. Veuillez entrer votre numéro de téléphone ou identifiant employé suivi de votre NIP.",
+                }
+            elif len(matching_candidates) == 1:
+                credential = matching_candidates[0]
+                matched_in_fallback = True
+                caller_user = self.db.scalar(
+                    select(User).join(CompanyMembership, CompanyMembership.user_id == User.id)
+                    .where(
+                        User.id == credential.principal_id,
+                        User.company_id == call.company_id,
+                        User.is_active.is_(True),
+                        CompanyMembership.company_id == call.company_id,
+                        CompanyMembership.is_active.is_(True),
+                    )
+                )
+
         matched_principal_id = str(credential.principal_id) if credential else (str(caller_user.id) if caller_user else None)
         principal_role_str: str | None = None
         if credential and credential.principal_type == "USER":
@@ -560,7 +757,7 @@ class VoiceCallerAuth:
                 CompanyMembership.company_id == call.company_id,
                 CompanyMembership.is_active.is_(True),
             ))
-            if mem:
+            if mem and hasattr(mem, "role"):
                 principal_role_str = mem.role.value if hasattr(mem.role, "value") else str(mem.role)
             elif caller_user and hasattr(caller_user, "role"):
                 principal_role_str = caller_user.role.value if hasattr(caller_user.role, "value") else str(caller_user.role)
@@ -571,7 +768,6 @@ class VoiceCallerAuth:
         credential_found = credential is not None
         credential_enabled = bool(credential and credential.enabled)
         is_locked = bool(credential and credential.locked_until and utc(credential.locked_until) > now)
-        matched_in_fallback = False
 
         call.verification_attempts += 1
         logger.info(
@@ -587,6 +783,7 @@ class VoiceCallerAuth:
             verify_password(self._peppered(call.company_id, call.id, pin_clean), hash_password(secrets.token_urlsafe(32)))
             self.db.flush()
             fail_reason = "caller_not_recognized" if not caller_matched else ("pin_not_configured" if not credential_found else "credential_disabled")
+            self._record_tenant_failure(call.company_id, is_already_locked_account=False)
             logger.warning(
                 "VoiceCallerAuth.verify_gather: rejected (reason=%s, company_id=%s, call_id=%s, principal_id=%s, principal_role=%s)",
                 fail_reason, call.company_id, call.id, matched_principal_id, principal_role_str,
@@ -599,6 +796,7 @@ class VoiceCallerAuth:
                 call.company_id, call.id, credential.principal_id, principal_role_str, credential.locked_until,
             )
             self.db.flush()
+            self._record_tenant_failure(call.company_id, is_already_locked_account=True)
             return {**failed, "reason": "account_locked", "locked_until": credential.locked_until.isoformat() if credential.locked_until else None}
         if credential.locked_until is not None:
             credential.failed_attempts = 0
@@ -614,32 +812,46 @@ class VoiceCallerAuth:
             matches = True
 
         if not matches:
-            credential.failed_attempts += 1
-            if credential.failed_attempts >= maximum:
-                credential.locked_until = now + timedelta(seconds=getattr(self.settings, "voice_pin_lockout_seconds", 900))
-                logger.warning(
-                    "VoiceCallerAuth.verify_gather: lockout triggered (company_id=%s, call_id=%s, principal_id=%s, principal_role=%s, failed_attempts=%s)",
-                    call.company_id, call.id, credential.principal_id, principal_role_str, credential.failed_attempts,
-                )
+            if identifier or not is_handover:
+                credential.failed_attempts += 1
+                if credential.failed_attempts >= maximum:
+                    credential.locked_until = now + timedelta(seconds=getattr(self.settings, "voice_pin_lockout_seconds", 900))
+                    logger.warning(
+                        "VoiceCallerAuth.verify_gather: lockout triggered (company_id=%s, call_id=%s, principal_id=%s, principal_role=%s, failed_attempts=%s)",
+                        call.company_id, call.id, credential.principal_id, principal_role_str, credential.failed_attempts,
+                    )
             logger.warning(
                 "VoiceCallerAuth.verify_gather: pin mismatch (company_id=%s, call_id=%s, principal_id=%s, principal_role=%s, attempt=%s/%s)",
                 call.company_id, call.id, credential.principal_id, principal_role_str, call.verification_attempts, maximum,
             )
             self.db.flush()
+            self._record_tenant_failure(call.company_id, is_already_locked_account=False)
             return {**failed, "reason": "invalid_pin"}
+
         principal_model = User if credential.principal_type == "USER" else CRMClient
         principal = self.db.get(principal_model, credential.principal_id)
         if principal is None or principal.company_id != call.company_id:
             self.db.flush()
+            self._record_tenant_failure(call.company_id, is_already_locked_account=False)
             return {**failed, "reason": "unauthorized_principal"}
         if credential.principal_type == "USER" and isinstance(principal, User):
             membership = self.db.scalar(select(CompanyMembership).where(CompanyMembership.user_id == principal.id, CompanyMembership.company_id == call.company_id, CompanyMembership.is_active.is_(True)))
             if not principal.is_active or membership is None:
                 self.db.flush()
+                self._record_tenant_failure(call.company_id, is_already_locked_account=False)
                 return {**failed, "reason": "inactive_membership"}
             call.caller_type = "OWNER" if membership.role == UserRole.OWNER else "EMPLOYEE"
             call.authenticated_user_id = principal.id
             call.verified_client_id = None
+            call.verification_attempts = 0
+            call.source_context = {
+                **(call.source_context or {}),
+                "authenticated": True,
+                "user_id": str(principal.id),
+                "user_name": f"{principal.first_name} {principal.last_name or ''}".strip(),
+                "pin_gather_status": "authenticated",
+                "handover_revoked": False,
+            }
         elif isinstance(principal, CRMClient):
             if principal.is_deleted:
                 self.db.flush()

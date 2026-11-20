@@ -330,8 +330,8 @@ class PublicInboundConversation:
         self.telnyx = telnyx or TelnyxClient(settings)
 
     def context(self):
-        if not self.settings.telnyx_media_inbound_enabled:
-            raise PermissionError("Public inbound media disabled")
+        if not self.settings.telnyx_media_inbound_enabled and not self.settings.telnyx_media_enabled:
+            raise PermissionError("Voice media transport disabled")
         return media_transport_context(self.db, self.settings, self.call_id, allow_statuses=_SESSION_MEDIA_STATUSES)
 
     def greeting(self) -> str:
@@ -621,17 +621,80 @@ class PublicInboundConversation:
             else:
                 answer = "Les services publics ne sont pas encore renseignés." if french else "Public services have not been supplied yet."
             return {"status": "success", "answer": answer, "public": True}
-        if re.search(r"commande|order|produit|product|stock|inventaire|inventory|magasin|boutique|retail", normalized):
-            answer = "Pour toute question sur vos commandes, nos produits ou notre inventaire, je peux vous renseigner. Que souhaitez-vous savoir ?" if french else "For questions about orders, products, or inventory, I can help. What would you like to know?"
+        if re.search(r"fournisseur\w*|fournir|vendre nos produits|devenir fournisseur|supplier\w*|vendor\w*|furnizor\w*|proveedor\w*", normalized):
+            supp_pol = getattr(profile, "supplier_policy", None) or (profile.business_configuration.get("supplier_policy") if getattr(profile, "business_configuration", None) else None)
+            acc_supp = getattr(profile, "accepts_suppliers", None)
+            if acc_supp is None and getattr(profile, "business_configuration", None):
+                acc_supp = profile.business_configuration.get("accepts_suppliers")
+            comp_email = getattr(profile, "email", None) or getattr(_company, "email", None)
+            comp_web = getattr(profile, "website", None) or getattr(_company, "website", None)
+
+            if supp_pol:
+                answer = str(supp_pol)
+            elif acc_supp is False:
+                answer = "Notre entreprise ne recherche pas de nouveaux fournisseurs pour le moment." if french else "Our company is not currently looking for new suppliers or vendors."
+            elif acc_supp is True:
+                if comp_email:
+                    answer = f"Nous sommes à l'écoute de nouveaux partenaires et fournisseurs. Vous pouvez nous transmettre votre proposition par courriel à {comp_email}." if french else f"We are open to new partners and suppliers. You can send your proposal by email to {comp_email}."
+                elif comp_web:
+                    answer = f"Nous étudions les propositions de partenaires et fournisseurs via notre site officiel {comp_web}." if french else f"We review partner and vendor proposals through our official website at {comp_web}."
+                else:
+                    answer = "Nous étudions les propositions de partenaires et fournisseurs. Je peux prendre un message et vos coordonnées pour notre direction." if french else "We review partner and vendor proposals. I can take your contact details and message for management."
+            else:
+                if comp_web:
+                    answer = f"La politique relative aux fournisseurs n'est pas spécifiée pour notre établissement. Pour toute proposition, vous pouvez consulter notre site {comp_web} ou laisser vos coordonnées." if french else f"Our supplier policy is not currently configured. For inquiries, please check our website {comp_web} or leave your contact details."
+                elif comp_email:
+                    answer = f"Les modalités concernant les fournisseurs ne sont pas confirmées. Vous pouvez nous écrire à {comp_email} ou laisser vos coordonnées." if french else f"Supplier policies are not confirmed. You can reach us at {comp_email} or leave your contact details."
+                else:
+                    answer = "Les modalités concernant les fournisseurs ne sont pas confirmées pour notre établissement. Je peux prendre votre message et vos coordonnées pour les transmettre à la direction." if french else "Supplier policies are not confirmed for our business. I can take your contact details and message for management."
             return {"status": "success", "answer": answer, "public": True}
-        if not profile.has_crm_booking:
-            answer = "Je peux vous renseigner sur notre entreprise. Les données de ventes et de stock nécessitent une authentification personnelle." if french else "I can help with business information. Sales and internal stock require personal authentication."
+        if re.search(r"recrut\w*|embauch\w*|postul\w*|candidat\w*|emploi\w*|job\w*|hiring|career\w*|angajar\w*|angajat\w*|empleo\w*|contrat\s*(?:de\s*travail|d['’]embauche|de\s*stage|professionnalisation)|work\s*contract|employment\s*contract", normalized):
+            rec_pol = getattr(profile, "recruitment_policy", None) or (profile.business_configuration.get("recruitment_policy") if getattr(profile, "business_configuration", None) else None)
+            is_hiring = getattr(profile, "is_hiring", None)
+            if is_hiring is None and getattr(profile, "business_configuration", None):
+                is_hiring = profile.business_configuration.get("is_hiring")
+            comp_email = getattr(profile, "email", None) or getattr(_company, "email", None)
+            comp_web = getattr(profile, "website", None) or getattr(_company, "website", None)
+
+            if rec_pol:
+                answer = str(rec_pol)
+            elif is_hiring is False:
+                answer = "Notre entreprise n'a aucun poste ouvert et ne recrute pas actuellement." if french else "Our company has no open positions and is not hiring at this time."
+            elif is_hiring is True:
+                if comp_web:
+                    answer = f"Notre entreprise recrute actuellement. Vous pouvez consulter nos offres d'emploi sur notre site officiel {comp_web}." if french else f"Our company is currently hiring. You can view our job openings on our official website at {comp_web}."
+                elif comp_email:
+                    answer = f"Notre entreprise recrute actuellement. Vous pouvez faire parvenir votre curriculum vitae à notre adresse courriel {comp_email}." if french else f"Our company is currently hiring. You can submit your resume to our email at {comp_email}."
+                else:
+                    answer = "Notre entreprise a des opportunités d'emploi. Je peux noter vos coordonnées pour notre équipe des ressources humaines." if french else "Our company has job opportunities. I can take your contact details for our hiring team."
+            else:
+                if comp_web:
+                    answer = f"Les opportunités d'embauche ne sont pas confirmées actuellement. Vous pouvez consulter notre site {comp_web} ou laisser un message avec vos coordonnées." if french else f"Hiring opportunities are not confirmed at this time. You can check our website {comp_web} or leave a message."
+                elif comp_email:
+                    answer = f"Les opportunités de recrutement ne sont pas confirmées. Vous pouvez nous faire parvenir vos coordonnées ou écrire à {comp_email}." if french else f"Recruitment opportunities are not confirmed. You can reach out to {comp_email} or leave your contact details."
+                else:
+                    answer = "Les opportunités de recrutement ne sont pas confirmées pour notre établissement. Je peux noter vos coordonnées pour transmettre votre intérêt à notre équipe." if french else "Recruitment opportunities are not confirmed for our business. I can take your contact details to express your interest."
+            return {"status": "success", "answer": answer, "public": True}
+        if re.search(r"commande|order|produit|product|stock|inventaire|inventory|magasin|boutique|retail", normalized):
+            if not profile.has_retail_commerce and not profile.public_products:
+                if profile.has_crm_booking:
+                    answer = "Notre établissement propose principalement des services professionnels plutôt que des produits en vente directe. Je peux vous renseigner sur nos prestations ou planifier un rendez-vous. Que souhaitez-vous savoir ?" if french else "Our company primarily provides professional services rather than retail products. I can assist you with our services or booking. What would you like to know?"
+                else:
+                    answer = "Notre entreprise ne propose pas de vente directe de produits ou d'inventaire en ligne. Pour toute information générale, je reste à votre disposition." if french else "Our company does not offer retail product sales or online inventory. For general inquiries, I am here to help."
+                return {"status": "success", "answer": answer, "public": True}
+            answer = "Pour toute question sur vos commandes, nos produits ou notre inventaire, je peux vous renseigner. Que souhaitez-vous savoir ?" if french else "For questions about orders, products, or inventory, I can help. What would you like to know?"
             return {"status": "success", "answer": answer, "public": True}
         if re.search(r"parler|quelqu.un|agent|humain|reception|personne|speak|someone|representative|human", normalized):
             answer = "Je peux prendre votre message ou vous renseigner sur nos services, horaires et rendez-vous. Comment puis-je vous aider ?" if french else "I can take a message or assist with services, hours, and appointments. How can I help you?"
             return {"status": "success", "answer": answer, "public": True}
-        if re.search(r"^\s*(bonjour|salut|allo|bon matin|bonsoir|oui bonjour|hello|hi|hey)\b", normalized):
+        if re.search(r"^\s*(bonjour|salut|allo|allô|bon matin|bonsoir|oui bonjour|hello|hi|hey)\s*[.!?]?\s*$", normalized):
             return {"status": "success", "answer": "Bonjour ! Comment puis-je vous aider aujourd'hui ?" if french else "Hello! How can I help you today?", "public": True}
+        if not profile.has_crm_booking and not profile.has_retail_commerce:
+            answer = "Je peux vous renseigner sur notre entreprise et nos coordonnées. Les opérations internes nécessitent une authentification personnelle." if french else "I can provide information about our business and contact details. Internal operations require personal authentication."
+            return {"status": "success", "answer": answer, "public": True}
+        if not profile.has_crm_booking:
+            answer = "Je peux vous renseigner sur notre entreprise. Les données de ventes et de stock nécessitent une authentification personnelle." if french else "I can help with business information. Sales and internal stock require personal authentication."
+            return {"status": "success", "answer": answer, "public": True}
         answer = "Je peux vous renseigner sur nos heures d'ouverture, nos produits, ou pour une réservation et cueillette en magasin. Comment puis-je vous aider ?" if french else "I can help with our opening hours, products, or a booking and store pickup. How can I help you?"
         return {"status": "success", "answer": answer, "public": True}
 
@@ -943,7 +1006,12 @@ class TelnyxMediaBridge:
 
     async def interrupt(self, *, pause_input: bool = False) -> None:
         self.telemetry["vad_interruptions_count"] += 1
-        cancel_response = self.response_id is not None or self.pending_epoch is not None
+        cancel_response = (
+            self.response_id is not None
+            or self.pending_epoch is not None
+            or self.phase in {"PLAYING", "SYNTHESIZING"}
+            or not self._output.empty()
+        )
         session_key = str(self.stream_id or "default")
         self.epoch += 1
         self.pending_epoch = None
@@ -981,6 +1049,16 @@ class TelnyxMediaBridge:
         if pause_input:
             self.input_paused = True
             await self.adapter.clear_input()
+
+    async def _speak_system(self, item_id: str, answer: str) -> None:
+        if self.usage is not None and not self.usage.reserve(item_id):
+            raise PermissionError("Voice usage quota unavailable")
+        self.pending_epoch = self.epoch
+        self._pending_speech.append((item_id, self.epoch, self.usage))
+        self.telemetry["tts_generated"] = True
+        self.telemetry["tts_request_started"] += 1
+        self._set_phase("SYNTHESIZING")
+        await self.adapter.speak(self._spoken(answer))
 
     async def _execute(self, item_id: str, transcript: str, epoch: int) -> None:
         requested_audio = False
@@ -1085,26 +1163,11 @@ class TelnyxMediaBridge:
             if epoch != self.epoch:
                 self.central_ai_discarded_epochs += 1
                 logger.info(
-                    "Voice AI result superseded by a confirmed newer question; call=%s turn=%s count=%s",
+                    "Voice AI result superseded by caller interruption; call=%s turn=%s count=%s",
                     self.call_correlation,
                     self.turn_correlation,
                     self.central_ai_discarded_epochs,
                 )
-                await asyncio.sleep(0)
-                if self._turns.empty() and not self.input_paused:
-                    self._set_phase("RECOVERING")
-                    recovery = (
-                        "Je n'ai pas pu terminer la réponse. Pouvez-vous répéter votre question ?"
-                        if resolve_locale(self.locale).startswith("fr")
-                        else "I couldn't finish that answer. Could you repeat your question?"
-                    )
-                    try:
-                        self.telemetry["tts_request_started"] += 1
-                        await asyncio.wait_for(self.adapter.speak(recovery), timeout=self.tts_timeout)
-                        self.central_ai_replies_queued += 1
-                        requested_audio = True
-                    except Exception:
-                        self.telemetry["tts_provider_error"] += 1
                 return
             if not result.get("auth_required") and not (
                 result.get("status") == "success"
@@ -1511,16 +1574,6 @@ class TelnyxMediaBridge:
                 for pcm in pcm_frames:
                     await self._send_inbound_audio(pcm)
 
-    async def _speak_system(self, item_id: str, answer: str) -> None:
-        if self.usage is not None and not self.usage.reserve(item_id):
-            raise PermissionError("Voice usage quota unavailable")
-        self.pending_epoch = self.epoch
-        self._pending_speech.append((item_id, self.epoch, self.usage))
-        self.telemetry["tts_generated"] = True
-        self.telemetry["tts_request_started"] += 1
-        self._set_phase("SYNTHESIZING")
-        await self.adapter.speak(self._spoken(answer))
-
     async def _finish_pin(self, status: str) -> None:
         item_id = self._pin_turn or "pin-result"
         self._pin_turn = None; self._pin_mark = None; self._pin_started = False; self._pin_deadline = None
@@ -1874,7 +1927,7 @@ async def telnyx_media_socket(
     claim = None
     principal_id = None
     auth_epoch = None
-    public_conversation = PublicInboundConversation(db, settings, call_id) if public_mode else None
+    public_conversation = PublicInboundConversation(db, settings, call_id)
     from backend.app.voice.audio_preferences import phone_audio_config
     from backend.app.voice.realtime_provider import VoiceRealtimeRouter
     tenant_audio = phone_audio_config(db, settings, config)
@@ -1903,7 +1956,8 @@ async def telnyx_media_socket(
                 db, settings, call_id, allow_statuses=_SESSION_MEDIA_STATUSES,
             )
         except PermissionError:
-            if not public_mode or principal_id is not None:
+            is_handover_pending = bool((current_call.source_context or {}).get("handover_revoked"))
+            if principal_id is not None or (not public_mode and not is_handover_pending):
                 raise
             return
         current_epoch = utc(current_auth.authenticated_at).isoformat()
@@ -1929,6 +1983,9 @@ async def telnyx_media_socket(
             bridge.use_ledger(ledger)
         else:
             ledger.attach_identity(current_user.id, current_call.central_conversation_id)
+        if bridge is not None and hasattr(bridge.adapter, "update_staff_identity"):
+            user_role = str(getattr(current_user, "role", "Employee"))
+            bridge.adapter.update_staff_identity(True, current_user.first_name, user_role)
 
     async def validate_start(start: dict) -> None:
         nonlocal ledger, claim
@@ -1944,13 +2001,58 @@ async def telnyx_media_socket(
         await authorize()
 
     async def execute_turn(item_id: str, transcript: str) -> dict:
-        nonlocal ledger
+        nonlocal ledger, principal_id, auth_epoch
         if public_conversation is not None and principal_id is None:
             security_check = public_conversation.security_gate(transcript)
             if security_check is not None:
                 return security_check
 
         if principal_id is not None:
+            norm_trans = unicodedata.normalize("NFKD", transcript.casefold())
+            norm_trans = "".join(c for c in norm_trans if not unicodedata.combining(c))
+            handover_pattern = r"\b(changer\s*d\W*employe|change\s*employe|autre\s*employe|nouvel\s*employe|passe\s*mon\s*collegue|passe\s*le\s*telephone|je\s*te\s*passe|switch\s*employee|change\s*employee|pass\s*the\s*phone|hand\s*over|schimba\s*angajatul|iti\s*dau\s*colegul|pasez\s*telefonul|cambiar\s*de\s*empleado|te\s*paso\s*a\s*mi\s*colega)\b"
+            if re.search(handover_pattern, norm_trans):
+                logger.info(
+                    "AUDIT_VOICE_HANDOVER_REVOCATION: call=%s previous_user_id=%s timestamp=%s",
+                    call_id, principal_id, datetime.now(timezone.utc).isoformat(),
+                )
+                current_call = db.get(VoiceCall, call_id)
+                if current_call is not None:
+                    current_call.authenticated_user_id = None
+                    current_call.caller_type = "UNKNOWN"
+                    current_call.central_conversation_id = None
+                    current_call.verification_attempts = 0
+                    current_call.pin_challenge_hash = None
+                    current_call.pin_challenge_expires_at = None
+                    existing_ctx = dict(current_call.source_context or {})
+                    existing_ctx.pop("previous_principal", None)
+                    existing_ctx.pop("user_id", None)
+                    existing_ctx.pop("user_name", None)
+                    existing_ctx["authenticated"] = False
+                    existing_ctx["handover_revoked"] = True
+                    existing_ctx["handover_count"] = existing_ctx.get("handover_count", 0) + 1
+                    existing_ctx["last_handover_at"] = datetime.now(timezone.utc).isoformat()
+                    current_call.source_context = existing_ctx
+                    db.commit()
+                principal_id = None
+                auth_epoch = None
+                if bridge is not None:
+                    asyncio.create_task(bridge.interrupt(pause_input=False))
+                    if hasattr(bridge.adapter, "update_staff_identity"):
+                        bridge.adapter.update_staff_identity(False, None, None)
+                if ledger is not None:
+                    ledger.attach_identity(None, None)
+                call_loc = resolve_locale(current_call.locale if current_call and current_call.locale else locale)
+                if call_loc.startswith("fr"):
+                    handover_answer = "Session précédente clôturée. Pour des raisons de sécurité, le nouveau collaborateur doit s'authentifier. Veuillez saisir votre NIP sur le clavier de votre téléphone."
+                elif call_loc.startswith("es"):
+                    handover_answer = "Sesión anterior cerrada. Por motivos de seguridad, el nuevo colaborador debe autenticarse. Por favor, ingrese su PIN en el teclado de su teléfono."
+                elif call_loc.startswith("ro"):
+                    handover_answer = "Sesiunea anterioară a fost închisă. Din motive de securitate, noul colaborator trebuie să se autentifice. Vă rugăm să introduceți codul PIN pe tastatura telefonului."
+                else:
+                    handover_answer = "Previous session closed. For security reasons, the new employee must authenticate. Please enter your PIN on your phone keypad."
+                return {"status": "success", "answer": handover_answer, "auth_required": True}
+
             current_call, current_config, current_company, current_user, permissions, _auth = media_call_context(
                 db, settings, call_id, allow_statuses=_SESSION_MEDIA_STATUSES,
             )
@@ -2261,8 +2363,8 @@ async def telnyx_media_socket(
             locale=locale,
             confirm_authentication=(call.source_context or {}).get("ivr_stage") == "staff_authenticated",
         ),
-        begin_pin=begin_pin if public_mode else None, poll_pin=poll_pin if public_mode else None,
-        consume_pending_query=consume_pending_query if public_mode else None,
+        begin_pin=begin_pin, poll_pin=poll_pin,
+        consume_pending_query=consume_pending_query,
         hangup_call=hangup_call,
         max_session_seconds=sandbox_duration,
         idle_seconds=idle_seconds,

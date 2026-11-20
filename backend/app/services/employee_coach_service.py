@@ -537,7 +537,24 @@ class EmployeeCoachService:
         task_text = (task_description or "").lower()
 
         # Detailed sector & task pattern matching
-        if any(w in task_text for w in ("frein", "vidange", "pneu", "moteur", "garage", "mécan", "atelier", "diag")):
+        standard_sectors = {
+            "automobile", "construction", "coiffure", "commerce", "logistique", "marketing",
+            "santé", "sante", "industrie", "hôtellerie", "hotellerie", "conseil", "finance", "general", "unspecified",
+        }
+        clean_industry = (industry_sector or "").strip()
+        is_custom_industry = bool(clean_industry and clean_industry.lower() not in standard_sectors)
+        if clean_industry and is_custom_industry:
+            sector_label = clean_industry.title()
+            steps = [
+                "1. Définir précisément l'objectif et les spécifications techniques de la tâche.",
+                "2. Vérifier les instruments, données et protocoles opératoires avant de débuter.",
+                "3. Exécuter l'intervention avec rigueur selon les standards de qualité de l'organisation.",
+                "4. Consigner les relevés obtenus, valider les tolérances et clore la fiche opérationnelle.",
+            ]
+            time_tip = "Préparez l'ensemble des protocoles et équipements avant l'opération : cela supprime les temps d'arrêt."
+            quality_rule = "Contrôle métrologique strict et respect scrupuleux des normes de sécurité opérationnelle."
+            revenue_booster = "L'excellence opérationnelle et la précision d'exécution garantissent la rentabilité et la réputation de l'organisation."
+        elif any(w in task_text for w in ("frein", "vidange", "pneu", "moteur", "garage", "mécanicien", "véhicule", "auto", "carrosser")):
             sector_label = "Automobile & Mécanique"
             steps = [
                 "1. Vérifier la conformité du bon d'intervention et inspecter visuellement les pièces reçues avant démontage.",
@@ -570,7 +587,29 @@ class EmployeeCoachService:
             time_tip = "Pendant le temps de pause du soin ou de la coloration, préparez le poste de travail pour le rendez-vous suivant : cela évite tout retard sur le planning."
             quality_rule = "Vérifiez systématiquement la tolérance cutanée et l'homogénéité de la nuance sous un éclairage neutre."
             revenue_booster = "Conseillez les deux produits de soins adaptés pour préserver le résultat à domicile : cela augmente le panier moyen de 20 à 35%."
-        elif any(w in task_text for w in ("devis", "relanc", "client", "prospect", "négoc", "vent", "offre", "contrat")):
+        elif any(w in task_text for w in ("market", "publi", "campagn", "attir", "visib", "notori", "promot", "reseau", "social")):
+            sector_label = "Marketing & Acquisition Clients"
+            steps = [
+                "1. Définir l'offre prioritaire ou l'avantage distinctif à mettre en valeur auprès de votre audience.",
+                "2. Cibler en priorité vos clients existants avec une offre privilège ou un rappel personnalisé.",
+                "3. Rédiger un message percutant avec un appel à l'action direct (visite, appel, réservation).",
+                "4. Mesurer les retours et assurer un suivi sous 48 heures pour maximiser la conversion.",
+            ]
+            time_tip = "Réactiver un ancien client satisfait coûte 5 fois moins cher qu'en acquérir un nouveau : commencez par vos contacts existants."
+            quality_rule = "L'offre doit être limpide, sans condition masquée ni ambiguïté pour le client."
+            revenue_booster = "Une campagne ciblée sur les produits ou services à forte marge génère un impact immédiat sur le chiffre d'affaires hebdomadaire."
+        elif any(w in task_text for w in ("transport", "livrais", "fret", "coursier", "délai", "fourniss", "récept")):
+            sector_label = "Logistique & Approvisionnements"
+            steps = [
+                "1. Rassembler le numéro de bon de livraison ou de suivi (tracking) et la date convenue.",
+                "2. Formuler un appel courtois, clair et ferme : rappeler la référence et demander la localisation exacte du véhicule ou colis.",
+                "3. Insister poliment sur les impératifs de planning ou d'engagements clients sans agressivité.",
+                "4. Noter le nom de votre interlocuteur et convenir d'un créneau horaire précis ou d'une confirmation écrite.",
+            ]
+            time_tip = "Avoir la référence de suivi et le bon de commande sous les yeux dès la première seconde évite les transferts d'appels et fait gagner 10 minutes."
+            quality_rule = "Toujours noter le nom de l'agent de quai ou du transporteur et récapituler l'heure convenue avant de raccrocher."
+            revenue_booster = "Anticiper et fluidifier les arrivages permet d'éviter les ruptures et de respecter les promesses clients à forte marge."
+        elif any(w in task_text for w in ("devis", "relanc", "prospect", "négoc", "vent", "offre commerciale", "contrat commercial")):
             sector_label = "Commerce & Relations Clients"
             steps = [
                 "1. Consulter la fiche CRM du client, ses précédents achats et ses points d'intérêt prioritaires.",
@@ -581,7 +620,7 @@ class EmployeeCoachService:
             time_tip = "Regroupez vos appels de relance sur un bloc dédié de 45 minutes sans distraction : le taux de conversion grimpe de 30% grâce au momentum."
             quality_rule = "Ne quittez jamais un appel sans accord mutuel sur une date et heure précise de suivi."
             revenue_booster = "Identifiez le besoin non satisfait du client pour lui proposer une option complémentaire à forte valeur ajoutée."
-        elif any(w in task_text for w in ("stock", "invent", "réassort", "colis", "expéd", "livrais", "carton", "picking")):
+        elif any(w in task_text for w in ("stock", "invent", "réassort", "carton", "picking", "colis", "expéd", "exped", "emball", "conditionn")):
             sector_label = "Logistique & E-commerce"
             steps = [
                 "1. Vérifier le bon de commande ou de réassort sur le scanner ou l'application avant manutention.",
@@ -592,6 +631,50 @@ class EmployeeCoachService:
             time_tip = "Préparez vos emballages et rubans adhésifs en amont : le batch-picking multi-commandes réduit le temps de trajet de 35%."
             quality_rule = "Double scan obligatoire pour garantir 0 erreur de référence envoyée."
             revenue_booster = "Un colis soigné et expédié sans erreur fidélise 85% des acheteurs dès la première commande."
+        elif any(w in task_text for w in ("patient", "soin", "clinique", "médic", "ordonn", "stéril", "triag", "consult")):
+            sector_label = "Santé & Clinique Médicale"
+            steps = [
+                "1. Vérifier l'identité du patient et l'exhaustivité des antécédents médicaux dans le dossier informatisé.",
+                "2. Préparer le matériel stérile, les consommables et les appareils de diagnostic avant la prise en charge.",
+                "3. Conduire l'acte ou l'examen selon les protocoles cliniques et les règles d'asepsie strictes.",
+                "4. Consigner immédiatement les observations et planifier la visite de contrôle ou le suivi.",
+            ]
+            time_tip = "Préparez les plateaux de consultation par avance : cela fluidifie les transitions entre patients et réduit le temps d'attente en salle."
+            quality_rule = "Respect absolu du secret médical et double vérification de l'identité et des allergies du patient."
+            revenue_booster = "Un suivi préventif rigoureux et un accueil empathique fidélisent la patientèle et maximisent le taux d'assiduité aux soins."
+        elif any(w in task_text for w in ("usin", "manufactur", "product", "assembl", "machin", "ligne", "calibr", "5s")):
+            sector_label = "Industrie & Production Manufacturière"
+            steps = [
+                "1. Contrôler le bon de fabrication (OF), les spécifications de tolérance et les équipements de protection individuelle.",
+                "2. Vérifier l'approvisionnement matière en amont de la machine pour éviter toute rupture de ligne.",
+                "3. Réaliser la gamme d'usinage ou d'assemblage en validant la première pièce produite au banc de mesure.",
+                "4. Noter la cadence sur le tableau de suivi et nettoyer le poste selon les standards 5S.",
+            ]
+            time_tip = "Organisez le poste selon les principes 5S (outils identifiés à portée de main) : cela élimine les micro-arrêts et accroît le rendement de 15%."
+            quality_rule = "Contrôle qualité systématique aux cotes critiques : zéro pièce non conforme tolérée en sortie de poste."
+            revenue_booster = "Réduire le taux de rebuts et les arrêts imprévus augmente directement la marge brute de chaque lot produit."
+        elif any(w in task_text for w in ("hôtel", "hotel", "chamb", "séjour", "check-in", "checkin", "héberg", "gouvern")):
+            sector_label = "Hôtellerie & Hébergement"
+            steps = [
+                "1. Consulter les fiches clients et les demandes spéciales (étage, préférences, arrivées anticipées).",
+                "2. Réaliser la préparation ou l'inspection de la chambre selon la grille d'excellence de l'établissement.",
+                "3. Accueillir le client avec professionnalisme et chaleur en confirmant les services réservés.",
+                "4. Assurer un suivi proactif pendant le séjour et faciliter le départ avec facture détaillée.",
+            ]
+            time_tip = "Vérifiez les chambres par étage en suivant un plan de passage linéaire pour diviser par deux le temps de déplacement."
+            quality_rule = "Excellence irréprochable de propreté et traitement immédiat de toute demande client sous 10 minutes."
+            revenue_booster = "Présentez les services haut de gamme de l'établissement (restauration, spa, surclassement) : cela optimise le revenu par chambre."
+        elif any(w in task_text for w in ("jurid", "avocat", "plaidoir", "audit", "conseil", "consulting", "synthès")):
+            sector_label = "Conseil & Professions Libérales"
+            steps = [
+                "1. Cadrer précisément la demande client, les pièces justificatives et les échéances légales ou contractuelles.",
+                "2. Structurer l'analyse juridique, financière ou stratégique avec rigueur documentaire.",
+                "3. Rédiger une synthèse claire et exploitable avec recommandations actionnables.",
+                "4. Valider en relecture croisée avant envoi au client et archiver le dossier.",
+            ]
+            time_tip = "Isolez les phases de rédaction juridique ou de synthèse dans un créneau sans notification : la concentration continue divise le temps d'écriture par deux."
+            quality_rule = "Double vérification des sources, références réglementaires et clauses engageantes avant communication."
+            revenue_booster = "Une valeur de conseil démontrée ouvre la porte à des mandats récurrents et des honoraires valorisés."
         elif any(w in task_text for w in ("factur", "rapproch", "compta", "paie", "déclarat", "tva", "tps", "fiscal")):
             sector_label = "Finance & Comptabilité"
             steps = [
@@ -604,7 +687,8 @@ class EmployeeCoachService:
             quality_rule = "Vérification stricte des mentions obligatoires et du numéro de TVA/TPS sur chaque facture fournisseur."
             revenue_booster = "Une comptabilité à jour en temps réel permet d'anticiper la trésorerie et d'éviter toute pénalité fiscale."
         else:
-            sector_label = "Excellence Opérationnelle"
+            custom_industry = industry_sector or (getattr(company, "industry", None) if company else None)
+            sector_label = custom_industry.strip().title() if custom_industry and custom_industry.strip() and custom_industry.lower() != "general" else "Excellence Opérationnelle"
             steps = [
                 "1. Clarifier l'objectif exact et les livrables attendus pour cette tâche.",
                 "2. Rassembler l'ensemble des informations, accès et outils requis avant de commencer.",

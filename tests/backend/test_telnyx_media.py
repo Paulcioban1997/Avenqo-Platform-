@@ -2106,8 +2106,10 @@ async def test_public_caller_natural_multi_turn_crm_appointment_preserves_conver
                         "payload": base64.b64encode(b"\xff" * 160).decode(),
                     },
                 })
-                # Receive outbound audio response frame
+                # Receive outbound audio response frame (handling any barge-in buffer clear)
                 resp = socket.receive_json()
+                if resp.get("event") == "clear":
+                    resp = socket.receive_json()
                 assert resp.get("event") == "media"
 
             socket.send_json({"event": "stop", "stream_id": "stream-public-multi"})

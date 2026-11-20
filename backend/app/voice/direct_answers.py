@@ -24,12 +24,15 @@ def is_module_access_question(text: str) -> bool:
     words = _words(text)
     if words & {"contrat", "contrats", "contract", "contracts", "clause", "clauses", "nda", "juridique", "avocat"}:
         return False
-    modules = bool(words & {"module", "modules", "fonctionnalite", "fonctionnalites"})
+    modules = bool(words & {"module", "modules", "modulo", "modulos", "fonctionnalite", "fonctionnalites"})
     access = bool(words & {
-        "accessible", "accessibles", "disponible", "disponibles", "actif", "actifs",
+        "accessible", "accessibles", "disponible", "disponibles", "actif", "actifs", "active", "actives", "activee", "activees",
         "inclus", "incluse", "incluses", "abonnement", "subscription", "entreprise", "avenqo",
+        "souscrit", "souscrits", "souscrite", "souscrites", "avons", "avez", "notre", "nos", "disposons",
+        "liste", "quels", "quelles", "quel", "quelle", "what", "which", "ce", "care", "activat", "activate",
+        "activo", "activos", "activado", "activados", "cuales", "cuanto",
     })
-    return modules and access
+    return (modules and access) or (modules and len(words) <= 6 and bool(words & {"quels", "quelles", "quel", "quelle", "what", "which", "nos", "notre", "liste"}))
 
 
 def is_coach_briefing_question(text: str) -> bool:
@@ -54,8 +57,17 @@ def is_coach_tasks_question(text: str) -> bool:
 
 def is_coach_optimize_task_question(text: str) -> bool:
     words = _words(text)
-    optimize = bool(words & {"optimiser", "optimise", "comment", "conseille", "conseil", "mieux", "vite", "efficace", "astuce", "recommandation", "ameliorer"})
-    task_word = bool(words & {"tache", "travail", "intervention", "pose", "reparation", "coupe", "devis", "reclamation", "chantier", "client", "frein", "vidange", "carrelage"})
+    optimize = bool(words & {
+        "optimiser", "optimise", "comment", "conseille", "conseil", "conseils",
+        "mieux", "vite", "efficace", "astuce", "recommandation", "recommandations",
+        "ameliorer", "aide", "aider", "preparer", "dire", "appeler", "contacter", "joindre",
+    })
+    task_word = bool(words & {
+        "tache", "travail", "intervention", "pose", "reparation", "coupe", "devis",
+        "reclamation", "chantier", "client", "frein", "vidange", "carrelage",
+        "transport", "transporteur", "livraison", "expedition", "colis", "fret",
+        "marketing", "prospect", "prospects", "campagne", "vente",
+    })
     return optimize and task_word
 
 
@@ -168,7 +180,7 @@ def spoken_catalog_answer(
             "The catalog does not currently list any products for sale."
         )
     spoken = []
-    for row in rows[:5]:
+    for row in rows[:3]:
         name = str(row.get("name") or row.get("title") or row.get("product_name") or "").strip()
         price = row.get("price")
         raw_unit = str(row.get("currency") or currency or "").strip().upper()
@@ -215,8 +227,8 @@ def spoken_catalog_answer(
             available = ", stock en directo no confirmado" if spanish else (", stoc direct neconfirmat" if romanian else (", stock direct non confirmé" if french else ", live stock unconfirmed"))
         spoken.append(f"{name}, {price_text}{available}")
     extra = ""
-    if len(rows) > 5:
-        remaining = len(rows) - 5
+    if len(rows) > 3:
+        remaining = len(rows) - 3
         if spanish:
             extra = f" Y {remaining} {'artículo' if remaining == 1 else 'artículos'} más en el catálogo."
         elif romanian:
@@ -299,13 +311,25 @@ def resolve_direct_voice_answer(
         return None
 
     # Performance Coach AI questions (Shift briefing, tasks, priorities, task optimization, executive strategic point)
-    if (
+    is_coach_query = (
         is_coach_briefing_question(transcript)
         or is_coach_tasks_question(transcript)
         or is_coach_optimize_task_question(transcript)
         or is_executive_strategic_question(transcript)
-    ):
+    )
+    if is_coach_query:
         if not authenticated_staff or user_id is None:
+            # Only intercept if this is explicitly an internal employee duty/shift inquiry,
+            # avoiding blocking general public customer inquiries (e.g. "Comment fonctionne la livraison ?").
+            is_explicit_internal_inquiry = (
+                is_coach_briefing_question(transcript)
+                or is_coach_tasks_question(transcript)
+                or is_executive_strategic_question(transcript)
+                or bool(_words(transcript) & {"tache", "taches", "briefing", "quart", "shift", "priorite", "priorites", "employe", "employes", "collaborateur"})
+            )
+            if not is_explicit_internal_inquiry:
+                return None
+
             if locale.lower().startswith("es"):
                 return "El coaching de desempeño y las prioridades de trabajo están reservados para colaboradores autenticados con NIP."
             if locale.lower().startswith("ro"):

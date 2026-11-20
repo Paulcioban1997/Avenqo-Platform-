@@ -437,7 +437,7 @@ def set_user_voice_pin(
         if "Choose a nontrivial Voice PIN" in err_text:
             raise HTTPException(
                 status_code=422,
-                detail="Veuillez choisir un code NIP plus sécurisé (les suites comme 123456 ou répétitions 111111 sont refusées)."
+                detail="Veuillez choisir un code NIP plus sécurisé (les suites séquentielles ou répétitions de chiffres sont refusées)."
             ) from None
         raise HTTPException(status_code=422, detail=err_text or "Voice credential setup is unavailable") from None
     
@@ -1930,7 +1930,7 @@ def set_voice_auth_pin(
         if "Choose a nontrivial Voice PIN" in err_text:
             raise HTTPException(
                 status_code=422,
-                detail="Veuillez choisir un code NIP plus sécurisé (les suites comme 123456 ou répétitions 111111 sont refusées)."
+                detail="Veuillez choisir un code NIP plus sécurisé (les suites séquentielles ou répétitions de chiffres sont refusées)."
             ) from None
         raise HTTPException(status_code=422, detail=err_text or "Voice credential setup is unavailable") from None
 
