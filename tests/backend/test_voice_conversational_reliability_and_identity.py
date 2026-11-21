@@ -23,6 +23,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from backend.app.ai.chat.conversation_service import ConversationService
 from backend.app.ai.tools.authorization import ToolAuthorizationError, ToolAuthorizationPolicy
 from backend.app.ai.tools.business.commerce_tools import (
     GetProductDetailTool,
@@ -31,7 +32,7 @@ from backend.app.ai.tools.business.commerce_tools import (
 )
 from backend.app.ai.tools.contracts import ToolExecutionContext
 from backend.app.assistants.registry import AssistantRegistry
-from backend.app.models import Company, CompanyMembership, User, UserRole
+from backend.app.models import AIMessageRole, Company, CompanyMembership, User, UserRole
 from backend.app.models.base import Base
 from backend.app.models.billing import BillingAccount
 from backend.app.models.commerce_connection import NormalizedCommerceRecord
@@ -47,6 +48,7 @@ from backend.app.voice.caller_scope import (
     is_public_voice_caller,
 )
 from backend.app.voice.direct_answers import (
+    disambiguate_telephony_catalog_query,
     is_identity_inquiry,
     is_module_access_question,
     is_open_catalog_question,
@@ -260,6 +262,7 @@ def _setup_retail_tenant(session: Session):
     tenant = TenantContext(company.id, owner_user.id)
     grants.grant(tenant, "retail", "read_products", granted_by=owner_user.id)
     grants.grant(tenant, "retail", "read_inventory", granted_by=owner_user.id)
+    grants.grant(tenant, "retail", "reserve_product", granted_by=owner_user.id)
     grants.grant(tenant, "crm", "read_availability", granted_by=owner_user.id)
     grants.grant(tenant, "crm", "list_slots", granted_by=owner_user.id)
     grants.grant(tenant, "crm", "create_appointment", granted_by=owner_user.id)
@@ -270,8 +273,23 @@ def _setup_retail_tenant(session: Session):
 
 def test_public_voice_caller_tool_authorization_no_user_error(db_session: Session):
     """Test 1: Public caller can execute public retail tools without ToolAuthorizationError on user_id=None."""
-    company, _, _, _, _ = _setup_retail_tenant(db_session)
-    policy = ToolAuthorizationPolicy(db_session, AssistantRegistry())
+    from backend.app.assistants.contracts import AssistantDefinition, AssistantStatus
+    company, voice_config, owner_user, emp1_user, _ = _setup_retail_tenant(db_session)
+    registry = AssistantRegistry()
+    registry.register(
+        AssistantDefinition(
+            slug="retail",
+            name_key="retail",
+            description_key="retail",
+            status=AssistantStatus.AVAILABLE,
+            category="commerce",
+            module_code="retail",
+            allowed_tool_names=frozenset({"get_top_products", "get_product_detail", "get_inventory_summary", "reserve_product"}),
+            confirmation_policy="explicit_user_confirmation",
+            mutation_capabilities=frozenset({"retail.reservation.write", "reservations.create"}),
+        )
+    )
+    policy = ToolAuthorizationPolicy(db_session, registry)
 
     tenant = TenantContext(company_id=company.id, user_id=None)
     public_ctx = ToolExecutionContext(
@@ -288,9 +306,31 @@ def test_public_voice_caller_tool_authorization_no_user_error(db_session: Sessio
     # 1. Authorize product detail for public caller: MUST SUCCEED (no user lookup crash)
     policy.authorize(product_tool, public_ctx)
 
-    # 2. Authorize reserve_product: MUST BE STRICTLY BLOCKED over voice
-    with pytest.raises(ToolAuthorizationError, match="strictly disallowed over telephone calls"):
+    # 2. Authorize reserve_product with default policy: MUST BE STRICTLY BLOCKED under tenant policy
+    with pytest.raises(ToolAuthorizationError, match="disabled for phone calls under this company's policy"):
         policy.authorize(reserve_tool, public_ctx)
+
+    # 3. Enable phone reservations in tenant call_policy:
+    # Public caller is STILL blocked because reserve_product requires authentication
+    voice_config.call_policy = {"allow_phone_reservations": True}
+    db_session.commit()
+
+    with pytest.raises(ToolAuthorizationError, match="Caller authentication is required for this tool"):
+        policy.authorize(reserve_tool, public_ctx)
+
+    # 4. Authenticated employee with appropriate role CAN execute reserve_product when allowed by company policy
+    from backend.app.core.permissions import permissions_for
+    staff_tenant = TenantContext(company_id=company.id, user_id=owner_user.id)
+    staff_ctx = ToolExecutionContext(
+        tenant=staff_tenant,
+        user_id=owner_user.id,
+        permissions=frozenset(permissions_for(UserRole.OWNER)),
+        request_id="req-staff-call-1",
+        voice_path=True,
+        selected_agent_id="retail",
+    )
+    # Owner passes phone reservation policy check
+    policy.authorize(reserve_tool, staff_ctx)
 
 
 @pytest.mark.asyncio
@@ -320,11 +360,11 @@ async def test_product_detail_matches_accessories_category(db_session: Session):
 
 
 def test_spoken_catalog_answer_category_filtering(db_session: Session):
-    """Test 3: spoken_catalog_answer returns accessories when query asks for accessories."""
+    """Test 3: spoken_catalog_answer returns accessories when present, and an honest refusal when none exist."""
     company, _, _, _, _ = _setup_retail_tenant(db_session)
     profile = CompanyIntelligenceService(db_session).get_profile(company.id)
 
-    # General catalog question
+    # 1. General catalog question
     general_answer = spoken_catalog_answer(
         profile.public_products,
         retail_enabled=True,
@@ -335,7 +375,7 @@ def test_spoken_catalog_answer_category_filtering(db_session: Session):
     assert "Nous avons au catalogue :" in general_answer
     assert "Planche Alpine Pro" in general_answer
 
-    # Specific accessories question
+    # 2. Specific accessories question when accessories ARE present
     acc_answer = spoken_catalog_answer(
         profile.public_products,
         retail_enabled=True,
@@ -347,21 +387,111 @@ def test_spoken_catalog_answer_category_filtering(db_session: Session):
     assert "Casque de Snowboard Stealth" in acc_answer
     assert "Gants d'Hiver Thermiques" in acc_answer
 
+    # 3. Honest refusal when NO accessories exist in catalog (NEVER present snowboards as accessories!)
+    catalog_without_accessories = [
+        p for p in profile.public_products
+        if "accessoire" not in (str(p.get("category") or p.get("product_category") or "")).lower()
+        and "gant" not in str(p.get("name") or "").lower()
+        and "casque" not in str(p.get("name") or "").lower()
+    ]
+    empty_acc_answer = spoken_catalog_answer(
+        catalog_without_accessories,
+        retail_enabled=True,
+        locale="fr-CA",
+        currency="CAD",
+        query="Quels accessoires avez-vous ?",
+    )
+    assert "aucun accessoire disponible dans notre catalogue" in empty_acc_answer
+    assert "Planche Alpine Pro" not in empty_acc_answer
 
-def test_retail_asr_phonetic_normalization():
-    """Test 4: Retail ASR phonetic confusion 'assurances' -> 'accessoires'."""
-    transcript = "Bonjour, quelles assurances avez-vous pour l'hiver ?"
-    has_retail = True
-    active_modules = {"retail", "voice", "crm"}
 
-    # Apply normalization rule
-    if has_retail and "insurance" not in active_modules and "assurances" not in active_modules:
-        normalized = re.sub(r"\b(l['’])?assurance(s)?\b", r"\1accessoire\2", transcript, flags=re.IGNORECASE)
-    else:
-        normalized = transcript
+def test_retail_telephony_contextual_disambiguation_assurances_vs_accessoires():
+    """Test 4: Contextual disambiguation for 8kHz acoustic confusion (assurances vs accessoires)."""
+    # Scenario A: Pure retail boutique (accessories in catalog, NO insurance services)
+    # A.1 Shopping catalog query -> disambiguates to 'accessoire(s)'
+    t1 = disambiguate_telephony_catalog_query(
+        "Quelles assurances avez-vous pour l'hiver ?",
+        active_modules={"retail", "voice"},
+        company_industry="Retail Sports",
+        company_services=["Vente d'équipements"],
+        has_catalog_accessories=True,
+    )
+    assert t1 == "Quelles accessoires avez-vous pour l'hiver ?"
 
-    assert "quelles accessoires avez-vous" in normalized
-    assert is_open_catalog_question(normalized) is True
+    # A.2 Explicit insurance inquiry (legal/liability/policy) in a retail store -> NEVER REWRITTEN
+    t2 = disambiguate_telephony_catalog_query(
+        "Avez-vous une assurance responsabilité civile pour vos activités ?",
+        active_modules={"retail", "voice"},
+        company_industry="Retail Sports",
+        company_services=["Vente d'équipements"],
+        has_catalog_accessories=True,
+    )
+    assert t2 == "Avez-vous une assurance responsabilité civile pour vos activités ?"
+
+    # Scenario B: Pure insurance company -> NEVER REWRITTEN
+    t3 = disambiguate_telephony_catalog_query(
+        "Quelles assurances avez-vous pour l'hiver ?",
+        active_modules={"insurance", "voice"},
+        company_industry="Insurance",
+        company_services=["Assurance auto", "Assurance voyage"],
+        has_catalog_accessories=False,
+    )
+    assert t3 == "Quelles assurances avez-vous pour l'hiver ?"
+
+    # Scenario C: Hybrid company offering both retail AND insurance -> NEVER REWRITTEN
+    t4 = disambiguate_telephony_catalog_query(
+        "Quelles assurances avez-vous pour l'hiver ?",
+        active_modules={"retail", "insurance", "voice"},
+        company_industry="Sports & Assurances",
+        company_services=["Vente de ski", "Assurance bris de matériel"],
+        has_catalog_accessories=True,
+    )
+    assert t4 == "Quelles assurances avez-vous pour l'hiver ?"
+
+
+def test_multiturn_conversational_session_memory_and_anaphora(db_session: Session):
+    """Test 5: Multi-turn conversational memory preservation in ConversationService and reference resolution."""
+    company, _, owner_user, _, _ = _setup_retail_tenant(db_session)
+    conv_service = ConversationService(db_session)
+
+    # Initialize call conversation
+    conv = conv_service.create(company.id, owner_user.id, "Voice test call", "fr-CA")
+
+    # Turn 1: User asks for accessories, assistant lists them
+    conv_service.add_message(
+        company.id,
+        conv.id,
+        AIMessageRole.USER,
+        "Quels accessoires avez-vous ?",
+    )
+    conv_service.add_message(
+        company.id,
+        conv.id,
+        AIMessageRole.ASSISTANT,
+        "Nous proposons notamment comme accessoires : le Casque de Snowboard Stealth à 120 $ et les Gants d'Hiver Thermiques à 45 $.",
+        provider="central_ai",
+        model="gpt-4o-realtime",
+    )
+
+    # Turn 2: User asks anaphoric reference: "Combien coûte le deuxième ?"
+    conv_service.add_message(
+        company.id,
+        conv.id,
+        AIMessageRole.USER,
+        "Combien coûte le deuxième ?",
+    )
+
+    messages = conv_service.messages(company.id, conv.id)
+    assert len(messages) == 3
+    contents = [m.content for m in messages]
+    assert "Quels accessoires avez-vous ?" in contents
+    assert any("Casque de Snowboard Stealth" in c and "120 $" in c for c in contents)
+    assert any("Gants d'Hiver Thermiques" in c and "45 $" in c for c in contents)
+    assert "Combien coûte le deuxième ?" in contents
+
+    # Verify that 'Combien coûte le deuxième ?' is NOT an open catalog question,
+    # and therefore flows to Central AI context resolution rather than canned answer
+    assert is_open_catalog_question("Combien coûte le deuxième ?") is False
 
 
 def test_compound_internal_staff_questions(db_session: Session):

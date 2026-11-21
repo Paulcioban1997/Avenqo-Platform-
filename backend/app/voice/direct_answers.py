@@ -161,6 +161,68 @@ def is_open_catalog_question(text: str) -> bool:
     return listing or for_sale or prices or stock_inquiry or (products and len(words) <= 6)
 
 
+_EXPLICIT_INSURANCE_TERMS = frozenset({
+    "police", "polices", "prime", "primes", "couverture", "couvertures",
+    "sinistre", "sinistres", "contrat", "contrats", "responsabilite",
+    "vehicule", "vehicules", "habitation", "vie", "auto", "automobile",
+    "indemnisation", "indemnisations", "courtier", "courtiers", "souscription",
+    "prejudice", "remboursement", "assureur", "assureurs", "reclamation", "reclamations",
+    "franchise", "franchises", "dommage", "dommages",
+})
+
+_CATALOG_SHOPPING_PHRASES = frozenset({
+    "hiver", "saison", "magasin", "boutique", "stock", "inventaire",
+    "catalogue", "rayon", "articles", "vendez", "proposez", "achetez",
+    "achat", "modele", "modeles", "marque", "marques", "taille", "tailles",
+    "prix", "combien", "tarif", "disponible", "disponibles",
+})
+
+
+def disambiguate_telephony_catalog_query(
+    transcript: str,
+    *,
+    active_modules: set[str],
+    company_industry: str | None = None,
+    company_services: list[str] | None = None,
+    has_catalog_accessories: bool = False,
+) -> str:
+    """Contextual telephony disambiguation for 8kHz acoustic confusion (assurances vs accessoires).
+
+    Never blind:
+    1. If business offers insurance (module, industry or services), returns original transcript.
+    2. If utterance contains explicit insurance terms (police, sinistre, prime...), returns original transcript.
+    3. If company is pure retail with verified accessories in stock and utterance asks about catalog/shopping,
+       resolves the acoustic confusion to 'accessoire(s)'.
+    """
+    if not transcript or not re.search(r"\b(l['’])?assurance(s)?\b", transcript, flags=re.IGNORECASE):
+        return transcript
+
+    # Rule 1: Business legitimately offers insurance
+    insurance_modules = {"insurance", "assurances", "finance", "assurances_auto", "assurances_habitation"}
+    if active_modules & insurance_modules:
+        return transcript
+
+    ind = (company_industry or "").lower()
+    if any(k in ind for k in ("assurance", "insurance", "finance", "mutuelle", "courtage")):
+        return transcript
+
+    services = [str(s).lower() for s in (company_services or [])]
+    if any(any(k in s for k in ("assurance", "insurance", "garantie")) for s in services):
+        return transcript
+
+    # Rule 2: Explicit insurance intent
+    words = _words(transcript)
+    if words & _EXPLICIT_INSURANCE_TERMS:
+        return transcript
+
+    # Rule 3: Business is pure retail with verified accessories, and inquiry is shopping/catalog oriented
+    if "retail" in active_modules and has_catalog_accessories:
+        if (words & _CATALOG_SHOPPING_PHRASES) or is_open_catalog_question(transcript):
+            return re.sub(r"\b(l['’])?assurance(s)?\b", r"\1accessoire\2", transcript, flags=re.IGNORECASE)
+
+    return transcript
+
+
 def spoken_identity_answer(
     actor: Any,
     membership: Any,
@@ -325,8 +387,17 @@ def spoken_catalog_answer(
                 or "accessory" in (str(r.get("name") or r.get("product_name") or "")).lower()
                 or any(k in (str(r.get("name") or r.get("product_name") or "")).lower() for k in ("casque", "gant", "masque", "chapeau", "lunette", "fart", "fixation"))
             ]
-            if acc_rows:
-                rows = acc_rows
+            if not acc_rows:
+                if spanish:
+                    return "Actualmente no tenemos accesorios disponibles en nuestro catálogo. ¿Desea información sobre nuestros otros productos?"
+                if romanian:
+                    return "În prezent nu avem accesorii disponibile în catalogul nostru. Doriți informații despre celelalte produse?"
+                return (
+                    "Nous n'avons actuellement aucun accessoire disponible dans notre catalogue. Souhaitez-vous des renseignements sur nos autres articles ?"
+                    if french else
+                    "We do not currently have any accessories available in our catalog. Would you like information on our other items?"
+                )
+            rows = acc_rows
 
     spoken = []
     for row in rows[:3]:

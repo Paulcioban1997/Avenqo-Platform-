@@ -2035,9 +2035,42 @@ async def telnyx_media_socket(
         if public_mode:
             current_call, _config, current_company = media_transport_context(db, settings, call_id)
             current_call.source_context = {**(current_call.source_context or {}), "public_conversation_id": str(current_call.id)}
+            if current_call.central_conversation_id is None:
+                owner_m = db.scalar(
+                    select(CompanyMembership).where(
+                        CompanyMembership.company_id == current_company.id,
+                        CompanyMembership.role == UserRole.OWNER,
+                        CompanyMembership.is_active.is_(True),
+                    )
+                )
+                fallback_u = db.scalar(
+                    select(User).where(
+                        User.company_id == current_company.id,
+                        User.is_active.is_(True),
+                    )
+                )
+                conv_uid = owner_m.user_id if owner_m else (fallback_u.id if fallback_u else None)
+                if conv_uid is not None:
+                    conv = ConversationService(db).create(
+                        current_company.id,
+                        conv_uid,
+                        f"Voice call {current_call.id}",
+                        current_call.locale or locale,
+                    )
+                    current_call.central_conversation_id = conv.id
+                    if public_conversation is not None:
+                        greeting_text = public_conversation.greeting()
+                        ConversationService(db).add_message(
+                            current_company.id,
+                            conv.id,
+                            AIMessageRole.ASSISTANT,
+                            greeting_text,
+                            provider="openai",
+                            model=settings.voice_realtime_model,
+                        )
             db.commit()
             ledger = VoiceUsageLedger(service.usage_service, voice_pricing_catalog(settings.ai_model_rate_card),
-                company_id=current_company.id, user_id=None, conversation_id=None, plan_code=plan, request_namespace=current_call.id,
+                company_id=current_company.id, user_id=None, conversation_id=current_call.central_conversation_id, plan_code=plan, request_namespace=current_call.id,
                 on_settlement=record_call_cost)
             bridge.use_ledger(ledger)
         await authorize()
@@ -2203,10 +2236,28 @@ async def telnyx_media_socket(
                     model=settings.voice_realtime_model,
                 )
 
-        # Domain phonetic normalization for retail telephony (8kHz acoustic confusion: assurances -> accessoires)
+        # Contextual telephony disambiguation for 8kHz acoustic confusion (assurances vs accessoires)
+        from backend.app.voice.direct_answers import disambiguate_telephony_catalog_query
         active_tenant_mods = set(ModuleEntitlementService(db).get_active_modules(tenant))
-        if "retail" in active_tenant_mods and "insurance" not in active_tenant_mods and "assurances" not in active_tenant_mods:
-            transcript = re.sub(r"\b(l['’])?assurance(s)?\b", r"\1accessoire\2", transcript, flags=re.IGNORECASE)
+        has_acc = False
+        try:
+            prof = CompanyIntelligenceService(db).get_profile(current_company.id)
+            has_acc = any(
+                "accessoire" in (str(p.get("category") or p.get("product_category") or "")).lower()
+                or "accessory" in (str(p.get("category") or p.get("product_category") or "")).lower()
+                for p in (prof.public_products or [])
+                if isinstance(p, dict)
+            )
+        except Exception:
+            pass
+
+        transcript = disambiguate_telephony_catalog_query(
+            transcript,
+            active_modules=active_tenant_mods,
+            company_industry=getattr(current_company, "industry", None),
+            company_services=getattr(config, "services", None),
+            has_catalog_accessories=has_acc,
+        )
 
         # Verrouillage linguistique dynamique et anti-dérive par appel
         active_locale = call_lang_session.process_utterance(transcript)
