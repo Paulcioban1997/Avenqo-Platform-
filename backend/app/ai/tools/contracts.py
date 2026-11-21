@@ -20,7 +20,7 @@ class ToolExecutionContext:
     """Contexte d'exécution sécurisé, jamais alimenté par le LLM."""
 
     tenant: TenantContext
-    user_id: UUID
+    user_id: UUID | None
     permissions: frozenset[str]
     request_id: str
     conversation_id: UUID | None = None
