@@ -107,9 +107,12 @@ def _python_product_search(
     product_name: str | None,
     product_id: str | None,
     sku: str | None,
+    product_category: str | None = None,
 ) -> list[NormalizedCommerceRecord]:
     """Filtre Python pour SQLite et bases sans support JSON avancé."""
     result = []
+    query = (product_name or product_category or "").strip()
+    is_general_query = query.lower() in {"", "all", "tous", "tout", "produits", "produit", "catalogue", "catalog"}
     for r in records:
         data = r.normalized_data or {}
         if product_id is not None:
@@ -120,9 +123,14 @@ def _python_product_search(
             if str(data.get("sku") or "").lower() == sku.lower().strip():
                 result.append(r)
             continue
-        if product_name is not None:
+        if is_general_query:
+            result.append(r)
+            continue
+        if query:
+            q_norm = _normalize_query(query)
             name = str(data.get("product_name") or data.get("name") or "").lower()
-            if _normalize_query(product_name) in name:
+            category = str(data.get("product_category") or data.get("category") or "").lower()
+            if q_norm in name or q_norm in category:
                 result.append(r)
     return result
 
@@ -133,6 +141,7 @@ def _python_product_search(
 
 class ProductDetailArgs(ToolArguments):
     product_name: str | None = None
+    product_category: str | None = None
     product_id: str | None = None
     sku: str | None = None
     source_scope: list[str] | str | None = None
@@ -157,11 +166,8 @@ class GetProductDetailTool(RetailAITool):
     async def run(self, context: ToolExecutionContext, arguments: ProductDetailArgs) -> ToolResult:
         company_id = context.tenant.company_id
 
-        if not arguments.product_name and not arguments.product_id and not arguments.sku:
-            return ToolResult(
-                success=False,
-                error="Please provide a product name, product ID, or SKU to look up.",
-            )
+        if not arguments.product_name and not arguments.product_id and not arguments.sku and not arguments.product_category:
+            arguments.product_name = "all"
 
         from backend.app.services.retail_source_service import RetailSourceService
 
@@ -251,16 +257,25 @@ class GetProductDetailTool(RetailAITool):
                     ).all()
                 )
             else:
-                query_term = _normalize_query(arguments.product_name or "")
-                rows = list(
-                    self._session.scalars(
-                        base_query.where(
-                            func.lower(
-                                NormalizedCommerceRecord.normalized_data["product_name"].astext
-                            ).contains(query_term)
-                        ).limit(10)
-                    ).all()
-                )
+                raw_term = arguments.product_name or arguments.product_category or ""
+                query_term = _normalize_query(raw_term)
+                if not query_term or query_term in {"all", "tous", "tout", "produits", "produit", "catalogue", "catalog"}:
+                    rows = list(self._session.scalars(base_query.limit(10)).all())
+                else:
+                    rows = list(
+                        self._session.scalars(
+                            base_query.where(
+                                or_(
+                                    func.lower(
+                                        NormalizedCommerceRecord.normalized_data["product_name"].astext
+                                    ).contains(query_term),
+                                    func.lower(
+                                        NormalizedCommerceRecord.normalized_data["product_category"].astext
+                                    ).contains(query_term),
+                                )
+                            ).limit(10)
+                        ).all()
+                    )
             records = rows
         except Exception:
             # 2. Python fallback (SQLite / older PG)
@@ -272,6 +287,7 @@ class GetProductDetailTool(RetailAITool):
                 product_name=arguments.product_name,
                 product_id=arguments.product_id,
                 sku=arguments.sku,
+                product_category=arguments.product_category,
             )
 
         search_label = arguments.product_name or arguments.product_id or arguments.sku

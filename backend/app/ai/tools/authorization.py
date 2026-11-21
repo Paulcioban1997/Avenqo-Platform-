@@ -25,6 +25,14 @@ class ToolAuthorizationPolicy:
         self._agents = agents
 
     def authorize(self, tool: AITool, context: ToolExecutionContext) -> None:
+        if context.voice_path or is_public_voice_caller(context.permissions):
+            # Strict business policy: In-store product reservations are NOT permitted over phone calls
+            if tool.name == "reserve_product":
+                raise ToolAuthorizationError(
+                    "Product reservations ('reserve_product') are strictly disallowed over telephone calls. "
+                    "Customers may inquire about availability and pricing, but reservations must be made online or in-store."
+                )
+
         # Unauthenticated phone callers run under the tenant owner's membership
         # for transport purposes only: never let that grant private tools.
         if is_public_voice_caller(context.permissions):
@@ -49,18 +57,16 @@ class ToolAuthorizationPolicy:
             ):
                 raise ToolAuthorizationError("Caller authentication is required for this tool.")
         if context.voice_path or is_public_voice_caller(context.permissions):
-            # Strict business policy: In-store product reservations are NOT permitted over phone calls
-            if tool.name == "reserve_product":
-                raise ToolAuthorizationError(
-                    "Product reservations ('reserve_product') are strictly disallowed over telephone calls. "
-                    "Customers may inquire about availability and pricing, but reservations must be made online or in-store."
-                )
             VoiceToolGuard(self._db).assert_policy(
                 context.tenant,
                 tool.name,
                 context.permissions,
                 user_id=context.user_id,
             )
+            # Public voice callers are fully authenticated by VoiceToolGuard (fail-closed whitelist).
+            # They do not have a User account and must not fall through to user/membership checks.
+            if is_public_voice_caller(context.permissions):
+                return
 
         user = self._db.get(User, context.user_id)
         if (
