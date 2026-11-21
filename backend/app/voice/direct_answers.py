@@ -87,6 +87,8 @@ def is_module_access_question(text: str) -> bool:
         "souscrit", "souscrits", "souscrite", "souscrites", "avons", "avez", "notre", "nos", "disposons",
         "liste", "quels", "quelles", "quel", "quelle", "what", "which", "ce", "care", "activat", "activate",
         "activo", "activos", "activado", "activados", "cuales", "cuanto",
+        "autorise", "autorises", "autorisee", "autorisees", "autorisation", "autorisations",
+        "permission", "permissions", "droit", "droits", "mes", "mon",
     })
     return (modules and access) or (modules and len(words) <= 6 and bool(words & {"quels", "quelles", "quel", "quelle", "what", "which", "nos", "notre", "liste"}))
 
@@ -140,12 +142,15 @@ def is_open_catalog_question(text: str) -> bool:
         "produit", "produits", "product", "products", "article", "articles",
         "catalogue", "catalog", "catalogs", "catalogues", "item", "items",
         "planche", "planches", "snowboard", "snowboards",
+        "accessoire", "accessoires", "accessory", "accessories",
+        "equipement", "equipements", "equipment", "gant", "gants", "casque", "casques",
     })
     if not products:
         return False
     listing = bool(words & {
         "quels", "quelles", "quel", "quelle", "liste", "what", "which",
         "catalogue", "catalog", "chacun", "chacune", "tous", "toutes", "all", "every", "each",
+        "avez", "avons", "proposez", "vendez", "disponible", "disponibles",
     })
     for_sale = bool(words & {"vente", "vendre", "sale", "sales"})
     prices = bool(words & {"prix", "price", "prices", "tarif", "tarifs", "combien", "cout"})
@@ -153,7 +158,75 @@ def is_open_catalog_question(text: str) -> bool:
         "stock", "stocks", "inventaire", "inventory", "disponible", "disponibles",
         "disponibilite", "disponibilites", "restant", "restants",
     })
-    return listing or for_sale or prices or stock_inquiry
+    # Distinguish general catalog price inquiries from specific item inquiries ("combien coûte X")
+    is_general_price = prices and (listing or bool(words & {"catalogue", "catalog", "produits", "products", "articles"}))
+    is_category_mention = (len(words) <= 4) and bool(words & {
+        "accessoire", "accessoires", "accessory", "accessories",
+        "catalogue", "catalog", "planche", "planches", "snowboard", "snowboards",
+    }) and not bool(words & {"combien", "cout", "coute"})
+    return listing or for_sale or stock_inquiry or is_general_price or is_category_mention
+
+
+_EXPLICIT_INSURANCE_TERMS = frozenset({
+    "police", "polices", "prime", "primes", "couverture", "couvertures",
+    "sinistre", "sinistres", "contrat", "contrats", "responsabilite",
+    "vehicule", "vehicules", "habitation", "vie", "auto", "automobile",
+    "indemnisation", "indemnisations", "courtier", "courtiers", "souscription",
+    "prejudice", "remboursement", "assureur", "assureurs", "reclamation", "reclamations",
+    "franchise", "franchises", "dommage", "dommages",
+})
+
+_CATALOG_SHOPPING_PHRASES = frozenset({
+    "hiver", "saison", "magasin", "boutique", "stock", "inventaire",
+    "catalogue", "rayon", "articles", "vendez", "proposez", "achetez",
+    "achat", "modele", "modeles", "marque", "marques", "taille", "tailles",
+    "prix", "combien", "tarif", "disponible", "disponibles",
+})
+
+
+def disambiguate_telephony_catalog_query(
+    transcript: str,
+    *,
+    active_modules: set[str],
+    company_industry: str | None = None,
+    company_services: list[str] | None = None,
+    has_catalog_accessories: bool = False,
+) -> str:
+    """Contextual telephony disambiguation for 8kHz acoustic confusion (assurances vs accessoires).
+
+    Never blind:
+    1. If business offers insurance (module, industry or services), returns original transcript.
+    2. If utterance contains explicit insurance terms (police, sinistre, prime...), returns original transcript.
+    3. If company is pure retail with verified accessories in stock and utterance asks about catalog/shopping,
+       resolves the acoustic confusion to 'accessoire(s)'.
+    """
+    if not transcript or not re.search(r"\b(l['’])?assurance(s)?\b", transcript, flags=re.IGNORECASE):
+        return transcript
+
+    # Rule 1: Business legitimately offers insurance
+    insurance_modules = {"insurance", "assurances", "finance", "assurances_auto", "assurances_habitation"}
+    if active_modules & insurance_modules:
+        return transcript
+
+    ind = (company_industry or "").lower()
+    if any(k in ind for k in ("assurance", "insurance", "finance", "mutuelle", "courtage")):
+        return transcript
+
+    services = [str(s).lower() for s in (company_services or [])]
+    if any(any(k in s for k in ("assurance", "insurance", "garantie")) for s in services):
+        return transcript
+
+    # Rule 2: Explicit insurance intent
+    words = _words(transcript)
+    if words & _EXPLICIT_INSURANCE_TERMS:
+        return transcript
+
+    # Rule 3: Business is pure retail with verified accessories, and inquiry is shopping/catalog oriented
+    if "retail" in active_modules and has_catalog_accessories:
+        if (words & _CATALOG_SHOPPING_PHRASES) or is_open_catalog_question(transcript):
+            return re.sub(r"\b(l['’])?assurance(s)?\b", r"\1accessoire\2", transcript, flags=re.IGNORECASE)
+
+    return transcript
 
 
 def spoken_identity_answer(
@@ -274,6 +347,7 @@ def spoken_catalog_answer(
     retail_enabled: bool,
     locale: str,
     currency: str | None = None,
+    query: str | None = None,
 ) -> str:
     loc = locale.lower()
     french = loc.startswith("fr")
@@ -303,6 +377,58 @@ def spoken_catalog_answer(
             if french else
             "The catalog does not currently list any products for sale."
         )
+
+    # Optional category / semantic filter based on query
+    is_accessories_query = False
+    if query:
+        query_norm = unicodedata.normalize("NFKD", query.casefold())
+        query_norm = "".join(c for c in query_norm if not unicodedata.combining(c))
+        is_accessories_query = bool(re.search(r"\b(accessoire|accessoires|accessory|accessories)\b", query_norm))
+        if is_accessories_query:
+            acc_rows = [
+                r for r in rows
+                if "accessoire" in (str(r.get("category") or r.get("product_category") or "")).lower()
+                or "accessory" in (str(r.get("category") or r.get("product_category") or "")).lower()
+                or "accessories" in (str(r.get("category") or r.get("product_category") or "")).lower()
+                or "accessoire" in (str(r.get("name") or r.get("product_name") or "")).lower()
+                or "accessory" in (str(r.get("name") or r.get("product_name") or "")).lower()
+                or "accessories" in (str(r.get("name") or r.get("product_name") or "")).lower()
+                or any(k in (str(r.get("name") or r.get("product_name") or "")).lower() for k in ("casque", "gant", "masque", "chapeau", "lunette", "fart", "fixation"))
+            ]
+            if not acc_rows:
+                if spanish:
+                    return "Actualmente no tenemos accesorios disponibles en nuestro catálogo. ¿Desea información sobre nuestros otros productos?"
+                if romanian:
+                    return "În prezent nu avem accesorii disponibile în catalogul nostru. Doriți informații despre celelalte produse?"
+                return (
+                    "Nous n'avons actuellement aucun accessoire disponible dans notre catalogue. Souhaitez-vous des renseignements sur nos autres articles ?"
+                    if french else
+                    "We do not currently have any accessories available in our catalog. Would you like information on our other items?"
+                )
+            rows = acc_rows
+        elif query_norm:
+            query_words = set(re.findall(r"\b\w+\b", query_norm))
+            stopwords = {
+                "quel", "quels", "quelle", "quelles", "combien", "coute", "coutent", "prix",
+                "tarif", "tarifs", "est", "sont", "le", "la", "les", "du", "de", "des",
+                "un", "une", "avez", "vous", "notre", "votre", "catalogue", "produit", "produits",
+                "article", "articles", "what", "which", "how", "much", "is", "are", "the", "a", "an",
+                "in", "for", "do", "you", "have", "price", "catalog", "product", "products",
+                "pour", "dans", "avec", "sur", "vos", "nos",
+            }
+            specific_tokens = {w for w in query_words if w not in stopwords and len(w) >= 3}
+            if specific_tokens:
+                name_matches = []
+                for r in rows:
+                    r_name_norm = unicodedata.normalize("NFKD", str(r.get("name") or r.get("title") or r.get("product_name") or "").casefold())
+                    r_name_norm = "".join(c for c in r_name_norm if not unicodedata.combining(c))
+                    score = sum(1 for tok in specific_tokens if tok in r_name_norm)
+                    if score > 0:
+                        name_matches.append((score, r))
+                if name_matches:
+                    name_matches.sort(key=lambda x: x[0], reverse=True)
+                    rows = [m[1] for m in name_matches]
+
     spoken = []
     for row in rows[:3]:
         name = str(row.get("name") or row.get("title") or row.get("product_name") or "").strip()
@@ -361,6 +487,14 @@ def spoken_catalog_answer(
             extra = f" Et {remaining} autre{'s' if remaining > 1 else ''} article{'s' if remaining > 1 else ''} au catalogue."
         else:
             extra = f" And {remaining} more items in the catalog."
+    if is_accessories_query:
+        if spanish:
+            return "Como accesorios, ofrecemos en particular: " + " ; ".join(spoken) + "." + extra
+        if romanian:
+            return "Ca accesorii, vă oferim în special: " + " ; ".join(spoken) + "." + extra
+        if french:
+            return "Nous proposons notamment comme accessoires : " + " ; ".join(spoken) + "." + extra
+        return "As accessories, we notably offer: " + "; ".join(spoken) + "." + extra
     if spanish:
         return "Tenemos en el catálogo: " + " ; ".join(spoken) + "." + extra
     if romanian:
@@ -643,6 +777,7 @@ def resolve_direct_voice_answer(
             retail_enabled=retail_enabled,
             locale=locale,
             currency=getattr(profile, "currency_code", None),
+            query=transcript,
         )
 
     return None

@@ -107,9 +107,12 @@ def _python_product_search(
     product_name: str | None,
     product_id: str | None,
     sku: str | None,
+    product_category: str | None = None,
 ) -> list[NormalizedCommerceRecord]:
     """Filtre Python pour SQLite et bases sans support JSON avancé."""
     result = []
+    query = (product_name or product_category or "").strip()
+    is_general_query = query.lower() in {"", "all", "tous", "tout", "produits", "produit", "catalogue", "catalog"}
     for r in records:
         data = r.normalized_data or {}
         if product_id is not None:
@@ -120,9 +123,14 @@ def _python_product_search(
             if str(data.get("sku") or "").lower() == sku.lower().strip():
                 result.append(r)
             continue
-        if product_name is not None:
+        if is_general_query:
+            result.append(r)
+            continue
+        if query:
+            q_norm = _normalize_query(query)
             name = str(data.get("product_name") or data.get("name") or "").lower()
-            if _normalize_query(product_name) in name:
+            category = str(data.get("product_category") or data.get("category") or "").lower()
+            if q_norm in name or q_norm in category:
                 result.append(r)
     return result
 
@@ -133,6 +141,7 @@ def _python_product_search(
 
 class ProductDetailArgs(ToolArguments):
     product_name: str | None = None
+    product_category: str | None = None
     product_id: str | None = None
     sku: str | None = None
     source_scope: list[str] | str | None = None
@@ -157,11 +166,8 @@ class GetProductDetailTool(RetailAITool):
     async def run(self, context: ToolExecutionContext, arguments: ProductDetailArgs) -> ToolResult:
         company_id = context.tenant.company_id
 
-        if not arguments.product_name and not arguments.product_id and not arguments.sku:
-            return ToolResult(
-                success=False,
-                error="Please provide a product name, product ID, or SKU to look up.",
-            )
+        if not arguments.product_name and not arguments.product_id and not arguments.sku and not arguments.product_category:
+            arguments.product_name = "all"
 
         from backend.app.services.retail_source_service import RetailSourceService
 
@@ -173,23 +179,59 @@ class GetProductDetailTool(RetailAITool):
                 if source is not None:
                     from backend.app.ai.tools.business.analytics import compute_product_portfolio
                     products = compute_product_portfolio(source)
-                    matches = [p for p in products if
-                               (arguments.product_id is not None and str(p["product_id"]) == str(arguments.product_id)) or
-                               (arguments.product_id is None and arguments.product_name and arguments.product_name.casefold() in str(p.get("name") or "").casefold())]
-                    return ToolResult(success=True, data={"found": bool(matches), "source_type": "dataset",
-                        "products": [{"product_id": p["product_id"], "product_name": p.get("name"),
-                                      "inventory_level": None, "historical_observed_units": p.get("stock_level"),
-                                      "stock_confirmed": False, "stock_status": "unconfirmed_historical_dataset",
-                                      "price_status": "historical_average_price",
-                                      "historical_average_selling_price": p.get("average_selling_price")} for p in matches[:10]],
-                        "stock_is_current": False,
-                        "message": "Données d'observation historiques (dataset). L'inventaire en direct n'étant pas synchronisé, aucune quantité ne peut être confirmée comme stock actuel.",
-                        "data_freshness": DataFreshnessService().for_snapshot(snapshot).as_dict()}, source_refs=(str(source.dataset_id),))
+                    is_all_query = (not arguments.product_name or arguments.product_name.strip().casefold() in ("all", "*", "tous", "tout", "catalogue", "catalog")) and not arguments.product_id and not arguments.sku
+                    matches = []
+                    for p in products:
+                        p_id = str(p.get("product_id") or "")
+                        p_name = str(p.get("name") or "")
+                        p_cat = str(p.get("category") or "")
+                        if arguments.product_id is not None:
+                            if p_id == str(arguments.product_id):
+                                matches.append(p)
+                        elif arguments.product_category:
+                            cat_arg = arguments.product_category.strip().casefold()
+                            if cat_arg in p_cat.casefold() or cat_arg in p_name.casefold():
+                                matches.append(p)
+                        elif is_all_query:
+                            matches.append(p)
+                        elif arguments.product_name:
+                            if arguments.product_name.casefold() in p_name.casefold():
+                                matches.append(p)
+
+                    return ToolResult(
+                        success=True,
+                        data={
+                            "found": bool(matches),
+                            "source_type": "dataset",
+                            "products": [
+                                {
+                                    "product_id": p.get("product_id"),
+                                    "product_name": p.get("name"),
+                                    "category": p.get("category"),
+                                    "inventory_level": None,
+                                    "historical_observed_units": p.get("stock_level"),
+                                    "stock_confirmed": False,
+                                    "stock_status": "unconfirmed_historical_dataset",
+                                    "price_status": "historical_average_price",
+                                    "historical_average_selling_price": p.get("average_selling_price"),
+                                }
+                                for p in matches[:10]
+                            ],
+                            "stock_is_current": False,
+                            "message": (
+                                "Données d'observation historiques (dataset). L'inventaire en direct n'étant pas synchronisé, aucune quantité ne peut être confirmée comme stock actuel."
+                                if bool(matches) else
+                                "Aucun produit correspondant trouvé dans les données historiques importées."
+                            ),
+                            "data_freshness": DataFreshnessService().for_snapshot(snapshot).as_dict(),
+                        },
+                        source_refs=(str(source.dataset_id),),
+                    )
             return ToolResult(
                 success=True,
                 data={
                     "found": False,
-                    "query": arguments.product_name or arguments.product_id or arguments.sku,
+                    "query": arguments.product_name or arguments.product_category or arguments.product_id or arguments.sku,
                     "message": "La source active est un dataset importé. Consultez la vue Ventes pour ces données.",
                 },
             )
@@ -251,16 +293,25 @@ class GetProductDetailTool(RetailAITool):
                     ).all()
                 )
             else:
-                query_term = _normalize_query(arguments.product_name or "")
-                rows = list(
-                    self._session.scalars(
-                        base_query.where(
-                            func.lower(
-                                NormalizedCommerceRecord.normalized_data["product_name"].astext
-                            ).contains(query_term)
-                        ).limit(10)
-                    ).all()
-                )
+                raw_term = arguments.product_name or arguments.product_category or ""
+                query_term = _normalize_query(raw_term)
+                if not query_term or query_term in {"all", "tous", "tout", "produits", "produit", "catalogue", "catalog"}:
+                    rows = list(self._session.scalars(base_query.limit(10)).all())
+                else:
+                    rows = list(
+                        self._session.scalars(
+                            base_query.where(
+                                or_(
+                                    func.lower(
+                                        NormalizedCommerceRecord.normalized_data["product_name"].astext
+                                    ).contains(query_term),
+                                    func.lower(
+                                        NormalizedCommerceRecord.normalized_data["product_category"].astext
+                                    ).contains(query_term),
+                                )
+                            ).limit(10)
+                        ).all()
+                    )
             records = rows
         except Exception:
             # 2. Python fallback (SQLite / older PG)
@@ -272,6 +323,7 @@ class GetProductDetailTool(RetailAITool):
                 product_name=arguments.product_name,
                 product_id=arguments.product_id,
                 sku=arguments.sku,
+                product_category=arguments.product_category,
             )
 
         search_label = arguments.product_name or arguments.product_id or arguments.sku
@@ -335,11 +387,11 @@ class GetProductDetailTool(RetailAITool):
         for r in records:
             p = _product_to_dict(r)
             cid = r.connection_id
-            p["store_name"] = conn_map.get(cid, str(p.get("provider") or "Commerce Store"))
+            p["store_name"] = (conn_map.get(cid) if cid is not None else None) or str(p.get("provider") or "Commerce Store")
             freshness_status, is_live_stock = classify_product_freshness(
                 r, conns_by_id, now=datetime.now(timezone.utc)
             )
-            raw_inv = p.get("inventory_level")
+            raw_inv = _safe_float(p.get("inventory_level"))
             p["freshness_status"] = freshness_status
             p["is_live_stock"] = is_live_stock
             if is_live_stock:
@@ -585,7 +637,8 @@ class GetInventorySummaryTool(RetailAITool):
 
         breakdown_by_source: dict[str, dict[str, int]] = {}
         for r in records:
-            s_name = conn_map.get(r.connection_id, r.provider or "Commerce Store")
+            cid = r.connection_id
+            s_name = (conn_map.get(cid) if cid is not None else None) or str(r.provider or "Commerce Store")
             entry = breakdown_by_source.setdefault(s_name, {"total": 0, "out_of_stock": 0, "low_stock": 0})
             entry["total"] += 1
             p = _product_to_dict(r)

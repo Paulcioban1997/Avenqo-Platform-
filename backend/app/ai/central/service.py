@@ -162,6 +162,8 @@ class CentralAIService:
                 if public_caller and not public_voice_tool_allowed(
                     tool_name,
                     has_crm_booking="crm" in active_modules,
+                    has_retail_commerce="retail" in active_modules,
+                    has_documents="documents" in active_modules or "ocr" in active_modules,
                 ):
                     continue
                 if tool_name not in granted_voice_tools:

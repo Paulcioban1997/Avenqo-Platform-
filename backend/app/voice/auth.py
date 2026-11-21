@@ -844,6 +844,8 @@ class VoiceCallerAuth:
             call.authenticated_user_id = principal.id
             call.verified_client_id = None
             call.verification_attempts = 0
+            call.pin_challenge_hash = None
+            call.pin_challenge_expires_at = None
             call.source_context = {
                 **(call.source_context or {}),
                 "authenticated": True,

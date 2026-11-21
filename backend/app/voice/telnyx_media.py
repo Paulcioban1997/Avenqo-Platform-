@@ -675,14 +675,21 @@ class PublicInboundConversation:
                 else:
                     answer = "Les opportunités de recrutement ne sont pas confirmées pour notre établissement. Je peux noter vos coordonnées pour transmettre votre intérêt à notre équipe." if french else "Recruitment opportunities are not confirmed for our business. I can take your contact details to express your interest."
             return {"status": "success", "answer": answer, "public": True}
-        if re.search(r"commande|order|produit|product|stock|inventaire|inventory|magasin|boutique|retail", normalized):
+        if re.search(r"commande|order|produit|product|stock|inventaire|inventory|magasin|boutique|retail|accessoire|accessoires|accessory|accessories|equipement|equipements|equipment|planche|planches|snowboard|snowboards", normalized):
             if not profile.has_retail_commerce and not profile.public_products:
                 if profile.has_crm_booking:
                     answer = "Notre établissement propose principalement des services professionnels plutôt que des produits en vente directe. Je peux vous renseigner sur nos prestations ou planifier un rendez-vous. Que souhaitez-vous savoir ?" if french else "Our company primarily provides professional services rather than retail products. I can assist you with our services or booking. What would you like to know?"
                 else:
                     answer = "Notre entreprise ne propose pas de vente directe de produits ou d'inventaire en ligne. Pour toute information générale, je reste à votre disposition." if french else "Our company does not offer retail product sales or online inventory. For general inquiries, I am here to help."
                 return {"status": "success", "answer": answer, "public": True}
-            answer = "Pour toute question sur vos commandes, nos produits ou notre inventaire, je peux vous renseigner. Que souhaitez-vous savoir ?" if french else "For questions about orders, products, or inventory, I can help. What would you like to know?"
+            from backend.app.voice.direct_answers import spoken_catalog_answer
+            answer = spoken_catalog_answer(
+                profile.public_products,
+                retail_enabled=True,
+                locale=call.locale or config.preferred_language,
+                currency=getattr(profile, "currency_code", None),
+                query=safe,
+            )
             return {"status": "success", "answer": answer, "public": True}
         if re.search(r"parler|quelqu.un|agent|humain|reception|personne|speak|someone|representative|human", normalized):
             answer = "Je peux prendre votre message ou vous renseigner sur nos services, horaires et rendez-vous. Comment puis-je vous aider ?" if french else "I can take a message or assist with services, hours, and appointments. How can I help you?"
@@ -708,8 +715,10 @@ class PublicInboundConversation:
             return existing.result
         if not call.telnyx_call_control_id:
             return {"success": False, "error": "caller_authentication_unavailable"}
-        if call.pin_challenge_hash or call.verification_attempts >= maximum:
+        if call.verification_attempts >= maximum:
             return {"success": False, "error": "caller_authentication_failed"}
+        call.pin_challenge_hash = None
+        call.pin_challenge_expires_at = None
         if self.settings.rate_limit_enabled and not allow_rate_limit("voice_media_pin", str(call.company_id) + ":" + str(call.id), maximum):
             return {"success": False, "error": "caller_authentication_rate_limited"}
         client_state = VoiceCallerAuth(self.db, self.settings).challenge(call)
@@ -1603,7 +1612,8 @@ class TelnyxMediaBridge:
         self._pin_prompt_spoken = False
         self._pin_prompt_finish_time = None
         await self.adapter.clear_input()
-        await self.authorize()
+        if status == "authenticated":
+            await self.authorize()
         pending_query = None
         if status == "authenticated" and self.consume_pending_query is not None:
             pending_query = await self.consume_pending_query()
@@ -1645,7 +1655,7 @@ class TelnyxMediaBridge:
                 continue
             if not self._pin_started and self.begin_pin is not None and getattr(self, "_pin_prompt_spoken", False):
                 finish_time = getattr(self, "_pin_prompt_finish_time", None)
-                if self._output.empty() and finish_time is not None and (asyncio.get_running_loop().time() - finish_time >= 5.0):
+                if self._output.empty() and finish_time is not None and (asyncio.get_running_loop().time() - finish_time >= 0.2):
                     result = await self.begin_pin(self._pin_turn)
                     self._pin_started = True
                     if not result.get("success"):
@@ -2025,15 +2035,61 @@ async def telnyx_media_socket(
         if public_mode:
             current_call, _config, current_company = media_transport_context(db, settings, call_id)
             current_call.source_context = {**(current_call.source_context or {}), "public_conversation_id": str(current_call.id)}
+            if current_call.central_conversation_id is None:
+                owner_m = db.scalar(
+                    select(CompanyMembership).where(
+                        CompanyMembership.company_id == current_company.id,
+                        CompanyMembership.role == UserRole.OWNER,
+                        CompanyMembership.is_active.is_(True),
+                    )
+                )
+                fallback_u = db.scalar(
+                    select(User).where(
+                        User.company_id == current_company.id,
+                        User.is_active.is_(True),
+                    )
+                )
+                conv_uid = owner_m.user_id if owner_m else (fallback_u.id if fallback_u else None)
+                if conv_uid is not None:
+                    conv = ConversationService(db).create(
+                        current_company.id,
+                        conv_uid,
+                        f"Voice call {current_call.id}",
+                        current_call.locale or locale,
+                    )
+                    current_call.central_conversation_id = conv.id
+                    if public_conversation is not None:
+                        greeting_text = public_conversation.greeting()
+                        ConversationService(db).add_message(
+                            current_company.id,
+                            conv.id,
+                            AIMessageRole.ASSISTANT,
+                            greeting_text,
+                            provider="openai",
+                            model=settings.voice_realtime_model,
+                        )
             db.commit()
             ledger = VoiceUsageLedger(service.usage_service, voice_pricing_catalog(settings.ai_model_rate_card),
-                company_id=current_company.id, user_id=None, conversation_id=None, plan_code=plan, request_namespace=current_call.id,
+                company_id=current_company.id, user_id=None, conversation_id=current_call.central_conversation_id, plan_code=plan, request_namespace=current_call.id,
                 on_settlement=record_call_cost)
             bridge.use_ledger(ledger)
         await authorize()
 
     async def execute_turn(item_id: str, transcript: str) -> dict:
         nonlocal ledger, principal_id, auth_epoch
+        # Synchronize employee identity if session authenticated via PIN
+        if principal_id is None:
+            c_call = db.get(VoiceCall, call_id)
+            if c_call is not None and c_call.authenticated_user_id is not None:
+                valid_auth = VoiceCallerAuth(db, settings).valid_session(c_call)
+                if valid_auth is not None and valid_auth.caller_type in {"OWNER", "EMPLOYEE"}:
+                    principal_id = valid_auth.principal_id
+                    auth_epoch = utc(valid_auth.authenticated_at).isoformat()
+                    if bridge is not None and hasattr(bridge.adapter, "update_staff_identity"):
+                        u_obj = db.get(User, principal_id)
+                        if u_obj is not None:
+                            bridge.adapter.update_staff_identity(True, u_obj.first_name, str(getattr(u_obj, "role", "Employee")))
+
         if public_conversation is not None and principal_id is None:
             security_check = public_conversation.security_gate(transcript)
             if security_check is not None:
@@ -2073,7 +2129,6 @@ async def telnyx_media_socket(
                     bridge._pin_turn = item_id
                     bridge._pin_started = False
                     bridge._pin_deadline = asyncio.get_running_loop().time() + 120
-                    asyncio.create_task(bridge.interrupt(pause_input=True))
                     if hasattr(bridge.adapter, "update_staff_identity"):
                         bridge.adapter.update_staff_identity(False, None, None)
                 if ledger is not None:
@@ -2186,6 +2241,31 @@ async def telnyx_media_socket(
         current_call.locale = active_locale
         bridge.locale = active_locale
         tenant = TenantContext(current_company.id, current_user.id)
+
+        # Contextual telephony disambiguation for 8kHz acoustic confusion (assurances vs accessoires)
+        from backend.app.voice.direct_answers import disambiguate_telephony_catalog_query
+        active_tenant_mods = set(ModuleEntitlementService(db).get_active_modules(tenant))
+        has_acc = False
+        try:
+            prof = CompanyIntelligenceService(db).get_profile(current_company.id)
+            has_acc = any(
+                "accessoire" in (str(p.get("category") or p.get("product_category") or "")).lower()
+                or "accessory" in (str(p.get("category") or p.get("product_category") or "")).lower()
+                or "accessories" in (str(p.get("category") or p.get("product_category") or "")).lower()
+                for p in (prof.public_products or [])
+                if isinstance(p, dict)
+            )
+        except Exception:
+            pass
+
+        transcript = disambiguate_telephony_catalog_query(
+            transcript,
+            active_modules=active_tenant_mods,
+            company_industry=getattr(current_company, "industry", None),
+            company_services=getattr(config, "services", None),
+            has_catalog_accessories=has_acc,
+        )
+
         current_call.source_context = {
             **resolve_voice_source_context(db, tenant),
             **(current_call.source_context or {}),
@@ -2256,6 +2336,21 @@ async def telnyx_media_socket(
             user_id=current_user.id if principal_id is not None else None,
         )
         if direct_answer:
+            if current_call.central_conversation_id is not None:
+                ConversationService(db).add_message(
+                    current_company.id,
+                    current_call.central_conversation_id,
+                    AIMessageRole.USER,
+                    transcript,
+                )
+                ConversationService(db).add_message(
+                    current_company.id,
+                    current_call.central_conversation_id,
+                    AIMessageRole.ASSISTANT,
+                    direct_answer,
+                    provider="central_ai",
+                    model=settings.voice_realtime_model,
+                )
             return {"status": "success", "answer": direct_answer}
 
         if is_hangup_request(transcript):
@@ -2322,7 +2417,34 @@ async def telnyx_media_socket(
         except Exception as exc:
             if principal_id is None and public_conversation is not None:
                 logger.exception("Central AI execute error for public voice call, falling back: %s", exc)
-                return public_conversation.public_answer(transcript)
+                fallback_res = public_conversation.public_answer(transcript)
+                if current_call.central_conversation_id is not None and isinstance(fallback_res, dict) and fallback_res.get("answer"):
+                    conv_service = ConversationService(db)
+                    recent_msgs = conv_service.messages(
+                        current_company.id,
+                        current_call.central_conversation_id,
+                        limit=3,
+                    )
+                    user_already_persisted = any(
+                        m.role == AIMessageRole.USER and (m.content or "").strip() == transcript.strip()
+                        for m in recent_msgs
+                    )
+                    if not user_already_persisted:
+                        conv_service.add_message(
+                            current_company.id,
+                            current_call.central_conversation_id,
+                            AIMessageRole.USER,
+                            transcript,
+                        )
+                    conv_service.add_message(
+                        current_company.id,
+                        current_call.central_conversation_id,
+                        AIMessageRole.ASSISTANT,
+                        str(fallback_res["answer"]),
+                        provider="central_ai",
+                        model=settings.voice_realtime_model,
+                    )
+                return fallback_res
             raise
         finally:
             ledger.add_attempts(item_id, attempts)

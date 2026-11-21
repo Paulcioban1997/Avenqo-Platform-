@@ -29,6 +29,7 @@ class CallPolicy(BaseModel):
     ivr_enabled: bool | None = None
     lifecycle_status: str | None = None
     ivr_greeting: str | None = None
+    allow_phone_reservations: bool | None = False
 
 
 def utc(value):

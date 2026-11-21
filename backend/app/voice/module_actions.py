@@ -108,7 +108,7 @@ VOICE_ACTION_TOOLS: dict[str, dict[str, frozenset[str]]] = {
             "get_prediction_summary",
         }),
         "read_products": frozenset({"get_top_products", "get_product_detail"}),
-        "reserve_product": frozenset(),
+        "reserve_product": frozenset({"reserve_product"}),
         "read_inventory": frozenset({"get_inventory_summary"}),
     },
     "accounting": {
