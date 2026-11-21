@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -294,7 +294,7 @@ def test_public_voice_caller_tool_authorization_no_user_error(db_session: Sessio
     tenant = TenantContext(company_id=company.id, user_id=None)
     public_ctx = ToolExecutionContext(
         tenant=tenant,
-        user_id=None,
+        user_id=cast(Any, None),
         permissions=PUBLIC_VOICE_CALLER_PERMISSIONS,
         request_id="req-public-call-1",
         voice_path=True,
@@ -340,7 +340,7 @@ async def test_product_detail_matches_accessories_category(db_session: Session):
     tenant = TenantContext(company_id=company.id, user_id=None)
     ctx = ToolExecutionContext(
         tenant=tenant,
-        user_id=None,
+        user_id=cast(Any, None),
         permissions=PUBLIC_VOICE_CALLER_PERMISSIONS,
         request_id="req-acc-lookup-1",
         voice_path=True,
