@@ -1187,8 +1187,6 @@ class TelnyxMediaBridge:
                     else "I couldn't retrieve that information right now. "
                          "Can I help with another question?"
                 )}
-            if self.interruption_manager is not None and self.interruption_manager.is_turn_cancelled(str(item_id)):
-                return
             if result.get("auth_required"):
                 if self.begin_pin is None or self.poll_pin is None:
                     raise PermissionError("Keypad authentication unavailable")
@@ -1196,7 +1194,14 @@ class TelnyxMediaBridge:
                 epoch = self.epoch
                 self._pin_turn = item_id
                 self._pin_started = False
-                self._pin_deadline = asyncio.get_running_loop().time() + 30
+                self._pin_deadline = asyncio.get_running_loop().time() + 120
+                self._pin_mark = "pin-prompt:" + hashlib.sha256(item_id.encode()).hexdigest()[:24]
+                try:
+                    self._output.put_nowait((self.epoch, {"event": "mark", "mark": {"name": self._pin_mark}}))
+                except asyncio.QueueFull:
+                    self.dropped_outbound_frames += 1
+            elif self.interruption_manager is not None and self.interruption_manager.is_turn_cancelled(str(item_id)):
+                return
             elif self.input_paused:
                 return
             if result.get("status") == "success" and isinstance(result.get("answer"), str) and result["answer"].strip():
@@ -1618,6 +1623,12 @@ class TelnyxMediaBridge:
             if self._pin_deadline is not None and asyncio.get_running_loop().time() >= self._pin_deadline:
                 await self._finish_pin("refused")
                 continue
+            if not self._pin_started and self.begin_pin is not None:
+                if self._output.empty() and (self._pin_deadline is not None and asyncio.get_running_loop().time() >= (self._pin_deadline - 118)):
+                    result = await self.begin_pin(self._pin_turn)
+                    self._pin_started = True
+                    if not result.get("success"):
+                        await self._finish_pin("refused")
             if self._pin_started and self.poll_pin is not None:
                 status = await self.poll_pin()
                 if status in {"authenticated", "refused"}:
@@ -2037,7 +2048,11 @@ async def telnyx_media_socket(
                 principal_id = None
                 auth_epoch = None
                 if bridge is not None:
-                    asyncio.create_task(bridge.interrupt(pause_input=False))
+                    bridge.input_paused = True
+                    bridge._pin_turn = item_id
+                    bridge._pin_started = False
+                    bridge._pin_deadline = asyncio.get_running_loop().time() + 120
+                    asyncio.create_task(bridge.interrupt(pause_input=True))
                     if hasattr(bridge.adapter, "update_staff_identity"):
                         bridge.adapter.update_staff_identity(False, None, None)
                 if ledger is not None:
@@ -2060,6 +2075,23 @@ async def telnyx_media_socket(
             current_call, current_config, current_company = media_transport_context(
                 db, settings, call_id, allow_statuses=_SESSION_MEDIA_STATUSES,
             )
+            is_handover_pending = bool((current_call.source_context or {}).get("handover_revoked"))
+            if is_handover_pending:
+                if bridge is not None:
+                    bridge.input_paused = True
+                    bridge._pin_turn = item_id
+                    bridge._pin_started = False
+                    bridge._pin_deadline = asyncio.get_running_loop().time() + 120
+                call_loc = resolve_locale(current_call.locale if current_call and current_call.locale else locale)
+                if call_loc.startswith("fr"):
+                    handover_answer = "Veuillez saisir votre code NIP sur le clavier de votre téléphone pour vous identifier."
+                elif call_loc.startswith("es"):
+                    handover_answer = "Por favor, ingrese su código PIN en el teclado de su teléfono para identificarse."
+                elif call_loc.startswith("ro"):
+                    handover_answer = "Vă rugăm să introduceți codul PIN pe tastatura telefonului pentru a vă autentifica."
+                else:
+                    handover_answer = "Please enter your PIN on your phone keypad to authenticate."
+                return {"status": "success", "answer": handover_answer, "auth_required": True}
             owner_membership = db.scalar(
                 select(CompanyMembership)
                 .where(
@@ -2264,7 +2296,7 @@ async def telnyx_media_socket(
                 attempt_sink=attempts,
             )
             ledger.attribute(item_id, result.selected_agent, result.selected_agent)
-            hangup_detected = is_hangup_request(transcript) or bool(result.answer and is_hangup_request(result.answer))
+            hangup_detected = is_hangup_request(transcript)
             return {"status": result.status, "answer": result.answer, "hangup": hangup_detected}
         except Exception as exc:
             if principal_id is None and public_conversation is not None:

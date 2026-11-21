@@ -131,6 +131,9 @@ class CoachingAdviceArgs(ToolArguments):
     )
 
 
+_COACH_AGENT_IDS = frozenset({"voice", "coach", "central", "crm", "retail", "accounting", "cross_agent"})
+
+
 class GetMyDailyBriefingTool(AITool):
     name = "get_my_daily_briefing"
     description = (
@@ -142,7 +145,7 @@ class GetMyDailyBriefingTool(AITool):
     required_permissions = ("ai:use",)
     read_only = True
     mutates = False
-    agent_ids = frozenset({"voice", "coach", "central"})
+    agent_ids = _COACH_AGENT_IDS
 
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -173,7 +176,7 @@ class GetMyTasksTool(AITool):
     required_permissions = ("ai:use",)
     read_only = True
     mutates = False
-    agent_ids = frozenset({"voice", "coach", "central"})
+    agent_ids = _COACH_AGENT_IDS
 
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -205,7 +208,7 @@ class MarkMyTaskCompletedTool(AITool):
     mutation_capabilities = frozenset({"workspace:tasks:write", "tasks:own"})
     confirmation_policy = "explicit_user_confirmation"
     confirmation_field = "confirmed"
-    agent_ids = frozenset({"voice", "coach", "central"})
+    agent_ids = _COACH_AGENT_IDS
 
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -269,7 +272,7 @@ class GetCoachingAdviceTool(AITool):
     required_permissions = ("ai:use",)
     read_only = True
     mutates = False
-    agent_ids = frozenset({"voice", "coach", "central"})
+    agent_ids = _COACH_AGENT_IDS
 
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -300,7 +303,7 @@ class OptimizeTaskExecutionTool(AITool):
     required_permissions = ("ai:use",)
     read_only = True
     mutates = False
-    agent_ids = frozenset({"voice", "coach", "central"})
+    agent_ids = _COACH_AGENT_IDS
 
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -339,7 +342,7 @@ class GetExecutiveBriefingTool(AITool):
     required_permissions = ("ai:use",)
     read_only = True
     mutates = False
-    agent_ids = frozenset({"voice", "coach", "central"})
+    agent_ids = _COACH_AGENT_IDS
 
     def __init__(self, session: Session) -> None:
         self._session = session

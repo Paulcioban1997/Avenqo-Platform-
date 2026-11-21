@@ -38,6 +38,7 @@ class CentralAIContext:
     authorized_sources: dict[str, object] = field(default_factory=dict)
     plan_options: tuple[dict[str, object], ...] = ()
     company_profile: dict[str, object] = field(default_factory=dict)
+    caller_identity: dict[str, str] | None = None
 
     def as_capabilities(self) -> dict[str, object]:
         return {
@@ -87,6 +88,7 @@ class CentralAIContext:
                 "plan_options": self.plan_options,
                 "upgrade_route": "/billing",
                 "paid_changes_require_confirmation": True,
+                "caller_identity": self.caller_identity,
             },
             separators=(",", ":"),
         ).replace("<", chr(92) + "u003c")
@@ -127,13 +129,40 @@ class CentralAIContextBuilder:
         )
         premium = tuple(module.key for module in summary.modules if module.premium)
         company_profile = {}
+        caller_identity = None
         session = getattr(self._entitlements, "_session", None)
         if session is not None:
+            from sqlalchemy import select
+            from backend.app.models.user import User
+            from backend.app.models.company_membership import CompanyMembership
             from backend.app.services.company_intelligence_service import CompanyIntelligenceService
             from backend.app.voice.caller_scope import is_public_voice_caller
             company_profile = CompanyIntelligenceService(session).get_profile(tenant.company_id).as_context(public=is_public_voice_caller(permissions) or "data:read" not in permissions)
+            if user_id is not None and not is_public_voice_caller(permissions):
+                actor = session.get(User, user_id)
+                if actor is not None and actor.company_id == tenant.company_id:
+                    membership = session.scalar(
+                        select(CompanyMembership).where(
+                            CompanyMembership.user_id == user_id,
+                            CompanyMembership.company_id == tenant.company_id,
+                            CompanyMembership.is_active.is_(True),
+                        )
+                    )
+                    role_val = (
+                        membership.role.value
+                        if membership and hasattr(membership.role, "value")
+                        else str(getattr(membership, "role", "") or getattr(actor, "role", "") or "member")
+                    )
+                    caller_identity = {
+                        "user_id": str(user_id),
+                        "full_name": f"{actor.first_name or ''} {actor.last_name or ''}".strip() or actor.first_name or "Collaborateur",
+                        "first_name": actor.first_name or "",
+                        "role": role_val,
+                        "job_title": actor.job_title or "",
+                    }
         return CentralAIContext(
             company_profile=company_profile,
+            caller_identity=caller_identity,
             tenant=tenant,
             user_id=user_id,
             permissions=permissions,

@@ -154,7 +154,6 @@ class CentralAIService:
             if defn.category in {"platform", "platform_support"} or defn.slug in {
                 "tenant_capabilities",
                 "platform_support",
-                "voice",
             }:
                 continue
             for tool_name in defn.allowed_tool_names:
@@ -171,6 +170,13 @@ class CentralAIService:
                     continue
                 names.add(tool_name)
                 owners[tool_name] = defn.agent_id
+
+        if not public_caller:
+            from backend.app.voice.module_actions import VOICE_NATIVE_TOOLS
+            for native_tool in VOICE_NATIVE_TOOLS:
+                names.add(native_tool)
+                if native_tool not in owners:
+                    owners[native_tool] = "voice"
         return frozenset(names), owners
 
     @bounded_ai_request

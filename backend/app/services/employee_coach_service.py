@@ -496,12 +496,33 @@ class EmployeeCoachService:
             else f"Performance coaching tips for your role: {job_title or role_key.capitalize()}"
         )
 
+        role_label = job_title or (
+            "Propriétaire" if role_key == "owner" else (
+                "Gestionnaire" if role_key == "manager" else (
+                    "Vendeur" if role_key in ("sales", "retail") else (
+                        "Réceptionniste" if role_key == "receptionist" else (
+                            "Technicien" if role_key == "technician" else "Collaborateur"
+                        )
+                    )
+                )
+            )
+        ) if loc.startswith("fr") else (job_title or role_key.capitalize())
+
+        spoken = (
+            f"Pour améliorer votre efficacité aujourd'hui en tant que {role_label} : "
+            f"{role_tips[0]} De plus, {role_tips[1].lower()} Enfin, {role_tips[2].lower()}"
+            if loc.startswith("fr")
+            else f"To improve your efficiency today as {role_label}: "
+            f"{role_tips[0]} Next, {role_tips[1]} Finally, {role_tips[2]}"
+        )
+
         return {
             "status": "success",
             "title": title,
             "role": role_key,
             "tips": role_tips,
             "actionable_steps": [f"1. {role_tips[0]}", f"2. {role_tips[1]}", f"3. {role_tips[2]}"],
+            "spoken_summary": spoken,
             "topic": topic or "general_performance",
         }
 
