@@ -351,11 +351,11 @@ class GetProductDetailTool(RetailAITool):
         for r in records:
             p = _product_to_dict(r)
             cid = r.connection_id
-            p["store_name"] = conn_map.get(cid, str(p.get("provider") or "Commerce Store"))
+            p["store_name"] = (conn_map.get(cid) if cid is not None else None) or str(p.get("provider") or "Commerce Store")
             freshness_status, is_live_stock = classify_product_freshness(
                 r, conns_by_id, now=datetime.now(timezone.utc)
             )
-            raw_inv = p.get("inventory_level")
+            raw_inv = _safe_float(p.get("inventory_level"))
             p["freshness_status"] = freshness_status
             p["is_live_stock"] = is_live_stock
             if is_live_stock:
@@ -601,7 +601,8 @@ class GetInventorySummaryTool(RetailAITool):
 
         breakdown_by_source: dict[str, dict[str, int]] = {}
         for r in records:
-            s_name = conn_map.get(r.connection_id, r.provider or "Commerce Store")
+            cid = r.connection_id
+            s_name = (conn_map.get(cid) if cid is not None else None) or str(r.provider or "Commerce Store")
             entry = breakdown_by_source.setdefault(s_name, {"total": 0, "out_of_stock": 0, "low_stock": 0})
             entry["total"] += 1
             p = _product_to_dict(r)
