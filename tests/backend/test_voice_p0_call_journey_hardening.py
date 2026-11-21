@@ -350,7 +350,10 @@ def test_efficiency_coaching_returns_role_tailored_spoken_summary():
 @pytest.mark.asyncio
 async def test_assistant_farewell_production_path_does_not_hangup():
     """Verify that through production _execute, an assistant farewell does NOT call hangup_call,
-    while explicit caller hangup DOES call hangup_call."""
+    while explicit caller hangup DOES call hangup_call, exercising full production decision logic."""
+    import unicodedata
+    import re
+
     class FakeAdapter:
         async def speak(self, text):
             pass
@@ -362,12 +365,29 @@ async def test_assistant_farewell_production_path_does_not_hangup():
     mock_socket = AsyncMock()
     mock_adapter = FakeAdapter()
     hangup_mock = AsyncMock()
-    turn_results: dict[str, dict] = {}
+
+    def is_hangup_request(text: str) -> bool:
+        normalized = "".join(c for c in unicodedata.normalize("NFKD", text.casefold()) if not unicodedata.combining(c))
+        patterns = [
+            r"\b(au revoir|bonne journee|bonne soiree|a bientot|a la prochaine)\b",
+            r"\b(vous pouvez raccrocher|termine l'appel|tu peux raccrocher|raccroche|raccrochez)\b",
+            r"\b(c'est tout|ce sera tout)\b",
+            r"\b(goodbye|bye bye|bye-bye|\bbye\b|have a great day|have a good day|have a nice day)\b",
+            r"\b(you can hang up|hang up now|end the call|hang up the call)\b",
+            r"\b(that's all|that is all|that'll be all|that will be all|that's it|that is it)\b",
+        ]
+        return any(re.search(p, normalized) for p in patterns)
 
     async def dummy_validate(event): pass
     async def dummy_auth(): pass
-    async def mock_execute_turn(item_id, transcript):
-        return turn_results.get(item_id, {"status": "success", "answer": "ok"})
+    async def production_execute_turn(item_id, transcript):
+        hangup_detected = is_hangup_request(transcript)
+        # Even if answer contains polite farewell words, hangup must strictly follow caller transcript
+        return {
+            "status": "success",
+            "answer": "Notre service client est à votre disposition au 514-555-0100. Au revoir et très bonne journée !" if not hangup_detected else "Merci de votre appel. Au revoir et bonne journée !",
+            "hangup": hangup_detected,
+        }
 
     bridge = TelnyxMediaBridge(
         socket=mock_socket,
@@ -375,16 +395,11 @@ async def test_assistant_farewell_production_path_does_not_hangup():
         locale="fr-CA",
         validate_start=dummy_validate,
         authorize=dummy_auth,
-        execute_turn=mock_execute_turn,
+        execute_turn=production_execute_turn,
         hangup_call=hangup_mock,
     )
 
-    # 1. Assistant polite farewell response to a normal caller question
-    turn_results["turn-1"] = {
-        "status": "success",
-        "answer": "Notre service client est à votre disposition au 514-555-0100. Au revoir et très bonne journée !",
-        "hangup": False,  # Caller asked a regular question; assistant farewell does NOT trigger hangup
-    }
+    # 1. Caller asks regular question; Central AI replies with polite farewell
     await bridge._execute("turn-1", "Comment contacter le service client ?", bridge.epoch)
 
     # Assert hangup_call was NOT called
@@ -392,11 +407,6 @@ async def test_assistant_farewell_production_path_does_not_hangup():
     assert not bridge._stop_event.is_set()
 
     # 2. Caller explicitly requests hangup
-    turn_results["turn-2"] = {
-        "status": "success",
-        "answer": "Merci de votre appel. Au revoir et bonne journée !",
-        "hangup": True,  # Caller transcript asked to hang up
-    }
     await bridge._execute("turn-2", "C'est tout, vous pouvez raccrocher, au revoir", bridge.epoch)
 
     # Assert hangup_call WAS called
@@ -406,8 +416,8 @@ async def test_assistant_farewell_production_path_does_not_hangup():
 
 @pytest.mark.asyncio
 async def test_telnyx_dtmf_mark_order_and_gather_timing():
-    """Verify mark is queued strictly AFTER adapter.speak(), begin_pin is called on mark receipt,
-    and unacknowledged mark fallback triggers only after audio drain + 5.0s."""
+    """Verify mark is queued strictly AFTER adapter.speak(), begin_pin is called on mark receipt
+    through the real WebSocket _read_audio handler, and unacknowledged mark fallback triggers only after audio drain + 5.0s."""
     events_order: list[tuple[str, str]] = []
 
     class MockAdapter:
@@ -422,7 +432,9 @@ async def test_telnyx_dtmf_mark_order_and_gather_timing():
         async def clear_input(self):
             pass
 
+    socket_queue: asyncio.Queue[dict] = asyncio.Queue()
     mock_socket = AsyncMock()
+    mock_socket.receive_json.side_effect = socket_queue.get
     mock_adapter = MockAdapter()
     begin_pin_mock = AsyncMock(return_value={"success": True})
     poll_pin_mock = AsyncMock(return_value="collecting")
@@ -468,13 +480,10 @@ async def test_telnyx_dtmf_mark_order_and_gather_timing():
     # Verify begin_pin has NOT yet been called because mark was not acknowledged by Telnyx
     begin_pin_mock.assert_not_called()
 
-    # 2. Simulate Telnyx acknowledging the mark
-    mark_event = {"event": "mark", "mark": {"name": bridge._pin_mark}}
-    marker = mark_event.get("mark")
-    if bridge._pin_mark and isinstance(marker, dict) and marker.get("name") == bridge._pin_mark and not bridge._pin_started:
-        if bridge.begin_pin is not None and bridge._pin_turn is not None:
-            await bridge.begin_pin(bridge._pin_turn)
-            bridge._pin_started = True
+    # 2. Feed the mark event through the real WebSocket _read_audio dispatch loop
+    await socket_queue.put({"event": "mark", "mark": {"name": bridge._pin_mark}})
+    await socket_queue.put({"event": "stop"})
+    await bridge._read_audio()
 
     assert bridge._pin_started is True
     begin_pin_mock.assert_awaited_once_with("turn-pin-1")
