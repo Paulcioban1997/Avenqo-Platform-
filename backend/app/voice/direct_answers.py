@@ -11,7 +11,10 @@ import unicodedata
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+from backend.app.models import Company, CompanyMembership, User, VoiceBusinessConfig
 
 
 def _words(text: str) -> set[str]:
@@ -367,8 +370,6 @@ def is_language_inquiry(text: str) -> str | None:
 
 def is_language_authorized_for_company(db: Session, company_id: UUID, lang_code: str) -> bool:
     """Check if a language code (e.g. 'es', 'fr', 'en', 'ro') is authorized for the given tenant."""
-    from sqlalchemy import select
-    from backend.app.models import Company, VoiceBusinessConfig
     from backend.app.services.tenant_locale_service import get_stored_profile, authorized_locales
 
     lang_prefix = lang_code.casefold().split("-")[0]
@@ -417,9 +418,6 @@ def resolve_direct_voice_answer(
     # 1. Tenant-authorized language detection (Spanish, English, French, Romanian)
     lang_inquiry = is_language_inquiry(transcript)
     if lang_inquiry:
-        from sqlalchemy import select
-        from backend.app.models import Company, VoiceBusinessConfig
-
         cfg = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_id))
         comp = db.scalar(select(Company).where(Company.id == company_id)) if cfg is None else None
 
@@ -519,10 +517,6 @@ def resolve_direct_voice_answer(
                 return "Le coaching de performance et vos priorités professionnelles sont réservés aux employés authentifiés par NIP. Veuillez saisir votre code NIP sur le clavier de votre téléphone pour vous identifier."
             return "Performance coaching and internal shift priorities are reserved for employees authenticated with a PIN. Please enter your PIN on your phone keypad to authenticate."
 
-        from sqlalchemy import select
-        from backend.app.models.user import User
-        from backend.app.models.company import Company
-        from backend.app.models.company_membership import CompanyMembership
         from backend.app.services.employee_coach_service import EmployeeCoachService
         from backend.app.services.module_entitlement_service import ModuleEntitlementService
         from shared.ai_engine.contracts import TenantContext
