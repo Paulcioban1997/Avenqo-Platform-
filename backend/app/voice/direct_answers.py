@@ -44,18 +44,35 @@ def is_identity_inquiry(text: str) -> bool:
 def is_coach_efficiency_question(text: str) -> bool:
     norm = unicodedata.normalize("NFKD", text.casefold())
     norm = "".join(c for c in norm if not unicodedata.combining(c))
+    words = _words(text)
+
+    # 1. Non-coaching business operations (CRM, appointments, reservations, orders, catalog, billing, hiring)
+    # MUST NOT route to coaching even if phrased as "comment peux-tu m'aider à..."
+    if words & {
+        "rendez", "vous", "rdv", "reservation", "reserver", "booking", "appointment", "cita", "programare",
+        "commande", "commandes", "order", "orders", "panier", "cart", "comanda", "pedido",
+        "catalogue", "catalog", "catalogs", "catalogues", "prix", "price", "pret", "precio",
+        "facture", "factures", "invoice", "invoices", "paiement", "payment",
+        "recrutement", "embauche", "candidature", "cv", "job", "hiring", "fournisseur", "fournisseurs", "supplier",
+    }:
+        return False
+
+    # 2. Strict regex targeting efficiency, productivity, and professional guidance
     phrase_match = bool(re.search(
         r"\b(ameliorer\s+(?:mon\s+)?efficacite|ameliorer\s+(?:mes\s+)?performances?|ameliorer\s+(?:ma\s+)?productivite|"
-        r"conseils?\s+(?:pour\s+)?aujourd['’\s]hui|comment\s+(?:peux[- ]tu\s+m['’]aider|mieux\s+travailler|etre\s+plus\s+efficace)|"
+        r"conseils?\s+(?:pour\s+)?(?:aujourd['’\s]hui|la\s+journee|mon\s+travail)|"
+        r"comment\s+(?:peux[- ]tu\s+m['’]aider\s+a\s+(?:ameliorer|optimiser|etre\s+plus\s+efficace|mieux\s+travailler)|mieux\s+travailler|etre\s+plus\s+efficace)|"
         r"improve\s+(?:my\s+)?efficiency|improve\s+(?:my\s+)?performance|improve\s+(?:my\s+)?productivity|"
+        r"how\s+can\s+you\s+help\s+me\s+(?:improve|be\s+more\s+efficient|work\s+better)|"
         r"coaching\s+du\s+jour|conseil\s+du\s+jour)\b",
         norm,
     ))
     if phrase_match:
         return True
-    words = _words(text)
+
+    # 3. Fallback: requires BOTH an explicit efficiency topic and guidance action
     efficiency = bool(words & {"efficacite", "productivite", "performance", "performances", "efficiency", "productivity"})
-    guidance = bool(words & {"ameliorer", "aide", "aider", "conseil", "conseils", "comment", "improve", "help", "advice"})
+    guidance = bool(words & {"ameliorer", "optimiser", "conseil", "conseils", "mieux", "improve", "advice"})
     return efficiency and guidance
 
 
@@ -584,31 +601,31 @@ def resolve_direct_voice_answer(
                     parts.append(f"You have {len(tasks)} open task(s). The main ones are: {', '.join(task_titles)}.")
 
         # Part D: Efficiency Coaching Advice
-        if has_efficiency and not parts:
+        if has_efficiency:
             advice = coach.get_coaching_advice(actor, locale=locale)
             summary_advice = advice.get("spoken_summary")
-            if summary_advice:
+            if summary_advice and summary_advice not in parts:
                 parts.append(str(summary_advice))
 
         # Part E: Task Optimization
-        if has_optimize and not parts:
+        if has_optimize and not has_efficiency:
             opt = coach.optimize_task_execution(actor, task_description=transcript, locale=locale)
             summary_opt = opt.get("spoken_summary")
-            if summary_opt:
+            if summary_opt and summary_opt not in parts:
                 parts.append(str(summary_opt))
 
         # Part F: Daily Briefing
-        if has_briefing and not parts:
+        if has_briefing and not has_tasks:
             briefing = coach.get_daily_briefing(actor, locale=locale)
             summary_brief = briefing.get("spoken_summary")
-            if summary_brief:
+            if summary_brief and summary_brief not in parts:
                 parts.append(str(summary_brief))
 
         # Part G: Executive Strategic Point
-        if has_exec and not parts:
+        if has_exec:
             exec_briefing = coach.get_executive_briefing(actor, locale=locale)
             summary_exec = exec_briefing.get("spoken_summary")
-            if summary_exec:
+            if summary_exec and summary_exec not in parts:
                 parts.append(str(summary_exec))
 
         if parts:

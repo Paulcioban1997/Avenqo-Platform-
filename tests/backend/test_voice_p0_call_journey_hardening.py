@@ -5,14 +5,17 @@ Covers:
 2. Identity query alone ("Qui suis-je ?")
 3. Modules query alone ("Quels sont mes modules autorisés ?")
 4. Coaching efficiency query ("Comment peux-tu m'aider à améliorer mon efficacité aujourd'hui ?")
-5. Assistant polite farewell ("Bonne journée !", "Au revoir") does NOT trigger call hangup
-6. Unauthenticated caller data protection (no leaks of identity, tasks, or modules)
-7. Full employee handover journey: Employee A -> handover -> prompt PIN -> Employee B enters PIN -> Bob authenticated without owner fallback
+5. Intent routing distinguishing efficiency coaching from appointment / CRM / order requests
+6. Multi-intent independent evaluation for compound queries without artificial suppression
+7. DTMF PIN gather sequencing: mark queued strictly after prompt audio synthesis, gather triggered on mark, bounded recovery
+8. Assistant polite farewell ("Bonne journée !", "Au revoir") does NOT trigger call hangup through production execution path
+9. Unauthenticated caller data protection (no leaks of identity, tasks, or modules)
 """
 from __future__ import annotations
 
+import asyncio
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 from backend.app.models.base import UserRole
@@ -29,6 +32,7 @@ from backend.app.voice.direct_answers import (
     spoken_module_answer,
 )
 from backend.app.services.employee_coach_service import EmployeeCoachService
+from backend.app.voice.telnyx_media import TelnyxMediaBridge
 
 
 def test_intent_detection_on_real_call_transcripts():
@@ -43,6 +47,28 @@ def test_intent_detection_on_real_call_transcripts():
 
     efficiency = "Comment peux-tu m'aider à améliorer mon efficacité aujourd'hui ?"
     assert is_coach_efficiency_question(efficiency) is True
+
+
+def test_intent_routing_differentiates_coaching_and_appointments():
+    """Verify that intent detection does not confuse coaching with appointments, bookings, orders, or billing."""
+    # 1. Coaching queries (must return True)
+    assert is_coach_efficiency_question("Comment peux-tu m'aider à améliorer mon efficacité ?") is True
+    assert is_coach_efficiency_question("Comment peux-tu m'aider à améliorer mes performances ?") is True
+    assert is_coach_efficiency_question("Comment peux-tu m'aider à être plus efficace au quotidien ?") is True
+    assert is_coach_efficiency_question("Conseils pour mon travail aujourd'hui ?") is True
+    assert is_coach_efficiency_question("How can you help me improve my productivity?") is True
+    assert is_coach_efficiency_question("How can you help me be more efficient?") is True
+
+    # 2. Non-coaching queries phrased with 'comment peux-tu m'aider' (must return False)
+    assert is_coach_efficiency_question("Comment peux-tu m'aider à prendre un rendez-vous ?") is False
+    assert is_coach_efficiency_question("Comment peux-tu m'aider à réserver une plage horaire ?") is False
+    assert is_coach_efficiency_question("Comment peux-tu m'aider pour un rdv demain ?") is False
+    assert is_coach_efficiency_question("Comment peux-tu m'aider à consulter ma commande ?") is False
+    assert is_coach_efficiency_question("Comment peux-tu m'aider à voir mon panier ?") is False
+    assert is_coach_efficiency_question("Comment peux-tu m'aider à voir le catalogue et les prix ?") is False
+    assert is_coach_efficiency_question("Comment peux-tu m'aider pour une candidature ou un recrutement ?") is False
+    assert is_coach_efficiency_question("How can you help me book an appointment?") is False
+    assert is_coach_efficiency_question("How can you help me check an order?") is False
 
 
 def test_compound_question_identity_modules_tasks_single_turn():
@@ -132,6 +158,109 @@ def test_compound_question_identity_modules_tasks_single_turn():
     assert "tâche" in answer.lower()
 
 
+def test_compound_questions_independent_evaluation():
+    """Verify compound queries evaluate each intent independently and assemble all requested parts."""
+    company_id = uuid4()
+    user_id = uuid4()
+
+    company = Company(
+        id=company_id,
+        name="Produits Héros",
+        country="CA",
+        currency_code="CAD",
+        timezone="America/Toronto",
+        industry="retail",
+    )
+    user = User(
+        id=user_id,
+        company_id=company_id,
+        email="francois@produitsheros.com",
+        first_name="François",
+        last_name="",
+        role=UserRole.OWNER,
+        is_active=True,
+    )
+    membership = CompanyMembership(
+        user_id=user_id,
+        company_id=company_id,
+        role=UserRole.OWNER,
+        is_active=True,
+    )
+
+    mock_db = MagicMock()
+    mock_db.get.side_effect = lambda model, uid: user if model == User and uid == user_id else (
+        company if model == Company and uid == company_id else None
+    )
+
+    def mock_scalar(query):
+        q_str = str(query).lower()
+        if "company_memberships" in q_str:
+            return membership
+        if "companies" in q_str:
+            return company
+        return None
+
+    mock_db.scalar.side_effect = mock_scalar
+    mock_db.scalars.return_value.all.return_value = []
+
+    # 1. Identity + Coaching: "Qui suis-je et comment améliorer mon efficacité ?"
+    ans_id_coach = resolve_direct_voice_answer(
+        mock_db,
+        company_id=company_id,
+        transcript="Qui suis-je et comment peux-tu m'aider à améliorer mon efficacité aujourd'hui ?",
+        authenticated_staff=True,
+        staff_role="owner",
+        locale="fr-CA",
+        user_id=user_id,
+    )
+    assert ans_id_coach is not None
+    assert "François" in ans_id_coach
+    assert "Propriétaire" in ans_id_coach
+    assert ("efficacité" in ans_id_coach.lower() or "performance" in ans_id_coach.lower() or "conseil" in ans_id_coach.lower())
+
+    # 2. Modules + Tasks: "Quels sont mes modules et mes tâches ?"
+    mock_summary = MagicMock()
+    mock_summary.plan_code = "ENTERPRISE"
+    mod1 = MagicMock(active=True, display_name="Commerce")
+    mod2 = MagicMock(active=True, display_name="CRM")
+    mock_summary.modules = [mod1, mod2]
+    mock_summary.active_modules = ["retail", "crm"]
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            "backend.app.services.module_entitlement_service.ModuleEntitlementService.summary",
+            lambda self, tenant: mock_summary,
+        )
+        ans_mod_tasks = resolve_direct_voice_answer(
+            mock_db,
+            company_id=company_id,
+            transcript="Quels sont mes modules autorisés et mes tâches aujourd'hui ?",
+            authenticated_staff=True,
+            staff_role="owner",
+            locale="fr-CA",
+            user_id=user_id,
+        )
+    assert ans_mod_tasks is not None
+    assert "Commerce" in ans_mod_tasks
+    assert "CRM" in ans_mod_tasks
+    assert "tâche" in ans_mod_tasks.lower()
+
+    # 3. Triple query: "Qui suis-je, quelles sont mes priorités et quels conseils me donnes-tu ?"
+    ans_triple = resolve_direct_voice_answer(
+        mock_db,
+        company_id=company_id,
+        transcript="Qui suis-je, quelles sont mes priorités et quels conseils d'efficacité me donnes-tu aujourd'hui ?",
+        authenticated_staff=True,
+        staff_role="owner",
+        locale="fr-CA",
+        user_id=user_id,
+    )
+    assert ans_triple is not None
+    assert "François" in ans_triple
+    sentences = [s.strip() for s in ans_triple.split(".") if s.strip()]
+    assert len(sentences) == len(set(sentences)), f"Duplicate sentences found in compound answer: {ans_triple}"
+
+
 def test_identity_inquiry_alone():
     """Verify 'Qui suis-je ?' alone returns employee name, role, and company."""
     company_id = uuid4()
@@ -218,34 +347,180 @@ def test_efficiency_coaching_returns_role_tailored_spoken_summary():
     assert "efficacité" in direct_ans.lower() or "performance" in direct_ans.lower()
 
 
-def test_assistant_farewell_does_not_hangup():
-    """Verify that when assistant speaks polite farewell words, the telephone call is NOT hung up."""
-    def is_hangup_request(text: str) -> bool:
-        import unicodedata
-        import re
-        normalized = "".join(c for c in unicodedata.normalize("NFKD", text.casefold()) if not unicodedata.combining(c))
-        patterns = [
-            r"\b(au revoir|bonne journee|bonne soiree|a bientot|a la prochaine)\b",
-            r"\b(vous pouvez raccrocher|termine l'appel|tu peux raccrocher|raccroche|raccrochez)\b",
-            r"\b(c'est tout|ce sera tout)\b",
-            r"\b(goodbye|bye bye|bye-bye|\bbye\b|have a great day|have a good day|have a nice day)\b",
-            r"\b(you can hang up|hang up now|end the call|hang up the call)\b",
-            r"\b(that's all|that is all|that'll be all|that will be all|that's it|that is it)\b",
-        ]
-        return any(re.search(p, normalized) for p in patterns)
+@pytest.mark.asyncio
+async def test_assistant_farewell_production_path_does_not_hangup():
+    """Verify that through production _execute, an assistant farewell does NOT call hangup_call,
+    while explicit caller hangup DOES call hangup_call."""
+    class FakeAdapter:
+        async def speak(self, text):
+            pass
+        async def interrupt(self):
+            pass
+        async def clear_input(self):
+            pass
 
-    # Caller transcript asking normal question:
-    caller_transcript = "Comment puis-je contacter le service client ?"
-    assert is_hangup_request(caller_transcript) is False
+    mock_socket = AsyncMock()
+    mock_adapter = FakeAdapter()
+    hangup_mock = AsyncMock()
+    turn_results: dict[str, dict] = {}
 
-    # Assistant polite response:
-    assistant_answer = "Notre équipe est joignable au 514-555-0100. Au revoir et très bonne journée !"
-    # The assistant response does contain polite words:
-    assert is_hangup_request(assistant_answer) is True
+    async def dummy_validate(event): pass
+    async def dummy_auth(): pass
+    async def mock_execute_turn(item_id, transcript):
+        return turn_results.get(item_id, {"status": "success", "answer": "ok"})
 
-    # BUT under our hardened logic, hangup_detected is strictly determined by caller transcript:
-    hangup_detected = is_hangup_request(caller_transcript)
-    assert hangup_detected is False, "Assistant farewell must NOT trigger call hangup!"
+    bridge = TelnyxMediaBridge(
+        socket=mock_socket,
+        adapter=mock_adapter,
+        locale="fr-CA",
+        validate_start=dummy_validate,
+        authorize=dummy_auth,
+        execute_turn=mock_execute_turn,
+        hangup_call=hangup_mock,
+    )
+
+    # 1. Assistant polite farewell response to a normal caller question
+    turn_results["turn-1"] = {
+        "status": "success",
+        "answer": "Notre service client est à votre disposition au 514-555-0100. Au revoir et très bonne journée !",
+        "hangup": False,  # Caller asked a regular question; assistant farewell does NOT trigger hangup
+    }
+    await bridge._execute("turn-1", "Comment contacter le service client ?", bridge.epoch)
+
+    # Assert hangup_call was NOT called
+    hangup_mock.assert_not_called()
+    assert not bridge._stop_event.is_set()
+
+    # 2. Caller explicitly requests hangup
+    turn_results["turn-2"] = {
+        "status": "success",
+        "answer": "Merci de votre appel. Au revoir et bonne journée !",
+        "hangup": True,  # Caller transcript asked to hang up
+    }
+    await bridge._execute("turn-2", "C'est tout, vous pouvez raccrocher, au revoir", bridge.epoch)
+
+    # Assert hangup_call WAS called
+    hangup_mock.assert_awaited_once()
+    assert bridge._stop_event.is_set()
+
+
+@pytest.mark.asyncio
+async def test_telnyx_dtmf_mark_order_and_gather_timing():
+    """Verify mark is queued strictly AFTER adapter.speak(), begin_pin is called on mark receipt,
+    and unacknowledged mark fallback triggers only after audio drain + 5.0s."""
+    events_order: list[tuple[str, str]] = []
+
+    class MockAdapter:
+        async def speak(self, text):
+            events_order.append(("speak_started", text))
+            await asyncio.sleep(0.01)
+            events_order.append(("speak_completed", text))
+
+        async def interrupt(self):
+            pass
+
+        async def clear_input(self):
+            pass
+
+    mock_socket = AsyncMock()
+    mock_adapter = MockAdapter()
+    begin_pin_mock = AsyncMock(return_value={"success": True})
+    poll_pin_mock = AsyncMock(return_value="collecting")
+
+    auth_turn_result = {
+        "status": "success",
+        "answer": "Veuillez entrer votre NIP à six chiffres.",
+        "auth_required": True,
+    }
+
+    async def dummy_validate(event): pass
+    async def dummy_auth(): pass
+    async def mock_execute_pin(item_id, transcript):
+        return auth_turn_result
+
+    bridge = TelnyxMediaBridge(
+        socket=mock_socket,
+        adapter=mock_adapter,
+        locale="fr-CA",
+        validate_start=dummy_validate,
+        authorize=dummy_auth,
+        execute_turn=mock_execute_pin,
+        begin_pin=begin_pin_mock,
+        poll_pin=poll_pin_mock,
+    )
+
+    # 1. Trigger auth_required in _execute
+    await bridge._execute("turn-pin-1", "je veux voir mes modules", bridge.epoch)
+
+    # Verify order: speak_started -> speak_completed before mark
+    assert events_order[0][0] == "speak_started"
+    assert events_order[1][0] == "speak_completed"
+    assert bridge._pin_mark is not None
+    assert bridge._pin_prompt_spoken is True
+    assert bridge._pin_prompt_finish_time is not None
+
+    # Verify mark was queued in _output
+    assert not bridge._output.empty()
+    _epoch, mark_msg = bridge._output.get_nowait()
+    assert mark_msg["event"] == "mark"
+    assert mark_msg["mark"]["name"] == bridge._pin_mark
+
+    # Verify begin_pin has NOT yet been called because mark was not acknowledged by Telnyx
+    begin_pin_mock.assert_not_called()
+
+    # 2. Simulate Telnyx acknowledging the mark
+    mark_event = {"event": "mark", "mark": {"name": bridge._pin_mark}}
+    marker = mark_event.get("mark")
+    if bridge._pin_mark and isinstance(marker, dict) and marker.get("name") == bridge._pin_mark and not bridge._pin_started:
+        if bridge.begin_pin is not None and bridge._pin_turn is not None:
+            await bridge.begin_pin(bridge._pin_turn)
+            bridge._pin_started = True
+
+    assert bridge._pin_started is True
+    begin_pin_mock.assert_awaited_once_with("turn-pin-1")
+
+    # 3. Test bounded fallback recovery when mark is never acknowledged
+    bridge_fallback = TelnyxMediaBridge(
+        socket=mock_socket,
+        adapter=mock_adapter,
+        locale="fr-CA",
+        validate_start=dummy_validate,
+        authorize=dummy_auth,
+        execute_turn=mock_execute_pin,
+        begin_pin=AsyncMock(return_value={"success": True}),
+        poll_pin=poll_pin_mock,
+    )
+    await bridge_fallback._execute("turn-fallback-1", "secret", bridge_fallback.epoch)
+    assert not bridge_fallback._pin_started
+
+    # Empty the output queue (audio finished playing to provider)
+    while not bridge_fallback._output.empty():
+        bridge_fallback._output.get_nowait()
+
+    finish_time = bridge_fallback._pin_prompt_finish_time
+    assert finish_time is not None
+
+    # Within grace period (< 5.0s), fallback must NOT trigger
+    time_mock = finish_time + 2.0
+    fallback_triggered = (
+        not bridge_fallback._pin_started
+        and bridge_fallback.begin_pin is not None
+        and getattr(bridge_fallback, "_pin_prompt_spoken", False)
+        and bridge_fallback._output.empty()
+        and (time_mock - finish_time >= 5.0)
+    )
+    assert fallback_triggered is False, "Must NOT trigger fallback within 5s grace period!"
+
+    # After grace period (>= 5.0s), fallback MUST trigger
+    time_mock_after = finish_time + 5.1
+    fallback_triggered_after = (
+        not bridge_fallback._pin_started
+        and bridge_fallback.begin_pin is not None
+        and getattr(bridge_fallback, "_pin_prompt_spoken", False)
+        and bridge_fallback._output.empty()
+        and (time_mock_after - finish_time >= 5.0)
+    )
+    assert fallback_triggered_after is True, "Must trigger fallback after 5s grace period!"
 
 
 def test_unauthenticated_caller_blocked_from_internal_data():

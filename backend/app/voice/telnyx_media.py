@@ -914,6 +914,8 @@ class TelnyxMediaBridge:
         self._pin_mark = None
         self._pin_started = False
         self._pin_deadline = None
+        self._pin_prompt_spoken = False
+        self._pin_prompt_finish_time = None
         # Backpressure & health metrics (no raw audio)
         self.dropped_inbound_frames = 0
         self.dropped_outbound_frames = 0
@@ -1195,11 +1197,8 @@ class TelnyxMediaBridge:
                 self._pin_turn = item_id
                 self._pin_started = False
                 self._pin_deadline = asyncio.get_running_loop().time() + 120
-                self._pin_mark = "pin-prompt:" + hashlib.sha256(item_id.encode()).hexdigest()[:24]
-                try:
-                    self._output.put_nowait((self.epoch, {"event": "mark", "mark": {"name": self._pin_mark}}))
-                except asyncio.QueueFull:
-                    self.dropped_outbound_frames += 1
+                self._pin_prompt_spoken = False
+                self._pin_prompt_finish_time = None
             elif self.interruption_manager is not None and self.interruption_manager.is_turn_cancelled(str(item_id)):
                 return
             elif self.input_paused:
@@ -1226,6 +1225,14 @@ class TelnyxMediaBridge:
                     )
                     self.central_ai_replies_queued += 1
                     logger.info("Voice conversation reply submitted to TTS; count=%s", self.central_ai_replies_queued)
+                    if result.get("auth_required"):
+                        self._pin_mark = "pin-prompt:" + hashlib.sha256(item_id.encode()).hexdigest()[:24]
+                        try:
+                            self._output.put_nowait((self.epoch, {"event": "mark", "mark": {"name": self._pin_mark}}))
+                        except asyncio.QueueFull:
+                            self.dropped_outbound_frames += 1
+                        self._pin_prompt_spoken = True
+                        self._pin_prompt_finish_time = asyncio.get_running_loop().time()
                 except Exception as exc:
                     self.tts_failures += 1
                     self.telemetry["tts_provider_error"] += 1
@@ -1234,19 +1241,25 @@ class TelnyxMediaBridge:
                     requested_audio = False
                     if self._pending_speech and self._pending_speech[-1][0] == item_id:
                         self._pending_speech.pop()
-                    recovery = (
-                        "Je n'arrive pas à lire la réponse pour le moment. Pouvez-vous répéter votre question ?"
-                        if resolve_locale(self.locale).startswith("fr")
-                        else "I can't play the answer right now. Could you repeat your question?"
-                    )
-                    try:
-                        await asyncio.wait_for(self.adapter.speak(recovery), timeout=self.tts_timeout)
-                        self.central_ai_replies_queued += 1
-                        requested_audio = True
-                    except Exception:
-                        logger.warning("Voice recovery TTS also failed")
-                        if turn_ledger is not None:
-                            turn_ledger.settle(item_id)
+                    if result.get("auth_required") and not self._pin_started and self.begin_pin is not None:
+                        result_pin = await self.begin_pin(item_id)
+                        self._pin_started = True
+                        if not result_pin.get("success"):
+                            await self._finish_pin("refused")
+                    else:
+                        recovery = (
+                            "Je n'arrive pas à lire la réponse pour le moment. Pouvez-vous répéter votre question ?"
+                            if resolve_locale(self.locale).startswith("fr")
+                            else "I can't play the answer right now. Could you repeat your question?"
+                        )
+                        try:
+                            await asyncio.wait_for(self.adapter.speak(recovery), timeout=self.tts_timeout)
+                            self.central_ai_replies_queued += 1
+                            requested_audio = True
+                        except Exception:
+                            logger.warning("Voice recovery TTS also failed")
+                            if turn_ledger is not None:
+                                turn_ledger.settle(item_id)
                 if result.get("hangup"):
                     drained = 0
                     while not self._output.empty() and drained < 40:
@@ -1460,6 +1473,8 @@ class TelnyxMediaBridge:
                             self._output.put_nowait((self.epoch, {"event": "mark", "mark": {"name": self._pin_mark}}))
                         except asyncio.QueueFull:
                             self.dropped_outbound_frames += 1
+                        self._pin_prompt_spoken = True
+                        self._pin_prompt_finish_time = asyncio.get_running_loop().time()
                     self.response_id = None
                     self.response_epoch = None
                     self._set_phase("LISTENING")
@@ -1581,7 +1596,12 @@ class TelnyxMediaBridge:
 
     async def _finish_pin(self, status: str) -> None:
         item_id = self._pin_turn or "pin-result"
-        self._pin_turn = None; self._pin_mark = None; self._pin_started = False; self._pin_deadline = None
+        self._pin_turn = None
+        self._pin_mark = None
+        self._pin_started = False
+        self._pin_deadline = None
+        self._pin_prompt_spoken = False
+        self._pin_prompt_finish_time = None
         await self.adapter.clear_input()
         await self.authorize()
         pending_query = None
@@ -1623,8 +1643,9 @@ class TelnyxMediaBridge:
             if self._pin_deadline is not None and asyncio.get_running_loop().time() >= self._pin_deadline:
                 await self._finish_pin("refused")
                 continue
-            if not self._pin_started and self.begin_pin is not None:
-                if self._output.empty() and (self._pin_deadline is not None and asyncio.get_running_loop().time() >= (self._pin_deadline - 118)):
+            if not self._pin_started and self.begin_pin is not None and getattr(self, "_pin_prompt_spoken", False):
+                finish_time = getattr(self, "_pin_prompt_finish_time", None)
+                if self._output.empty() and finish_time is not None and (asyncio.get_running_loop().time() - finish_time >= 5.0):
                     result = await self.begin_pin(self._pin_turn)
                     self._pin_started = True
                     if not result.get("success"):
