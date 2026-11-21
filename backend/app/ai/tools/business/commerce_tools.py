@@ -179,23 +179,59 @@ class GetProductDetailTool(RetailAITool):
                 if source is not None:
                     from backend.app.ai.tools.business.analytics import compute_product_portfolio
                     products = compute_product_portfolio(source)
-                    matches = [p for p in products if
-                               (arguments.product_id is not None and str(p["product_id"]) == str(arguments.product_id)) or
-                               (arguments.product_id is None and arguments.product_name and arguments.product_name.casefold() in str(p.get("name") or "").casefold())]
-                    return ToolResult(success=True, data={"found": bool(matches), "source_type": "dataset",
-                        "products": [{"product_id": p["product_id"], "product_name": p.get("name"),
-                                      "inventory_level": None, "historical_observed_units": p.get("stock_level"),
-                                      "stock_confirmed": False, "stock_status": "unconfirmed_historical_dataset",
-                                      "price_status": "historical_average_price",
-                                      "historical_average_selling_price": p.get("average_selling_price")} for p in matches[:10]],
-                        "stock_is_current": False,
-                        "message": "Données d'observation historiques (dataset). L'inventaire en direct n'étant pas synchronisé, aucune quantité ne peut être confirmée comme stock actuel.",
-                        "data_freshness": DataFreshnessService().for_snapshot(snapshot).as_dict()}, source_refs=(str(source.dataset_id),))
+                    is_all_query = (not arguments.product_name or arguments.product_name.strip().casefold() in ("all", "*", "tous", "tout", "catalogue", "catalog")) and not arguments.product_id and not arguments.sku
+                    matches = []
+                    for p in products:
+                        p_id = str(p.get("product_id") or "")
+                        p_name = str(p.get("name") or "")
+                        p_cat = str(p.get("category") or "")
+                        if arguments.product_id is not None:
+                            if p_id == str(arguments.product_id):
+                                matches.append(p)
+                        elif arguments.product_category:
+                            cat_arg = arguments.product_category.strip().casefold()
+                            if cat_arg in p_cat.casefold() or cat_arg in p_name.casefold():
+                                matches.append(p)
+                        elif is_all_query:
+                            matches.append(p)
+                        elif arguments.product_name:
+                            if arguments.product_name.casefold() in p_name.casefold():
+                                matches.append(p)
+
+                    return ToolResult(
+                        success=True,
+                        data={
+                            "found": bool(matches),
+                            "source_type": "dataset",
+                            "products": [
+                                {
+                                    "product_id": p.get("product_id"),
+                                    "product_name": p.get("name"),
+                                    "category": p.get("category"),
+                                    "inventory_level": None,
+                                    "historical_observed_units": p.get("stock_level"),
+                                    "stock_confirmed": False,
+                                    "stock_status": "unconfirmed_historical_dataset",
+                                    "price_status": "historical_average_price",
+                                    "historical_average_selling_price": p.get("average_selling_price"),
+                                }
+                                for p in matches[:10]
+                            ],
+                            "stock_is_current": False,
+                            "message": (
+                                "Données d'observation historiques (dataset). L'inventaire en direct n'étant pas synchronisé, aucune quantité ne peut être confirmée comme stock actuel."
+                                if bool(matches) else
+                                "Aucun produit correspondant trouvé dans les données historiques importées."
+                            ),
+                            "data_freshness": DataFreshnessService().for_snapshot(snapshot).as_dict(),
+                        },
+                        source_refs=(str(source.dataset_id),),
+                    )
             return ToolResult(
                 success=True,
                 data={
                     "found": False,
-                    "query": arguments.product_name or arguments.product_id or arguments.sku,
+                    "query": arguments.product_name or arguments.product_category or arguments.product_id or arguments.sku,
                     "message": "La source active est un dataset importé. Consultez la vue Ventes pour ces données.",
                 },
             )

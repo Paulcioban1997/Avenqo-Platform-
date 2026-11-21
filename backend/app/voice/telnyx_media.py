@@ -2236,6 +2236,12 @@ async def telnyx_media_socket(
                     model=settings.voice_realtime_model,
                 )
 
+        # Verrouillage linguistique dynamique et anti-dérive par appel
+        active_locale = call_lang_session.process_utterance(transcript)
+        current_call.locale = active_locale
+        bridge.locale = active_locale
+        tenant = TenantContext(current_company.id, current_user.id)
+
         # Contextual telephony disambiguation for 8kHz acoustic confusion (assurances vs accessoires)
         from backend.app.voice.direct_answers import disambiguate_telephony_catalog_query
         active_tenant_mods = set(ModuleEntitlementService(db).get_active_modules(tenant))
@@ -2245,6 +2251,7 @@ async def telnyx_media_socket(
             has_acc = any(
                 "accessoire" in (str(p.get("category") or p.get("product_category") or "")).lower()
                 or "accessory" in (str(p.get("category") or p.get("product_category") or "")).lower()
+                or "accessories" in (str(p.get("category") or p.get("product_category") or "")).lower()
                 for p in (prof.public_products or [])
                 if isinstance(p, dict)
             )
@@ -2259,11 +2266,6 @@ async def telnyx_media_socket(
             has_catalog_accessories=has_acc,
         )
 
-        # Verrouillage linguistique dynamique et anti-dérive par appel
-        active_locale = call_lang_session.process_utterance(transcript)
-        current_call.locale = active_locale
-        bridge.locale = active_locale
-        tenant = TenantContext(current_company.id, current_user.id)
         current_call.source_context = {
             **resolve_voice_source_context(db, tenant),
             **(current_call.source_context or {}),
@@ -2417,13 +2419,24 @@ async def telnyx_media_socket(
                 logger.exception("Central AI execute error for public voice call, falling back: %s", exc)
                 fallback_res = public_conversation.public_answer(transcript)
                 if current_call.central_conversation_id is not None and isinstance(fallback_res, dict) and fallback_res.get("answer"):
-                    ConversationService(db).add_message(
+                    conv_service = ConversationService(db)
+                    recent_msgs = conv_service.messages(
                         current_company.id,
                         current_call.central_conversation_id,
-                        AIMessageRole.USER,
-                        transcript,
+                        limit=3,
                     )
-                    ConversationService(db).add_message(
+                    user_already_persisted = any(
+                        m.role == AIMessageRole.USER and (m.content or "").strip() == transcript.strip()
+                        for m in recent_msgs
+                    )
+                    if not user_already_persisted:
+                        conv_service.add_message(
+                            current_company.id,
+                            current_call.central_conversation_id,
+                            AIMessageRole.USER,
+                            transcript,
+                        )
+                    conv_service.add_message(
                         current_company.id,
                         current_call.central_conversation_id,
                         AIMessageRole.ASSISTANT,

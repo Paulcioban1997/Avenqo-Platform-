@@ -404,6 +404,38 @@ def test_spoken_catalog_answer_category_filtering(db_session: Session):
     assert "aucun accessoire disponible dans notre catalogue" in empty_acc_answer
     assert "Planche Alpine Pro" not in empty_acc_answer
 
+    # 4. English plural 'Accessories' category matching
+    english_catalog = [
+        {"name": "Stealth Helmet", "category": "Accessories", "price": 120.0, "is_live_stock": True},
+        {"name": "Alpine Snowboard", "category": "Snowboards", "price": 450.0, "is_live_stock": True},
+    ]
+    en_answer = spoken_catalog_answer(
+        english_catalog,
+        retail_enabled=True,
+        locale="en-US",
+        currency="USD",
+        query="What accessories do you have?",
+    )
+    assert "Stealth Helmet" in en_answer
+    assert "Alpine Snowboard" not in en_answer
+
+    # 5. Named product inquiry lookup in spoken_catalog_answer
+    named_answer = spoken_catalog_answer(
+        profile.public_products,
+        retail_enabled=True,
+        locale="fr-CA",
+        currency="CAD",
+        query="Combien coûte le Casque de Snowboard Stealth ?",
+    )
+    assert "Casque de Snowboard Stealth" in named_answer
+    assert "120" in named_answer and "$" in named_answer
+
+    # 6. Distinguish generic open catalog inquiries from named product inquiries
+    assert is_open_catalog_question("Quels accessoires avez-vous ?") is True
+    assert is_open_catalog_question("Accessoires") is True
+    assert is_open_catalog_question("Casque Stealth") is False
+    assert is_open_catalog_question("Combien coûte le casque Stealth ?") is False
+
 
 def test_retail_telephony_contextual_disambiguation_assurances_vs_accessoires():
     """Test 4: Contextual disambiguation for 8kHz acoustic confusion (assurances vs accessoires)."""

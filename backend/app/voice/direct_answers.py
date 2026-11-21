@@ -158,7 +158,13 @@ def is_open_catalog_question(text: str) -> bool:
         "stock", "stocks", "inventaire", "inventory", "disponible", "disponibles",
         "disponibilite", "disponibilites", "restant", "restants",
     })
-    return listing or for_sale or prices or stock_inquiry or (products and len(words) <= 6)
+    # Distinguish general catalog price inquiries from specific item inquiries ("combien coûte X")
+    is_general_price = prices and (listing or bool(words & {"catalogue", "catalog", "produits", "products", "articles"}))
+    is_category_mention = (len(words) <= 4) and bool(words & {
+        "accessoire", "accessoires", "accessory", "accessories",
+        "catalogue", "catalog", "planche", "planches", "snowboard", "snowboards",
+    }) and not bool(words & {"combien", "cout", "coute"})
+    return listing or for_sale or stock_inquiry or is_general_price or is_category_mention
 
 
 _EXPLICIT_INSURANCE_TERMS = frozenset({
@@ -383,8 +389,10 @@ def spoken_catalog_answer(
                 r for r in rows
                 if "accessoire" in (str(r.get("category") or r.get("product_category") or "")).lower()
                 or "accessory" in (str(r.get("category") or r.get("product_category") or "")).lower()
+                or "accessories" in (str(r.get("category") or r.get("product_category") or "")).lower()
                 or "accessoire" in (str(r.get("name") or r.get("product_name") or "")).lower()
                 or "accessory" in (str(r.get("name") or r.get("product_name") or "")).lower()
+                or "accessories" in (str(r.get("name") or r.get("product_name") or "")).lower()
                 or any(k in (str(r.get("name") or r.get("product_name") or "")).lower() for k in ("casque", "gant", "masque", "chapeau", "lunette", "fart", "fixation"))
             ]
             if not acc_rows:
@@ -398,6 +406,28 @@ def spoken_catalog_answer(
                     "We do not currently have any accessories available in our catalog. Would you like information on our other items?"
                 )
             rows = acc_rows
+        elif query_norm:
+            query_words = set(re.findall(r"\b\w+\b", query_norm))
+            stopwords = {
+                "quel", "quels", "quelle", "quelles", "combien", "coute", "coutent", "prix",
+                "tarif", "tarifs", "est", "sont", "le", "la", "les", "du", "de", "des",
+                "un", "une", "avez", "vous", "notre", "votre", "catalogue", "produit", "produits",
+                "article", "articles", "what", "which", "how", "much", "is", "are", "the", "a", "an",
+                "in", "for", "do", "you", "have", "price", "catalog", "product", "products",
+                "pour", "dans", "avec", "sur", "vos", "nos",
+            }
+            specific_tokens = {w for w in query_words if w not in stopwords and len(w) >= 3}
+            if specific_tokens:
+                name_matches = []
+                for r in rows:
+                    r_name_norm = unicodedata.normalize("NFKD", str(r.get("name") or r.get("title") or r.get("product_name") or "").casefold())
+                    r_name_norm = "".join(c for c in r_name_norm if not unicodedata.combining(c))
+                    score = sum(1 for tok in specific_tokens if tok in r_name_norm)
+                    if score > 0:
+                        name_matches.append((score, r))
+                if name_matches:
+                    name_matches.sort(key=lambda x: x[0], reverse=True)
+                    rows = [m[1] for m in name_matches]
 
     spoken = []
     for row in rows[:3]:
