@@ -914,6 +914,8 @@ class TelnyxMediaBridge:
         self._pin_mark = None
         self._pin_started = False
         self._pin_deadline = None
+        self._pin_prompt_spoken = False
+        self._pin_prompt_finish_time = None
         # Backpressure & health metrics (no raw audio)
         self.dropped_inbound_frames = 0
         self.dropped_outbound_frames = 0
@@ -1187,8 +1189,6 @@ class TelnyxMediaBridge:
                     else "I couldn't retrieve that information right now. "
                          "Can I help with another question?"
                 )}
-            if self.interruption_manager is not None and self.interruption_manager.is_turn_cancelled(str(item_id)):
-                return
             if result.get("auth_required"):
                 if self.begin_pin is None or self.poll_pin is None:
                     raise PermissionError("Keypad authentication unavailable")
@@ -1196,7 +1196,11 @@ class TelnyxMediaBridge:
                 epoch = self.epoch
                 self._pin_turn = item_id
                 self._pin_started = False
-                self._pin_deadline = asyncio.get_running_loop().time() + 30
+                self._pin_deadline = asyncio.get_running_loop().time() + 120
+                self._pin_prompt_spoken = False
+                self._pin_prompt_finish_time = None
+            elif self.interruption_manager is not None and self.interruption_manager.is_turn_cancelled(str(item_id)):
+                return
             elif self.input_paused:
                 return
             if result.get("status") == "success" and isinstance(result.get("answer"), str) and result["answer"].strip():
@@ -1221,6 +1225,14 @@ class TelnyxMediaBridge:
                     )
                     self.central_ai_replies_queued += 1
                     logger.info("Voice conversation reply submitted to TTS; count=%s", self.central_ai_replies_queued)
+                    if result.get("auth_required"):
+                        self._pin_mark = "pin-prompt:" + hashlib.sha256(item_id.encode()).hexdigest()[:24]
+                        try:
+                            self._output.put_nowait((self.epoch, {"event": "mark", "mark": {"name": self._pin_mark}}))
+                        except asyncio.QueueFull:
+                            self.dropped_outbound_frames += 1
+                        self._pin_prompt_spoken = True
+                        self._pin_prompt_finish_time = asyncio.get_running_loop().time()
                 except Exception as exc:
                     self.tts_failures += 1
                     self.telemetry["tts_provider_error"] += 1
@@ -1229,19 +1241,25 @@ class TelnyxMediaBridge:
                     requested_audio = False
                     if self._pending_speech and self._pending_speech[-1][0] == item_id:
                         self._pending_speech.pop()
-                    recovery = (
-                        "Je n'arrive pas à lire la réponse pour le moment. Pouvez-vous répéter votre question ?"
-                        if resolve_locale(self.locale).startswith("fr")
-                        else "I can't play the answer right now. Could you repeat your question?"
-                    )
-                    try:
-                        await asyncio.wait_for(self.adapter.speak(recovery), timeout=self.tts_timeout)
-                        self.central_ai_replies_queued += 1
-                        requested_audio = True
-                    except Exception:
-                        logger.warning("Voice recovery TTS also failed")
-                        if turn_ledger is not None:
-                            turn_ledger.settle(item_id)
+                    if result.get("auth_required") and not self._pin_started and self.begin_pin is not None:
+                        result_pin = await self.begin_pin(item_id)
+                        self._pin_started = True
+                        if not result_pin.get("success"):
+                            await self._finish_pin("refused")
+                    else:
+                        recovery = (
+                            "Je n'arrive pas à lire la réponse pour le moment. Pouvez-vous répéter votre question ?"
+                            if resolve_locale(self.locale).startswith("fr")
+                            else "I can't play the answer right now. Could you repeat your question?"
+                        )
+                        try:
+                            await asyncio.wait_for(self.adapter.speak(recovery), timeout=self.tts_timeout)
+                            self.central_ai_replies_queued += 1
+                            requested_audio = True
+                        except Exception:
+                            logger.warning("Voice recovery TTS also failed")
+                            if turn_ledger is not None:
+                                turn_ledger.settle(item_id)
                 if result.get("hangup"):
                     drained = 0
                     while not self._output.empty() and drained < 40:
@@ -1455,6 +1473,8 @@ class TelnyxMediaBridge:
                             self._output.put_nowait((self.epoch, {"event": "mark", "mark": {"name": self._pin_mark}}))
                         except asyncio.QueueFull:
                             self.dropped_outbound_frames += 1
+                        self._pin_prompt_spoken = True
+                        self._pin_prompt_finish_time = asyncio.get_running_loop().time()
                     self.response_id = None
                     self.response_epoch = None
                     self._set_phase("LISTENING")
@@ -1576,7 +1596,12 @@ class TelnyxMediaBridge:
 
     async def _finish_pin(self, status: str) -> None:
         item_id = self._pin_turn or "pin-result"
-        self._pin_turn = None; self._pin_mark = None; self._pin_started = False; self._pin_deadline = None
+        self._pin_turn = None
+        self._pin_mark = None
+        self._pin_started = False
+        self._pin_deadline = None
+        self._pin_prompt_spoken = False
+        self._pin_prompt_finish_time = None
         await self.adapter.clear_input()
         await self.authorize()
         pending_query = None
@@ -1618,6 +1643,13 @@ class TelnyxMediaBridge:
             if self._pin_deadline is not None and asyncio.get_running_loop().time() >= self._pin_deadline:
                 await self._finish_pin("refused")
                 continue
+            if not self._pin_started and self.begin_pin is not None and getattr(self, "_pin_prompt_spoken", False):
+                finish_time = getattr(self, "_pin_prompt_finish_time", None)
+                if self._output.empty() and finish_time is not None and (asyncio.get_running_loop().time() - finish_time >= 5.0):
+                    result = await self.begin_pin(self._pin_turn)
+                    self._pin_started = True
+                    if not result.get("success"):
+                        await self._finish_pin("refused")
             if self._pin_started and self.poll_pin is not None:
                 status = await self.poll_pin()
                 if status in {"authenticated", "refused"}:
@@ -2037,7 +2069,11 @@ async def telnyx_media_socket(
                 principal_id = None
                 auth_epoch = None
                 if bridge is not None:
-                    asyncio.create_task(bridge.interrupt(pause_input=False))
+                    bridge.input_paused = True
+                    bridge._pin_turn = item_id
+                    bridge._pin_started = False
+                    bridge._pin_deadline = asyncio.get_running_loop().time() + 120
+                    asyncio.create_task(bridge.interrupt(pause_input=True))
                     if hasattr(bridge.adapter, "update_staff_identity"):
                         bridge.adapter.update_staff_identity(False, None, None)
                 if ledger is not None:
@@ -2060,6 +2096,23 @@ async def telnyx_media_socket(
             current_call, current_config, current_company = media_transport_context(
                 db, settings, call_id, allow_statuses=_SESSION_MEDIA_STATUSES,
             )
+            is_handover_pending = bool((current_call.source_context or {}).get("handover_revoked"))
+            if is_handover_pending:
+                if bridge is not None:
+                    bridge.input_paused = True
+                    bridge._pin_turn = item_id
+                    bridge._pin_started = False
+                    bridge._pin_deadline = asyncio.get_running_loop().time() + 120
+                call_loc = resolve_locale(current_call.locale if current_call and current_call.locale else locale)
+                if call_loc.startswith("fr"):
+                    handover_answer = "Veuillez saisir votre code NIP sur le clavier de votre téléphone pour vous identifier."
+                elif call_loc.startswith("es"):
+                    handover_answer = "Por favor, ingrese su código PIN en el teclado de su teléfono para identificarse."
+                elif call_loc.startswith("ro"):
+                    handover_answer = "Vă rugăm să introduceți codul PIN pe tastatura telefonului pentru a vă autentifica."
+                else:
+                    handover_answer = "Please enter your PIN on your phone keypad to authenticate."
+                return {"status": "success", "answer": handover_answer, "auth_required": True}
             owner_membership = db.scalar(
                 select(CompanyMembership)
                 .where(
@@ -2264,7 +2317,7 @@ async def telnyx_media_socket(
                 attempt_sink=attempts,
             )
             ledger.attribute(item_id, result.selected_agent, result.selected_agent)
-            hangup_detected = is_hangup_request(transcript) or bool(result.answer and is_hangup_request(result.answer))
+            hangup_detected = is_hangup_request(transcript)
             return {"status": result.status, "answer": result.answer, "hangup": hangup_detected}
         except Exception as exc:
             if principal_id is None and public_conversation is not None:

@@ -11,13 +11,69 @@ import unicodedata
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+from backend.app.models import Company, CompanyMembership, User, VoiceBusinessConfig
 
 
 def _words(text: str) -> set[str]:
     normalized = unicodedata.normalize("NFKD", text.casefold())
     ascii_text = "".join(ch for ch in normalized if not unicodedata.combining(ch))
     return set(re.findall(r"[a-z0-9]+", ascii_text))
+
+
+def is_identity_inquiry(text: str) -> bool:
+    norm = unicodedata.normalize("NFKD", text.casefold())
+    norm = "".join(c for c in norm if not unicodedata.combining(c))
+    phrase_match = bool(re.search(
+        r"\b(qui\s+suis\s*je|qui\s+je\s+suis|quel\s+est\s+mon\s+(?:nom|role|compte|statut)|qui\s+parle|"
+        r"who\s+am\s+i|what\s+is\s+my\s+(?:name|role|account|status)|"
+        r"quien\s+soy|cual\s+es\s+mi\s+(?:nombre|rol|cuenta|estado)|"
+        r"cine\s+sunt|cum\s+ma\s+cheama|care\s+este\s+rolul\s+meu)\b",
+        norm,
+    ))
+    if phrase_match:
+        return True
+    words = _words(text)
+    has_target = bool(words & {"qui", "nom", "role", "compte", "who", "name", "quien", "rol", "cine", "nume"})
+    has_self = bool(words & {"suis", "mon", "mes", "am", "my", "soy", "mi", "sunt", "meu"})
+    return has_target and has_self and bool(words & {"qui", "who", "quien", "cine"})
+
+
+def is_coach_efficiency_question(text: str) -> bool:
+    norm = unicodedata.normalize("NFKD", text.casefold())
+    norm = "".join(c for c in norm if not unicodedata.combining(c))
+    words = _words(text)
+
+    # 1. Non-coaching business operations (CRM, appointments, reservations, orders, catalog, billing, hiring)
+    # MUST NOT route to coaching even if phrased as "comment peux-tu m'aider à..."
+    if words & {
+        "rendez", "vous", "rdv", "reservation", "reserver", "booking", "appointment", "cita", "programare",
+        "commande", "commandes", "order", "orders", "panier", "cart", "comanda", "pedido",
+        "catalogue", "catalog", "catalogs", "catalogues", "prix", "price", "pret", "precio",
+        "facture", "factures", "invoice", "invoices", "paiement", "payment",
+        "recrutement", "embauche", "candidature", "cv", "job", "hiring", "fournisseur", "fournisseurs", "supplier",
+    }:
+        return False
+
+    # 2. Strict regex targeting efficiency, productivity, and professional guidance
+    phrase_match = bool(re.search(
+        r"\b(ameliorer\s+(?:mon\s+)?efficacite|ameliorer\s+(?:mes\s+)?performances?|ameliorer\s+(?:ma\s+)?productivite|"
+        r"conseils?\s+(?:pour\s+)?(?:aujourd['’\s]hui|la\s+journee|mon\s+travail)|"
+        r"comment\s+(?:peux[- ]tu\s+m['’]aider\s+a\s+(?:ameliorer|optimiser|etre\s+plus\s+efficace|mieux\s+travailler)|mieux\s+travailler|etre\s+plus\s+efficace)|"
+        r"improve\s+(?:my\s+)?efficiency|improve\s+(?:my\s+)?performance|improve\s+(?:my\s+)?productivity|"
+        r"how\s+can\s+you\s+help\s+me\s+(?:improve|be\s+more\s+efficient|work\s+better)|"
+        r"coaching\s+du\s+jour|conseil\s+du\s+jour)\b",
+        norm,
+    ))
+    if phrase_match:
+        return True
+
+    # 3. Fallback: requires BOTH an explicit efficiency topic and guidance action
+    efficiency = bool(words & {"efficacite", "productivite", "performance", "performances", "efficiency", "productivity"})
+    guidance = bool(words & {"ameliorer", "optimiser", "conseil", "conseils", "mieux", "improve", "advice"})
+    return efficiency and guidance
 
 
 def is_module_access_question(text: str) -> bool:
@@ -98,6 +154,74 @@ def is_open_catalog_question(text: str) -> bool:
         "disponibilite", "disponibilites", "restant", "restants",
     })
     return listing or for_sale or prices or stock_inquiry
+
+
+def spoken_identity_answer(
+    actor: Any,
+    membership: Any,
+    company_name: str | None,
+    locale: str,
+) -> str:
+    loc = locale.lower()
+    first_name = (getattr(actor, "first_name", "") or "").strip()
+    last_name = (getattr(actor, "last_name", "") or "").strip()
+    full_name = f"{first_name} {last_name}".strip() or first_name or "Collaborateur"
+    raw_role = (
+        membership.role.value
+        if membership and hasattr(membership.role, "value")
+        else str(getattr(membership, "role", "") or getattr(actor, "role", "") or "member")
+    ).lower()
+
+    role_map_fr = {
+        "owner": "Propriétaire",
+        "admin": "Administrateur",
+        "manager": "Gestionnaire",
+        "employee": "Employé",
+        "staff": "Collaborateur",
+        "member": "Membre de l'équipe",
+        "viewer": "Consultant",
+    }
+    role_map_en = {
+        "owner": "Owner",
+        "admin": "Administrator",
+        "manager": "Manager",
+        "employee": "Employee",
+        "staff": "Staff member",
+        "member": "Team member",
+        "viewer": "Viewer",
+    }
+    role_map_es = {
+        "owner": "Propietario",
+        "admin": "Administrador",
+        "manager": "Gerente",
+        "employee": "Empleado",
+        "staff": "Colaborador",
+        "member": "Miembro del equipo",
+        "viewer": "Consultor",
+    }
+    role_map_ro = {
+        "owner": "Proprietar",
+        "admin": "Administrator",
+        "manager": "Manager",
+        "employee": "Angajat",
+        "staff": "Colaborator",
+        "member": "Membru al echipei",
+        "viewer": "Vizitator",
+    }
+    c_name = company_name or ("votre entreprise" if loc.startswith("fr") else "your company")
+    job = f" ({actor.job_title})" if getattr(actor, "job_title", None) else ""
+    if loc.startswith("fr"):
+        r_title = role_map_fr.get(raw_role, "Collaborateur")
+        return f"Vous êtes {full_name}, {r_title}{job} chez {c_name}."
+    elif loc.startswith("es"):
+        r_title = role_map_es.get(raw_role, "Colaborador")
+        return f"Usted es {full_name}, {r_title}{job} en {c_name}."
+    elif loc.startswith("ro"):
+        r_title = role_map_ro.get(raw_role, "Colaborator")
+        return f"Sunteți {full_name}, {r_title}{job} la {c_name}."
+    else:
+        r_title = role_map_en.get(raw_role, "Staff member")
+        return f"You are {full_name}, {r_title}{job} at {c_name}."
 
 
 def spoken_module_answer(names: list[str], *, plan_code: str | None, locale: str) -> str:
@@ -263,8 +387,6 @@ def is_language_inquiry(text: str) -> str | None:
 
 def is_language_authorized_for_company(db: Session, company_id: UUID, lang_code: str) -> bool:
     """Check if a language code (e.g. 'es', 'fr', 'en', 'ro') is authorized for the given tenant."""
-    from sqlalchemy import select
-    from backend.app.models import Company, VoiceBusinessConfig
     from backend.app.services.tenant_locale_service import get_stored_profile, authorized_locales
 
     lang_prefix = lang_code.casefold().split("-")[0]
@@ -310,78 +432,9 @@ def resolve_direct_voice_answer(
     if db is None:
         return None
 
-    # Performance Coach AI questions (Shift briefing, tasks, priorities, task optimization, executive strategic point)
-    is_coach_query = (
-        is_coach_briefing_question(transcript)
-        or is_coach_tasks_question(transcript)
-        or is_coach_optimize_task_question(transcript)
-        or is_executive_strategic_question(transcript)
-    )
-    if is_coach_query:
-        if not authenticated_staff or user_id is None:
-            # Only intercept if this is explicitly an internal employee duty/shift inquiry,
-            # avoiding blocking general public customer inquiries (e.g. "Comment fonctionne la livraison ?").
-            is_explicit_internal_inquiry = (
-                is_coach_briefing_question(transcript)
-                or is_coach_tasks_question(transcript)
-                or is_executive_strategic_question(transcript)
-                or bool(_words(transcript) & {"tache", "taches", "briefing", "quart", "shift", "priorite", "priorites", "employe", "employes", "collaborateur"})
-            )
-            if not is_explicit_internal_inquiry:
-                return None
-
-            if locale.lower().startswith("es"):
-                return "El coaching de desempeño y las prioridades de trabajo están reservados para colaboradores autenticados con NIP."
-            if locale.lower().startswith("ro"):
-                return "Coaching-ul de performanță și sarcinile de serviciu sunt rezervate angajaților autentificați prin PIN."
-            if locale.lower().startswith("fr"):
-                return "Le coaching de performance et vos priorités professionnelles sont réservés aux employés authentifiés par NIP."
-            return "Performance coaching and internal shift priorities are reserved for employees authenticated with a PIN."
-
-        from backend.app.models.user import User
-        from backend.app.services.employee_coach_service import EmployeeCoachService
-
-        actor = db.get(User, user_id)
-        if actor is not None and actor.company_id == company_id:
-            coach = EmployeeCoachService(db)
-
-            # Strict hierarchical access check for financial/executive topics
-            allowed, denial_reason = coach.check_hierarchical_data_access(actor, transcript)
-            if not allowed:
-                return denial_reason
-
-            if is_executive_strategic_question(transcript):
-                exec_briefing = coach.get_executive_briefing(actor, locale=locale)
-                summary = exec_briefing.get("spoken_summary")
-                if summary:
-                    return str(summary)
-
-            if is_coach_optimize_task_question(transcript):
-                opt = coach.optimize_task_execution(actor, task_description=transcript, locale=locale)
-                summary = opt.get("spoken_summary")
-                if summary:
-                    return str(summary)
-
-            if is_coach_briefing_question(transcript):
-                briefing = coach.get_daily_briefing(actor, locale=locale)
-                summary = briefing.get("spoken_summary")
-                if summary:
-                    return str(summary)
-            else:
-                tasks = coach.get_my_tasks(actor, status="open")
-                if not tasks:
-                    if locale.lower().startswith("fr"):
-                        return f"Bonjour {actor.first_name} ! Vous n'avez aucune tâche ouverte en attente dans votre espace de travail."
-                    return f"Hello {actor.first_name}! You have no open tasks pending in your workspace."
-                task_titles = [f"'{t['title']}'" for t in tasks[:3]]
-                if locale.lower().startswith("fr"):
-                    return f"Vous avez {len(tasks)} tâche(s) ouverte(s). Les principales sont : {', '.join(task_titles)}."
-                return f"You have {len(tasks)} open task(s). The main ones are: {', '.join(task_titles)}."
+    # 1. Tenant-authorized language detection (Spanish, English, French, Romanian)
     lang_inquiry = is_language_inquiry(transcript)
     if lang_inquiry:
-        from sqlalchemy import select
-        from backend.app.models import Company, VoiceBusinessConfig
-
         cfg = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_id))
         comp = db.scalar(select(Company).where(Company.id == company_id)) if cfg is None else None
 
@@ -429,34 +482,167 @@ def resolve_direct_voice_answer(
         elif lang_inquiry == "fr":
             return f"Bonjour ! Oui, je parle français. Comment puis-je vous aider aujourd'hui chez {brand_name} ?" if brand_name else "Bonjour ! Oui, je parle français. Comment puis-je vous aider aujourd'hui ?"
 
-    if is_module_access_question(transcript):
-        if not authenticated_staff or not staff_role:
-            if locale.lower().startswith("es"):
-                return "Esta información está reservada para empleados autenticados de su empresa."
-            if locale.lower().startswith("ro"):
-                return "Aceste informații sunt rezervate angajaților autentificați ai companiei dumneavoastră."
-            if locale.lower().startswith("fr"):
-                return "Cette information est réservée aux employés authentifiés de votre entreprise."
-            return "That information is reserved for authenticated employees of your company."
+    # 2. Check for employee internal requests: identity, modules, coach tasks, coaching efficiency, briefing, optimize, executive
+    has_identity = is_identity_inquiry(transcript)
+    has_modules = is_module_access_question(transcript)
+    has_tasks = is_coach_tasks_question(transcript)
+    has_efficiency = is_coach_efficiency_question(transcript)
+    has_briefing = is_coach_briefing_question(transcript)
+    has_optimize = is_coach_optimize_task_question(transcript)
+    has_exec = is_executive_strategic_question(transcript)
+
+    is_internal_staff_request = (
+        has_identity
+        or has_modules
+        or has_tasks
+        or has_efficiency
+        or has_briefing
+        or has_optimize
+        or has_exec
+    )
+
+    if is_internal_staff_request:
+        if not authenticated_staff or user_id is None:
+            # Only intercept if this is explicitly an internal employee inquiry,
+            # avoiding blocking general public customer inquiries (e.g. "Comment fonctionne la livraison ?").
+            is_explicit_internal_inquiry = (
+                has_identity
+                or has_modules
+                or has_tasks
+                or has_briefing
+                or has_exec
+                or bool(_words(transcript) & {"tache", "taches", "briefing", "quart", "shift", "priorite", "priorites", "employe", "employes", "collaborateur", "module", "modules", "qui"})
+            )
+            if not is_explicit_internal_inquiry:
+                return None
+
+            loc = locale.lower()
+            if has_identity or has_modules:
+                if loc.startswith("es"):
+                    return "Esta información está reservada para empleados autenticados de su empresa. Por favor ingrese su código NIP en el teclado para identificarse."
+                if loc.startswith("ro"):
+                    return "Aceste informații sunt rezervate angajaților autentificați ai companiei dumneavoastră. Vă rugăm să introduceți codul PIN pe tastatura telefonului pentru a vă autentifica."
+                if loc.startswith("fr"):
+                    return "Cette information est réservée aux employés authentifiés de votre entreprise. Veuillez saisir votre code NIP sur le clavier de votre téléphone pour vous identifier."
+                return "This information is reserved for authenticated employees of your company. Please enter your PIN on your phone keypad to authenticate."
+
+            if loc.startswith("es"):
+                return "El coaching de desempeño y las prioridades de trabajo están reservados para colaboradores autenticados con NIP. Por favor ingrese su código NIP en el teclado para identificarse."
+            if loc.startswith("ro"):
+                return "Coaching-ul de performanță și sarcinile de serviciu sunt rezervate angajaților autentificați prin PIN. Vă rugăm să introduceți codul PIN pe tastatura telefonului pentru a vă autentifica."
+            if loc.startswith("fr"):
+                return "Le coaching de performance et vos priorités professionnelles sont réservés aux employés authentifiés par NIP. Veuillez saisir votre code NIP sur le clavier de votre téléphone pour vous identifier."
+            return "Performance coaching and internal shift priorities are reserved for employees authenticated with a PIN. Please enter your PIN on your phone keypad to authenticate."
+
+        from backend.app.services.employee_coach_service import EmployeeCoachService
         from backend.app.services.module_entitlement_service import ModuleEntitlementService
         from shared.ai_engine.contracts import TenantContext
 
-        summary = ModuleEntitlementService(db).summary(TenantContext(company_id))
-        names = [item.display_name for item in summary.modules if item.active and item.display_name]
-        if not names:
-            names = list(summary.active_modules)
-        return spoken_module_answer(names, plan_code=summary.plan_code, locale=locale)
+        actor = db.get(User, user_id)
+        if actor is None or actor.company_id != company_id:
+            return None
 
-    if not is_open_catalog_question(transcript):
-        return None
-    from backend.app.services.company_intelligence_service import CompanyIntelligenceService
+        membership = db.scalar(
+            select(CompanyMembership).where(
+                CompanyMembership.user_id == user_id,
+                CompanyMembership.company_id == company_id,
+                CompanyMembership.is_active.is_(True),
+            )
+        )
+        comp = db.get(Company, company_id)
+        coach = EmployeeCoachService(db)
 
-    profile = CompanyIntelligenceService(db).get_profile(company_id)
-    retail_enabled = bool(getattr(profile, "has_retail_commerce", False)) or "retail" in set(getattr(profile, "active_modules", ()) or ())
-    products = list(getattr(profile, "public_products", ()) or ())
-    return spoken_catalog_answer(
-        products,
-        retail_enabled=retail_enabled,
-        locale=locale,
-        currency=getattr(profile, "currency_code", None),
-    )
+        # Strict hierarchical access check for financial/executive topics
+        if has_exec or (has_briefing and not has_identity and not has_modules and not has_tasks):
+            allowed, denial_reason = coach.check_hierarchical_data_access(actor, transcript)
+            if not allowed:
+                return denial_reason
+
+        # Assemble parts for compound inquiries (e.g. "Qui suis-je ? Quels sont mes modules autorisés et mes tâches ?")
+        parts: list[str] = []
+
+        # Part A: Identity
+        if has_identity:
+            identity_text = spoken_identity_answer(actor, membership, comp.name if comp else None, locale)
+            if identity_text:
+                parts.append(identity_text)
+
+        # Part B: Modules
+        if has_modules:
+            summary = ModuleEntitlementService(db).summary(TenantContext(company_id))
+            names = [item.display_name for item in summary.modules if item.active and item.display_name]
+            if not names:
+                names = list(summary.active_modules)
+            mod_text = spoken_module_answer(names, plan_code=summary.plan_code, locale=locale)
+            if mod_text:
+                parts.append(mod_text)
+
+        # Part C: Tasks
+        if has_tasks:
+            tasks = coach.get_my_tasks(actor, status="open")
+            if not tasks:
+                if locale.lower().startswith("fr"):
+                    parts.append("Vous n'avez aucune tâche ouverte en attente dans votre espace de travail.")
+                elif locale.lower().startswith("es"):
+                    parts.append("No tiene tareas pendientes en su espacio de trabajo.")
+                elif locale.lower().startswith("ro"):
+                    parts.append("Nu aveți nicio sarcină deschisă în așteptare în spațiul dumneavoastră de lucru.")
+                else:
+                    parts.append("You have no open tasks pending in your workspace.")
+            else:
+                task_titles = [f"'{t['title']}'" for t in tasks[:3]]
+                if locale.lower().startswith("fr"):
+                    parts.append(f"Vous avez {len(tasks)} tâche(s) ouverte(s). Les principales sont : {', '.join(task_titles)}.")
+                elif locale.lower().startswith("es"):
+                    parts.append(f"Tiene {len(tasks)} tarea(s) abierta(s). Las principales son: {', '.join(task_titles)}.")
+                elif locale.lower().startswith("ro"):
+                    parts.append(f"Aveți {len(tasks)} sarcini deschise. Principalele sunt: {', '.join(task_titles)}.")
+                else:
+                    parts.append(f"You have {len(tasks)} open task(s). The main ones are: {', '.join(task_titles)}.")
+
+        # Part D: Efficiency Coaching Advice
+        if has_efficiency:
+            advice = coach.get_coaching_advice(actor, locale=locale)
+            summary_advice = advice.get("spoken_summary")
+            if summary_advice and summary_advice not in parts:
+                parts.append(str(summary_advice))
+
+        # Part E: Task Optimization
+        if has_optimize and not has_efficiency:
+            opt = coach.optimize_task_execution(actor, task_description=transcript, locale=locale)
+            summary_opt = opt.get("spoken_summary")
+            if summary_opt and summary_opt not in parts:
+                parts.append(str(summary_opt))
+
+        # Part F: Daily Briefing
+        if has_briefing and not has_tasks:
+            briefing = coach.get_daily_briefing(actor, locale=locale)
+            summary_brief = briefing.get("spoken_summary")
+            if summary_brief and summary_brief not in parts:
+                parts.append(str(summary_brief))
+
+        # Part G: Executive Strategic Point
+        if has_exec:
+            exec_briefing = coach.get_executive_briefing(actor, locale=locale)
+            summary_exec = exec_briefing.get("spoken_summary")
+            if summary_exec and summary_exec not in parts:
+                parts.append(str(summary_exec))
+
+        if parts:
+            return " ".join(parts)
+
+    # 3. Open catalog check
+    if is_open_catalog_question(transcript):
+        from backend.app.services.company_intelligence_service import CompanyIntelligenceService
+
+        profile = CompanyIntelligenceService(db).get_profile(company_id)
+        retail_enabled = bool(getattr(profile, "has_retail_commerce", False)) or "retail" in set(getattr(profile, "active_modules", ()) or ())
+        products = list(getattr(profile, "public_products", ()) or ())
+        return spoken_catalog_answer(
+            products,
+            retail_enabled=retail_enabled,
+            locale=locale,
+            currency=getattr(profile, "currency_code", None),
+        )
+
+    return None

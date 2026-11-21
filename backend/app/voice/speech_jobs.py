@@ -92,6 +92,8 @@ class PilotUsageLedger:
         seconds = Decimal(str(receipt["inference_seconds"]))
         if not seconds.is_finite() or seconds < 0:
             raise ValueError("Invalid compute duration")
+        if self.rate is None:
+            raise ValueError("Unknown compute cost: pilot admission denied")
         cost = seconds * self.rate
         if job_id in self.settlements and self.settlements[job_id] != cost:
             raise ValueError("Conflicting receipt")

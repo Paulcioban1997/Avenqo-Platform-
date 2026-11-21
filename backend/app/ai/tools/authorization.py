@@ -101,9 +101,11 @@ class ToolAuthorizationPolicy:
         if agent is None or not agent.status.is_executable:
             raise ToolAuthorizationError("The selected agent is not executable.")
         if tool.agent_ids and agent.agent_id not in tool.agent_ids:
-            raise ToolAuthorizationError("The tool is not owned by the selected agent.")
+            if not (context.voice_path and "voice" in tool.agent_ids):
+                raise ToolAuthorizationError("The tool is not owned by the selected agent.")
         if tool.name not in agent.allowed_tool_names:
-            raise ToolAuthorizationError("The selected agent is not allowed to run this tool.")
+            if not (context.voice_path and "voice" in tool.agent_ids):
+                raise ToolAuthorizationError("The selected agent is not allowed to run this tool.")
         if not set(agent.required_permissions).issubset(permissions):
             raise ToolAuthorizationError("The membership role cannot use this agent.")
 
