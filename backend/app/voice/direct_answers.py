@@ -298,6 +298,36 @@ def is_superlative_product_question(text: str) -> tuple[bool, str | None]:
     return True, category
 
 
+def is_business_hours_question(text: str) -> bool:
+    norm = unicodedata.normalize("NFKD", text.casefold())
+    norm = "".join(c for c in norm if not unicodedata.combining(c))
+    if any(term in norm for term in ("rendez", "rdv", "appointment", "booking", "reservation", "tache", "task")):
+        return False
+    return bool(re.search(r"\b(heures?|horaires?|hours?|ouvert\w*|ferme\w*|fermeture|opening|schedule|orar|programul|horario\w*)\b", norm))
+
+
+def is_business_location_question(text: str) -> bool:
+    norm = unicodedata.normalize("NFKD", text.casefold())
+    norm = "".join(c for c in norm if not unicodedata.combining(c))
+    if any(term in norm for term in ("site web", "courriel", "email", "rendez")):
+        return False
+    return bool(re.search(r"\b(adresses?|address\w*|ou etes|ou vous trouver|ou se trouve|emplacement|localisation|where are you|adresa|ubicacion\w*|donde estan)\b", norm))
+
+
+def is_services_overview_question(text: str) -> bool:
+    norm = unicodedata.normalize("NFKD", text.casefold())
+    norm = "".join(c for c in norm if not unicodedata.combining(c))
+    if any(term in norm for term in ("plus cher", "cher", "moins cher", "expensive", "cheapest", "combien coute", "prix du", "prix de", "rendez")):
+        return False
+    return bool(re.search(r"\b(quels sont vos services|vos prestations|quelles prestations|liste des services|quels services|ce servicii|servicii oferite|que servicios|servicios ofrecen|what services do you offer|what services do you provide)\b", norm))
+
+
+def is_business_contact_question(text: str) -> bool:
+    norm = unicodedata.normalize("NFKD", text.casefold())
+    norm = "".join(c for c in norm if not unicodedata.combining(c))
+    return bool(re.search(r"\b(site web|site internet|website|boutique en ligne|commander en ligne|online store|courriel|email|numero de telephone|comment vous joindre|how to reach|cum va putem contacta)\b", norm))
+
+
 def is_open_catalog_question(text: str) -> bool:
     norm = unicodedata.normalize("NFKD", text.casefold())
     norm = "".join(c for c in norm if not unicodedata.combining(c))
@@ -1254,5 +1284,158 @@ def resolve_direct_voice_answer(
             limit=3,
             call=call,
         )
+
+    # 8. Business hours fast-path
+    if is_business_hours_question(transcript):
+        from backend.app.services.company_intelligence_service import CompanyIntelligenceService
+        profile = CompanyIntelligenceService(db).get_profile(company_id)
+        comp = db.get(Company, company_id)
+        cfg = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_id))
+        raw_hours = getattr(comp, "business_hours", None) or getattr(cfg, "opening_hours", None) or (profile.business_configuration.get("opening_hours") if getattr(profile, "business_configuration", None) else None) or {}
+        hours_dict = {}
+        if isinstance(raw_hours, dict) and "weekly" in raw_hours and isinstance(raw_hours["weekly"], dict):
+            for day, ranges in raw_hours["weekly"].items():
+                if isinstance(ranges, list) and ranges:
+                    r_str = ", ".join(f"{r.get('open')} à {r.get('close')}" for r in ranges if isinstance(r, dict) and r.get("open") and r.get("close"))
+                    if r_str:
+                        hours_dict[day.lower()] = r_str
+        elif isinstance(raw_hours, dict):
+            for day, val in raw_hours.items():
+                if isinstance(val, dict) and val.get("open") and val.get("close"):
+                    hours_dict[day.lower()] = f"{val.get('open')} à {val.get('close')}"
+                elif isinstance(val, str) and val.strip():
+                    hours_dict[day.lower()] = val.strip()
+        day_map_fr = {
+            "monday": "lundi", "tuesday": "mardi", "wednesday": "mercredi",
+            "thursday": "jeudi", "friday": "vendredi", "saturday": "samedi", "sunday": "dimanche"
+        }
+        loc = locale.lower()
+        if hours_dict:
+            if loc.startswith("fr"):
+                summary = ", ".join(f"{day_map_fr.get(day, day)}: {h}" for day, h in hours_dict.items())
+                return f"Nos heures d'ouverture sont : {summary}."
+            elif loc.startswith("es"):
+                summary = ", ".join(f"{day}: {h}" for day, h in hours_dict.items())
+                return f"Nuestro horario de atención es: {summary}."
+            elif loc.startswith("ro"):
+                summary = ", ".join(f"{day}: {h}" for day, h in hours_dict.items())
+                return f"Programul nostru de lucru este: {summary}."
+            else:
+                summary = ", ".join(f"{day}: {h}" for day, h in hours_dict.items())
+                return f"Our opening hours are: {summary}."
+        else:
+            if loc.startswith("fr"):
+                return "Nos heures d'ouverture ne sont pas encore configurées dans le système."
+            elif loc.startswith("es"):
+                return "Nuestro horario de atención aún no está configurado en el sistema."
+            elif loc.startswith("ro"):
+                return "Programul de lucru nu este încă configurat în sistem."
+            return "Our opening hours are not yet configured in the system."
+
+    # 9. Business address / location fast-path
+    if is_business_location_question(transcript):
+        from backend.app.services.company_intelligence_service import CompanyIntelligenceService
+        comp = db.get(Company, company_id)
+        cfg = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_id))
+        profile = CompanyIntelligenceService(db).get_profile(company_id)
+        biz_cfg = getattr(profile, "business_configuration", None) or {}
+        call_policy = (cfg.call_policy if cfg and isinstance(cfg.call_policy, dict) else {}) if cfg else {}
+        addr_parts = []
+        if call_policy.get("business_address"):
+            addr_parts.append(str(call_policy["business_address"]).strip())
+        for f in ("address", "city", "province", "postal_code"):
+            val = getattr(comp, f, None) or biz_cfg.get(f) or call_policy.get(f)
+            if val and str(val).strip() and str(val).strip() not in addr_parts:
+                addr_parts.append(str(val).strip())
+        loc = locale.lower()
+        if addr_parts:
+            full_addr = ", ".join(addr_parts)
+            if loc.startswith("fr"):
+                return f"Notre établissement est situé à l'adresse suivante : {full_addr}."
+            elif loc.startswith("es"):
+                return f"Nuestra empresa está ubicada en: {full_addr}."
+            elif loc.startswith("ro"):
+                return f"Compania noastră este situată la adresa: {full_addr}."
+            return f"Our business is located at: {full_addr}."
+        else:
+            if loc.startswith("fr"):
+                return "Notre adresse physique n'est pas encore renseignée dans le système."
+            elif loc.startswith("es"):
+                return "Nuestra dirección aún no está registrada en el sistema."
+            elif loc.startswith("ro"):
+                return "Adresa fizică nu este încă înregistrată în sistem."
+            return "Our physical address is not yet registered in the system."
+
+    # 10. Services overview fast-path
+    if is_services_overview_question(transcript):
+        from backend.app.services.company_intelligence_service import CompanyIntelligenceService
+        cfg = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == company_id))
+        profile = CompanyIntelligenceService(db).get_profile(company_id)
+        services = list(getattr(profile, "configured_crm_services", ()) or ())
+        if not services and cfg and cfg.services:
+            services = [s for s in cfg.services if isinstance(s, dict) and s.get("name")]
+        loc = locale.lower()
+        if services:
+            def _sym(curr: Any) -> str:
+                c = str(curr or "").strip().upper()
+                return "$" if c in ("CAD", "USD", "$") or not c else ("€" if c in ("EUR", "€") else ("£" if c in ("GBP", "£") else c))
+            summary_list = []
+            for s in services[:5]:
+                name = s.get("name", "")
+                price = s.get("price")
+                dur = s.get("duration_minutes")
+                curr = _sym(s.get("currency"))
+                item_str = name
+                if price is not None:
+                    item_str += f" ({price} {curr}"
+                    if dur:
+                        item_str += f", {dur} min"
+                    item_str += ")"
+                summary_list.append(item_str)
+            summary = ", ".join(summary_list)
+            if loc.startswith("fr"):
+                return f"Nous proposons les prestations suivantes : {summary}. Souhaitez-vous planifier un rendez-vous ?"
+            elif loc.startswith("es"):
+                return f"Ofrecemos los siguientes servicios: {summary}. ¿Desea concertar una cita?"
+            elif loc.startswith("ro"):
+                return f"Oferim următoarele servicii: {summary}. Doriți să programați o întâlnire?"
+            return f"We offer the following services: {summary}. Would you like to book an appointment?"
+        else:
+            if loc.startswith("fr"):
+                return "Nos prestations de services ne sont pas encore configurées dans le système."
+            elif loc.startswith("es"):
+                return "Nuestros servicios aún no están configurados en el sistema."
+            elif loc.startswith("ro"):
+                return "Serviciile noastre nu sunt încă configurate în sistem."
+            return "Our services are not yet configured in the system."
+
+    # 11. Website and online store fast-path
+    if is_business_contact_question(transcript):
+        from backend.app.services.company_intelligence_service import CompanyIntelligenceService
+        profile = CompanyIntelligenceService(db).get_profile(company_id)
+        comp = db.get(Company, company_id)
+        web = getattr(profile, "website", None) or getattr(comp, "website", None)
+        online_store = getattr(profile, "online_store_url", None)
+        email = getattr(profile, "email", None) or getattr(comp, "email", None)
+        phone = getattr(profile, "phone", None) or getattr(comp, "phone", None)
+        loc = locale.lower()
+        items = []
+        if online_store:
+            items.append(f"boutique en ligne : {online_store}" if loc.startswith("fr") else f"online store: {online_store}")
+        elif web:
+            items.append(f"site web : {web}" if loc.startswith("fr") else f"website: {web}")
+        if email:
+            items.append(f"courriel : {email}" if loc.startswith("fr") else f"email: {email}")
+        if phone:
+            items.append(f"téléphone : {phone}" if loc.startswith("fr") else f"phone: {phone}")
+        if items:
+            details = ", ".join(items)
+            if loc.startswith("fr"):
+                return f"Voici nos coordonnées : {details}."
+            elif loc.startswith("es"):
+                return f"Nuestros datos de contacto son: {details}."
+            elif loc.startswith("ro"):
+                return f"Datele noastre de contact sunt: {details}."
+            return f"Our contact details are: {details}."
 
     return None
