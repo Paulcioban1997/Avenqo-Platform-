@@ -2390,11 +2390,11 @@ async def telnyx_media_socket(
 
     async def execute_turn(item_id: str, transcript: str) -> dict:
         nonlocal ledger, principal_id, auth_epoch
+        current_call: VoiceCall | None = db.get(VoiceCall, call_id)
         # Synchronize employee identity if session authenticated via PIN
         if principal_id is None:
-            c_call = db.get(VoiceCall, call_id)
-            if c_call is not None and c_call.authenticated_user_id is not None:
-                valid_auth = VoiceCallerAuth(db, settings).valid_session(c_call)
+            if current_call is not None and current_call.authenticated_user_id is not None:
+                valid_auth = VoiceCallerAuth(db, settings).valid_session(current_call)
                 if valid_auth is not None and valid_auth.caller_type in {"OWNER", "EMPLOYEE"}:
                     principal_id = valid_auth.principal_id
                     auth_epoch = utc(valid_auth.authenticated_at).isoformat()
