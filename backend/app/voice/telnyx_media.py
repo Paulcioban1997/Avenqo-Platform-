@@ -14,7 +14,7 @@ import json
 import re
 import unicodedata
 import logging
-from typing import Any, Awaitable, Callable, cast
+from typing import Any, Awaitable, Callable, Optional, Tuple, cast
 from uuid import UUID, uuid4
 
 import jwt
@@ -1127,8 +1127,13 @@ class TelnyxMediaBridge:
         )
         session_key = str(self.stream_id or "default")
 
-        # Co-operatively abort any in-flight Central AI execution task
-        if self._current_turn_task is not None and not self._current_turn_task.done():
+        # Co-operatively abort any in-flight Central AI execution task (except current task)
+        curr_task = asyncio.current_task()
+        if (
+            self._current_turn_task is not None
+            and self._current_turn_task is not curr_task
+            and not self._current_turn_task.done()
+        ):
             self._current_turn_task.cancel()
 
         old_epoch = self.epoch
@@ -1508,10 +1513,10 @@ class TelnyxMediaBridge:
                 self._last_activity = time.monotonic()
                 logger.info("Caller speech started (epoch=%s)", self.epoch)
                 self.telemetry["speech_detected"] = True
-                if self._pin_turn is not None and not getattr(event, "is_echo", False) and (self.phase == "PLAYING" or not self._output.empty()):
-                    await self.interrupt(reason="pin_prompt_barge_in")
-                # Phone echo trips VAD as soon as playback starts. Clearing the
-                # Telnyx buffer here drops audio the caller never hears.
+                # Phone echo trips VAD as soon as playback starts. Do NOT send Telnyx clear
+                # or interrupt audio on raw speech_started during PIN prompt, as acoustic echo
+                # would cut off the prompt immediately. Instead, cancellation and verbal
+                # barge-in are safely adjudicated on transcription completion.
             elif kind == "input_audio_buffer.speech_stopped" and not self.input_paused:
                 self._last_speech_stopped_at = time.monotonic()
                 logger.info("Caller speech stopped (epoch=%s)", self.epoch)
@@ -2262,6 +2267,95 @@ def media_session_opening_line(
     return None
 
 
+def authorize_media_session(
+    db: Session,
+    settings: Settings,
+    call_id: Any,
+    plan: str,
+    *,
+    public_mode: bool = False,
+    principal_id: Optional[str] = None,
+    auth_epoch: Optional[str] = None,
+    ledger: Optional[VoiceUsageLedger] = None,
+    bridge: Optional[Any] = None,
+    claim: Optional[Any] = None,
+    locale: str = "fr-CA",
+    usage_service: Optional[Any] = None,
+    on_settlement: Optional[Any] = None,
+) -> Tuple[bool, Optional[str], Optional[str], Optional[VoiceUsageLedger]]:
+    """Authorize a media stream session, supporting staff continuity, handover revocation, and public fallback."""
+    current_call, current_config, current_company = media_transport_context(
+        db, settings, call_id, allow_statuses=_SESSION_MEDIA_STATUSES,
+    )
+    from backend.app.voice.call_policy import check
+    check(db, settings, current_call)
+    if ModuleEntitlementService(db).get_company_plan(TenantContext(current_company.id)).code.value != plan:
+        raise PermissionError("Billing plan changed during media session")
+    try:
+        _call, _config, _company, current_user, _permissions, current_auth = media_call_context(
+            db, settings, call_id, allow_statuses=_SESSION_MEDIA_STATUSES,
+        )
+    except PermissionError:
+        ctx = current_call.source_context or {}
+        is_handover_pending = bool(ctx.get("handover_revoked"))
+        is_public_fallback = bool(
+            ctx.get("public_fallback")
+            or ctx.get("handover_cancelled")
+            or ctx.get("pin_gather_status") in {"cancelled", "refused"}
+        )
+        if is_handover_pending or is_public_fallback:
+            if is_public_fallback:
+                public_mode = True
+            if principal_id is not None:
+                principal_id = None
+                auth_epoch = None
+            if ledger is not None:
+                ledger.attach_identity(None, None)
+            if bridge is not None and hasattr(bridge.adapter, "update_staff_identity"):
+                bridge.adapter.update_staff_identity(False, None, None)
+        if principal_id is not None or (not public_mode and not is_handover_pending and not is_public_fallback):
+            raise
+        return public_mode, principal_id, auth_epoch, ledger
+
+    current_epoch = utc(current_auth.authenticated_at).isoformat()
+    if principal_id is not None:
+        if current_user.id != principal_id or current_epoch != auth_epoch:
+            raise PermissionError("Caller authentication changed")
+        return public_mode, principal_id, auth_epoch, ledger
+    if claim is None:
+        return public_mode, principal_id, auth_epoch, ledger
+    if current_call.central_conversation_id is None:
+        conversation = ConversationService(db).create(
+            current_company.id, current_user.id, f"Voice call {current_call.id}", current_call.locale or locale
+        )
+        current_call.central_conversation_id = conversation.id
+        db.commit()
+    else:
+        ConversationService(db).get(current_company.id, current_user.id, current_call.central_conversation_id)
+    principal_id = current_user.id
+    auth_epoch = current_epoch
+    if ledger is None and usage_service is not None:
+        ledger = VoiceUsageLedger(
+            usage_service,
+            voice_pricing_catalog(settings.ai_model_rate_card),
+            company_id=current_company.id,
+            user_id=current_user.id,
+            conversation_id=current_call.central_conversation_id,
+            plan_code=plan,
+            request_namespace=call_id,
+            on_settlement=on_settlement,
+        )
+        if bridge is not None:
+            bridge.use_ledger(ledger)
+    elif ledger is not None:
+        ledger.attach_identity(current_user.id, current_call.central_conversation_id)
+    if bridge is not None and hasattr(bridge.adapter, "update_staff_identity"):
+        user_role = str(getattr(current_user, "role", "Employee"))
+        bridge.adapter.update_staff_identity(True, current_user.first_name, user_role)
+
+    return public_mode, principal_id, auth_epoch, ledger
+
+
 async def telnyx_media_socket(
     websocket: WebSocket, call_id: UUID, db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings), service=Depends(get_central_ai_service),
@@ -2311,63 +2405,21 @@ async def telnyx_media_socket(
 
     async def authorize() -> None:
         nonlocal ledger, principal_id, auth_epoch, public_mode
-        current_call, current_config, current_company = media_transport_context(
-            db, settings, call_id, allow_statuses=_SESSION_MEDIA_STATUSES,
+        public_mode, principal_id, auth_epoch, ledger = authorize_media_session(
+            db,
+            settings,
+            call_id,
+            plan,
+            public_mode=public_mode,
+            principal_id=principal_id,
+            auth_epoch=auth_epoch,
+            ledger=ledger,
+            bridge=bridge,
+            claim=claim,
+            locale=locale,
+            usage_service=service.usage_service,
+            on_settlement=record_call_cost,
         )
-        from backend.app.voice.call_policy import check
-        check(db, settings, current_call)
-        if ModuleEntitlementService(db).get_company_plan(TenantContext(current_company.id)).code.value != plan:
-            raise PermissionError("Billing plan changed during media session")
-        try:
-            _call, _config, _company, current_user, _permissions, current_auth = media_call_context(
-                db, settings, call_id, allow_statuses=_SESSION_MEDIA_STATUSES,
-            )
-        except PermissionError:
-            ctx = current_call.source_context or {}
-            is_handover_pending = bool(ctx.get("handover_revoked"))
-            is_public_fallback = bool(
-                ctx.get("public_fallback")
-                or ctx.get("handover_cancelled")
-                or ctx.get("pin_gather_status") in {"cancelled", "refused"}
-            )
-            if is_public_fallback:
-                public_mode = True
-                if principal_id is not None:
-                    principal_id = None
-                    auth_epoch = None
-                if ledger is not None:
-                    ledger.attach_identity(None, None)
-                if bridge is not None and hasattr(bridge.adapter, "update_staff_identity"):
-                    bridge.adapter.update_staff_identity(False, None, None)
-            if principal_id is not None or (not public_mode and not is_handover_pending and not is_public_fallback):
-                raise
-            return
-        current_epoch = utc(current_auth.authenticated_at).isoformat()
-        if principal_id is not None:
-            if current_user.id != principal_id or current_epoch != auth_epoch:
-                raise PermissionError("Caller authentication changed")
-            return
-        if claim is None:
-            return
-        if current_call.central_conversation_id is None:
-            conversation = ConversationService(db).create(current_company.id, current_user.id, f"Voice call {current_call.id}", current_call.locale or locale)
-            current_call.central_conversation_id = conversation.id
-            db.commit()
-        else:
-            ConversationService(db).get(current_company.id, current_user.id, current_call.central_conversation_id)
-        principal_id = current_user.id
-        auth_epoch = current_epoch
-        if ledger is None:
-            ledger = VoiceUsageLedger(service.usage_service, voice_pricing_catalog(settings.ai_model_rate_card),
-                company_id=current_company.id, user_id=current_user.id, conversation_id=current_call.central_conversation_id,
-                plan_code=plan, request_namespace=call_id,
-                on_settlement=record_call_cost)
-            bridge.use_ledger(ledger)
-        else:
-            ledger.attach_identity(current_user.id, current_call.central_conversation_id)
-        if bridge is not None and hasattr(bridge.adapter, "update_staff_identity"):
-            user_role = str(getattr(current_user, "role", "Employee"))
-            bridge.adapter.update_staff_identity(True, current_user.first_name, user_role)
 
     async def validate_start(start: dict) -> None:
         nonlocal ledger, claim

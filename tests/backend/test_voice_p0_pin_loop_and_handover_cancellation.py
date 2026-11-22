@@ -1,6 +1,6 @@
 import asyncio
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -16,12 +16,13 @@ from backend.app.models.company_module import CompanyModule, CompanyModuleStatus
 from backend.app.models.company_membership import CompanyMembership
 from backend.app.models.module import Module
 from backend.app.models.user import User, UserRole
-from backend.app.models.voice import VoiceBusinessConfig, VoiceCall, VoiceCallerCredential
+from backend.app.models.voice import VoiceAuthSession, VoiceBusinessConfig, VoiceCall, VoiceCallerCredential
 from shared.ai_engine.contracts import TenantContext
 from backend.app.voice.auth import VoiceCallerAuth
 from backend.app.voice.telnyx_media import (
     PublicInboundConversation,
     TelnyxMediaBridge,
+    authorize_media_session,
     is_handover_positive_intent,
     is_pin_challenge_cancellation,
     is_session_retention_intent,
@@ -563,11 +564,23 @@ async def test_voluntary_barge_in_stops_reprompt_tts():
     bridge.stream_id = "stream-barge-in"
     bridge._pin_turn = "turn-pin-prompt"
     bridge.phase = "PLAYING"
+    bridge.response_id = "resp-barge-1"
+    bridge._last_spoken_prompt = "Veuillez saisir votre code NIP"
 
     drain_task = asyncio.create_task(bridge._drain_provider_events())
 
     # Caller starts speaking while TTS is playing
     await events_queue.put(SimpleNamespace(type="input_audio_buffer.speech_started"))
+    await asyncio.sleep(0.05)
+
+    # Confirmed speech arrived (not echo, cancellation intent)
+    await events_queue.put(
+        SimpleNamespace(
+            type="conversation.item.input_audio_transcription.completed",
+            item_id="trans-barge-1",
+            transcript="Non merci, annule le transfert",
+        )
+    )
     await asyncio.sleep(0.1)
 
     await events_queue.put(None)
@@ -818,3 +831,302 @@ async def test_audio_echo_during_prompt_does_not_interrupt_or_cancel():
     # The prompt was NOT cancelled by its own echo
     assert bridge._pin_turn == "turn-pin-echo"
     assert adapter.interrupted_count == 0
+
+
+# =====================================================================
+# 16. Echo Sequence: speech_started then Echo Transcription sends NO clear
+# =====================================================================
+
+@pytest.mark.asyncio
+async def test_echo_sequence_speech_started_then_transcription_sends_no_clear():
+    """Acoustic echo sequence (speech_started followed by echo transcription) sends zero Telnyx clear events."""
+    events_queue = asyncio.Queue()
+    adapter = MockStreamingAdapter(events_queue)
+    mock_socket = MagicMock()
+    mock_socket.send_json = AsyncMock()
+
+    bridge = TelnyxMediaBridge(
+        socket=mock_socket,
+        adapter=adapter,
+        locale="fr-CA",
+        validate_start=AsyncMock(),
+        authorize=AsyncMock(),
+        execute_turn=AsyncMock(),
+    )
+    bridge.stream_id = "stream-echo-full-seq"
+    bridge._pin_turn = "turn-pin-echo-seq"
+    bridge.phase = "PLAYING"
+    bridge._last_spoken_prompt = "Veuillez saisir votre code NIP sur le clavier de votre téléphone"
+
+    drain_task = asyncio.create_task(bridge._drain_provider_events())
+
+    # Step 1: Speaker audio bleeds into mic, triggering Gemini VAD speech_started
+    await events_queue.put(
+        SimpleNamespace(
+            type="input_audio_buffer.speech_started",
+        )
+    )
+    await asyncio.sleep(0.05)
+
+    # Step 2: Gemini transcribes the acoustic echo of the spoken prompt
+    await events_queue.put(
+        SimpleNamespace(
+            type="conversation.item.input_audio_transcription.completed",
+            item_id="echo-trans-seq-1",
+            transcript="veuillez saisir votre code nip sur le clavier de votre téléphone",
+        )
+    )
+    await asyncio.sleep(0.1)
+
+    # Shutdown tasks cleanly
+    await events_queue.put(None)
+    await drain_task
+
+    # Crucial assertion: ZERO Telnyx "clear" events were sent! The prompt was not cut off!
+    sent_clears = [
+        call_args[0][0]
+        for call_args in mock_socket.send_json.call_args_list
+        if isinstance(call_args[0][0], dict) and call_args[0][0].get("event") == "clear"
+    ]
+    assert len(sent_clears) == 0, f"Expected 0 clear events, but found: {sent_clears}"
+    assert bridge._pin_turn == "turn-pin-echo-seq"
+    assert adapter.interrupted_count == 0
+
+
+# =====================================================================
+# 17. Verbal Cancellation Sequence: speech_started then Non merci sends clear
+# =====================================================================
+
+@pytest.mark.asyncio
+async def test_verbal_cancellation_sequence_sends_clear_and_cancels():
+    """Real caller speech ("Non merci, je vais rester Francis") interrupts and cancels PIN challenge."""
+    events_queue = asyncio.Queue()
+    adapter = MockStreamingAdapter(events_queue)
+    mock_socket = MagicMock()
+    mock_socket.send_json = AsyncMock()
+
+    bridge = TelnyxMediaBridge(
+        socket=mock_socket,
+        adapter=adapter,
+        locale="fr-CA",
+        validate_start=AsyncMock(),
+        authorize=AsyncMock(),
+        execute_turn=AsyncMock(),
+    )
+    bridge.stream_id = "stream-verbal-cancel"
+    bridge._pin_turn = "turn-pin-verbal-cancel"
+    bridge.phase = "PLAYING"
+    bridge.response_id = "resp-playing-1"
+    bridge._last_spoken_prompt = "Veuillez saisir votre code NIP sur le clavier de votre téléphone"
+
+    drain_task = asyncio.create_task(bridge._drain_provider_events())
+
+    # Step 1: Caller starts speaking
+    await events_queue.put(
+        SimpleNamespace(
+            type="input_audio_buffer.speech_started",
+        )
+    )
+    await asyncio.sleep(0.05)
+
+    # Step 2: Caller says "Non merci, je vais rester Francis"
+    await events_queue.put(
+        SimpleNamespace(
+            type="conversation.item.input_audio_transcription.completed",
+            item_id="trans-cancel-1",
+            transcript="Non merci, je vais rester Francis",
+        )
+    )
+    await asyncio.sleep(0.1)
+
+    # Shutdown tasks
+    await events_queue.put(None)
+    await drain_task
+
+    # Crucial assertion: Telnyx "clear" WAS sent to stop playing audio immediately!
+    sent_clears = [
+        call_args[0][0]
+        for call_args in mock_socket.send_json.call_args_list
+        if isinstance(call_args[0][0], dict) and call_args[0][0].get("event") == "clear"
+    ]
+    assert len(sent_clears) >= 1, "Expected Telnyx clear to be sent for verbal cancellation"
+    assert bridge._pin_turn is None
+    assert bridge._pin_mark is None
+    assert bridge._pin_started is False
+
+
+# =====================================================================
+# 18. Self-Cancellation Guard in _execute_turns with auth_required
+# =====================================================================
+
+@pytest.mark.asyncio
+async def test_execute_turn_auth_required_does_not_cancel_own_task():
+    """_execute running as _current_turn_task calling interrupt() does not cancel itself."""
+    mock_socket = MagicMock()
+    mock_socket.send_json = AsyncMock()
+    events_queue = asyncio.Queue()
+    adapter = MockStreamingAdapter(events_queue)
+
+    async def mock_execute_turn(*args, **kwargs):
+        return {
+            "status": "success",
+            "answer": "Pour des raisons de sécurité, veuillez saisir votre NIP.",
+            "auth_required": True,
+        }
+
+    bridge = TelnyxMediaBridge(
+        socket=mock_socket,
+        adapter=adapter,
+        locale="fr-CA",
+        validate_start=AsyncMock(),
+        authorize=AsyncMock(),
+        execute_turn=mock_execute_turn,
+    )
+    bridge.stream_id = "stream-auth-req"
+    bridge.begin_pin = AsyncMock(return_value={"success": True})
+    bridge.poll_pin = AsyncMock(return_value={"status": "pending"})
+
+    # Queue 1 turn
+    await bridge._turns.put(("turn-auth-1", "Donne-moi mes informations de paie", bridge.epoch))
+
+    # Run _execute_turns briefly
+    exec_task = asyncio.create_task(bridge._execute_turns())
+    await asyncio.sleep(0.1)
+
+    # Terminate queue and wait for exec_task
+    bridge._running = False
+    exec_task.cancel()
+    try:
+        await exec_task
+    except asyncio.CancelledError:
+        pass
+
+    # Assert that _execute did NOT self-cancel:
+    assert bridge._pin_turn == "turn-auth-1"
+    assert bridge._pin_prompt_spoken is True
+    assert bridge._pin_mark is not None
+    assert bridge._pin_mark.startswith("pin-prompt:")
+    assert len(adapter.spoken_texts) >= 1
+    assert "Pour des raisons de sécurité" in adapter.spoken_texts[0]
+
+
+# =====================================================================
+# 19. Authorize Media Session Continuity: Staff -> Handover -> Fallback
+# =====================================================================
+
+def test_authorize_media_session_staff_handover_and_public_fallback(db_session: Session):
+    """Direct validation of authorize_media_session during staff, handover, and fallback states."""
+    from backend.app.services.module_entitlement_service import ModuleEntitlementService
+
+    company, voice_config, call, francis, marie = _make_test_company_and_call(db_session)
+    call.source_context = {"dispatcher_routing": True}
+    db_session.commit()
+
+    settings = Settings(
+        DATABASE_URL="sqlite:///:memory:",
+        SECRET_KEY="test_secret_for_voice_unit_tests",
+        TELNYX_API_KEY="test-telnyx-key",
+        TELNYX_PUBLIC_KEY="test-public-key",
+        TELNYX_MEDIA_ENABLED=True,
+        TELNYX_MEDIA_INBOUND_ENABLED=True,
+    )
+    plan = ModuleEntitlementService(db_session).get_company_plan(TenantContext(company.id)).code.value
+
+    # Configure Francis PIN and active session
+    auth_controller = VoiceCallerAuth(db_session, settings)
+    auth_controller.set_pin(
+        TenantContext(company.id, francis.id),
+        "USER",
+        francis.id,
+        "719284",
+        phone_number="+15145550199",
+    )
+    call.caller_type = "EMPLOYEE"
+    call.authenticated_user_id = francis.id
+    auth_sess = VoiceAuthSession(
+        company_id=company.id,
+        call_id=call.id,
+        caller_type="EMPLOYEE",
+        principal_id=francis.id,
+        permissions=["ai:use", "voice:employee", "voice:call"],
+        authenticated_at=datetime.now(timezone.utc),
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+    )
+    db_session.add(auth_sess)
+    db_session.commit()
+
+    # 1. Initial staff authorization (Francis)
+    pub_mode, princ_id, epoch, ledger = authorize_media_session(
+        db_session,
+        settings,
+        call.id,
+        plan,
+        public_mode=False,
+        principal_id=None,
+        auth_epoch=None,
+        claim={"client_state": "ok"},
+    )
+    assert pub_mode is False
+    assert princ_id == francis.id
+    assert epoch is not None
+
+    # 2. Handover revoked (PIN challenge ongoing)
+    call.authenticated_user_id = None
+    call.caller_type = "UNKNOWN"
+    call.source_context = {"dispatcher_routing": True, "handover_revoked": True}
+    auth_sess.revoked_at = datetime.now(timezone.utc)
+    db_session.commit()
+
+    pub_mode2, princ_id2, epoch2, ledger2 = authorize_media_session(
+        db_session,
+        settings,
+        call.id,
+        plan,
+        public_mode=False,
+        principal_id=francis.id,
+        auth_epoch=epoch,
+        claim={"client_state": "ok"},
+    )
+    assert pub_mode2 is False
+    assert princ_id2 is None
+    assert epoch2 is None
+
+    # 3. Handover cancelled / refused -> public fallback
+    call.source_context = {
+        "dispatcher_routing": True,
+        "handover_cancelled": True,
+        "public_fallback": True,
+        "pin_gather_status": "cancelled",
+    }
+    db_session.commit()
+
+    pub_mode3, princ_id3, epoch3, ledger3 = authorize_media_session(
+        db_session,
+        settings,
+        call.id,
+        plan,
+        public_mode=False,
+        principal_id=None,
+        auth_epoch=None,
+        claim={"client_state": "ok"},
+    )
+    assert pub_mode3 is True
+    assert princ_id3 is None
+    assert epoch3 is None
+
+    # 4. Unauthenticated call without handover or public fallback raises PermissionError
+    call.source_context = {"dispatcher_routing": True}
+    db_session.commit()
+
+    with pytest.raises(PermissionError):
+        authorize_media_session(
+            db_session,
+            settings,
+            call.id,
+            plan,
+            public_mode=False,
+            principal_id=None,
+            auth_epoch=None,
+            claim={"client_state": "ok"},
+        )
+
