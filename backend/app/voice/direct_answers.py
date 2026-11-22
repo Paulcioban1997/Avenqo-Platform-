@@ -23,6 +23,129 @@ def _words(text: str) -> set[str]:
     return set(re.findall(r"[a-z0-9]+", ascii_text))
 
 
+def sanitize_retail_voice_text(text: str, *, locale: str = "fr-CA") -> str:
+    """Eliminate raw technical schema/JSON identifiers from spoken voice output.
+
+    Never allows technical fields such as compare_at_price, inventory_quantity,
+    product_variant, normalized_data, or source_updated_at to be spoken aloud.
+    """
+    if not text:
+        return ""
+    loc = (locale or "fr-CA").casefold()
+    is_fr = loc.startswith("fr")
+    is_es = loc.startswith("es")
+    is_ro = loc.startswith("ro")
+
+    replacements: list[tuple[str, str]] = [
+        (
+            r"\bcompare[_\s]+at[_\s]+price\b\s*[:=]?",
+            "prix comparatif" if is_fr else ("precio comparativo" if is_es else ("preț comparativ" if is_ro else "original price")),
+        ),
+        (
+            r"\b(?:inventory[_\s]+quantity|inventory[_\s]+level|stock[_\s]+quantity)\b\s*[:=]?",
+            "quantité en stock" if is_fr else ("cantidad en stock" if is_es else ("cantitate în stoc" if is_ro else "stock quantity")),
+        ),
+        (
+            r"\bproduct[_\s]+variants?\b\s*[:=]?",
+            "variante du produit" if is_fr else ("variante del producto" if is_es else ("variantă de produs" if is_ro else "product variant")),
+        ),
+        (
+            r"\bvariant[_\s]+id\b\s*[:=]?",
+            "référence de variante" if is_fr else ("referencia de variante" if is_es else ("cod variantă" if is_ro else "variant reference")),
+        ),
+        (
+            r"\bnormalized[_\s]+data\b\s*[:=]?",
+            "données du catalogue" if is_fr else ("datos del catálogo" if is_es else ("datele din catalog" if is_ro else "catalog data")),
+        ),
+        (
+            r"\bsource[_\s]+updated[_\s]+at\b\s*[:=]?",
+            "dernière mise à jour" if is_fr else ("última actualización" if is_es else ("ultima actualizare" if is_ro else "last update")),
+        ),
+        (
+            r"\bunit[_\s]+price\b\s*[:=]?",
+            "prix de vente" if is_fr else ("precio de venta" if is_es else ("preț de vânzare" if is_ro else "selling price")),
+        ),
+        (
+            r"\b(?:freshness[_\s]+status|stock[_\s]+availability|stock[_\s]+status|price[_\s]+status|is[_\s]+live[_\s]+stock)\b\s*[:=]?",
+            "état du stock" if is_fr else ("estado del stock" if is_es else ("starea stocului" if is_ro else "stock status")),
+        ),
+        (
+            r"\b(?:in[_\s]+stock)\b\s*[:=]\s*true\b",
+            "en stock confirmé" if is_fr else ("en stock confirmado" if is_es else ("în stoc confirmat" if is_ro else "confirmed in stock")),
+        ),
+        (
+            r"\b(?:in[_\s]+stock)\b\s*[:=]\s*false\b",
+            "en rupture de stock" if is_fr else ("agotado" if is_es else ("stoc epuizat" if is_ro else "out of stock")),
+        ),
+        (
+            r"\b(?:product[_\s]+id|product[_\s]+name|product[_\s]+category|historical[_\s]+observed[_\s]+units)\b\s*[:=]?",
+            "",
+        ),
+    ]
+    cleaned = text
+    replaced_any = False
+    for pattern, repl in replacements:
+        updated = re.sub(pattern, repl, cleaned, flags=re.IGNORECASE)
+        if updated != cleaned:
+            replaced_any = True
+            cleaned = updated
+    if not replaced_any:
+        return text
+    # Clean stray punctuation artifacts left after replacing key-value syntax (preserve French spacing before : ; ? !)
+    cleaned = re.sub(r"\(\s*\)", "", cleaned)
+    cleaned = re.sub(r"\s+([,.])", r"\1", cleaned)
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def is_ambiguous_commercial_selling_question(text: str) -> bool:
+    """Detect open commercial selling questions from staff/owners that benefit from one short clarification.
+
+    Examples:
+        - "Quels sont les produits que je peux vendre ?"
+        - "Quels produits je pourrais vendre ?"
+        - "What products can I sell?"
+        - "¿Qué productos puedo vender?"
+        - "Ce produse pot să vând?"
+
+    Does NOT match when the caller already specified a filter or intent
+    (e.g., in-stock only, highest-margin, accessories, snowboards, prices, full catalog).
+    """
+    norm = unicodedata.normalize("NFKD", text.casefold())
+    norm = "".join(c for c in norm if not unicodedata.combining(c))
+    words = _words(text)
+    if words & {
+        "en stock", "stock", "disponible", "disponibles", "rentable", "rentables", "marge", "marges",
+        "promouvoir", "promotion", "promotions", "opportunite", "opportunites", "meilleur", "meilleurs",
+        "meilleures", "accessoire", "accessoires", "planche", "planches", "snowboard", "snowboards",
+        "prix", "price", "tarif", "tarifs", "catalogue", "catalog", "liste", "tous", "toutes",
+        "margin", "profitable", "promote", "available", "inventory", "accessories",
+    }:
+        return False
+    return bool(
+        re.search(
+            r"\b(quels?\s+(?:sont\s+les?\s+)?(?:produits?|articles?)\s+que\s+je\s+(?:peux|pourrais|dois|devrais)\s+vendre|"
+            r"quels?\s+(?:produits?|articles?)\s+je\s+(?:peux|pourrais|dois|devrais)\s+vendre|"
+            r"qu['’]?est\s*ce\s+que\s+je\s+(?:peux|pourrais)\s+vendre|que\s+puis\s*je\s+vendre|"
+            r"what\s+products?\s+(?:can|could|should)\s+i\s+sell|which\s+products?\s+(?:can|could|should)\s+i\s+sell|"
+            r"que\s+productos?\s+(?:puedo|podria)\s+vender|"
+            r"ce\s+produse\s+(?:pot|as\s+putea)\s+(?:sa\s+)?vand)\b",
+            norm,
+        )
+    )
+
+
+def spoken_commercial_selling_clarification(locale: str) -> str:
+    """Return one concise clarification question for open commercial selling queries."""
+    loc = (locale or "fr-CA").casefold()
+    if loc.startswith("es"):
+        return "¿Prefiere ver los productos confirmados en stock, los más rentables o las mejores oportunidades para promocionar?"
+    if loc.startswith("ro"):
+        return "Doriți să vedeți produsele confirmate în stoc, cele mai profitabile sau cele mai bune oportunități de promovare?"
+    if loc.startswith("en"):
+        return "Would you like to see products currently confirmed in stock, the most profitable items, or the best opportunities to promote?"
+    return "Voulez-vous voir les produits confirmés en stock, les plus rentables, ou les meilleures opportunités à promouvoir ?"
+
+
 def is_identity_inquiry(text: str) -> bool:
     norm = unicodedata.normalize("NFKD", text.casefold())
     norm = "".join(c for c in norm if not unicodedata.combining(c))
@@ -815,6 +938,7 @@ def spoken_catalog_answer(
     for row in target_slice:
         name = str(row.get("name") or row.get("title") or row.get("product_name") or "").strip()
         price = row.get("price")
+        compare_at = row.get("compare_at_price")
         raw_unit = str(row.get("currency") or currency or "").strip().upper()
         if raw_unit in ("CAD", "USD", "$") or not raw_unit:
             unit = "$"
@@ -831,6 +955,20 @@ def spoken_catalog_answer(
             price_text = "precio no especificado" if spanish else ("preț nespecificat" if romanian else ("prix non indiqué" if french else "price not listed"))
         else:
             price_text = f"{price} {unit}".strip()
+            try:
+                p_num = float(str(price).replace("$", "").replace("€", "").replace(",", ".").strip())
+                c_num = float(str(compare_at).replace("$", "").replace("€", "").replace(",", ".").strip()) if compare_at not in (None, "") else None
+            except (ValueError, TypeError):
+                p_num, c_num = None, None
+            if p_num is not None and c_num is not None and c_num > p_num:
+                if spanish:
+                    price_text += f" en lugar de {compare_at} {unit}"
+                elif romanian:
+                    price_text += f" redus de la {compare_at} {unit}"
+                elif french:
+                    price_text += f" au lieu de {compare_at} {unit}"
+                else:
+                    price_text += f" down from {compare_at} {unit}"
             if is_demo_row:
                 demo_tag = " (precio de demostración)" if spanish else (" (preț demonstrativ)" if romanian else (" (prix démonstration)" if french else " (demo price)"))
                 price_text += demo_tag
@@ -847,13 +985,13 @@ def spoken_catalog_answer(
         elif is_live and (stock_avail == "OUT_OF_STOCK" or row.get("in_stock") is False):
             available = ", agotado" if spanish else (", stoc epuizat" if romanian else (", en rupture de stock" if french else ", out of stock"))
         elif freshness == "STALE":
-            available = ", datos de stock no recientes" if spanish else (", date de stoc expirate" if romanian else (", données de stock non récentes" if french else ", stock data stale"))
+            available = ", stock no confirmado, datos no recientes" if spanish else (", stoc neconfirmat, date expirate" if romanian else (", stock non confirmé, données non récentes" if french else ", stock unconfirmed, data not recent"))
         elif freshness == "UNAVAILABLE":
             available = ", stock no disponible" if spanish else (", stoc indisponibil" if romanian else (", stock indisponible" if french else ", stock unavailable"))
         elif freshness == "SYNCING":
             available = ", sincronización de stock en curso" if spanish else (", sincronizare stoc în curs" if romanian else (", synchronisation de stock en cours" if french else ", stock syncing in progress"))
         else:
-            available = ", données de référence" if french else ", reference data"
+            available = ", stock non confirmé, données de référence" if french else ", unconfirmed stock, reference data"
 
         spoken.append(f"{name}, {price_text}{available}")
         presented_records.append({
@@ -870,19 +1008,20 @@ def spoken_catalog_answer(
         ctx["presented_catalog_products"] = presented_records
         ctx["catalog_pagination_offset"] = offset + len(target_slice)
         ctx["catalog_category_filter"] = active_category
+        ctx["last_voice_topic"] = "retail_catalog"
         call.source_context = ctx
 
     extra = ""
     remaining = len(rows) - (offset + len(target_slice))
     if remaining > 0:
         if spanish:
-            extra = f" Y {remaining} {'artículo' if remaining == 1 else 'artículos'} más en el catálogo."
+            extra = f" Y {remaining} {'artículo' if remaining == 1 else 'artículos'} más en el catálogo. ¿Desea continuar?"
         elif romanian:
-            extra = f" Și încă {remaining} {'articol' if remaining == 1 else 'articole'} în catalog."
+            extra = f" Și încă {remaining} {'articol' if remaining == 1 else 'articole'} în catalog. Doriți să continuăm?"
         elif french:
-            extra = f" Et {remaining} autre{'s' if remaining > 1 else ''} article{'s' if remaining > 1 else ''} au catalogue."
+            extra = f" Et {remaining} autre{'s' if remaining > 1 else ''} article{'s' if remaining > 1 else ''} au catalogue. Voulez-vous continuer ?"
         else:
-            extra = f" And {remaining} more items in the catalog."
+            extra = f" And {remaining} more items in the catalog. Would you like to continue?"
 
     hist_note = ""
     if any(not r.get("is_live_stock") for r in target_slice):
@@ -894,19 +1033,23 @@ def spoken_catalog_answer(
 
     if is_accessories_query:
         if spanish:
-            return "Como accesorios, ofrecemos en particular: " + " ; ".join(spoken) + "." + extra + hist_note
-        if romanian:
-            return "Ca accesorii, vă oferim în special: " + " ; ".join(spoken) + "." + extra + hist_note
-        if french:
-            return "Nous proposons notamment comme accessoires : " + " ; ".join(spoken) + "." + extra + hist_note
-        return "As accessories, we notably offer: " + "; ".join(spoken) + "." + extra + hist_note
+            raw_ans = "Como accesorios, ofrecemos en particular: " + " ; ".join(spoken) + "." + extra + hist_note
+        elif romanian:
+            raw_ans = "Ca accesorii, vă oferim în special: " + " ; ".join(spoken) + "." + extra + hist_note
+        elif french:
+            raw_ans = "Nous proposons notamment comme accessoires : " + " ; ".join(spoken) + "." + extra + hist_note
+        else:
+            raw_ans = "As accessories, we notably offer: " + "; ".join(spoken) + "." + extra + hist_note
+        return sanitize_retail_voice_text(raw_ans, locale=locale)
     if spanish:
-        return "Tenemos en el catálogo: " + " ; ".join(spoken) + "." + extra + hist_note
-    if romanian:
-        return "Avem în catalog: " + " ; ".join(spoken) + "." + extra + hist_note
-    if french:
-        return "Nous avons au catalogue : " + " ; ".join(spoken) + "." + extra + hist_note
-    return "In our catalog, we have: " + "; ".join(spoken) + "." + extra + hist_note
+        raw_ans = "Tenemos en el catálogo: " + " ; ".join(spoken) + "." + extra + hist_note
+    elif romanian:
+        raw_ans = "Avem în catalog: " + " ; ".join(spoken) + "." + extra + hist_note
+    elif french:
+        raw_ans = "Nous avons au catalogue : " + " ; ".join(spoken) + "." + extra + hist_note
+    else:
+        raw_ans = "In our catalog, we have: " + "; ".join(spoken) + "." + extra + hist_note
+    return sanitize_retail_voice_text(raw_ans, locale=locale)
 
 
 def is_language_inquiry(text: str) -> str | None:
@@ -1267,7 +1410,85 @@ def resolve_direct_voice_answer(
                 call=call,
             )
 
-    # 7. Open catalog check
+    # 7a. Follow-up after commercial selling clarification
+    if call is not None and (call.source_context or {}).get("pending_retail_clarification"):
+        words_fu = _words(transcript)
+        wants_in_stock = bool(words_fu & {"stock", "disponible", "disponibles", "available", "stoc", "confirmes", "confirme"})
+        wants_profitable = bool(words_fu & {"rentable", "rentables", "marge", "marges", "profitable", "margin", "profit", "profitabile"})
+        wants_promote = bool(words_fu & {"promouvoir", "promotion", "opportunite", "opportunites", "promote", "promocionar", "promovare"})
+        if wants_in_stock or wants_profitable or wants_promote:
+            from backend.app.services.company_intelligence_service import CompanyIntelligenceService
+
+            ctx_fu = dict(call.source_context or {})
+            ctx_fu.pop("pending_retail_clarification", None)
+            ctx_fu["last_voice_topic"] = "retail_catalog"
+            call.source_context = ctx_fu
+            profile = CompanyIntelligenceService(db).get_profile(company_id)
+            retail_enabled = bool(getattr(profile, "has_retail_commerce", False)) or "retail" in set(getattr(profile, "active_modules", ()) or ())
+            products = list(getattr(profile, "public_products", ()) or ())
+            if wants_in_stock:
+                live_available = [
+                    p for p in products
+                    if isinstance(p, dict)
+                    and p.get("is_live_stock") is True
+                    and (p.get("in_stock") is True or p.get("stock_availability") == "IN_STOCK")
+                ]
+                if not live_available:
+                    loc = locale.lower()
+                    if loc.startswith("es"):
+                        return "Actualmente ningún producto tiene stock confirmado en tiempo real porque la sincronización no es reciente. ¿Desea ver los precios indicativos del catálogo?"
+                    if loc.startswith("ro"):
+                        return "În prezent niciun produs nu are stoc confirmat în timp real deoarece sincronizarea nu este recentă. Doriți să vedeți catalogul indicativ?"
+                    if loc.startswith("en"):
+                        return "No products currently have confirmed real-time stock because the inventory sync is not recent. Would you like to review the indicative catalog?"
+                    return "Aucun produit n'a actuellement de stock confirmé en temps réel car la synchronisation d'inventaire n'est pas récente. Voulez-vous consulter le catalogue indicatif ?"
+                return spoken_catalog_answer(
+                    live_available,
+                    retail_enabled=retail_enabled,
+                    locale=locale,
+                    currency=getattr(profile, "currency_code", None),
+                    offset=0,
+                    limit=3,
+                    call=call,
+                )
+            # Sort by comparative discount or highest price for profitability/promotion focus
+            def _promo_score(row: dict[str, Any]) -> tuple[int, float]:
+                try:
+                    p_val = float(str(row.get("price") or 0).replace("$", "").replace("€", "").replace(",", ".").strip())
+                except (ValueError, TypeError):
+                    p_val = 0.0
+                try:
+                    c_val = float(str(row.get("compare_at_price") or 0).replace("$", "").replace("€", "").replace(",", ".").strip())
+                except (ValueError, TypeError):
+                    c_val = 0.0
+                has_promo = 1 if (wants_promote and c_val > p_val > 0) else 0
+                return (has_promo, p_val)
+
+            ranked = sorted(
+                [p for p in products if isinstance(p, dict)],
+                key=_promo_score,
+                reverse=True,
+            )
+            return spoken_catalog_answer(
+                ranked,
+                retail_enabled=retail_enabled,
+                locale=locale,
+                currency=getattr(profile, "currency_code", None),
+                offset=0,
+                limit=3,
+                call=call,
+            )
+
+    # 7b. Ambiguous commercial selling intent from authenticated staff/owner
+    if authenticated_staff and is_ambiguous_commercial_selling_question(transcript):
+        if call is not None:
+            ctx_amb = dict(call.source_context or {})
+            ctx_amb["last_voice_topic"] = "retail_commercial_clarification"
+            ctx_amb["pending_retail_clarification"] = True
+            call.source_context = ctx_amb
+        return spoken_commercial_selling_clarification(locale)
+
+    # 7c. Open catalog check
     if is_open_catalog_question(transcript):
         from backend.app.services.company_intelligence_service import CompanyIntelligenceService
 

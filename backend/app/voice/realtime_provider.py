@@ -23,17 +23,25 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import StrEnum
 import hashlib
+import io
 import json
 import logging
 import time
 from types import SimpleNamespace
 from typing import Any, AsyncIterator, Awaitable, Callable, Protocol
 from uuid import UUID, uuid4
+import wave
 
 from backend.app.config.settings import Settings
 from backend.app.core.locale_catalog import locale_info
 from backend.app.models.voice import VoiceBusinessConfig
-from backend.app.voice.adapters import ExternalVoiceConfigurationRequired, OpenAIAudioConfig, RealtimeAudioAdapter
+from backend.app.voice.adapters import (
+    ExternalVoiceConfigurationRequired,
+    OpenAIAudioConfig,
+    OpenAISpeechToTextAdapter,
+    RealtimeAudioAdapter,
+    SpeechToTextAdapter,
+)
 from backend.app.voice.audio_codec import TelnyxAudioCodec
 
 logger = logging.getLogger("avenqo.voice.realtime")
@@ -423,6 +431,17 @@ class NaturalInterruptionManager:
         self._cancel_callbacks.pop(turn_id, None)
 
 
+def _pcm16_to_wav(pcm_data: bytes, *, sample_rate: int = 24000, channels: int = 1) -> bytes:
+    """Wrap raw 16-bit little-endian PCM frames in an in-memory WAV container for independent STT."""
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(channels)
+        wf.setsampwidth(2)
+        wf.setframerate(sample_rate)
+        wf.writeframes(pcm_data)
+    return buf.getvalue()
+
+
 class GeminiLiveRealtimeAudioAdapter:
     """Adaptateur audio temps réel bidirectionnel connecté à Google Gemini Live API.
 
@@ -450,8 +469,11 @@ class GeminiLiveRealtimeAudioAdapter:
         voice_name: str | None = None,
         company_name: str | None = None,
         client_factory: Callable[[str], Any] | None = None,
+        stt_adapter: SpeechToTextAdapter | None = None,
         vad_rms_threshold: int = 450,
         silence_frames_threshold: int = 12,
+        stt_rescue_delay_seconds: float = 0.65,
+        min_speech_ms_for_rescue: int = 240,
     ) -> None:
         if isinstance(settings, OpenAIAudioConfig):
             audio_config = settings
@@ -475,8 +497,16 @@ class GeminiLiveRealtimeAudioAdapter:
         )
         self._voice_name = resolve_gemini_voice(raw_voice)
         self._client_factory = client_factory
+        if stt_adapter is not None:
+            self._stt_adapter: SpeechToTextAdapter | None = stt_adapter
+        elif audio_config is not None and audio_config.api_key and audio_config.stt_model:
+            self._stt_adapter = OpenAISpeechToTextAdapter(audio_config)
+        else:
+            self._stt_adapter = None
         self._vad_rms_threshold = vad_rms_threshold
         self._silence_frames_threshold = max(2, silence_frames_threshold)
+        self._stt_rescue_delay_seconds = max(0.0, float(stt_rescue_delay_seconds))
+        self._min_speech_ms_for_rescue = max(100, int(min_speech_ms_for_rescue))
         self._diagnostics: VoiceRealtimeSessionDiagnostics | None = None
 
         from backend.app.voice.messages import voice_speech_name
@@ -516,6 +546,14 @@ class GeminiLiveRealtimeAudioAdapter:
         self._out_rate_state: Any = None
         self._speech_active: bool = False
         self._silence_frames: int = 0
+        self._speech_frames: int = 0
+        self._speech_peak_rms: int = 0
+        self._speech_started_at: float | None = None
+        self._speech_pcm_buffer: bytearray = bytearray()
+        self._early_rescue_triggered_items: set[str] = set()
+        self._rescue_tasks: dict[str, asyncio.Task[None]] = {}
+        self._playback_active: bool = False
+        self._locale: str = "fr-CA"
         self._current_item_id: str | None = None
         self._current_response_id: str | None = None
         self._interrupted_responses: set[str] = set()
@@ -528,6 +566,10 @@ class GeminiLiveRealtimeAudioAdapter:
         self._is_authenticated_staff: bool = False
         self._staff_name: str | None = None
         self._staff_role: str | None = None
+
+    def set_playback_active(self, active: bool) -> None:
+        """Synchronize echo-suppression VAD state with actual outbound Telnyx playback."""
+        self._playback_active = bool(active)
 
     def update_staff_identity(
         self,
@@ -614,6 +656,7 @@ class GeminiLiveRealtimeAudioAdapter:
             }
 
     async def open(self, *, locale: str = "fr-CA") -> None:
+        self._locale = locale
         client = self._build_genai_client()
         live_config = self._build_live_config(locale)
         self._closed = False
@@ -622,12 +665,120 @@ class GeminiLiveRealtimeAudioAdapter:
         self._receive_task = asyncio.create_task(self._receive_loop())
         await self._event_queue.put(SimpleNamespace(type="session.updated"))
         logger.info(
-            "gemini_live_adapter_opened model=%s voice=%s locale=%s company=%s",
+            "gemini_live_adapter_opened model=%s voice=%s locale=%s company=%s independent_stt_rescue=%s",
             self._model,
             self._voice_name,
             locale,
             self._company_name,
+            self._stt_adapter is not None,
         )
+
+    def _cancel_rescue_task(self, item_id: str | None) -> None:
+        if not item_id:
+            return
+        task = self._rescue_tasks.pop(item_id, None)
+        if task is not None and not task.done():
+            task.cancel()
+
+    def _schedule_stt_rescue(
+        self,
+        item_id: str,
+        pcm_snapshot: bytes,
+        duration_ms: int,
+        peak_rms: int,
+        *,
+        tts_playing: bool,
+        delay_seconds: float | None = None,
+    ) -> None:
+        """Schedule an independent STT rescue if Gemini Live fails to deliver input_transcription."""
+        if self._closed or item_id in self._emitted_items:
+            return
+        if duration_ms < self._min_speech_ms_for_rescue:
+            return
+        wait_delay = self._stt_rescue_delay_seconds if delay_seconds is None else max(0.0, delay_seconds)
+
+        async def _run_rescue() -> None:
+            try:
+                if wait_delay > 0:
+                    await asyncio.sleep(wait_delay)
+                if self._closed or item_id in self._emitted_items:
+                    return
+                if self._transcript_parts:
+                    await self._flush_transcript()
+                    if item_id in self._emitted_items:
+                        return
+                rescued_text = ""
+                if self._stt_adapter is not None and len(pcm_snapshot) >= 1600:
+                    try:
+                        wav_bytes = _pcm16_to_wav(pcm_snapshot, sample_rate=24000, channels=1)
+                        rescued_text = (
+                            await asyncio.wait_for(
+                                self._stt_adapter.transcribe(
+                                    wav_bytes,
+                                    locale=self._locale,
+                                    content_type="audio/wav",
+                                ),
+                                timeout=4.0,
+                            )
+                        ).strip()
+                    except Exception as exc:
+                        logger.warning(
+                            "gemini_live_stt_rescue_failed item_id=%s error_type=%s",
+                            item_id,
+                            type(exc).__name__,
+                        )
+                if self._closed or item_id in self._emitted_items:
+                    return
+                if rescued_text:
+                    self._emitted_items.add(item_id)
+                    if self._current_item_id == item_id:
+                        self._current_item_id = None
+                    est_tokens = max(1, len(rescued_text) // 4)
+                    logger.info(
+                        "gemini_live_stt_rescue_succeeded item_id=%s length=%d duration_ms=%d",
+                        item_id,
+                        len(rescued_text),
+                        duration_ms,
+                    )
+                    await self._event_queue.put(
+                        SimpleNamespace(
+                            type="conversation.item.input_audio_transcription.completed",
+                            item_id=item_id,
+                            transcript=rescued_text,
+                            event_id=f"evt-rescue-{item_id}",
+                            source="independent_stt_rescue",
+                            rescued=True,
+                            usage={
+                                "type": "tokens",
+                                "input_tokens": est_tokens,
+                                "output_tokens": 1,
+                                "input_token_details": {
+                                    "audio_tokens": est_tokens,
+                                    "text_tokens": 0,
+                                },
+                            },
+                        )
+                    )
+                    return
+                # Gemini delivered no transcript and independent STT could not transcribe this speech segment.
+                await self._event_queue.put(
+                    SimpleNamespace(
+                        type="input_audio_buffer.transcription_missing",
+                        item_id=item_id,
+                        duration_ms=duration_ms,
+                        peak_rms=peak_rms,
+                        tts_playing=tts_playing,
+                    )
+                )
+            except asyncio.CancelledError:
+                return
+            finally:
+                self._rescue_tasks.pop(item_id, None)
+
+        existing = self._rescue_tasks.get(item_id)
+        if existing is not None and not existing.done():
+            existing.cancel()
+        self._rescue_tasks[item_id] = asyncio.create_task(_run_rescue())
 
     async def send_audio(self, audio: bytes) -> None:
         if self._session is None or self._closed:
@@ -639,39 +790,89 @@ class GeminiLiveRealtimeAudioAdapter:
         if not audio:
             return
 
-        # Détection d'activité vocale (VAD) locale réactive + gestion du barge-in
-        # Self-talk echo suppression: elevate threshold during active assistant TTS playback
+        # Full-duplex local VAD with playback-aware echo suppression threshold
         rms = audioop.rms(audio, 2)
+        playback_on = self._tts_active or self._playback_active
         effective_threshold = (
             int(self._vad_rms_threshold * 1.5)
-            if self._tts_active
+            if playback_on
             else self._vad_rms_threshold
         )
         if rms >= effective_threshold:
             self._silence_frames = 0
             if not self._speech_active:
                 self._speech_active = True
+                self._speech_frames = 0
+                self._speech_peak_rms = rms
+                self._speech_started_at = time.monotonic()
+                self._speech_pcm_buffer.clear()
                 self._current_item_id = f"gemini-item-{uuid4().hex[:12]}"
                 await self._event_queue.put(
                     SimpleNamespace(
                         type="input_audio_buffer.speech_started",
                         item_id=self._current_item_id,
+                        rms=rms,
+                        tts_playing=playback_on,
                     )
+                )
+            self._speech_frames += 1
+            if rms > self._speech_peak_rms:
+                self._speech_peak_rms = rms
+            if len(self._speech_pcm_buffer) < 720_000:
+                self._speech_pcm_buffer.extend(audio)
+            # Early streaming rescue during long active playback when caller speaks continuously (~500ms+)
+            if (
+                playback_on
+                and self._stt_adapter is not None
+                and self._current_item_id is not None
+                and self._speech_frames >= 25
+                and self._current_item_id not in self._early_rescue_triggered_items
+                and self._current_item_id not in self._emitted_items
+            ):
+                self._early_rescue_triggered_items.add(self._current_item_id)
+                self._schedule_stt_rescue(
+                    self._current_item_id,
+                    bytes(self._speech_pcm_buffer),
+                    self._speech_frames * 20,
+                    self._speech_peak_rms,
+                    tts_playing=True,
+                    delay_seconds=0.0,
                 )
         elif self._speech_active:
             self._silence_frames += 1
+            if len(self._speech_pcm_buffer) < 720_000:
+                self._speech_pcm_buffer.extend(audio)
             if self._silence_frames >= self._silence_frames_threshold:
                 self._speech_active = False
                 self._silence_frames = 0
                 stopped_item = self._current_item_id or f"gemini-item-{uuid4().hex[:12]}"
+                duration_ms = self._speech_frames * 20
+                peak_rms = self._speech_peak_rms
+                pcm_snapshot = bytes(self._speech_pcm_buffer)
+                self._speech_frames = 0
+                self._speech_peak_rms = 0
+                self._speech_pcm_buffer.clear()
                 await self._event_queue.put(
                     SimpleNamespace(
                         type="input_audio_buffer.speech_stopped",
                         item_id=stopped_item,
+                        duration_ms=duration_ms,
+                        peak_rms=peak_rms,
+                        tts_playing=playback_on,
                     )
                 )
-                with suppress(Exception):
-                    await self._session.send_realtime_input(audio_stream_end=True)
+                # Do NOT terminate the realtime input stream with audio_stream_end=True while TTS/playback
+                # is active, as Gemini Live may drop pending input_transcription during active output turns.
+                if not playback_on:
+                    with suppress(Exception):
+                        await self._session.send_realtime_input(audio_stream_end=True)
+                self._schedule_stt_rescue(
+                    stopped_item,
+                    pcm_snapshot,
+                    duration_ms,
+                    peak_rms,
+                    tts_playing=playback_on,
+                )
 
         # Conversion PCM16 24kHz (sortie TelnyxAudioCodec.inbound_pcm) -> PCM16 16kHz (entrée native Gemini Live)
         pcm_16k, self._in_rate_state = audioop.ratecv(audio, 2, 1, 24000, 16000, self._in_rate_state)
@@ -741,8 +942,15 @@ class GeminiLiveRealtimeAudioAdapter:
     async def clear_input(self) -> None:
         self._speech_active = False
         self._silence_frames = 0
+        self._speech_frames = 0
+        self._speech_peak_rms = 0
+        self._speech_pcm_buffer.clear()
         self._transcript_parts.clear()
         self._in_rate_state = None
+        for task in list(self._rescue_tasks.values()):
+            if not task.done():
+                task.cancel()
+        self._rescue_tasks.clear()
         self._current_item_id = None
 
     async def _flush_transcript(self) -> None:
@@ -753,6 +961,7 @@ class GeminiLiveRealtimeAudioAdapter:
         if not full_text:
             return
         item_id = self._current_item_id or f"gemini-item-{uuid4().hex[:12]}"
+        self._cancel_rescue_task(item_id)
         if item_id in self._emitted_items:
             item_id = f"gemini-item-{uuid4().hex[:12]}"
         self._emitted_items.add(item_id)
@@ -764,6 +973,8 @@ class GeminiLiveRealtimeAudioAdapter:
                 item_id=item_id,
                 transcript=full_text,
                 event_id=f"evt-{item_id}",
+                source="gemini_live",
+                rescued=False,
                 usage={
                     "type": "tokens",
                     "input_tokens": est_tokens,
@@ -825,7 +1036,7 @@ class GeminiLiveRealtimeAudioAdapter:
                                     )
                                 )
 
-                        # Transcription entrante de l'appelant
+                        # Transcription entrante de l'appelant (partielle + finale)
                         in_trans = getattr(server_content, "input_transcription", None) or (
                             server_content.get("input_transcription") if isinstance(server_content, dict) else None
                         )
@@ -837,14 +1048,32 @@ class GeminiLiveRealtimeAudioAdapter:
                             if finished is None and isinstance(in_trans, dict):
                                 finished = in_trans.get("finished")
                             if isinstance(text_val, str) and text_val.strip():
-                                self._transcript_parts.append(text_val.strip())
+                                cleaned_part = text_val.strip()
+                                self._transcript_parts.append(cleaned_part)
+                                active_item = self._current_item_id or f"gemini-item-{uuid4().hex[:12]}"
+                                if self._current_item_id is None:
+                                    self._current_item_id = active_item
+                                accumulated = " ".join(p for p in self._transcript_parts if p).strip()
+                                if finished is False:
+                                    await self._event_queue.put(
+                                        SimpleNamespace(
+                                            type="conversation.item.input_audio_transcription.delta",
+                                            item_id=active_item,
+                                            delta=cleaned_part,
+                                            transcript=accumulated,
+                                            finished=False,
+                                        )
+                                    )
                                 if finished is not False or not self._speech_active:
                                     if self._speech_active:
                                         self._speech_active = False
+                                        self._silence_frames = 0
+                                        self._speech_frames = 0
+                                        self._speech_pcm_buffer.clear()
                                         await self._event_queue.put(
                                             SimpleNamespace(
                                                 type="input_audio_buffer.speech_stopped",
-                                                item_id=self._current_item_id or f"gemini-item-{uuid4().hex[:12]}",
+                                                item_id=active_item,
                                             )
                                         )
                                     await self._flush_transcript()
@@ -980,6 +1209,10 @@ class GeminiLiveRealtimeAudioAdapter:
 
     async def close(self) -> None:
         self._closed = True
+        for task in list(self._rescue_tasks.values()):
+            if not task.done():
+                task.cancel()
+        self._rescue_tasks.clear()
         if self._receive_task is not None:
             self._receive_task.cancel()
             with suppress(Exception, asyncio.CancelledError):
@@ -991,6 +1224,31 @@ class GeminiLiveRealtimeAudioAdapter:
             self._ctx_manager = None
         self._session = None
         await self._event_queue.put(_QUEUE_EOF)
+
+    async def reconnect(self, fallback_model: str | None = None, locale: str | None = None) -> None:
+        """Reconnect Gemini Live mid-call without dropping the active Telnyx WebSocket."""
+        target_locale = locale or self._locale or "fr-CA"
+        logger.warning(
+            "gemini_live_mid_call_reconnect model=%s locale=%s company=%s",
+            self._model,
+            target_locale,
+            self._company_name,
+        )
+        await self.close()
+        # Drain stale EOF markers before reopening
+        while not self._event_queue.empty():
+            with suppress(Exception):
+                self._event_queue.get_nowait()
+        self._tts_active = False
+        self._tts_response_id = None
+        self._tts_audio_chunks = 0
+        self._current_response_id = None
+        self._speech_active = False
+        self._silence_frames = 0
+        self._speech_frames = 0
+        self._speech_pcm_buffer.clear()
+        self._transcript_parts.clear()
+        await self.open(locale=target_locale)
 
     async def events(self):
         if self._session is None and self._event_queue.empty():
@@ -1198,6 +1456,26 @@ class FallbackRealtimeAudioAdapter:
     async def clear_input(self) -> None:
         if self._active is not None:
             await self._active.clear_input()
+
+    def set_playback_active(self, active: bool) -> None:
+        if self._active is not None and hasattr(self._active, "set_playback_active"):
+            cast_fn: Any = getattr(self._active, "set_playback_active")
+            cast_fn(active)
+
+    async def reconnect(self, fallback_model: str | None = None, locale: str | None = None) -> None:
+        target_locale = locale or self._locale or "fr-CA"
+        if self._active is not None and hasattr(self._active, "reconnect"):
+            try:
+                rec_fn: Any = getattr(self._active, "reconnect")
+                await rec_fn(fallback_model=fallback_model, locale=target_locale)
+                return
+            except Exception as exc:
+                if not self.used_fallback:
+                    await self._trigger_fallback("mid_session_reconnect_failed", exc)
+                    return
+                raise
+        if not self.used_fallback:
+            await self._trigger_fallback("mid_session_reconnect_requested")
 
     def update_staff_identity(
         self,
