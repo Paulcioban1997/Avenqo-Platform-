@@ -69,6 +69,10 @@ def _product_to_dict(record: NormalizedCommerceRecord) -> dict[str, object]:
     if price_val is None and isinstance(variants, list) and variants:
         price_val = variants[0].get("unit_price") or variants[0].get("price")
 
+    compare_at_val = data.get("compare_at_price")
+    if compare_at_val is None and isinstance(variants, list) and variants:
+        compare_at_val = variants[0].get("compare_at_price")
+
     inv_val = data.get("inventory_level")
     if inv_val is None:
         inv_val = data.get("stock_quantity")
@@ -88,6 +92,7 @@ def _product_to_dict(record: NormalizedCommerceRecord) -> dict[str, object]:
         "product_id": _safe_str(data.get("product_id") or data.get("id")),
         "sku": _safe_str(sku_val),
         "unit_price": _safe_float(price_val),
+        "compare_at_price": _safe_float(compare_at_val),
         "inventory_level": _safe_float(inv_val),
         "stock_quantity": _safe_float(inv_val),
         "product_category": _safe_str(data.get("product_category") or data.get("category")),

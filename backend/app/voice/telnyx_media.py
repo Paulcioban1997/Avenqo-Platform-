@@ -49,8 +49,21 @@ from backend.app.models import (
 from backend.app.services.company_intelligence_service import CompanyIntelligenceService
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.voice.adapters import OpenAIRealtimeAudioAdapter
+from backend.app.voice.direct_answers import sanitize_retail_voice_text
 from backend.app.voice.messages import apply_spoken_pronunciation
-from backend.app.voice.turn_control import adjudicate_transcript, is_playback_echo
+from backend.app.voice.turn_control import (
+    ConversationState,
+    VoiceTurnOrchestrator,
+    adjudicate_transcript,
+    build_correction_clarification,
+    extract_reformulation_after_correction,
+    extract_request_after_attention_check,
+    is_attention_check,
+    is_backchannel,
+    is_correction_or_objection,
+    is_explicit_interruption,
+    is_playback_echo,
+)
 from backend.app.voice.auth import VoiceCallerAuth, utc, normalized_phone
 from backend.app.voice.usage import VoiceUsageLedger, voice_pricing_catalog
 from backend.app.voice.service import resolve_voice_source_context
@@ -262,14 +275,16 @@ def release_media_session(db: Session, call_id: UUID, claim: tuple) -> None:
     db.commit()
 
 
-def clean_voice_text(text: str) -> str:
+def clean_voice_text(text: str, *, locale: str = "fr-CA") -> str:
     """Nettoie le texte destiné à la synthèse vocale téléphonique (TTS).
-    Supprime la syntaxe markdown (listes à puces, numérotation, astérisques, dièses, crochets),
+    Supprime la syntaxe markdown (listes à puces, numérotation, astérisques, dièses, crochets)
+    ainsi que les noms de champs techniques bruts (ex: compare_at_price, inventory_quantity),
     pour garantir une lecture orale fluide et naturelle sans artefacts robotiques.
     """
     if not text:
         return ""
-    cleaned = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
+    cleaned = sanitize_retail_voice_text(text, locale=locale)
+    cleaned = re.sub(r"\*\*([^*]+)\*\*", r"\1", cleaned)
     cleaned = re.sub(r"\*([^*]+)\*", r"\1", cleaned)
     cleaned = re.sub(r"__([^_]+)__", r"\1", cleaned)
     cleaned = re.sub(r"_([^_]+)_", r"\1", cleaned)
@@ -999,6 +1014,15 @@ class TelnyxMediaBridge:
         self._current_turn_task: asyncio.Task | None = None
         self._turn_metrics: dict[str, dict[str, Any]] = {}
         self._last_transcription_at: float | None = None
+        self._last_speech_started_at: float | None = None
+        self._last_interrupted_at: float | None = None
+        self._interrupted_item_ids: set[str] = set()
+        self._last_barge_in_item_id: str | None = None
+        self._non_echo_partial_items: set[str] = set()
+        self._responses_with_first_audio: set[str] = set()
+        self._playback_active: bool = False
+        self._active_play_mark: str | None = None
+        self.orchestrator = VoiceTurnOrchestrator()
         self._pin_turn = None
         self._pin_mark = None
         self._pin_started = False
@@ -1034,6 +1058,16 @@ class TelnyxMediaBridge:
             "inbound_frames": 0,
             "inbound_audio_ms": 0,
             "speech_detected": False,
+            "speech_started_count": 0,
+            "speech_stopped_count": 0,
+            "stt_partial_count": 0,
+            "stt_final_count": 0,
+            "speech_stopped_without_transcript": 0,
+            "unconfirmed_barge_in_suppressed": 0,
+            "stt_rescue_succeeded": 0,
+            "barge_in_triggered_count": 0,
+            "telnyx_clear_sent_count": 0,
+            "late_transcripts_discarded": 0,
             "stt_audio_sent": False,
             "transcription_received": False,
             "central_ai_called": False,
@@ -1057,6 +1091,7 @@ class TelnyxMediaBridge:
             "active_model": getattr(adapter, "model_name", realtime_model or "unknown"),
             "connection_establishment_duration_ms": 0,
             "first_audible_response_latency_ms": 0,
+            "last_turn_first_audio_latency_ms": 0,
             "fallback_occurred": False,
             "fallback_reason": None,
             "fallback_duration_ms": None,
@@ -1089,9 +1124,17 @@ class TelnyxMediaBridge:
     def _set_phase(self, phase: str) -> None:
         self.phase = phase
         self.telemetry["conversation_phase"] = phase
+        self.orchestrator.transition(phase)
+
+    def _set_playback_active(self, active: bool) -> None:
+        self._playback_active = bool(active)
+        if hasattr(self.adapter, "set_playback_active"):
+            fn: Any = getattr(self.adapter, "set_playback_active")
+            with suppress(Exception):
+                fn(self._playback_active)
 
     def _spoken(self, text: str) -> str:
-        cleaned = clean_voice_text(redact_voice_secrets(text))
+        cleaned = clean_voice_text(redact_voice_secrets(text), locale=self.locale)
         if self.prepare_speech is not None:
             cleaned = self.prepare_speech(cleaned)
         self._last_spoken = cleaned
@@ -1101,6 +1144,10 @@ class TelnyxMediaBridge:
         """Return instrumentation latency metrics for a specific turn."""
         return dict(self._turn_metrics.get(str(item_id), {}))
 
+    def get_latency_summary(self) -> dict[str, dict[str, float | int | None]]:
+        """Return p50/p95 latency measurements across barge-in, first-audio, and Central AI stages."""
+        return self.orchestrator.latency_summary()
+
     async def interrupt(
         self,
         *,
@@ -1109,20 +1156,35 @@ class TelnyxMediaBridge:
         reason: str = "interruption",
     ) -> None:
         if originating_response_id:
+            if not self.orchestrator.mark_response_cancelled(originating_response_id):
+                return
             if originating_response_id in self._cancelled_responses:
                 return
             self._cancelled_responses.add(originating_response_id)
             if len(self._cancelled_responses) > 500:
                 self._cancelled_responses.clear()
 
+        now_t = time.monotonic()
         self.telemetry["vad_interruptions_count"] += 1
+        if reason in {
+            "caller_speech_barge_in",
+            "partial_transcript_barge_in",
+            "untranscribed_speech_barge_in",
+            "pin_challenge_verbal_cancellation",
+        }:
+            self.telemetry["barge_in_triggered_count"] += 1
+            if self._last_speech_started_at is not None:
+                reaction_ms = max(0.0, (now_t - self._last_speech_started_at) * 1000.0)
+                self.orchestrator.record_barge_in_latency(reaction_ms)
         if self.response_id and str(self.response_id) in self._turn_metrics:
             self._turn_metrics[str(self.response_id)]["interruption_reason"] = reason
+            self._turn_metrics[str(self.response_id)]["telnyx_clear_sent_at"] = now_t
 
         cancel_response = (
             self.response_id is not None
             or self.pending_epoch is not None
-            or self.phase in {"PLAYING", "SYNTHESIZING"}
+            or self.phase in {"PLAYING", "SYNTHESIZING", "SPEAKING"}
+            or self._playback_active
             or not self._output.empty()
         )
         session_key = str(self.stream_id or "default")
@@ -1138,9 +1200,15 @@ class TelnyxMediaBridge:
 
         old_epoch = self.epoch
         self.epoch += 1
+        self.orchestrator.epoch = self.epoch
         self.pending_epoch = None
         self.response_epoch = None
+        if self.response_id:
+            self.orchestrator.mark_response_cancelled(str(self.response_id))
         self.response_id = None
+        self._active_play_mark = None
+        self._set_playback_active(False)
+        self._last_interrupted_at = now_t
         self._remainder = b""
         self.codec.reset()
         self.reorder_buffer.reset()
@@ -1153,6 +1221,7 @@ class TelnyxMediaBridge:
             if t[2] >= old_epoch:
                 preserved_turns.append((t[0], t[1], self.epoch))
             else:
+                self._interrupted_item_ids.add(str(t[0]))
                 if self.interruption_manager is not None:
                     self.interruption_manager.cancel_turn(session_key, str(t[0]))
                 if self.usage is not None:
@@ -1167,11 +1236,13 @@ class TelnyxMediaBridge:
             self._output.get_nowait()
         while self._pending_speech:
             item_id, _epoch, turn_ledger = self._pending_speech.popleft()
+            self._interrupted_item_ids.add(str(item_id))
             if self.interruption_manager is not None:
                 self.interruption_manager.cancel_turn(session_key, str(item_id))
             if turn_ledger is not None:
                 turn_ledger.settle(item_id)
         for _resp_id, (item_id, _resp_epoch, resp_ledger) in list(self._responses.items()):
+            self._interrupted_item_ids.add(str(item_id))
             if self.interruption_manager is not None:
                 self.interruption_manager.cancel_turn(session_key, str(item_id))
             if resp_ledger is not None:
@@ -1179,6 +1250,7 @@ class TelnyxMediaBridge:
         self._responses.clear()
         async with self._send_lock:
             await self.socket.send_json({"event": "clear"})
+        self.telemetry["telnyx_clear_sent_count"] += 1
         self._set_phase("INTERRUPTED")
         self.telemetry["voice_response_cancelled"] += 1
         if cancel_response:
@@ -1301,6 +1373,10 @@ class TelnyxMediaBridge:
                 if filler_task is not None and not filler_task.done():
                     filler_task.cancel()
                 metric["tool_end_at"] = time.monotonic()
+                if metric.get("tool_start_at") is not None:
+                    self.orchestrator.record_central_ai_latency(
+                        (metric["tool_end_at"] - metric["tool_start_at"]) * 1000.0
+                    )
             if epoch != self.epoch:
                 self.central_ai_discarded_epochs += 1
                 metric["discard_reason"] = f"epoch_superseded_{epoch}_vs_{self.epoch}"
@@ -1371,10 +1447,7 @@ class TelnyxMediaBridge:
                         self._pin_mark = "pin-prompt:" + hashlib.sha256(item_id.encode()).hexdigest()[:24]
                         self._pin_prompt_safe_duration = max(len(str(result.get("answer") or "")) * 0.075, 4.0)
                         if not getattr(self, "_draining_events", False):
-                            try:
-                                self._output.put_nowait((self.epoch, {"event": "mark", "mark": {"name": self._pin_mark}}))
-                            except asyncio.QueueFull:
-                                self.dropped_outbound_frames += 1
+                            self._enqueue_control_marker(self.epoch, self._pin_mark)
                             self._pin_prompt_spoken = True
                             self._pin_prompt_finish_time = asyncio.get_running_loop().time()
                 except Exception as exc:
@@ -1443,32 +1516,98 @@ class TelnyxMediaBridge:
             if task is not None and task.cancelling():
                 raise asyncio.CancelledError
 
+    def _put_audio_frame(self, frame: tuple[int, bytes]) -> None:
+        try:
+            self._output.put_nowait(frame)
+            return
+        except asyncio.QueueFull:
+            pass
+        # Evict only stale-epoch items or the oldest audio frame, never current-epoch control markers.
+        buffered: list[tuple[int, Any]] = []
+        while not self._output.empty():
+            with suppress(asyncio.QueueEmpty):
+                buffered.append(self._output.get_nowait())
+        evicted = False
+        kept: list[tuple[int, Any]] = []
+        for item in buffered:
+            if item[0] != self.epoch:
+                evicted = True
+                continue
+            kept.append(item)
+        if not evicted:
+            for idx, item in enumerate(kept):
+                if isinstance(item[1], bytes):
+                    kept.pop(idx)
+                    self.dropped_outbound_frames += 1
+                    evicted = True
+                    break
+        for item in kept:
+            with suppress(asyncio.QueueFull):
+                self._output.put_nowait(item)
+        if evicted:
+            try:
+                self._output.put_nowait(frame)
+                return
+            except asyncio.QueueFull:
+                pass
+        self.dropped_outbound_frames += 1
+
+    def _enqueue_control_marker(self, epoch: int, mark_name: str) -> bool:
+        """Guarantee delivery of a Telnyx control marker (`play-*` / `pin-prompt:*`)
+        even when the bounded outbound audio queue is full, while preserving FIFO order
+        and cancellation epochs.
+        """
+        payload = (epoch, {"event": "mark", "mark": {"name": mark_name}})
+        try:
+            self._output.put_nowait(payload)
+            return True
+        except asyncio.QueueFull:
+            pass
+        buffered: list[tuple[int, Any]] = []
+        while not self._output.empty():
+            with suppress(asyncio.QueueEmpty):
+                buffered.append(self._output.get_nowait())
+        # 1. Drop stale-epoch frames first (they would be ignored by _write_audio anyway).
+        kept = [item for item in buffered if item[0] == self.epoch]
+        # 2. If still at capacity, evict the oldest audio frame(s) so the marker fits at the tail.
+        maxsize = self._output.maxsize
+        while maxsize > 0 and len(kept) >= maxsize:
+            audio_idx = next((i for i, it in enumerate(kept) if isinstance(it[1], bytes)), None)
+            if audio_idx is not None:
+                kept.pop(audio_idx)
+                self.dropped_outbound_frames += 1
+                continue
+            # All queued items are control marks: drop the oldest non-PIN mark if available, else oldest item.
+            play_idx = next(
+                (
+                    i for i, it in enumerate(kept)
+                    if isinstance(it[1], dict)
+                    and str((it[1].get("mark") or {}).get("name") or "").startswith("play-")
+                ),
+                0,
+            )
+            kept.pop(play_idx)
+            self.dropped_outbound_frames += 1
+        for item in kept:
+            with suppress(asyncio.QueueFull):
+                self._output.put_nowait(item)
+        try:
+            self._output.put_nowait(payload)
+            return True
+        except asyncio.QueueFull:
+            self.dropped_outbound_frames += 1
+            return False
+
     def _enqueue(self, raw: bytes, *, final: bool = False) -> None:
         self._remainder += raw
         while len(self._remainder) >= 160:
             frame = (self.epoch, self._remainder[:160])
             self._remainder = self._remainder[160:]
-            try:
-                self._output.put_nowait(frame)
-            except asyncio.QueueFull:
-                try:
-                    self._output.get_nowait()
-                    self.dropped_outbound_frames += 1
-                    self._output.put_nowait(frame)
-                except (asyncio.QueueEmpty, asyncio.QueueFull):
-                    self.dropped_outbound_frames += 1
+            self._put_audio_frame(frame)
         if final and self._remainder:
             frame = (self.epoch, self._remainder.ljust(160, b"\xff"))
             self._remainder = b""
-            try:
-                self._output.put_nowait(frame)
-            except asyncio.QueueFull:
-                try:
-                    self._output.get_nowait()
-                    self.dropped_outbound_frames += 1
-                    self._output.put_nowait(frame)
-                except (asyncio.QueueEmpty, asyncio.QueueFull):
-                    self.dropped_outbound_frames += 1
+            self._put_audio_frame(frame)
 
     async def _write_audio(self) -> None:
         loop = asyncio.get_running_loop()
@@ -1484,6 +1623,7 @@ class TelnyxMediaBridge:
                     if isinstance(raw, dict):
                         await self.socket.send_json(raw)
                     else:
+                        self._set_playback_active(True)
                         await self.socket.send_json({"event": "media", "media": {"payload": base64.b64encode(raw).decode("ascii")}})
                         self.telemetry["outbound_frames"] += 1
                         self.telemetry["outbound_audio_frames_sent"] += 1
@@ -1510,21 +1650,146 @@ class TelnyxMediaBridge:
                 logger.info("Realtime session configured successfully (model=%s, stt=%s)", self.realtime_model, self.stt_model)
                 self.telemetry["final_state"] = "LISTENING"
             elif kind == "input_audio_buffer.speech_started" and not self.input_paused:
-                self._last_activity = time.monotonic()
+                now_t = time.monotonic()
+                self._last_activity = now_t
+                self._last_speech_started_at = now_t
+                self.orchestrator.last_speech_started_at = now_t
+                self.telemetry["speech_started_count"] += 1
                 logger.info("Caller speech started (epoch=%s)", self.epoch)
                 self.telemetry["speech_detected"] = True
+                if self.phase == "LISTENING" and self._pin_turn is None:
+                    self.orchestrator.transition(ConversationState.USER_SPEAKING)
                 # Phone echo trips VAD as soon as playback starts. Do NOT send Telnyx clear
                 # or interrupt audio on raw speech_started during PIN prompt, as acoustic echo
                 # would cut off the prompt immediately. Instead, cancellation and verbal
-                # barge-in are safely adjudicated on transcription completion.
+                # barge-in are safely adjudicated on partial/final transcription or rescue.
             elif kind == "input_audio_buffer.speech_stopped" and not self.input_paused:
                 self._last_speech_stopped_at = time.monotonic()
+                self.telemetry["speech_stopped_count"] += 1
                 logger.info("Caller speech stopped (epoch=%s)", self.epoch)
                 self.telemetry["final_state"] = "PROCESSING"
+            elif kind == "input_audio_buffer.transcription_missing" and not self.input_paused:
+                # Explicitly track untranscribed speech segments separately from true silence
+                self.telemetry["speech_stopped_without_transcript"] += 1
+                item_id = str(getattr(event, "item_id", "") or "")
+                duration_ms = int(getattr(event, "duration_ms", 0) or 0)
+                has_verified_caller_speech = (
+                    (bool(item_id) and item_id in self._non_echo_partial_items)
+                    or (
+                        bool(getattr(event, "echo_rejected", False))
+                        and bool(getattr(event, "caller_speech_confirmed", False))
+                    )
+                )
+                logger.warning(
+                    "Caller speech segment ended without transcript (item_id=%s, duration_ms=%d, phase=%s, verified_caller_speech=%s)",
+                    item_id[:64],
+                    duration_ms,
+                    self.phase,
+                    has_verified_caller_speech,
+                )
+                playing = (
+                    self.response_id is not None
+                    or self.pending_epoch is not None
+                    or not self._output.empty()
+                    or self.phase in {"PLAYING", "SPEAKING"}
+                    or self._playback_active
+                )
+                if (
+                    self._pin_turn is None
+                    and playing
+                    and self.allow_natural_interruptions
+                    and duration_ms >= 450
+                    and has_verified_caller_speech
+                ):
+                    await self.interrupt(reason="untranscribed_speech_barge_in")
+                    self._set_phase("RECOVERING")
+                    loc = resolve_locale(self.locale).casefold()
+                    if loc.startswith("es"):
+                        rec_prompt = "Perdón, le escucho."
+                    elif loc.startswith("ro"):
+                        rec_prompt = "Pardon, vă ascult."
+                    elif loc.startswith("en"):
+                        rec_prompt = "Sorry, I'm listening."
+                    else:
+                        rec_prompt = "Pardon, je vous écoute."
+                    with suppress(Exception):
+                        await self._speak_system(f"recover-{item_id or uuid4().hex[:8]}", rec_prompt)
+                elif playing and not has_verified_caller_speech:
+                    # Do NOT clear playback on raw duration alone without echo-rejected caller speech evidence.
+                    self.telemetry["unconfirmed_barge_in_suppressed"] += 1
+                    logger.info(
+                        "Suppressed unconfirmed barge-in clear on transcription_missing (item_id=%s, duration_ms=%d)",
+                        item_id[:64],
+                        duration_ms,
+                    )
+            elif kind == "conversation.item.input_audio_transcription.delta" and not self.input_paused:
+                self.telemetry["stt_partial_count"] += 1
+                item_id = str(getattr(event, "item_id", "") or "")
+                partial_text = str(getattr(event, "transcript", None) or getattr(event, "delta", "") or "").strip()
+                if item_id and item_id not in self._turn_metrics:
+                    self._turn_metrics[item_id] = {
+                        "speech_started_at": self._last_speech_started_at,
+                        "stt_partial_at": time.monotonic(),
+                        "transcript_final_at": None,
+                        "interruption_detected_at": None,
+                        "telnyx_clear_sent_at": None,
+                        "tool_start_at": None,
+                        "tool_end_at": None,
+                        "response_ready_at": None,
+                        "first_pcm_sent_at": None,
+                        "playback_acknowledged_at": None,
+                        "playback_completed_at": None,
+                        "interruption_reason": None,
+                        "discard_reason": None,
+                    }
+                if (
+                    item_id
+                    and partial_text
+                    and not is_playback_echo(partial_text, self._last_spoken)
+                    and not is_backchannel(partial_text)
+                ):
+                    if len(self._non_echo_partial_items) > 500:
+                        self._non_echo_partial_items.clear()
+                    self._non_echo_partial_items.add(item_id)
+                if (
+                    self._pin_turn is None
+                    and partial_text
+                    and self.allow_natural_interruptions
+                    and item_id != self._last_barge_in_item_id
+                ):
+                    playing = (
+                        self.response_id is not None
+                        or self.pending_epoch is not None
+                        or not self._output.empty()
+                        or self.phase in {"PLAYING", "SPEAKING"}
+                        or self._playback_active
+                    )
+                    if (
+                        playing
+                        and not is_playback_echo(partial_text, self._last_spoken)
+                        and (
+                            is_explicit_interruption(partial_text)
+                            or is_correction_or_objection(partial_text)
+                            or is_attention_check(partial_text)
+                        )
+                    ):
+                        self._last_barge_in_item_id = item_id
+                        if item_id in self._turn_metrics:
+                            self._turn_metrics[item_id]["interruption_detected_at"] = time.monotonic()
+                        if self.interruption_manager is not None:
+                            self.interruption_manager.on_caller_speech_detected(
+                                str(self.stream_id or "default"),
+                                is_dtmf_pin_entry=False,
+                                allow_interruptions=True,
+                            )
+                        await self.interrupt(reason="partial_transcript_barge_in")
             elif kind == "conversation.item.input_audio_transcription.completed" and not self.input_paused:
                 now_t = time.monotonic()
                 self._last_activity = now_t
                 self._last_transcription_at = now_t
+                self.telemetry["stt_final_count"] += 1
+                if getattr(event, "rescued", False):
+                    self.telemetry["stt_rescue_succeeded"] += 1
                 item_id = getattr(event, "item_id", "")
                 transcript = getattr(event, "transcript", "")
                 logger.info("Caller speech transcribed (item_id=%s, length=%d)", item_id, len(transcript) if isinstance(transcript, str) else 0)
@@ -1534,6 +1799,15 @@ class TelnyxMediaBridge:
                     continue
                 if len(self._seen_items) >= 1000:
                     raise InvalidMediaFrame("Call turn capacity exceeded")
+                # Guard against stale/late transcription arriving for an already-cancelled older turn
+                if (
+                    item_id in self._interrupted_item_ids
+                    and not is_correction_or_objection(transcript)
+                    and not is_attention_check(transcript)
+                ):
+                    self.telemetry["late_transcripts_discarded"] += 1
+                    logger.info("Late superseded transcript discarded (item_id=%s)", item_id)
+                    continue
                 self._seen_items.add(item_id)
                 self.telemetry["transcription_received"] = True
                 self.telemetry["final_state"] = "PROCESSING"
@@ -1550,6 +1824,7 @@ class TelnyxMediaBridge:
                             or self.pending_epoch is not None
                             or not self._output.empty()
                             or self.phase == "PLAYING"
+                            or self._playback_active
                         )
                         if playing:
                             await self.interrupt(reason="pin_challenge_verbal_cancellation")
@@ -1560,40 +1835,56 @@ class TelnyxMediaBridge:
                         continue
                 if str(item_id) not in self._turn_metrics:
                     self._turn_metrics[str(item_id)] = {
+                        "speech_started_at": self._last_speech_started_at,
+                        "speech_stopped_at": self._last_speech_stopped_at,
+                        "stt_partial_at": None,
                         "transcript_final_at": now_t,
+                        "interruption_detected_at": None,
+                        "telnyx_clear_sent_at": None,
                         "tool_start_at": None,
                         "tool_end_at": None,
                         "response_ready_at": None,
                         "first_pcm_sent_at": None,
+                        "playback_acknowledged_at": None,
                         "playback_completed_at": None,
                         "interruption_reason": None,
                         "discard_reason": None,
                     }
+                else:
+                    self._turn_metrics[str(item_id)]["transcript_final_at"] = now_t
+                    self._turn_metrics[str(item_id)]["speech_stopped_at"] = self._last_speech_stopped_at
                 if self.usage is not None:
                     if not self.usage.reserve(item_id):
                         raise PermissionError("Voice usage quota unavailable")
                     self.usage.record_transcription(item_id, event, model=self.stt_model)
+                secs_since_last = max(0.0, now_t - self.orchestrator.last_user_turn_at)
+                effective_phase = "PLAYING" if (self._playback_active or not self._output.empty()) and self.phase == "LISTENING" else self.phase
                 decision = adjudicate_transcript(
                     transcript,
-                    phase=self.phase,
+                    phase=effective_phase,
                     in_flight_transcript=self._in_flight_transcript,
                     last_spoken=self._last_spoken,
                     allow_barge_in=self.allow_natural_interruptions,
+                    seconds_since_last_turn=secs_since_last,
                 )
                 if decision == "ignore":
                     logger.info(
                         "Voice transcript ignored; call=%s turn=%s phase=%s",
-                        self.call_correlation, str(item_id)[:64], self.phase,
+                        self.call_correlation, str(item_id)[:64], effective_phase,
                     )
                     continue
                 if decision == "replace":
+                    already_interrupted_on_partial = (item_id == self._last_barge_in_item_id)
                     playing = (
                         self.response_id is not None
                         or self.pending_epoch is not None
                         or not self._output.empty()
-                        or self.phase == "PLAYING"
+                        or effective_phase in {"PLAYING", "SPEAKING"}
+                        or self._playback_active
                     )
-                    if playing and self.allow_natural_interruptions:
+                    if playing and self.allow_natural_interruptions and not already_interrupted_on_partial:
+                        if str(item_id) in self._turn_metrics:
+                            self._turn_metrics[str(item_id)]["interruption_detected_at"] = now_t
                         if self.interruption_manager is not None:
                             self.interruption_manager.on_caller_speech_detected(
                                 str(self.stream_id or "default"),
@@ -1603,15 +1894,17 @@ class TelnyxMediaBridge:
                         if self._current_turn_task is not None and not self._current_turn_task.done():
                             self._current_turn_task.cancel()
                         await self.interrupt(reason="caller_speech_barge_in")
-                    elif self._executing_turn:
+                    elif self._executing_turn and not already_interrupted_on_partial:
                         if self._current_turn_task is not None and not self._current_turn_task.done():
                             self._current_turn_task.cancel()
                         self.epoch += 1
+                        self.orchestrator.epoch = self.epoch
                         logger.info(
                             "Voice in-flight answer superseded by a confirmed question; call=%s epoch=%s",
                             self.call_correlation,
                             self.epoch,
                         )
+                self.orchestrator.begin_turn(str(item_id), self.epoch)
                 try:
                     self._turns.put_nowait((item_id, transcript, self.epoch))
                 except asyncio.QueueFull:
@@ -1636,20 +1929,47 @@ class TelnyxMediaBridge:
                         if isinstance(delta, str):
                             pcm_length = len(base64.b64decode(delta, validate=False))
                         self.telemetry["tts_audio_bytes_generated"] += pcm_length
-                        if self.telemetry["tts_first_audio_chunk_received"] == 0:
-                            self.telemetry["tts_first_audio_chunk_received"] = 1
-                            baseline_time = (
-                                self._last_speech_stopped_at
-                                or getattr(self, "_last_transcription_at", None)
-                                or self._last_activity
-                            )
-                            if baseline_time is not None:
-                                latency_ms = max(1, int((time.monotonic() - baseline_time) * 1000))
-                                self.telemetry["first_audible_response_latency_ms"] = latency_ms
+                        now_chunk = time.monotonic()
+                        resp_key = str(self.response_id or "")
+                        if resp_key and resp_key not in self._responses_with_first_audio:
+                            if len(self._responses_with_first_audio) > 500:
+                                self._responses_with_first_audio.clear()
+                            self._responses_with_first_audio.add(resp_key)
+                            turn_metric: dict[str, Any] | None = None
                             if self.response_id and self.response_id in self._responses:
                                 r_item_id = str(self._responses[self.response_id][0])
-                                if r_item_id in self._turn_metrics and self._turn_metrics[r_item_id]["first_pcm_sent_at"] is None:
-                                    self._turn_metrics[r_item_id]["first_pcm_sent_at"] = time.monotonic()
+                                turn_metric = self._turn_metrics.get(r_item_id)
+                            turn_baseline = (
+                                (
+                                    turn_metric.get("speech_stopped_at")
+                                    or turn_metric.get("transcript_final_at")
+                                    or turn_metric.get("tool_start_at")
+                                    or turn_metric.get("response_ready_at")
+                                )
+                                if turn_metric is not None
+                                else None
+                            )
+                            if turn_baseline is None:
+                                turn_baseline = (
+                                    self._last_speech_stopped_at
+                                    or getattr(self, "_last_transcription_at", None)
+                                    or self._last_activity
+                                )
+                            if turn_baseline is not None:
+                                turn_latency_ms = max(1.0, (now_chunk - float(turn_baseline)) * 1000.0)
+                                self.orchestrator.record_first_audio_latency(turn_latency_ms)
+                                self.telemetry["last_turn_first_audio_latency_ms"] = int(round(turn_latency_ms))
+                                if turn_metric is not None:
+                                    if turn_metric.get("first_pcm_sent_at") is None:
+                                        turn_metric["first_pcm_sent_at"] = now_chunk
+                                    turn_metric["first_audio_latency_ms"] = round(turn_latency_ms, 2)
+                                if self.telemetry["tts_first_audio_chunk_received"] == 0:
+                                    self.telemetry["tts_first_audio_chunk_received"] = 1
+                                    self.telemetry["first_audible_response_latency_ms"] = int(round(turn_latency_ms))
+                            elif self.telemetry["tts_first_audio_chunk_received"] == 0:
+                                self.telemetry["tts_first_audio_chunk_received"] = 1
+                        elif self.telemetry["tts_first_audio_chunk_received"] == 0:
+                            self.telemetry["tts_first_audio_chunk_received"] = 1
                         encoded = self.codec.outbound_pcm(delta)
                         self.telemetry["audio_encoding_completed"] += 1
                         self._set_phase("PLAYING")
@@ -1716,16 +2036,21 @@ class TelnyxMediaBridge:
                     if is_pin_turn and self._pin_turn is not None:
                         mark_item = str(completed[0]) if completed is not None else self._pin_turn
                         self._pin_mark = "pin-prompt:" + hashlib.sha256(mark_item.encode()).hexdigest()[:24]
-                        try:
-                            self._output.put_nowait((self.epoch, {"event": "mark", "mark": {"name": self._pin_mark}}))
-                        except asyncio.QueueFull:
-                            self.dropped_outbound_frames += 1
+                        self._enqueue_control_marker(self.epoch, self._pin_mark)
                         self._pin_prompt_spoken = True
                         self._pin_prompt_finish_time = asyncio.get_running_loop().time()
                         self._pin_prompt_safe_duration = getattr(self, "_pin_prompt_safe_duration", 4.0)
+                    elif completed_id:
+                        play_mark = f"play-{completed_id}"
+                        if self._enqueue_control_marker(self.epoch, play_mark):
+                            self._active_play_mark = play_mark
+                        else:
+                            self._active_play_mark = None
                     self.response_id = None
                     self.response_epoch = None
-                    self._set_phase("LISTENING")
+                    if self._output.empty() and self._active_play_mark is None:
+                        self._set_playback_active(False)
+                        self._set_phase("LISTENING")
             elif kind == "error":
                 err = getattr(event, "error", None)
                 code = getattr(err, "code", "") if err is not None else ""
@@ -1817,12 +2142,21 @@ class TelnyxMediaBridge:
                 continue
             if kind == "mark":
                 marker = event.get("mark")
+                marker_name = str(marker.get("name") or "") if isinstance(marker, dict) else ""
                 if isinstance(marker, dict) and (
-                    str(marker.get("name") or "").startswith("play-")
-                    or str(marker.get("name") or "").startswith("pin-prompt:")
+                    marker_name.startswith("play-")
+                    or marker_name.startswith("pin-prompt:")
                 ):
                     self.telemetry["outbound_playback_acknowledged"] += 1
-                if self._pin_mark and isinstance(marker, dict) and marker.get("name") == self._pin_mark and not self._pin_started:
+                    if marker_name.startswith("play-") and (
+                        self._active_play_mark is None or marker_name == self._active_play_mark
+                    ):
+                        self._active_play_mark = None
+                        if self._output.empty() and self.response_id is None:
+                            self._set_playback_active(False)
+                            if self.phase in {"PLAYING", "SPEAKING", "RECOVERING"}:
+                                self._set_phase("LISTENING")
+                if self._pin_mark and isinstance(marker, dict) and marker_name == self._pin_mark and not self._pin_started:
                     if self.begin_pin is not None and self._pin_turn is not None:
                         result = await self.begin_pin(self._pin_turn)
                         self._pin_started = True
@@ -2125,7 +2459,7 @@ class TelnyxMediaBridge:
                 self.telemetry.get("vad_interruptions_count"),
             )
             logger.info(
-                "Call %s audio pipeline: phase=%s central_ai_response_ready=%d tts_request_started=%d tts_first_audio_chunk_received=%d tts_audio_bytes_generated=%d audio_encoding_completed=%d outbound_audio_frames_sent=%d outbound_audio_bytes_sent=%d outbound_playback_acknowledged=%d tts_provider_error=%d voice_response_cancelled=%d voice_response_completed=%d",
+                "Call %s audio pipeline: phase=%s central_ai_response_ready=%d tts_request_started=%d tts_first_audio_chunk_received=%d tts_audio_bytes_generated=%d audio_encoding_completed=%d outbound_audio_frames_sent=%d outbound_audio_bytes_sent=%d outbound_playback_acknowledged=%d tts_provider_error=%d voice_response_cancelled=%d voice_response_completed=%d speech_started=%d speech_stopped=%d stt_partial=%d stt_final=%d speech_without_transcript=%d stt_rescue_ok=%d barge_in=%d telnyx_clear=%d late_discarded=%d",
                 self.call_correlation,
                 self.phase,
                 self.telemetry.get("central_ai_response_ready"),
@@ -2139,6 +2473,15 @@ class TelnyxMediaBridge:
                 self.telemetry.get("tts_provider_error"),
                 self.telemetry.get("voice_response_cancelled"),
                 self.telemetry.get("voice_response_completed"),
+                self.telemetry.get("speech_started_count", 0),
+                self.telemetry.get("speech_stopped_count", 0),
+                self.telemetry.get("stt_partial_count", 0),
+                self.telemetry.get("stt_final_count", 0),
+                self.telemetry.get("speech_stopped_without_transcript", 0),
+                self.telemetry.get("stt_rescue_succeeded", 0),
+                self.telemetry.get("barge_in_triggered_count", 0),
+                self.telemetry.get("telnyx_clear_sent_count", 0),
+                self.telemetry.get("late_transcripts_discarded", 0),
             )
             for task in self._background:
                 task.cancel()
@@ -2274,15 +2617,15 @@ def authorize_media_session(
     plan: str,
     *,
     public_mode: bool = False,
-    principal_id: Optional[str] = None,
-    auth_epoch: Optional[str] = None,
+    principal_id: UUID | str | None = None,
+    auth_epoch: str | None = None,
     ledger: Optional[VoiceUsageLedger] = None,
     bridge: Optional[Any] = None,
     claim: Optional[Any] = None,
     locale: str = "fr-CA",
     usage_service: Optional[Any] = None,
     on_settlement: Optional[Any] = None,
-) -> Tuple[bool, Optional[str], Optional[str], Optional[VoiceUsageLedger]]:
+) -> Tuple[bool, UUID | str | None, str | None, Optional[VoiceUsageLedger]]:
     """Authorize a media stream session, supporting staff continuity, handover revocation, and public fallback."""
     current_call, current_config, current_company = media_transport_context(
         db, settings, call_id, allow_statuses=_SESSION_MEDIA_STATUSES,
@@ -2319,7 +2662,7 @@ def authorize_media_session(
 
     current_epoch = utc(current_auth.authenticated_at).isoformat()
     if principal_id is not None:
-        if current_user.id != principal_id or current_epoch != auth_epoch:
+        if str(current_user.id) != str(principal_id) or current_epoch != auth_epoch:
             raise PermissionError("Caller authentication changed")
         return public_mode, principal_id, auth_epoch, ledger
     if claim is None:
@@ -2386,8 +2729,8 @@ async def telnyx_media_socket(
 
     ledger = None
     claim = None
-    principal_id = None
-    auth_epoch = None
+    principal_id: UUID | str | None = None
+    auth_epoch: str | None = None
     public_conversation = PublicInboundConversation(db, settings, call_id)
     from backend.app.voice.audio_preferences import phone_audio_config
     from backend.app.voice.realtime_provider import VoiceRealtimeRouter
@@ -2778,6 +3121,79 @@ async def telnyx_media_socket(
                 }
                 db.commit()
 
+        # Contextual objection / correction / attention-check handling:
+        # Stop repeating unwanted catalog/answers; if the caller combined an attention check
+        # ("Allô, tu m'entends ? Quel est le prix des casques ?") or objection with a concrete
+        # request, extract and execute that request instead of replying with a confirmation only.
+        call_locale = current_call.locale or locale
+        had_attention_prefix = False
+        if is_attention_check(transcript):
+            embedded_after_attention = extract_request_after_attention_check(transcript)
+            if embedded_after_attention:
+                had_attention_prefix = True
+                transcript = embedded_after_attention
+            elif not is_correction_or_objection(transcript):
+                attn_answer = build_correction_clarification(call_locale, is_attention=True)
+                if current_call.central_conversation_id is not None:
+                    ConversationService(db).add_message(
+                        current_company.id,
+                        current_call.central_conversation_id,
+                        AIMessageRole.USER,
+                        transcript,
+                    )
+                    ConversationService(db).add_message(
+                        current_company.id,
+                        current_call.central_conversation_id,
+                        AIMessageRole.ASSISTANT,
+                        attn_answer,
+                        provider="central_ai",
+                        model=settings.voice_realtime_model,
+                    )
+                return {"status": "success", "answer": attn_answer}
+
+        def _with_attention_ack(answer_text: str) -> str:
+            if not had_attention_prefix or not answer_text:
+                return answer_text
+            low = answer_text.lstrip().casefold()
+            if low.startswith(("oui", "yes", "sí", "si", "da")):
+                return answer_text
+            loc_cf = (call_locale or "fr-CA").casefold()
+            if loc_cf.startswith("es"):
+                return f"Sí, le escucho. {answer_text}"
+            if loc_cf.startswith("ro"):
+                return f"Da, vă aud. {answer_text}"
+            if loc_cf.startswith("en"):
+                return f"Yes, I hear you. {answer_text}"
+            return f"Oui, je vous entends. {answer_text}"
+
+        if is_correction_or_objection(transcript):
+            reformulated = extract_reformulation_after_correction(transcript)
+            if reformulated:
+                transcript = reformulated
+            else:
+                ctx_obj = dict(current_call.source_context or {})
+                last_topic = ctx_obj.get("last_voice_topic")
+                ctx_obj.pop("pending_retail_clarification", None)
+                current_call.source_context = ctx_obj
+                db.commit()
+                clarification = build_correction_clarification(call_locale, last_topic=last_topic)
+                if current_call.central_conversation_id is not None:
+                    ConversationService(db).add_message(
+                        current_company.id,
+                        current_call.central_conversation_id,
+                        AIMessageRole.USER,
+                        transcript,
+                    )
+                    ConversationService(db).add_message(
+                        current_company.id,
+                        current_call.central_conversation_id,
+                        AIMessageRole.ASSISTANT,
+                        clarification,
+                        provider="central_ai",
+                        model=settings.voice_realtime_model,
+                    )
+                return {"status": "success", "answer": clarification}
+
         direct_answer = resolve_direct_voice_answer(
             db,
             company_id=current_company.id,
@@ -2789,6 +3205,7 @@ async def telnyx_media_socket(
             call=current_call,
         )
         if direct_answer:
+            direct_answer = _with_attention_ack(direct_answer)
             db.commit()
             if current_call.central_conversation_id is not None:
                 ConversationService(db).add_message(
@@ -2884,7 +3301,8 @@ async def telnyx_media_socket(
             )
             ledger.attribute(item_id, result.selected_agent, result.selected_agent)
             hangup_detected = is_hangup_request(transcript)
-            return {"status": result.status, "answer": result.answer, "hangup": hangup_detected}
+            final_ans = _with_attention_ack(result.answer) if isinstance(result.answer, str) else result.answer
+            return {"status": result.status, "answer": final_ans, "hangup": hangup_detected}
         except Exception as exc:
             if principal_id is None and public_conversation is not None:
                 logger.exception("Central AI execute error for public voice call, falling back: %s", exc)
