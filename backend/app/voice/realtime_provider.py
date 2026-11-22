@@ -2036,8 +2036,9 @@ class VoiceRealtimeRouter:
                     adapter = fallback_factory()
             except Exception:
                 adapter = fallback_factory()
-            if hasattr(adapter, "_model") and adapter._model != m:
-                adapter._model = m
+            curr_model = getattr(adapter, "_model", None)
+            if curr_model is not None and curr_model != m:
+                setattr(adapter, "_model", m)
             return adapter
 
         if requested == RealtimeProviderType.GEMINI_LIVE and gemini_enabled and self._gemini.is_available():
