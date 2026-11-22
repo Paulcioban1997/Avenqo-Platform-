@@ -3153,12 +3153,19 @@ async def telnyx_webhook(
         # Standard PIN authentication (Customer, Employee, or Owner)
         result = auth_controller.verify_gather(call, digits_str)
         if media_mode:
-            call.source_context = {**(call.source_context or {}), "pin_gather_status": "authenticated" if result["authenticated"] else "refused"}
+            if result["authenticated"]:
+                gather_status = "authenticated"
+            elif result.get("is_empty") or result.get("reason") in ("empty_pin", "timeout"):
+                gather_status = "retry_needed"
+            else:
+                gather_status = "refused"
+            call.source_context = {**(call.source_context or {}), "pin_gather_status": gather_status}
         receipt.result = {**receipt.result, "authenticated": result["authenticated"]}
-        AuditLogService(db).record(actor_user_id=call.authenticated_user_id if result["authenticated"] else None,
-            action="voice_pin_authentication_succeeded" if result["authenticated"] else "voice_pin_authentication_failed",
-            target_type="voice_call", target_id=str(call.id), company_id=call.company_id,
-            metadata={"authenticated": result["authenticated"]}, commit=False)
+        if not result.get("is_empty"):
+            AuditLogService(db).record(actor_user_id=call.authenticated_user_id if result["authenticated"] else None,
+                action="voice_pin_authentication_succeeded" if result["authenticated"] else "voice_pin_authentication_failed",
+                target_type="voice_call", target_id=str(call.id), company_id=call.company_id,
+                metadata={"authenticated": result["authenticated"]}, commit=False)
         db.commit()
         return {"received": True, "authenticated": result["authenticated"]}
     if event_type == "call.bridged":

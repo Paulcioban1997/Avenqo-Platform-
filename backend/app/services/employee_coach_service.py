@@ -987,5 +987,83 @@ class EmployeeCoachService:
         else:
             return f"You have everything it takes to deliver an outstanding day and great value to customers! 🚀"
 
+    def get_marketing_acquisition_advice(
+        self,
+        actor: User,
+        query: str | None = None,
+        locale: str = "fr-CA",
+    ) -> dict[str, Any]:
+        """Provide structured customer acquisition, marketing, and client attraction advice."""
+        if not actor or not actor.id or not actor.company_id:
+            return {"status": "error", "error": "unauthenticated"}
+
+        loc = resolve_locale(locale)
+        first_name = (actor.first_name or "Collaborateur").strip()
+
+        if loc.startswith("fr"):
+            tips = [
+                "Ciblez les besoins saisonniers ou locaux les plus recherchés et mettez en avant vos offres et produits phares.",
+                "Optimisez votre visibilité locale en récoltant des avis clients positifs récents et en animant votre vitrine Google.",
+                "Lancez une offre de découverte ou une formule d'accueil attractive pour lever les hésitations des nouveaux clients.",
+                "Relancez proactivement votre base existante avec des recommandations personnalisées et des programmes de parrainage.",
+            ]
+            title = "Conseils d'acquisition client et stratégie commerciale"
+            spoken_summary = (
+                f"{first_name}, pour attirer plus de clients, je vous conseille de miser sur trois leviers concrets : "
+                "d'abord, mettre en avant vos produits et services les plus demandés avec une offre découverte attractive ; "
+                "ensuite, renforcer votre visibilité locale en sollicitant des avis clients positifs récents ; "
+                "et enfin, relancer vos clients existants avec des recommandations ciblées et du parrainage."
+            )
+        elif loc.startswith("es"):
+            tips = [
+                "Identifique las necesidades estacionales y destaque sus productos o servicios estrella.",
+                "Mejore su visibilidad local consiguiendo reseñas positivas recientes en Google.",
+                "Proponga una oferta de bienvenida o promoción especial para nuevos compradores.",
+                "Reactive a los clientes actuales con recomendaciones personalizadas y programas de referidos.",
+            ]
+            title = "Consejos de captación de clientes y marketing"
+            spoken_summary = (
+                f"{first_name}, para atraer a más clientes le recomiendo tres acciones clave: "
+                "destacar sus productos y servicios más demandados con una oferta de bienvenida, "
+                "optimizar su presencia local con opiniones verificadas de clientes, "
+                "y contactar proactivamente a sus clientes existentes con recomendaciones personalizadas."
+            )
+        elif loc.startswith("ro"):
+            tips = [
+                "Evidențiați produsele și serviciile cheie cu o ofertă introductivă atractivă.",
+                "Optimizați vizibilitatea locală colectând recenzii recente de la clienți mulțumiți.",
+                "Lansați oferte sezoniere pentru a stimula prima achiziție a noilor clienți.",
+                "Recontactați clienții existenți prin oferte personalizate și recomandări directe.",
+            ]
+            title = "Strategie de atragere a clienților și marketing"
+            spoken_summary = (
+                f"{first_name}, pentru a atrage mai mulți clienți vă recomand trei măsuri clare: "
+                "promovarea produselor sau serviciilor vedetă printr-o ofertă de bun venit, "
+                "creșterea vizibilității locale prin recenzii pozitive recente, "
+                "și reactivarea bazei de clienți existenți prin recomandări personalizate."
+            )
+        else:
+            tips = [
+                "Highlight in-demand seasonal or signature products with a clear introductory offer.",
+                "Strengthen your local presence and gather fresh positive customer reviews.",
+                "Lower first-time purchase hesitation with an enticing discovery package.",
+                "Re-engage your past customer list with tailored recommendations and referral incentives.",
+            ]
+            title = "Customer acquisition and marketing advice"
+            spoken_summary = (
+                f"{first_name}, to attract more customers I recommend three concrete actions: "
+                "feature your top-selling products or services with an attractive discovery offer, "
+                "boost your local visibility by gathering recent verified client reviews, "
+                "and re-engage existing customers with personalized suggestions and referral perks."
+            )
+
+        return {
+            "status": "success",
+            "title": title,
+            "tips": tips,
+            "spoken_summary": spoken_summary,
+            "topic": "customer_acquisition",
+        }
+
 
 __all__ = ["EmployeeCoachService"]

@@ -745,10 +745,18 @@ class PublicInboundConversation:
             self.db.commit()
         if call.pin_challenge_hash:
             return "pending"
-        if (call.source_context or {}).get("pin_gather_status") == "authenticated":
+        gather_status = (call.source_context or {}).get("pin_gather_status")
+        if gather_status == "authenticated":
             auth = VoiceCallerAuth(self.db, self.settings).valid_session(call)
             return "authenticated" if auth is not None and auth.caller_type in {"OWNER", "EMPLOYEE"} else "refused"
+        if gather_status == "retry_needed":
+            return "retry_needed"
         return "refused"
+
+    def reset_pin_retry(self) -> None:
+        call, _config, _company = self.context()
+        call.source_context = {**(call.source_context or {}), "pin_gather_status": "pending_retry"}
+        self.db.commit()
 
 
 class TelnyxAudioReorderBuffer:
@@ -867,6 +875,7 @@ class TelnyxMediaBridge:
         initial_answer: str | None = None,
         begin_pin: Callable[[str], Awaitable[dict]] | None = None,
         poll_pin: Callable[[], Awaitable[str]] | None = None,
+        reset_pin_retry: Callable[[], Awaitable[None]] | None = None,
         consume_pending_query: Callable[[], Awaitable[str | None]] | None = None,
         hangup_call: Callable[[], Awaitable[None]] | None = None,
         max_output_queue: int = 64,
@@ -889,6 +898,7 @@ class TelnyxMediaBridge:
         self.initial_answer = initial_answer
         self.begin_pin: Callable[[str], Awaitable[dict]] | None = begin_pin
         self.poll_pin: Callable[[], Awaitable[str]] | None = poll_pin
+        self.reset_pin_retry: Callable[[], Awaitable[None]] | None = reset_pin_retry
         self.consume_pending_query: Callable[[], Awaitable[str | None]] | None = consume_pending_query
         self.hangup_call: Callable[[], Awaitable[None]] | None = hangup_call
         self.allow_natural_interruptions = bool(allow_natural_interruptions)
@@ -1242,6 +1252,7 @@ class TelnyxMediaBridge:
                             self.dropped_outbound_frames += 1
                         self._pin_prompt_spoken = True
                         self._pin_prompt_finish_time = asyncio.get_running_loop().time()
+                        self._pin_prompt_safe_duration = max(len(str(result.get("answer") or "")) * 0.075, 4.0)
                 except Exception as exc:
                     self.tts_failures += 1
                     self.telemetry["tts_provider_error"] += 1
@@ -1484,6 +1495,7 @@ class TelnyxMediaBridge:
                             self.dropped_outbound_frames += 1
                         self._pin_prompt_spoken = True
                         self._pin_prompt_finish_time = asyncio.get_running_loop().time()
+                        self._pin_prompt_safe_duration = max(len(str(result.get("answer") or "")) * 0.075, 4.0)
                     self.response_id = None
                     self.response_epoch = None
                     self._set_phase("LISTENING")
@@ -1645,6 +1657,28 @@ class TelnyxMediaBridge:
         await self.adapter.clear_input()
         self.input_paused = False
 
+    async def _reprompt_pin(self) -> None:
+        if getattr(self, "_pin_reprompting", False):
+            return
+        self._pin_reprompting = True
+        try:
+            self._pin_started = False
+            self._pin_mark = None
+            if self.reset_pin_retry is not None:
+                await self.reset_pin_retry()
+            reprompt = (
+                "Aucun chiffre n'a été reçu. Veuillez saisir votre code NIP sur le clavier de votre téléphone."
+                if resolve_locale(self.locale).startswith("fr")
+                else "No digits were received. Please enter your PIN on your phone keypad."
+            )
+            item_id = f"pin-reprompt:{self._pin_turn or 'retry'}"
+            await self._speak_system(item_id, reprompt)
+            self._pin_prompt_spoken = True
+            self._pin_prompt_finish_time = asyncio.get_running_loop().time()
+            self._pin_prompt_safe_duration = max(len(reprompt) * 0.075, 4.0)
+        finally:
+            self._pin_reprompting = False
+
     async def _monitor_pin(self) -> None:
         while True:
             await asyncio.sleep(0.05)
@@ -1655,7 +1689,8 @@ class TelnyxMediaBridge:
                 continue
             if not self._pin_started and self.begin_pin is not None and getattr(self, "_pin_prompt_spoken", False):
                 finish_time = getattr(self, "_pin_prompt_finish_time", None)
-                if self._output.empty() and finish_time is not None and (asyncio.get_running_loop().time() - finish_time >= 0.2):
+                safe_duration = getattr(self, "_pin_prompt_safe_duration", 4.0)
+                if self._output.empty() and finish_time is not None and (asyncio.get_running_loop().time() - finish_time >= safe_duration):
                     result = await self.begin_pin(self._pin_turn)
                     self._pin_started = True
                     if not result.get("success"):
@@ -1664,6 +1699,8 @@ class TelnyxMediaBridge:
                 status = await self.poll_pin()
                 if status in {"authenticated", "refused"}:
                     await self._finish_pin(status)
+                elif status == "retry_needed":
+                    await self._reprompt_pin()
 
     async def _periodic_auth(self) -> None:
         while True:
@@ -2334,8 +2371,10 @@ async def telnyx_media_socket(
             staff_role=str(getattr(current_user, "role", "") or "") if principal_id is not None else None,
             locale=current_call.locale or locale,
             user_id=current_user.id if principal_id is not None else None,
+            call=current_call,
         )
         if direct_answer:
+            db.commit()
             if current_call.central_conversation_id is not None:
                 ConversationService(db).add_message(
                     current_company.id,
@@ -2459,6 +2498,10 @@ async def telnyx_media_socket(
             return "refused"
         return public_conversation.pin_state()
 
+    async def reset_pin_retry() -> None:
+        if public_conversation is not None:
+            public_conversation.reset_pin_retry()
+
     async def consume_pending_query() -> str | None:
         if public_conversation is None:
             return None
@@ -2539,6 +2582,7 @@ async def telnyx_media_socket(
             confirm_authentication=(call.source_context or {}).get("ivr_stage") == "staff_authenticated",
         ),
         begin_pin=begin_pin, poll_pin=poll_pin,
+        reset_pin_retry=reset_pin_retry,
         consume_pending_query=consume_pending_query,
         hangup_call=hangup_call,
         max_session_seconds=sandbox_duration,

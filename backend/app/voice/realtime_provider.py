@@ -254,6 +254,15 @@ def build_personality_system_prompt(
                 "Under NO circumstances disclose company net profit margins, confidential balance sheets, or executive payroll to operational staff. "
                 "Tone: motivating, structured, respectful, supportive, and focused on operational excellence."
             )
+    else:
+        prompt += (
+            "\n\nPUBLIC CUSTOMER SERVICE RECEPTIONIST MODE:\n"
+            "The caller is an external customer or public caller. "
+            "Never assume they are an employee or owner. Never greet them by an employee or owner name (such as 'Bonjour François'). "
+            "Helpfully answer questions about public products, store hours, location, and services. "
+            "If they ask about employee shift tasks, internal coaching, or executive briefings, inform them politely "
+            "that internal employee tools require PIN authentication on their phone keypad."
+        )
     if extra_instructions:
         prompt = f"{prompt}\n{extra_instructions.strip()}"
     return prompt
@@ -631,8 +640,14 @@ class GeminiLiveRealtimeAudioAdapter:
             return
 
         # Détection d'activité vocale (VAD) locale réactive + gestion du barge-in
+        # Self-talk echo suppression: elevate threshold during active assistant TTS playback
         rms = audioop.rms(audio, 2)
-        if rms >= self._vad_rms_threshold:
+        effective_threshold = (
+            int(self._vad_rms_threshold * 1.5)
+            if self._tts_active
+            else self._vad_rms_threshold
+        )
+        if rms >= effective_threshold:
             self._silence_frames = 0
             if not self._speech_active:
                 self._speech_active = True
@@ -782,10 +797,33 @@ class GeminiLiveRealtimeAudioAdapter:
                         )
                         if interrupted:
                             logger.info(
-                                "gemini_live_interrupted_ignored tts_active=%s chunks=%s",
+                                "gemini_live_interrupted_handled tts_active=%s chunks=%s",
                                 self._tts_active,
                                 self._tts_audio_chunks,
                             )
+                            if self._tts_response_id is not None:
+                                self._interrupted_responses.add(self._tts_response_id)
+                            interrupted_resp = self._current_response_id or self._tts_response_id
+                            self._tts_active = False
+                            self._tts_response_id = None
+                            self._current_response_id = None
+                            if interrupted_resp is not None:
+                                await self._event_queue.put(
+                                    SimpleNamespace(
+                                        type="response.done",
+                                        response=SimpleNamespace(
+                                            id=interrupted_resp,
+                                            status="cancelled",
+                                            usage=None,
+                                        ),
+                                    )
+                                )
+                                await self._event_queue.put(
+                                    SimpleNamespace(
+                                        type="response.interrupted",
+                                        response_id=interrupted_resp,
+                                    )
+                                )
 
                         # Transcription entrante de l'appelant
                         in_trans = getattr(server_content, "input_transcription", None) or (
@@ -1947,9 +1985,15 @@ class VoiceRealtimeRouter:
                 fallback_factory=fallback_factory,
             )
 
+        active_model = getattr(self._settings, "voice_realtime_model", "gpt-live-1")
+        if config is not None:
+            policy = getattr(config, "call_policy", None) or {}
+            if isinstance(policy, dict) and policy.get("experimental_realtime_model"):
+                active_model = str(policy["experimental_realtime_model"])
+
         logger.info(
             "voice_realtime_route provider=openai_primary model=%s company_id=%s universal_priority=True",
-            getattr(self._settings, "voice_realtime_model", "gpt-live-1"),
+            active_model,
             getattr(config, "company_id", None),
         )
         return fallback_factory()

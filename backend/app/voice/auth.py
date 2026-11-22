@@ -563,7 +563,11 @@ class VoiceCallerAuth:
                 "VoiceCallerAuth.verify_gather: invalid pin format (length=%s, attempts=%s/%s, call_id=%s, company_id=%s)",
                 len(pin_clean), call.verification_attempts, maximum, call.id, call.company_id,
             )
-            return {**failed, "reason": "invalid_pin_format"}
+            return {
+                **failed,
+                "reason": "empty_pin" if not pin_clean else "invalid_pin_format",
+                "is_empty": not bool(pin_clean),
+            }
 
         caller_norm = normalized_phone(call.caller_phone)
         credential = None

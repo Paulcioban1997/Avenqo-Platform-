@@ -159,9 +159,9 @@ class OpenAIRealtimeAudioAdapter:
             self._manager = client.realtime.connect(model=self._model)
             self._connection = await self._manager.__aenter__()
         except Exception as exc:
-            # Fallback transparent et vérifié : gpt-live-1 -> gpt-realtime-2.1
-            if self._model == "gpt-live-1":
-                logger.warning("Primary voice model gpt-live-1 unavailable (%s); falling back to gpt-realtime-2.1", exc)
+            # Fallback transparent et vérifié : gpt-live-1 / gpt-live-1.1 -> gpt-realtime-2.1
+            if self._model in ("gpt-live-1", "gpt-live-1.1"):
+                logger.warning("Primary voice model %s unavailable (%s); falling back to gpt-realtime-2.1", self._model, exc)
                 self._model = "gpt-realtime-2.1"
                 self._manager = client.realtime.connect(model=self._model)
                 self._connection = await self._manager.__aenter__()
