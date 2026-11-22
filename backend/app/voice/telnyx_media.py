@@ -325,6 +325,50 @@ _RE_BOOKING = re.compile(
     r"rendez[- .]vous|appointment|booking|disponibilit|disponible|availability|available"
 )
 
+_RE_SESSION_RETENTION = re.compile(
+    r"\b(non\b.*(ne\s*passe\s*pas|pas\s*changer|pas\s*passer|garde|reste))"
+    r"|\b(ne\s*passe\s*pas|ne\s*pas\s*changer|pas\s*changer\s*d\W*employe|pas\s*passer\s*le\s*telephone)\b"
+    r"|\b(je\s*vais\s*rester|je\s*reste|rester\s*moi\W*meme|reviens\s*a|garde\s*ma\s*session|garde\s*la\s*session|garde\s*mon\s*compte|c'?est\s*toujours\s*moi|garder\s*la\s*session)\b"
+    r"|\b(no\s*voy\s*a\s*pasar|no\s*cambiar|no\s*le\s*paso|me\s*quedo(\s*yo)?|sigo\s*siendo|mantener\s*sesion|conservar\s*sesion)\b"
+    r"|\b(nu\s*schimb|nu\s*dau\s*telefonul|raman(\s*eu)?|pastreaza\s*sesiunea)\b"
+    r"|\b(do\s*not\s*pass|don'?t\s*pass|keep\s*my\s*session|i\s*will\s*stay|i'?ll\s*stay|remain)\b"
+)
+
+_RE_PIN_CANCELLATION = re.compile(
+    r"\b(annuler|annule|annulez|laisse\s*tomber|non\s*merci|arrete|arret|stop|quitter|abandonner|pas\s*de\s*nip|annule\s*le\s*code|annule\s*le\s*nip|cancel|abort|quit|never\s*mind|no\s*thanks|cancelar|dejarlo|anulare|anuleaza|renunta)\b"
+    r"|\b(non\b.{0,20}\b(veux\s*pas|pas\s*de\s*code|pas\s*de\s*nip|reviens|reste))\b"
+)
+
+_RE_HANDOVER_POSITIVE = re.compile(
+    r"\b(changer\s*d\W*employe|change\s*employe|autre\s*employe|nouvel\s*employe|passe\s*mon\s*collegue|passe\s*le\s*telephone|je\s*te\s*passe|switch\s*employee|change\s*employee|pass\s*the\s*phone|hand\s*over|schimba\s*angajatul|iti\s*dau\s*colegul|pasez\s*telefonul|cambiar\s*de\s*empleado|te\s*paso\s*a\s*mi\s*colega)\b"
+)
+
+
+def is_session_retention_intent(text: str) -> bool:
+    if not isinstance(text, str) or not text.strip():
+        return False
+    norm = "".join(c for c in unicodedata.normalize("NFKD", text.casefold()) if not unicodedata.combining(c))
+    return bool(_RE_SESSION_RETENTION.search(norm))
+
+
+def is_pin_challenge_cancellation(text: str) -> bool:
+    if not isinstance(text, str) or not text.strip():
+        return False
+    norm = "".join(c for c in unicodedata.normalize("NFKD", text.casefold()) if not unicodedata.combining(c))
+    return bool(_RE_PIN_CANCELLATION.search(norm))
+
+
+def is_handover_positive_intent(text: str) -> bool:
+    if not isinstance(text, str) or not text.strip():
+        return False
+    norm = "".join(c for c in unicodedata.normalize("NFKD", text.casefold()) if not unicodedata.combining(c))
+    if is_session_retention_intent(norm):
+        return False
+    neg_prefix = r"\b(ne\s*pas|pas\s*de|ne\s*veux\s*pas|pas\s*question|jamais|don'?t|do\s*not|no\s*quiero|no\s*voy\s*a|nu\s*vreau)\s*"
+    if re.search(neg_prefix + r".{0,15}" + _RE_HANDOVER_POSITIVE.pattern, norm):
+        return False
+    return bool(_RE_HANDOVER_POSITIVE.search(norm))
+
 
 class PublicInboundConversation:
     def __init__(self, db: Session, settings: Settings, call_id: UUID, telnyx=None):
@@ -755,9 +799,22 @@ class PublicInboundConversation:
         if gather_status == "authenticated":
             auth = VoiceCallerAuth(self.db, self.settings).valid_session(call)
             return "authenticated" if auth is not None and auth.caller_type in {"OWNER", "EMPLOYEE"} else "refused"
+        if gather_status == "cancelled":
+            return "cancelled"
         if gather_status == "retry_needed":
             return "retry_needed"
         return "refused"
+
+    def cancel_pin(self) -> None:
+        call, _config, _company = self.context()
+        call.pin_challenge_hash = None
+        call.pin_challenge_expires_at = None
+        existing_ctx = dict(call.source_context or {})
+        existing_ctx.pop("handover_revoked", None)
+        existing_ctx["handover_cancelled"] = True
+        existing_ctx["pin_gather_status"] = "cancelled"
+        call.source_context = existing_ctx
+        self.db.commit()
 
     def reset_pin_retry(self) -> None:
         call, _config, _company = self.context()
@@ -882,6 +939,7 @@ class TelnyxMediaBridge:
         begin_pin: Callable[[str], Awaitable[dict]] | None = None,
         poll_pin: Callable[[], Awaitable[str]] | None = None,
         reset_pin_retry: Callable[[], Awaitable[None]] | None = None,
+        cancel_pin: Callable[[], Awaitable[None]] | None = None,
         consume_pending_query: Callable[[], Awaitable[str | None]] | None = None,
         hangup_call: Callable[[], Awaitable[None]] | None = None,
         max_output_queue: int = 64,
@@ -905,6 +963,7 @@ class TelnyxMediaBridge:
         self.begin_pin: Callable[[str], Awaitable[dict]] | None = begin_pin
         self.poll_pin: Callable[[], Awaitable[str]] | None = poll_pin
         self.reset_pin_retry: Callable[[], Awaitable[None]] | None = reset_pin_retry
+        self.cancel_pin: Callable[[], Awaitable[None]] | None = cancel_pin
         self.consume_pending_query: Callable[[], Awaitable[str | None]] | None = consume_pending_query
         self.hangup_call: Callable[[], Awaitable[None]] | None = hangup_call
         self.allow_natural_interruptions = bool(allow_natural_interruptions)
@@ -1447,6 +1506,8 @@ class TelnyxMediaBridge:
                 self._last_activity = time.monotonic()
                 logger.info("Caller speech started (epoch=%s)", self.epoch)
                 self.telemetry["speech_detected"] = True
+                if self._pin_turn is not None and (self.phase == "PLAYING" or not self._output.empty()):
+                    await self.interrupt(reason="pin_prompt_barge_in")
                 # Phone echo trips VAD as soon as playback starts. Clearing the
                 # Telnyx buffer here drops audio the caller never hears.
             elif kind == "input_audio_buffer.speech_stopped" and not self.input_paused:
@@ -1469,6 +1530,23 @@ class TelnyxMediaBridge:
                 self._seen_items.add(item_id)
                 self.telemetry["transcription_received"] = True
                 self.telemetry["final_state"] = "PROCESSING"
+
+                if self._pin_turn is not None:
+                    if is_pin_challenge_cancellation(transcript) or is_session_retention_intent(transcript):
+                        logger.info("Caller cancelled PIN challenge verbally: %s", transcript)
+                        playing = (
+                            self.response_id is not None
+                            or self.pending_epoch is not None
+                            or not self._output.empty()
+                            or self.phase == "PLAYING"
+                        )
+                        if playing:
+                            await self.interrupt(reason="pin_challenge_verbal_cancellation")
+                        await self._finish_pin("cancelled")
+                        continue
+                    else:
+                        logger.info("Non-cancellation speech during PIN challenge ignored: %s", transcript)
+                        continue
                 if str(item_id) not in self._turn_metrics:
                     self._turn_metrics[str(item_id)] = {
                         "transcript_final_at": now_t,
@@ -1765,14 +1843,22 @@ class TelnyxMediaBridge:
         self._pin_deadline = None
         self._pin_prompt_spoken = False
         self._pin_prompt_finish_time = None
+        self._pin_retry_count = 0
+        playing = (
+            self.response_id is not None
+            or self.pending_epoch is not None
+            or not self._output.empty()
+            or self.phase == "PLAYING"
+        )
+        if playing:
+            await self.interrupt(reason=f"pin_{status}")
         await self.adapter.clear_input()
         if status == "authenticated":
             await self.authorize()
-        pending_query = None
-        if status == "authenticated" and self.consume_pending_query is not None:
-            pending_query = await self.consume_pending_query()
+            pending_query = None
+            if self.consume_pending_query is not None:
+                pending_query = await self.consume_pending_query()
 
-        if status == "authenticated":
             if pending_query:
                 await self._speak_system(
                     "pin-result:" + hashlib.sha256(str(item_id).encode()).hexdigest()[:24],
@@ -1790,10 +1876,37 @@ class TelnyxMediaBridge:
                     "pin-result:" + hashlib.sha256(str(item_id).encode()).hexdigest()[:24],
                     voice_auth_message(self.locale, 1),
                 )
-        else:
+        elif status == "cancelled":
+            if self.cancel_pin is not None:
+                await self.cancel_pin()
+            loc = resolve_locale(self.locale).casefold()
+            if loc.startswith("fr"):
+                cancel_msg = "Saisie du NIP annulée. Vous êtes en mode accueil public. Que puis-je faire pour vous ?"
+            elif loc.startswith("es"):
+                cancel_msg = "Entrada de PIN cancelada. Está en modo de recepción pública. ¿En qué puedo ayudarle?"
+            elif loc.startswith("ro"):
+                cancel_msg = "Introducerea codului PIN a fost anulată. Sunteți în modul de primire public. Cu ce vă pot ajuta?"
+            else:
+                cancel_msg = "PIN entry cancelled. You are in public reception mode. How can I help you?"
             await self._speak_system(
                 "pin-result:" + hashlib.sha256(str(item_id).encode()).hexdigest()[:24],
-                voice_auth_message(self.locale, 2),
+                cancel_msg,
+            )
+        else:
+            if self.cancel_pin is not None:
+                await self.cancel_pin()
+            loc = resolve_locale(self.locale).casefold()
+            if loc.startswith("fr"):
+                refused_msg = "Nombre maximal de tentatives atteint. La saisie du NIP est abandonnée. Vous êtes en mode accueil public. Que souhaitez-vous savoir ?"
+            elif loc.startswith("es"):
+                refused_msg = "Número máximo de intentos alcanzado. Se cancela la entrada de PIN. Está en modo de recepción pública. ¿Qué desea consultar?"
+            elif loc.startswith("ro"):
+                refused_msg = "Numărul maxim de încercări a fost atins. Introducerea codului PIN este abandonată. Sunteți în modul public. Cu ce vă pot ajuta?"
+            else:
+                refused_msg = "Maximum attempts reached. PIN entry cancelled. You are in public reception mode. How can I help you?"
+            await self._speak_system(
+                "pin-result:" + hashlib.sha256(str(item_id).encode()).hexdigest()[:24],
+                refused_msg,
             )
         await asyncio.sleep(0.2)
         await self.adapter.clear_input()
@@ -1817,11 +1930,15 @@ class TelnyxMediaBridge:
             self._pin_mark = None
             if self.reset_pin_retry is not None:
                 await self.reset_pin_retry()
-            reprompt = (
-                "Aucun chiffre n'a été reçu. Veuillez saisir votre code NIP sur le clavier de votre téléphone."
-                if resolve_locale(self.locale).startswith("fr")
-                else "No digits were received. Please enter your PIN on your phone keypad."
-            )
+            loc = resolve_locale(self.locale).casefold()
+            if loc.startswith("fr"):
+                reprompt = "Aucun chiffre n'a été reçu. Veuillez saisir votre code NIP sur le clavier de votre téléphone, ou appuyez sur étoile pour annuler et revenir à l'accueil."
+            elif loc.startswith("es"):
+                reprompt = "No se recibió ningún dígito. Ingrese su PIN en el teclado de su teléfono, o presione asterisco para cancelar y volver a la recepción."
+            elif loc.startswith("ro"):
+                reprompt = "Niciun număr nu a fost primit. Vă rugăm să introduceți PIN-ul sau apăsați stea pentru a anula și a reveni la recepție."
+            else:
+                reprompt = "No digits were received. Please enter your PIN on your phone keypad, or press star to cancel and return to reception."
             new_pin_turn = f"{self._pin_turn or 'pin'}-retry-{self._pin_retry_count}"
             self._pin_turn = new_pin_turn
             item_id = f"pin-reprompt:{new_pin_turn}"
@@ -1856,7 +1973,7 @@ class TelnyxMediaBridge:
                         await self._finish_pin("refused")
             if self._pin_started and self.poll_pin is not None:
                 status = await self.poll_pin()
-                if status in {"authenticated", "refused"}:
+                if status in {"authenticated", "refused", "cancelled"}:
                     await self._finish_pin(status)
                 elif status == "retry_needed":
                     await self._reprompt_pin()
@@ -2294,8 +2411,19 @@ async def telnyx_media_socket(
         if principal_id is not None:
             norm_trans = unicodedata.normalize("NFKD", transcript.casefold())
             norm_trans = "".join(c for c in norm_trans if not unicodedata.combining(c))
-            handover_pattern = r"\b(changer\s*d\W*employe|change\s*employe|autre\s*employe|nouvel\s*employe|passe\s*mon\s*collegue|passe\s*le\s*telephone|je\s*te\s*passe|switch\s*employee|change\s*employee|pass\s*the\s*phone|hand\s*over|schimba\s*angajatul|iti\s*dau\s*colegul|pasez\s*telefonul|cambiar\s*de\s*empleado|te\s*paso\s*a\s*mi\s*colega)\b"
-            if re.search(handover_pattern, norm_trans):
+            if is_session_retention_intent(norm_trans):
+                call_loc = resolve_locale(current_call.locale if current_call and current_call.locale else locale)
+                if call_loc.startswith("fr"):
+                    retention_msg = "Très bien, votre session reste active. Comment puis-je vous aider ?"
+                elif call_loc.startswith("es"):
+                    retention_msg = "Entendido, su sesión permanece activa. ¿En qué puedo ayudarle?"
+                elif call_loc.startswith("ro"):
+                    retention_msg = "Am înțeles, sesiunea dumneavoastră rămâne activă. Cu ce vă pot ajuta?"
+                else:
+                    retention_msg = "Understood, your session remains active. How can I help you?"
+                return {"status": "success", "answer": retention_msg, "authenticated": True}
+
+            if is_handover_positive_intent(norm_trans):
                 logger.info(
                     "AUDIT_VOICE_HANDOVER_REVOCATION: call=%s previous_user_id=%s timestamp=%s",
                     call_id, principal_id, datetime.now(timezone.utc).isoformat(),
@@ -2321,7 +2449,6 @@ async def telnyx_media_socket(
                 principal_id = None
                 auth_epoch = None
                 if bridge is not None:
-                    bridge.input_paused = True
                     bridge._pin_turn = item_id
                     bridge._pin_started = False
                     bridge._pin_deadline = asyncio.get_running_loop().time() + 120
@@ -2349,20 +2476,60 @@ async def telnyx_media_socket(
             )
             is_handover_pending = bool((current_call.source_context or {}).get("handover_revoked"))
             if is_handover_pending:
+                norm_trans = "".join(c for c in unicodedata.normalize("NFKD", transcript.casefold()) if not unicodedata.combining(c))
+                if is_pin_challenge_cancellation(norm_trans) or is_session_retention_intent(norm_trans):
+                    logger.info("Handover pending cancelled by caller: call=%s transcript=%s", call_id, transcript)
+                    if bridge is not None:
+                        bridge._pin_turn = None
+                        bridge._pin_started = False
+                        bridge._pin_deadline = None
+                        bridge._pin_retry_count = 0
+                        bridge.input_paused = False
+                    existing_ctx = dict(current_call.source_context or {})
+                    existing_ctx.pop("handover_revoked", None)
+                    existing_ctx["handover_cancelled"] = True
+                    existing_ctx["pin_gather_status"] = "cancelled"
+                    current_call.source_context = existing_ctx
+                    db.commit()
+                    call_loc = resolve_locale(current_call.locale if current_call and current_call.locale else locale)
+                    if call_loc.startswith("fr"):
+                        cancel_msg = "Demande de transfert annulée. Vous êtes en mode accueil public. Que puis-je faire pour vous ?"
+                    elif call_loc.startswith("es"):
+                        cancel_msg = "Solicitud de transferencia cancelada. Está en modo de recepción pública. ¿En qué puedo ayudarle?"
+                    elif call_loc.startswith("ro"):
+                        cancel_msg = "Cererea de transfer a fost anulată. Sunteți în modul public. Cu ce vă pot ajuta?"
+                    else:
+                        cancel_msg = "Transfer request cancelled. You are in public reception mode. How can I help you?"
+                    return {"status": "success", "answer": cancel_msg, "public": True}
+
+                if public_conversation is not None:
+                    sec = public_conversation.security_gate(transcript)
+                    if sec is None:
+                        existing_ctx = dict(current_call.source_context or {})
+                        existing_ctx.pop("handover_revoked", None)
+                        current_call.source_context = existing_ctx
+                        db.commit()
+                        if bridge is not None:
+                            bridge._pin_turn = None
+                            bridge._pin_started = False
+                            bridge._pin_deadline = None
+                            bridge._pin_retry_count = 0
+                            bridge.input_paused = False
+                        return public_conversation.public_answer(transcript)
+
                 if bridge is not None:
-                    bridge.input_paused = True
                     bridge._pin_turn = item_id
                     bridge._pin_started = False
                     bridge._pin_deadline = asyncio.get_running_loop().time() + 120
                 call_loc = resolve_locale(current_call.locale if current_call and current_call.locale else locale)
                 if call_loc.startswith("fr"):
-                    handover_answer = "Veuillez saisir votre code NIP sur le clavier de votre téléphone pour vous identifier."
+                    handover_answer = "Veuillez saisir votre code NIP sur le clavier de votre téléphone pour vous identifier, ou dites annuler pour revenir à l'accueil."
                 elif call_loc.startswith("es"):
-                    handover_answer = "Por favor, ingrese su código PIN en el teclado de su teléfono para identificarse."
+                    handover_answer = "Por favor, ingrese su código PIN en el teclado de su teléfono para identificarse, o diga cancelar para volver a la recepción."
                 elif call_loc.startswith("ro"):
-                    handover_answer = "Vă rugăm să introduceți codul PIN pe tastatura telefonului pentru a vă autentifica."
+                    handover_answer = "Vă rugăm să introduceți codul PIN pe tastatura telefonului pentru a vă autentifica, sau spuneți anulare."
                 else:
-                    handover_answer = "Please enter your PIN on your phone keypad to authenticate."
+                    handover_answer = "Please enter your PIN on your phone keypad to authenticate, or say cancel to return to reception."
                 return {"status": "success", "answer": handover_answer, "auth_required": True}
             owner_membership = db.scalar(
                 select(CompanyMembership)
@@ -2678,6 +2845,10 @@ async def telnyx_media_socket(
         if public_conversation is not None:
             public_conversation.reset_pin_retry()
 
+    async def cancel_pin() -> None:
+        if public_conversation is not None:
+            public_conversation.cancel_pin()
+
     async def consume_pending_query() -> str | None:
         if public_conversation is None:
             return None
@@ -2759,6 +2930,7 @@ async def telnyx_media_socket(
         ),
         begin_pin=begin_pin, poll_pin=poll_pin,
         reset_pin_retry=reset_pin_retry,
+        cancel_pin=cancel_pin,
         consume_pending_query=consume_pending_query,
         hangup_call=hangup_call,
         max_session_seconds=sandbox_duration,

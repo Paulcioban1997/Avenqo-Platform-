@@ -303,7 +303,7 @@ class TelnyxClient:
         await self._request("POST", f"/calls/{call_control_id}/actions/gather", json={
             "command_id": command_id, "client_state": _ensure_base64_client_state(client_state) or "",
             "minimum_digits": 6, "maximum_digits": 12, "maximum_tries": 1,
-            "terminating_digit": "#", "valid_digits": "0123456789", "timeout_millis": 30000,
+            "terminating_digit": "#", "valid_digits": "0123456789*#", "timeout_millis": 30000,
         })
 
     async def transfer_call(self, call_control_id: str, destination: str, caller_id: str | None = None, *, command_id: str | None = None, call_reference: str | None = None) -> None:
