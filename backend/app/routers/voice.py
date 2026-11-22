@@ -2782,7 +2782,7 @@ async def telnyx_webhook(
         auth_controller = VoiceCallerAuth(db, settings)
         if not auth_controller.valid_challenge(call, str(call_payload.get("client_state") or "")):
             current_status = (call.source_context or {}).get("pin_gather_status")
-            if current_status in {"cancelled", "authenticated"} and not call.pin_challenge_hash:
+            if (current_status in {"cancelled", "authenticated", "refused"} or (call.source_context or {}).get("public_fallback")) and not call.pin_challenge_hash:
                 return {"received": True, "authenticated": False, "stale": True}
             return {"received": True, "authenticated": False}
         call.pin_challenge_hash = None
@@ -3163,6 +3163,7 @@ async def telnyx_webhook(
                 existing_ctx = dict(call.source_context or {})
                 existing_ctx.pop("handover_revoked", None)
                 existing_ctx["handover_cancelled"] = True
+                existing_ctx["public_fallback"] = True
                 existing_ctx["pin_gather_status"] = "cancelled"
                 call.source_context = existing_ctx
             elif result["authenticated"]:

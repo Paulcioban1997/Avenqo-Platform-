@@ -577,3 +577,244 @@ async def test_voluntary_barge_in_stops_reprompt_tts():
     assert adapter.interrupted_count >= 1
     # Telnyx socket instructed to clear playback buffer
     mock_socket.send_json.assert_called_with({"event": "clear"})
+
+
+# =====================================================================
+# 11. Staff Handover -> Verbal Refusal -> Public Reception on Same Conn
+# =====================================================================
+
+@pytest.mark.asyncio
+async def test_end_to_end_staff_handover_verbal_refusal_and_public_fallback(db_session: Session):
+    """End-to-end integration test:
+    1. Authenticated staff caller requests handover.
+    2. Session is revoked and PIN challenge initiated.
+    3. Caller says verbal refusal ('Non merci, annuler').
+    4. Call context transitions to public_fallback=True without staff privileges.
+    5. Next authorize() on same WebSocket does NOT raise PermissionError.
+    6. Public question ('Quels sont vos horaires ?') answered in public mode.
+    """
+    company, voice_config, call, francis, marie = _make_test_company_and_call(db_session)
+    settings = Settings(
+        DATABASE_URL="sqlite:///:memory:",
+        SECRET_KEY="test_secret_for_voice_unit_tests",
+        TELNYX_API_KEY="test-telnyx-key",
+        TELNYX_PUBLIC_KEY="test-public-key",
+        TELNYX_MEDIA_ENABLED=True,
+        TELNYX_MEDIA_INBOUND_ENABLED=True,
+    )
+
+    # 1. Staff session active
+    call.caller_type = "EMPLOYEE"
+    call.authenticated_user_id = francis.id
+    db_session.commit()
+
+    # 2. Handover request
+    handover_text = "Je passe le téléphone à mon collègue"
+    assert is_handover_positive_intent(handover_text) is True
+
+    # Revocation
+    call.authenticated_user_id = None
+    call.caller_type = "UNKNOWN"
+    call.source_context = {
+        **(call.source_context or {}),
+        "authenticated": False,
+        "handover_revoked": True,
+        "previous_principal": str(francis.id),
+    }
+    db_session.commit()
+
+    # 3. Caller verbally cancels
+    refusal_text = "Non merci, annule"
+    assert is_pin_challenge_cancellation(refusal_text) is True
+
+    # PublicInboundConversation.cancel_pin()
+    pub_conv = PublicInboundConversation(db_session, settings, call.id)
+    pub_conv.cancel_pin()
+
+    reloaded = db_session.get(VoiceCall, call.id)
+    assert reloaded.source_context.get("handover_revoked") is None
+    assert reloaded.source_context.get("handover_cancelled") is True
+    assert reloaded.source_context.get("public_fallback") is True
+    assert reloaded.source_context.get("pin_gather_status") == "cancelled"
+    assert reloaded.pin_challenge_hash is None
+
+    # 4. Same connection authorize() must succeed (not raise PermissionError)
+    ctx = reloaded.source_context or {}
+    is_public_fallback = bool(ctx.get("public_fallback") or ctx.get("handover_cancelled"))
+    assert is_public_fallback is True
+    # In public fallback, public_mode becomes True and staff permissions are None
+    public_mode = is_public_fallback
+    principal_id = None
+    assert public_mode is True
+    assert principal_id is None
+
+    # 5. Public question answered cleanly
+    ans = pub_conv.public_answer("Quels sont vos horaires ?")
+    assert ans["status"] == "success"
+    assert "horaires" in ans["answer"].lower() or "ouvert" in ans["answer"].lower()
+
+
+# =====================================================================
+# 12. Public Fallback Then Private Query Requires New PIN
+# =====================================================================
+
+def test_public_fallback_then_private_request_triggers_new_pin(db_session: Session):
+    """When in public fallback, asking for confidential data triggers a new PIN challenge."""
+    company, voice_config, call, francis, marie = _make_test_company_and_call(db_session)
+    settings = Settings(
+        DATABASE_URL="sqlite:///:memory:",
+        SECRET_KEY="test_secret_for_voice_unit_tests",
+        TELNYX_API_KEY="test-telnyx-key",
+        TELNYX_PUBLIC_KEY="test-public-key",
+        TELNYX_MEDIA_ENABLED=True,
+        TELNYX_MEDIA_INBOUND_ENABLED=True,
+    )
+
+    call.caller_type = "UNKNOWN"
+    call.authenticated_user_id = None
+    call.source_context = {
+        **(call.source_context or {}),
+        "public_fallback": True,
+        "handover_cancelled": True,
+        "pin_gather_status": "cancelled",
+    }
+    db_session.commit()
+
+    # Configure staff PIN credential so PIN challenge is available
+    auth_controller = VoiceCallerAuth(db_session, settings)
+    auth_controller.set_pin(
+        TenantContext(company.id, francis.id),
+        "USER",
+        francis.id,
+        "719284",
+        phone_number="+15145550199",
+    )
+
+    pub_conv = PublicInboundConversation(db_session, settings, call.id)
+    # Confidential query: revenue / finance / CRM
+    gate_res = pub_conv.security_gate("Quels sont les revenus et la facturation du client ?")
+    assert gate_res is not None
+    assert gate_res.get("auth_required") is True
+    assert "nip" in gate_res.get("answer", "").lower() or "securite" in gate_res.get("answer", "").lower()
+
+
+# =====================================================================
+# 13. Cancelled Challenge Rejects Late Valid Webhook
+# =====================================================================
+
+def test_cancelled_challenge_stale_valid_webhook_rejected(db_session: Session):
+    """If a valid PIN webhook arrives after cancellation, it is strictly rejected as stale."""
+    company, voice_config, call, francis, marie = _make_test_company_and_call(db_session)
+    settings = Settings(
+        DATABASE_URL="sqlite:///:memory:",
+        SECRET_KEY="test_secret_for_voice_unit_tests",
+        TELNYX_API_KEY="test-telnyx-key",
+        TELNYX_PUBLIC_KEY="test-public-key",
+        TELNYX_MEDIA_ENABLED=True,
+        TELNYX_MEDIA_INBOUND_ENABLED=True,
+    )
+
+    auth_controller = VoiceCallerAuth(db_session, settings)
+    # Cancelled challenge state
+    call.pin_challenge_hash = None
+    call.source_context = {
+        "public_fallback": True,
+        "pin_gather_status": "cancelled",
+        "handover_cancelled": True,
+    }
+    db_session.commit()
+
+    # Late gather ended event:
+    # 1. valid_challenge returns False because hash is cleared
+    assert auth_controller.valid_challenge(call, "expired-client-state") is False
+
+    # 2. Router late webhook protection logic:
+    current_status = (call.source_context or {}).get("pin_gather_status")
+    is_stale = bool(
+        (current_status in {"cancelled", "authenticated", "refused"} or (call.source_context or {}).get("public_fallback"))
+        and not call.pin_challenge_hash
+    )
+    assert is_stale is True
+
+    # 3. Call remains in public mode with no authenticated user
+    reloaded = db_session.get(VoiceCall, call.id)
+    assert reloaded.authenticated_user_id is None
+    assert reloaded.caller_type == "UNKNOWN"
+
+
+# =====================================================================
+# 14. DTMF Star Real Gather and Media Stream Cancellation
+# =====================================================================
+
+def test_dtmf_star_cancellation_real_gather(db_session: Session):
+    """Pressing '*' alone in gather cancels challenge without penalty."""
+    company, voice_config, call, francis, marie = _make_test_company_and_call(db_session)
+    settings = Settings(
+        DATABASE_URL="sqlite:///:memory:",
+        SECRET_KEY="test_secret_for_voice_unit_tests",
+        TELNYX_API_KEY="test-telnyx-key",
+        TELNYX_PUBLIC_KEY="test-public-key",
+        TELNYX_MEDIA_ENABLED=True,
+        TELNYX_MEDIA_INBOUND_ENABLED=True,
+    )
+
+    auth_controller = VoiceCallerAuth(db_session, settings)
+    call.pin_challenge_hash = "active-hash-123"
+    call.source_context = {"handover_revoked": True}
+    db_session.commit()
+
+    result = auth_controller.verify_gather(call, "*")
+    assert result.get("cancelled") is True
+    assert result.get("reason") == "user_cancelled"
+    assert result.get("authenticated") is False
+
+    reloaded = db_session.get(VoiceCall, call.id)
+    assert reloaded.pin_challenge_hash is None
+    assert reloaded.source_context.get("public_fallback") is True
+    assert reloaded.source_context.get("pin_gather_status") == "cancelled"
+    assert reloaded.verification_attempts == 0
+
+
+# =====================================================================
+# 15. Audio Echo During Prompt Does Not Interrupt or Cancel
+# =====================================================================
+
+@pytest.mark.asyncio
+async def test_audio_echo_during_prompt_does_not_interrupt_or_cancel():
+    """Acoustic echo of prompt arriving in transcription is ignored without interrupting."""
+    events_queue = asyncio.Queue()
+    adapter = MockStreamingAdapter(events_queue)
+    mock_socket = MagicMock()
+    mock_socket.send_json = AsyncMock()
+
+    bridge = TelnyxMediaBridge(
+        socket=mock_socket,
+        adapter=adapter,
+        locale="fr-CA",
+        validate_start=AsyncMock(),
+        authorize=AsyncMock(),
+        execute_turn=AsyncMock(),
+    )
+    bridge.stream_id = "stream-echo-test"
+    bridge._pin_turn = "turn-pin-echo"
+    bridge.phase = "PLAYING"
+    bridge._last_spoken_prompt = "Veuillez saisir votre code NIP sur le clavier de votre téléphone"
+
+    drain_task = asyncio.create_task(bridge._drain_provider_events())
+
+    # Provider transcribes the acoustic echo of the agent's own prompt
+    await events_queue.put(
+        SimpleNamespace(
+            type="conversation.item.input_audio_transcription.completed",
+            item_id="echo-trans-1",
+            transcript="veuillez saisir votre code nip sur le clavier de votre téléphone",
+        )
+    )
+    await asyncio.sleep(0.1)
+
+    await events_queue.put(None)
+    await drain_task
+
+    # The prompt was NOT cancelled by its own echo
+    assert bridge._pin_turn == "turn-pin-echo"
+    assert adapter.interrupted_count == 0

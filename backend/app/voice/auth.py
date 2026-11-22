@@ -543,6 +543,7 @@ class VoiceCallerAuth:
             existing_ctx = dict(call.source_context or {})
             existing_ctx.pop("handover_revoked", None)
             existing_ctx["handover_cancelled"] = True
+            existing_ctx["public_fallback"] = True
             existing_ctx["pin_gather_status"] = "cancelled"
             call.source_context = existing_ctx
             self.db.flush()
