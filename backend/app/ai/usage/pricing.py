@@ -26,6 +26,7 @@ class ProviderPricingEntry:
     cached_audio_input_cost_per_million_usd: Decimal = Decimal("0")
     audio_output_cost_per_million_usd: Decimal = Decimal("0")
     audio_input_cost_per_second_usd: Decimal = Decimal("0")
+    audio_idle_cost_per_second_usd: Decimal = Decimal("0")
     tool_call_cost_usd: Decimal = Decimal("0")
     version: str = "default"
     effective_from: date = date.min
@@ -48,6 +49,7 @@ class ProviderPricingEntry:
             "cached_audio_input_cost_per_million_usd",
             "audio_output_cost_per_million_usd",
             "audio_input_cost_per_second_usd",
+            "audio_idle_cost_per_second_usd",
             "tool_call_cost_usd",
         ):
             if getattr(self, field_name) < 0:
@@ -101,6 +103,7 @@ class ProviderPricingEntry:
             + audio_output * self.audio_output_cost_per_unit_usd
             + Decimal(max(usage.tool_calls, 0)) * self.tool_call_cost_usd
             + usage.audio_input_seconds * self.audio_input_cost_per_second_usd
+            + getattr(usage, "audio_idle_seconds", Decimal("0")) * self.audio_idle_cost_per_second_usd
         ) + (
             (audio_input - cached_audio_input) * self.audio_input_cost_per_million_usd
             + cached_audio_input * self.cached_audio_input_cost_per_million_usd

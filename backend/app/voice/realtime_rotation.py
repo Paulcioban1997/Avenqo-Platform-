@@ -31,6 +31,12 @@ class RotatingRealtimeAdapter:
         self.pump: asyncio.Task[Any] | None = None
         self.timer: asyncio.Task[Any] | None = None
 
+    @property
+    def _model(self) -> str | None:
+        if self.adapter is not None:
+            return getattr(self.adapter, "_model", None)
+        return None
+
     async def open(self, *, locale):
         self.locale = locale
         async with self.lock:

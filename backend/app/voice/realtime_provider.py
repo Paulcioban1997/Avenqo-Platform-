@@ -254,6 +254,15 @@ def build_personality_system_prompt(
                 "Under NO circumstances disclose company net profit margins, confidential balance sheets, or executive payroll to operational staff. "
                 "Tone: motivating, structured, respectful, supportive, and focused on operational excellence."
             )
+    else:
+        prompt += (
+            "\n\nPUBLIC CUSTOMER SERVICE RECEPTIONIST MODE:\n"
+            "The caller is an external customer or public caller. "
+            "Never assume they are an employee or owner. Never greet them by an employee or owner name (such as 'Bonjour François'). "
+            "Helpfully answer questions about public products, store hours, location, and services. "
+            "If they ask about employee shift tasks, internal coaching, or executive briefings, inform them politely "
+            "that internal employee tools require PIN authentication on their phone keypad."
+        )
     if extra_instructions:
         prompt = f"{prompt}\n{extra_instructions.strip()}"
     return prompt
@@ -631,8 +640,14 @@ class GeminiLiveRealtimeAudioAdapter:
             return
 
         # Détection d'activité vocale (VAD) locale réactive + gestion du barge-in
+        # Self-talk echo suppression: elevate threshold during active assistant TTS playback
         rms = audioop.rms(audio, 2)
-        if rms >= self._vad_rms_threshold:
+        effective_threshold = (
+            int(self._vad_rms_threshold * 1.5)
+            if self._tts_active
+            else self._vad_rms_threshold
+        )
+        if rms >= effective_threshold:
             self._silence_frames = 0
             if not self._speech_active:
                 self._speech_active = True
@@ -782,10 +797,33 @@ class GeminiLiveRealtimeAudioAdapter:
                         )
                         if interrupted:
                             logger.info(
-                                "gemini_live_interrupted_ignored tts_active=%s chunks=%s",
+                                "gemini_live_interrupted_handled tts_active=%s chunks=%s",
                                 self._tts_active,
                                 self._tts_audio_chunks,
                             )
+                            if self._tts_response_id is not None:
+                                self._interrupted_responses.add(self._tts_response_id)
+                            interrupted_resp = self._current_response_id or self._tts_response_id
+                            self._tts_active = False
+                            self._tts_response_id = None
+                            self._current_response_id = None
+                            if interrupted_resp is not None:
+                                await self._event_queue.put(
+                                    SimpleNamespace(
+                                        type="response.done",
+                                        response=SimpleNamespace(
+                                            id=interrupted_resp,
+                                            status="cancelled",
+                                            usage=None,
+                                        ),
+                                    )
+                                )
+                                await self._event_queue.put(
+                                    SimpleNamespace(
+                                        type="response.interrupted",
+                                        response_id=interrupted_resp,
+                                    )
+                                )
 
                         # Transcription entrante de l'appelant
                         in_trans = getattr(server_content, "input_transcription", None) or (
@@ -1864,6 +1902,13 @@ class GoogleGeminiLiveRealtimeProvider:
         logger.info("gemini_live_cancel_playback session=%s turn=%s", session_id, turn_id)
 
 
+ALLOWED_EXPERIMENTAL_REALTIME_MODELS: frozenset[str] = frozenset({
+    "gpt-live-1",
+    "gpt-live-1.1",
+    "gpt-realtime-2.1",
+})
+
+
 class VoiceRealtimeRouter:
     """Sélectionne le moteur vocal selon la configuration du tenant avec fallback automatique."""
 
@@ -1917,12 +1962,14 @@ class VoiceRealtimeRouter:
         config: VoiceBusinessConfig | None,
         audio_config: OpenAIAudioConfig,
         *,
-        fallback_factory: Callable[[], RealtimeAudioAdapter],
+        fallback_factory: Callable[..., RealtimeAudioAdapter],
     ) -> RealtimeAudioAdapter:
         """Construit l'adaptateur audio temps réel pour `TelnyxMediaBridge`.
 
         - Moteur primaire par défaut : OpenAI `gpt-live-1` (via `fallback_factory`,
           avec bascule automatique vers `gpt-realtime-2.1`).
+        - Expérimental Sandbox : `gpt-live-1.1` autorisé uniquement si activé par tenant
+          et confiné aux appels de test Sandbox.
         - Optionnel : Gemini Live si explicitement configuré et activé pour le tenant.
         """
         requested = (
@@ -1936,6 +1983,64 @@ class VoiceRealtimeRouter:
             else False
         )
 
+        active_model = getattr(self._settings, "voice_realtime_model", "gpt-live-1")
+        if config is not None:
+            policy = getattr(config, "call_policy", None) or {}
+            if isinstance(policy, dict):
+                req_model = policy.get("experimental_realtime_model")
+                if req_model:
+                    req_model_str = str(req_model).strip()
+                    feature_flag_active = bool(
+                        policy.get("experimental_realtime_enabled", False)
+                        or policy.get("gpt_live_1_1_enabled", False)
+                    )
+                    is_env_sandbox = getattr(self._settings, "environment", "").lower() in (
+                        "sandbox", "development", "test", "testing"
+                    )
+                    # Le garde-fou Sandbox repose strictement sur l'environnement serveur vérifié :
+                    # Un appelant en production ne peut jamais forcer un état Sandbox via la configuration tenant.
+                    is_sandbox_call = is_env_sandbox
+
+                    if not feature_flag_active:
+                        logger.warning(
+                            "experimental_realtime_model_ignored_flag_disabled company_id=%s requested=%s fallback=%s",
+                            getattr(config, "company_id", None),
+                            req_model_str,
+                            active_model,
+                        )
+                    elif not is_sandbox_call:
+                        logger.warning(
+                            "experimental_realtime_model_blocked_production_guard company_id=%s requested=%s fallback=%s",
+                            getattr(config, "company_id", None),
+                            req_model_str,
+                            active_model,
+                        )
+                    elif req_model_str not in ALLOWED_EXPERIMENTAL_REALTIME_MODELS:
+                        logger.warning(
+                            "experimental_realtime_model_unauthorized company_id=%s requested=%s allowed=%s fallback=%s",
+                            getattr(config, "company_id", None),
+                            req_model_str,
+                            ",".join(sorted(ALLOWED_EXPERIMENTAL_REALTIME_MODELS)),
+                            active_model,
+                        )
+                    else:
+                        active_model = req_model_str
+
+        def _make_fallback(m: str) -> RealtimeAudioAdapter:
+            import inspect
+            try:
+                sig = inspect.signature(fallback_factory)
+                if len(sig.parameters) >= 1:
+                    adapter = fallback_factory(m)
+                else:
+                    adapter = fallback_factory()
+            except Exception:
+                adapter = fallback_factory()
+            curr_model = getattr(adapter, "_model", None)
+            if curr_model is not None and curr_model != m:
+                setattr(adapter, "_model", m)
+            return adapter
+
         if requested == RealtimeProviderType.GEMINI_LIVE and gemini_enabled and self._gemini.is_available():
             logger.info(
                 "voice_realtime_route provider=gemini_live model=%s company_id=%s optional_override=True",
@@ -1944,15 +2049,15 @@ class VoiceRealtimeRouter:
             )
             return FallbackRealtimeAudioAdapter(
                 primary_factory=lambda: self._gemini.create_audio_adapter(config, audio_config),
-                fallback_factory=fallback_factory,
+                fallback_factory=lambda: _make_fallback(active_model),
             )
 
         logger.info(
             "voice_realtime_route provider=openai_primary model=%s company_id=%s universal_priority=True",
-            getattr(self._settings, "voice_realtime_model", "gpt-live-1"),
+            active_model,
             getattr(config, "company_id", None),
         )
-        return fallback_factory()
+        return _make_fallback(active_model)
 
     @property
     def settings(self) -> Settings:

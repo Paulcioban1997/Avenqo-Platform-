@@ -987,5 +987,175 @@ class EmployeeCoachService:
         else:
             return f"You have everything it takes to deliver an outstanding day and great value to customers! 🚀"
 
+    def get_marketing_acquisition_advice(
+        self,
+        actor: User,
+        query: str | None = None,
+        locale: str = "fr-CA",
+    ) -> dict[str, Any]:
+        """Provide structured customer acquisition, marketing, and client attraction advice."""
+        if not actor or not actor.id or not actor.company_id:
+            return {"status": "error", "error": "unauthenticated"}
+
+        loc = resolve_locale(locale)
+        first_name = (actor.first_name or "Collaborateur").strip()
+
+        # Intégration des données réelles de l'entreprise (Retail AI, CRM AI, Marketing AI)
+        active_modules: set[str] = set()
+        company_name: str | None = None
+        top_categories: list[str] = []
+        featured_products: list[str] = []
+
+        try:
+            from shared.ai_engine.contracts import TenantContext
+            from backend.app.services.module_entitlement_service import ModuleEntitlementService
+            tenant_ctx = TenantContext(actor.company_id, actor.id)
+            active_modules = set(ModuleEntitlementService(self._session).get_active_modules(tenant_ctx))
+        except Exception:
+            pass
+
+        try:
+            from backend.app.services.company_intelligence_service import CompanyIntelligenceService
+            prof = CompanyIntelligenceService(self._session).get_profile(actor.company_id)
+            if prof:
+                company_name = getattr(prof, "company_name", None) or getattr(prof, "name", None)
+                for p in getattr(prof, "public_products", []) or []:
+                    if isinstance(p, dict):
+                        cat = str(p.get("category") or p.get("product_category") or "").strip()
+                        if cat and cat not in top_categories:
+                            top_categories.append(cat)
+                        p_name = str(p.get("name") or "").strip()
+                        if p_name and p_name not in featured_products and len(featured_products) < 2:
+                            featured_products.append(p_name)
+        except Exception:
+            pass
+
+        has_data = bool(top_categories or featured_products or ("crm" in active_modules) or ("marketing" in active_modules))
+
+        if loc.startswith("fr"):
+            if has_data:
+                levers = []
+                if featured_products:
+                    levers.append(f"mettre en avant vos articles phares comme {', '.join(featured_products)}")
+                elif top_categories:
+                    levers.append(f"promouvoir vos catégories phares ({', '.join(top_categories[:2])}) avec une offre découverte")
+                else:
+                    levers.append("mettre en avant vos offres et produits phares")
+
+                if "crm" in active_modules:
+                    levers.append("relancer proactivement via votre CRM vos contacts inactifs avec des recommandations personnalisées")
+                else:
+                    levers.append("renforcer votre visibilité locale en récoltant des avis clients récents")
+
+                if "marketing" in active_modules:
+                    levers.append("activer des campagnes d'acquisition ciblées sur vos canaux les plus rentables")
+                else:
+                    levers.append("proposer un programme de parrainage pour stimuler le bouche-à-oreille")
+
+                intro = f"{first_name}, d'après les données de votre activité"
+                if company_name:
+                    intro += f" chez {company_name}"
+                intro += ", voici vos trois priorités pour attirer plus de clients :"
+                spoken_summary = f"{intro} d'abord, {levers[0]} ; ensuite, {levers[1]} ; et enfin, {levers[2]}."
+                tips = [
+                    f"Priorité catalogue : {levers[0]}.",
+                    f"Levier relationnel : {levers[1]}.",
+                    f"Levier d'acquisition : {levers[2]}.",
+                ]
+            else:
+                tips = [
+                    "Ciblez les besoins saisonniers ou locaux les plus recherchés et mettez en avant vos offres et produits phares.",
+                    "Optimisez votre visibilité locale en récoltant des avis clients positifs récents et en animant votre vitrine Google.",
+                    "Lancez une offre de découverte ou une formule d'accueil attractive pour lever les hésitations des nouveaux clients.",
+                    "Relancez proactivement votre base existante avec des recommandations personnalisées et des programmes de parrainage.",
+                ]
+                spoken_summary = (
+                    f"{first_name}, en l'absence de données de catalogue ou de campagne dans vos modules, voici les recommandations stratégiques pour attirer plus de clients : "
+                    "d'abord, mettre en avant vos produits et services les plus demandés avec une offre découverte attractive ; "
+                    "ensuite, renforcer votre visibilité locale en sollicitant des avis clients positifs récents ; "
+                    "et enfin, relancer vos clients existants avec des recommandations ciblées et du parrainage."
+                )
+            title = "Conseils d'acquisition client et stratégie commerciale"
+        elif loc.startswith("es"):
+            tips = [
+                "Identifique las necesidades estacionales y destaque sus productos o servicios estrella.",
+                "Mejore su visibilidad local consiguiendo reseñas positivas recientes en Google.",
+                "Proponga una oferta de bienvenida o promoción especial para nuevos compradores.",
+                "Reactive a los clientes actuales con recomendaciones personalizadas y programas de referidos.",
+            ]
+            title = "Consejos de captación de clientes y marketing"
+            spoken_summary = (
+                f"{first_name}, para atraer a más clientes le recomiendo tres acciones clave: "
+                "destacar sus productos y servicios más demandados con una oferta de bienvenida, "
+                "optimizar su presencia local con opiniones verificadas de clientes, "
+                "y contactar proactivamente a sus clientes existentes con recomendaciones personalizadas."
+            )
+        elif loc.startswith("ro"):
+            tips = [
+                "Evidențiați produsele și serviciile cheie cu o ofertă introductivă atractivă.",
+                "Optimizați vizibilitatea locală colectând recenzii recente de la clienți mulțumiți.",
+                "Lansați oferte sezoniere pentru a stimula prima achiziție a noilor clienți.",
+                "Recontactați clienții existenți prin oferte personalizate și recomandări directe.",
+            ]
+            title = "Strategie de atragere a clienților și marketing"
+            spoken_summary = (
+                f"{first_name}, pentru a atrage mai mulți clienți vă recomand trei măsuri clare: "
+                "promovarea produselor sau serviciilor vedetă printr-o ofertă de bun venit, "
+                "creșterea vizibilității locale prin recenzii pozitive recente, "
+                "și reactivarea bazei de clienți existenți prin recomandări personalizate."
+            )
+        else:
+            if has_data:
+                levers = []
+                if featured_products:
+                    levers.append(f"highlight signature items such as {', '.join(featured_products)}")
+                elif top_categories:
+                    levers.append(f"promote top categories like {', '.join(top_categories[:2])} with an introductory offer")
+                else:
+                    levers.append("highlight your most in-demand products with a discovery offer")
+
+                if "crm" in active_modules:
+                    levers.append("use your CRM to re-engage past contacts with tailored recommendations")
+                else:
+                    levers.append("strengthen your local presence with verified customer reviews")
+
+                if "marketing" in active_modules:
+                    levers.append("activate targeted marketing campaigns across your best-converting channels")
+                else:
+                    levers.append("introduce referral incentives to turn satisfied buyers into advocates")
+
+                intro = f"{first_name}, based on your business data"
+                if company_name:
+                    intro += f" at {company_name}"
+                intro += ", here are your three client acquisition priorities:"
+                spoken_summary = f"{intro} first, {levers[0]}; second, {levers[1]}; and third, {levers[2]}."
+                tips = [
+                    f"Catalog priority: {levers[0]}.",
+                    f"Retention lever: {levers[1]}.",
+                    f"Acquisition lever: {levers[2]}.",
+                ]
+            else:
+                tips = [
+                    "Highlight in-demand seasonal or signature products with a clear introductory offer.",
+                    "Strengthen your local presence and gather fresh positive customer reviews.",
+                    "Lower first-time purchase hesitation with an enticing discovery package.",
+                    "Re-engage your past customer list with tailored recommendations and referral incentives.",
+                ]
+                spoken_summary = (
+                    f"{first_name}, without recorded campaign or catalog data in your modules, here are general strategic client acquisition recommendations: "
+                    "first, highlight in-demand signature products with an introductory offer; "
+                    "second, strengthen your local presence with fresh customer reviews; "
+                    "and third, re-engage past customers with tailored recommendations and referral incentives."
+                )
+            title = "Customer acquisition and marketing advice"
+
+        return {
+            "status": "success",
+            "title": title,
+            "tips": tips,
+            "spoken_summary": spoken_summary,
+            "topic": "customer_acquisition",
+        }
+
 
 __all__ = ["EmployeeCoachService"]

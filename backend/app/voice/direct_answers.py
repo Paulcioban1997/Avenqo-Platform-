@@ -136,7 +136,179 @@ def is_executive_strategic_question(text: str) -> bool:
     return strategic and point
 
 
+def is_marketing_acquisition_question(text: str) -> bool:
+    """Detect inquiries seeking customer acquisition, business growth, or marketing advice."""
+    norm = unicodedata.normalize("NFKD", text.casefold())
+    norm = "".join(c for c in norm if not unicodedata.combining(c))
+    if re.search(
+        r"\b(attirer\s+(?:plus\s+de\s+|des\s+)?clients?|trouver\s+(?:des\s+|plus\s+de\s+)?clients?|avoir\s+plus\s+de\s+clients?|"
+        r"acquisition\s+clients?|strategie\s+commerciale|attirer\s+du\s+monde|faire\s+venir\s+des\s+clients|"
+        r"attract\s+(?:more\s+)?(?:clients?|customers?)|get\s+more\s+(?:clients?|customers?)|customer\s+acquisition|"
+        r"atraer\s+(?:mas\s+)?clientes?|captar\s+clientes?|como\s+conseguir\s+clientes?|"
+        r"cum\s+(?:sa\s+)?atragem\s+mai\s+multi\s+clienti|atragerea\s+clientilor)\b",
+        norm,
+    ):
+        return True
+    words = _words(text)
+    marketing_target = bool(words & {"clients", "client", "clientele", "customers", "customer", "clientes", "cliente", "clienti"})
+    marketing_action = bool(words & {"attirer", "trouver", "attract", "atraer", "captar", "atragem", "prospecter", "acquisition"})
+    return marketing_target and marketing_action
+
+
+def is_catalog_pagination_question(text: str) -> tuple[bool, int]:
+    """Detect inquiries asking for next paginated catalog items (e.g. 'les 5 prochains', 'produits suivants')."""
+    norm = unicodedata.normalize("NFKD", text.casefold())
+    norm = "".join(c for c in norm if not unicodedata.combining(c))
+
+    # Strict exclusion: CRM appointments, bookings, or general conversational next-step queries
+    if any(
+        term in norm
+        for term in (
+            "rendez vous", "rendez-vous", "rdv", "appointment", "appointments",
+            "booking", "bookings", "reservation", "reservations", "creneau", "creneaux",
+            "horaire", "horaires", "heure", "heures", "date", "dates", "rencontre",
+            "what next", "what's next", "what should i do next", "what do we do next",
+            "what happens next", "and next", "et ensuite", "que faire ensuite", "quoi d'autre",
+            "what else", "et apres", "y despues", "ce facem acum", "ce urmeaza", "quand",
+        )
+    ):
+        return False, 0
+
+    match = re.search(
+        r"\b(?:les?\s+|the\s+)?(?:(\d+|cinq|trois|quatre|deux|dix|cinco|tres|cuatro|cinci|trei|patru|five|three|four|ten)\s+)(?:prochains?|suivants?|next|siguientes?|urmatoarele?)\s*(?:produits?|articles?|items?|planches?|accessoires?)?\b|"
+        r"\b(?:les?\s+|the\s+|los?\s+|urmatoarele\s+)?(?:prochains?|suivants?|next|siguientes?|urmatoarele)\s+(?:(\d+|cinq|trois|quatre|deux|dix|cinco|tres|cuatro|cinci|trei|patru|five|three|four|ten)\s+)(?:produits?|articles?|items?|planches?|accessoires?|ones?)?\b|"
+        r"\b(?:les?\s+|the\s+|los?\s+|urmatoarele\s+)(?:prochains?|suivants?|next|siguientes?|urmatoarele)\s+(?:produits?|articles?|items?|planches?|accessoires?|ones?)\b|"
+        r"\b(?:quels?\s+sont\s+les?\s+|what\s+are\s+the\s+)(?:(\d+|cinq|trois|quatre|deux|dix|five|three|four|ten)\s+)?(?:prochains?|suivants?|next)\s*(?:produits?|articles?|items?|planches?|accessoires?)\b",
+        norm,
+    )
+    if match:
+        num_str = match.group(1) or match.group(2) or match.group(3)
+        word_to_num = {
+            "cinq": 5, "five": 5, "cinco": 5, "cinci": 5,
+            "trois": 3, "three": 3, "tres": 3, "trei": 3,
+            "quatre": 4, "four": 4, "cuatro": 4, "patru": 4,
+            "deux": 2, "two": 2, "dos": 2, "doi": 2,
+            "dix": 10, "ten": 10, "diez": 10, "zece": 10,
+        }
+        count = 5
+        if num_str:
+            if num_str.isdigit():
+                count = int(num_str)
+            elif num_str in word_to_num:
+                count = word_to_num[num_str]
+        return True, max(1, min(count, 10))
+    return False, 0
+
+
+def is_ordinal_product_question(text: str) -> tuple[bool, int]:
+    """Detect inquiries about an ordinal product previously presented (e.g. 'Combien coûte le deuxième ?')."""
+    norm = unicodedata.normalize("NFKD", text.casefold())
+    norm = "".join(c for c in norm if not unicodedata.combining(c))
+
+    # Strict exclusion: CRM appointments, employee tasks, or client inquiries must NEVER be routed as catalog ordinals
+    if any(
+        term in norm
+        for term in (
+            "rendez vous", "rendez-vous", "rdv", "appointment", "appointments",
+            "booking", "bookings", "reservation", "reservations", "creneau", "creneaux",
+            "horaire", "horaires", "heure", "heures", "date", "dates", "rencontre",
+            "tache", "taches", "task", "tasks", "client", "clients",
+        )
+    ):
+        return False, 0
+
+    # Conversational pauses, hold requests, or polite time delays must NEVER be routed as catalog ordinals
+    if any(
+        phrase in norm
+        for phrase in (
+            "one second", "a second", "just a second", "wait a second", "give me a second",
+            "hold on a second", "hold on", "second please", "seconds please",
+            "une seconde", "un instant", "attends", "attendez", "attendez une seconde",
+            "attends une seconde", "juste une seconde", "un moment", "juste un instant",
+            "un segundo", "espera un segundo", "o secunda", "stai o secunda", "asteapta",
+        )
+    ):
+        return False, 0
+
+    match = re.search(
+        r"\b(?:combien\s+coute|quel\s+est\s+le\s+prix\s+d[ue]|et\s+le|prix\s+d[ue]|how\s+much\s+(?:is|does)\s+the|cuanto\s+cuesta\s+el|cat\s+costa\s+al)\s+"
+        r"(?:le\s+|the\s+|el\s+)?(premier|deuxieme|troisieme|quatrieme|cinquieme|1er|2e|2eme|3e|3eme|4e|5e|first|second|third|fourth|fifth|primero|segundo|tercero|primul|al\s+doilea|al\s+treilea)\b|"
+        r"\b(?:le\s+|the\s+|el\s+)(premier|deuxieme|troisieme|quatrieme|cinquieme|1er|2e|2eme|3e|3eme|4e|5e|first|second|third|fourth|fifth|segundo|tercero)\s*(?:produit|article|one|item)\s*(?:combien|coute|prix)?\b|"
+        r"\b(premier|deuxieme|troisieme|quatrieme|cinquieme|1er|2e|2eme|3e|3eme|4e|5e|first|third|fourth|fifth|primero|segundo|tercero)\s+(?:produit|article|option|item)\b",
+        norm,
+    )
+    if match:
+        ord_word = match.group(1) or match.group(2) or match.group(3)
+        mapping = {
+            "premier": 1, "1er": 1, "first": 1, "primero": 1, "primul": 1,
+            "deuxieme": 2, "2e": 2, "2eme": 2, "second": 2, "segundo": 2, "al doilea": 2,
+            "troisieme": 3, "3e": 3, "3eme": 3, "third": 3, "tercero": 3, "al treilea": 3,
+            "quatrieme": 4, "4e": 4, "4eme": 4, "fourth": 4, "cuarto": 4,
+            "cinquieme": 5, "5e": 5, "5eme": 5, "fifth": 5, "quinto": 5,
+        }
+        idx = mapping.get(ord_word, 0)
+        if idx > 0:
+            return True, idx
+    return False, 0
+
+
+def is_superlative_service_question(text: str) -> bool:
+    """Detect queries asking for the most expensive CRM service/prestation."""
+    norm = unicodedata.normalize("NFKD", text.casefold())
+    norm = "".join(c for c in norm if not unicodedata.combining(c))
+    has_service_noun = bool(re.search(
+        r"\b(service|services|prestation|prestations|forfait|forfaits|consultation|soin|soins|coupe)\b",
+        norm,
+    ))
+    has_superlative = bool(re.search(
+        r"\b(plus\s+chere?|le\s+plus\s+cher|most\s+expensive|highest\s+price|mas\s+car[ao]|cea\s+mai\s+scumpa|cel\s+mai\s+scump)\b",
+        norm,
+    ))
+    return has_service_noun and has_superlative
+
+
+def is_superlative_product_question(text: str) -> tuple[bool, str | None]:
+    """Detect superlative product queries (e.g. 'Quelle planche est la plus chère ?')."""
+    norm = unicodedata.normalize("NFKD", text.casefold())
+    norm = "".join(c for c in norm if not unicodedata.combining(c))
+
+    # Strict exclusion: CRM services, appointments, treatments belong to CRM, NOT retail products
+    if any(
+        term in norm
+        for term in (
+            "service", "services", "prestation", "prestations", "forfait", "forfaits",
+            "consultation", "consultations", "rendez vous", "rendez-vous", "rdv",
+            "appointment", "appointments", "soin", "soins", "coupe", "coupes",
+            "seance", "seances", "abonnement", "abonnements",
+        )
+    ):
+        return False, None
+
+    is_expensive = bool(re.search(
+        r"\b(plus\s+chere?|le\s+plus\s+cher|most\s+expensive|highest\s+price|mas\s+car[ao]|cea\s+mai\s+scumpa|cel\s+mai\s+scump)\b",
+        norm,
+    ))
+    if not is_expensive:
+        return False, None
+    category = None
+    if re.search(r"\b(planche|planches|snowboard|snowboards)\b", norm):
+        category = "planche"
+    elif re.search(r"\b(accessoire|accessoires|accessories|accessory)\b", norm):
+        category = "accessoire"
+    return True, category
+
+
 def is_open_catalog_question(text: str) -> bool:
+    norm = unicodedata.normalize("NFKD", text.casefold())
+    norm = "".join(c for c in norm if not unicodedata.combining(c))
+    if any(
+        term in norm
+        for term in (
+            "rendez vous", "rendez-vous", "rdv", "appointment", "appointments",
+            "booking", "bookings", "reservation", "reservations", "creneau", "creneaux",
+        )
+    ):
+        return False
     words = _words(text)
     products = bool(words & {
         "produit", "produits", "product", "products", "article", "articles",
@@ -341,6 +513,144 @@ def spoken_module_answer(names: list[str], *, plan_code: str | None, locale: str
     return base
 
 
+def spoken_superlative_product_answer(
+    products: Any,
+    category: str | None,
+    *,
+    locale: str,
+    currency: str | None = None,
+) -> str:
+    loc = locale.lower()
+    french = loc.startswith("fr")
+    spanish = loc.startswith("es")
+    romanian = loc.startswith("ro")
+
+    rows = [
+        row for row in products
+        if isinstance(row, dict) and str(row.get("name") or row.get("title") or row.get("product_name") or "").strip()
+    ]
+    if category:
+        cat_rows = [
+            r for r in rows
+            if category in (str(r.get("category") or r.get("product_category") or "")).lower()
+            or category in (str(r.get("name") or r.get("title") or r.get("product_name") or "")).lower()
+        ]
+        # Strict category filtering: do NOT fall back to other categories when requested category is absent
+        rows = cat_rows
+        if not rows:
+            cat_name = "accessoires" if category == "accessoire" else ("planches" if category == "planche" else category)
+            if spanish:
+                return f"No se encontró ningún producto en la categoría '{cat_name}' en nuestro catálogo."
+            if romanian:
+                return f"Nu a fost găsit niciun produs în categoria '{cat_name}' în catalogul nostru."
+            return (
+                f"Aucun produit dans la catégorie '{cat_name}' n'a été trouvé dans notre catalogue."
+                if french else
+                f"No products in the '{cat_name}' category were found in our catalog."
+            )
+
+    if not rows:
+        return (
+            "Aucun produit correspondant n'a été trouvé dans le catalogue."
+            if french else
+            "No matching products were found in the catalog."
+        )
+
+    def _parse_price(r: dict) -> float:
+        p = r.get("price")
+        if p is None or p == "":
+            return -1.0
+        try:
+            return float(str(p).replace("$", "").replace("€", "").replace(",", ".").strip())
+        except (ValueError, TypeError):
+            return -1.0
+
+    priced_rows = [r for r in rows if _parse_price(r) > 0]
+    if not priced_rows:
+        if spanish:
+            return "Ningún producto en esta categoría tiene un precio verificable en nuestro catálogo."
+        if romanian:
+            return "Niciun produs din această categorie nu are un preț verificabil în catalogul nostru."
+        return (
+            "Aucun produit dans cette sélection ne dispose d'un prix vérifiable dans notre catalogue."
+            if french else
+            "No products in this selection have a verifiable price in our catalog."
+        )
+
+    best = max(priced_rows, key=_parse_price)
+    name = str(best.get("name") or best.get("title") or best.get("product_name") or "").strip()
+    price = best.get("price")
+    unit = str(best.get("currency") or currency or "$").strip()
+    if unit in ("CAD", "USD", ""):
+        unit = "$"
+
+    cat_label = "planche" if category == "planche" else ("accessoire" if category == "accessoire" else ("produit" if french else "item"))
+
+    is_live = best.get("is_live_stock") is True
+    is_demo = best.get("is_demo") is True or str(best.get("freshness_status") or "").upper() == "DEMO_SIMULATION"
+    if is_demo:
+        price_provenance = " (precio de demostración)" if spanish else (" (preț demonstrativ)" if romanian else (" (prix de démonstration)" if french else " (demo price)"))
+    elif not is_live:
+        price_provenance = " (datos históricos de referencia)" if spanish else (" (date de referință istorice)" if romanian else (" (données issues du catalogue de référence historique)" if french else " (data from historical reference catalog)"))
+    else:
+        price_provenance = ""
+
+    if spanish:
+        art = "La" if cat_label in ("planche", "tabla") else "El"
+        return f"{art} {cat_label} más cara de nuestro catálogo es {name} a un precio de {price} {unit}{price_provenance}."
+    if romanian:
+        return f"Cel mai scump produs ({cat_label}) din catalogul nostru este {name} la prețul de {price} {unit}{price_provenance}."
+    if french:
+        genre_fem = cat_label in ("planche",)
+        article_fem = "La" if genre_fem else "Le"
+        adj_fem = "chère" if genre_fem else "cher"
+        if genre_fem:
+            return f"La {cat_label} la plus chère de notre catalogue est {name} au prix de {price} {unit}{price_provenance}."
+        return f"L'{cat_label} le plus cher de notre catalogue est {name} au prix de {price} {unit}{price_provenance}." if cat_label.startswith("a") else f"Le {cat_label} le plus cher de notre catalogue est {name} au prix de {price} {unit}{price_provenance}."
+    return f"The most expensive {cat_label} in our catalog is {name} priced at {price} {unit}{price_provenance}."
+
+
+def spoken_ordinal_product_answer(
+    presented_products: list[dict[str, Any]],
+    ordinal_index: int,
+    *,
+    locale: str,
+) -> str:
+    loc = locale.lower()
+    french = loc.startswith("fr")
+    spanish = loc.startswith("es")
+    romanian = loc.startswith("ro")
+
+    if not presented_products or ordinal_index < 1 or ordinal_index > len(presented_products):
+        if spanish:
+            return "No tengo el detalle de ese artículo en la lista mencionada."
+        if romanian:
+            return "Nu am detaliile acelui articol din lista menționată."
+        return (
+            "Je n'ai pas le détail de cet article dans la liste mentionnée précédemment."
+            if french else
+            "I do not have the details for that item in the previously mentioned list."
+        )
+
+    item = presented_products[ordinal_index - 1]
+    name = item.get("name", "")
+    price_text = item.get("price_text", "")
+    available = item.get("available", "")
+    ord_names_fr = {1: "premier", 2: "deuxième", 3: "troisième", 4: "quatrième", 5: "cinquième"}
+    ord_name = ord_names_fr.get(ordinal_index, f"{ordinal_index}e")
+
+    if spanish:
+        ord_names_es = {1: "primer", 2: "segundo", 3: "tercer", 4: "cuarto", 5: "quinto"}
+        return f"El {ord_names_es.get(ordinal_index, str(ordinal_index))} producto mencionado es {name}, a {price_text}{available}."
+    if romanian:
+        ord_names_ro = {1: "primul", 2: "al doilea", 3: "al treilea", 4: "al patrulea", 5: "al cincilea"}
+        return f"Al {ord_names_ro.get(ordinal_index, str(ordinal_index))} produs menționat este {name}, la {price_text}{available}."
+    if french:
+        return f"Le {ord_name} produit mentionné est {name}, au prix de {price_text}{available}."
+    ord_names_en = {1: "first", 2: "second", 3: "third", 4: "fourth", 5: "fifth"}
+    return f"The {ord_names_en.get(ordinal_index, f'{ordinal_index}th')} product mentioned is {name}, priced at {price_text}{available}."
+
+
 def spoken_catalog_answer(
     products: Any,
     *,
@@ -348,6 +658,9 @@ def spoken_catalog_answer(
     locale: str,
     currency: str | None = None,
     query: str | None = None,
+    offset: int = 0,
+    limit: int = 3,
+    call: Any | None = None,
 ) -> str:
     loc = locale.lower()
     french = loc.startswith("fr")
@@ -378,59 +691,98 @@ def spoken_catalog_answer(
             "The catalog does not currently list any products for sale."
         )
 
-    # Optional category / semantic filter based on query
+    # Optional category / semantic filter based on query or inherited from call session context
+    active_category = None
     is_accessories_query = False
     if query:
         query_norm = unicodedata.normalize("NFKD", query.casefold())
         query_norm = "".join(c for c in query_norm if not unicodedata.combining(c))
-        is_accessories_query = bool(re.search(r"\b(accessoire|accessoires|accessory|accessories)\b", query_norm))
-        if is_accessories_query:
-            acc_rows = [
-                r for r in rows
-                if "accessoire" in (str(r.get("category") or r.get("product_category") or "")).lower()
-                or "accessory" in (str(r.get("category") or r.get("product_category") or "")).lower()
-                or "accessories" in (str(r.get("category") or r.get("product_category") or "")).lower()
-                or "accessoire" in (str(r.get("name") or r.get("product_name") or "")).lower()
-                or "accessory" in (str(r.get("name") or r.get("product_name") or "")).lower()
-                or "accessories" in (str(r.get("name") or r.get("product_name") or "")).lower()
-                or any(k in (str(r.get("name") or r.get("product_name") or "")).lower() for k in ("casque", "gant", "masque", "chapeau", "lunette", "fart", "fixation"))
-            ]
-            if not acc_rows:
-                if spanish:
-                    return "Actualmente no tenemos accesorios disponibles en nuestro catálogo. ¿Desea información sobre nuestros otros productos?"
-                if romanian:
-                    return "În prezent nu avem accesorii disponibile în catalogul nostru. Doriți informații despre celelalte produse?"
-                return (
-                    "Nous n'avons actuellement aucun accessoire disponible dans notre catalogue. Souhaitez-vous des renseignements sur nos autres articles ?"
-                    if french else
-                    "We do not currently have any accessories available in our catalog. Would you like information on our other items?"
-                )
-            rows = acc_rows
-        elif query_norm:
-            query_words = set(re.findall(r"\b\w+\b", query_norm))
-            stopwords = {
-                "quel", "quels", "quelle", "quelles", "combien", "coute", "coutent", "prix",
-                "tarif", "tarifs", "est", "sont", "le", "la", "les", "du", "de", "des",
-                "un", "une", "avez", "vous", "notre", "votre", "catalogue", "produit", "produits",
-                "article", "articles", "what", "which", "how", "much", "is", "are", "the", "a", "an",
-                "in", "for", "do", "you", "have", "price", "catalog", "product", "products",
-                "pour", "dans", "avec", "sur", "vos", "nos",
-            }
-            specific_tokens = {w for w in query_words if w not in stopwords and len(w) >= 3}
-            if specific_tokens:
-                name_matches = []
-                for r in rows:
-                    r_name_norm = unicodedata.normalize("NFKD", str(r.get("name") or r.get("title") or r.get("product_name") or "").casefold())
-                    r_name_norm = "".join(c for c in r_name_norm if not unicodedata.combining(c))
-                    score = sum(1 for tok in specific_tokens if tok in r_name_norm)
-                    if score > 0:
-                        name_matches.append((score, r))
-                if name_matches:
-                    name_matches.sort(key=lambda x: x[0], reverse=True)
-                    rows = [m[1] for m in name_matches]
+        if re.search(r"\b(accessoire|accessoires|accessory|accessories)\b", query_norm):
+            active_category = "accessoire"
+            is_accessories_query = True
+        elif re.search(r"\b(planche|planches|snowboard|snowboards)\b", query_norm):
+            active_category = "planche"
+
+    # If query does not specify a category and this is pagination, inherit previous category filter from call context
+    if not active_category and offset > 0 and call is not None:
+        ctx_cat = (call.source_context or {}).get("catalog_category_filter")
+        if ctx_cat:
+            active_category = ctx_cat
+            if active_category == "accessoire":
+                is_accessories_query = True
+
+    if active_category == "accessoire":
+        acc_rows = [
+            r for r in rows
+            if "accessoire" in (str(r.get("category") or r.get("product_category") or "")).lower()
+            or "accessory" in (str(r.get("category") or r.get("product_category") or "")).lower()
+            or "accessories" in (str(r.get("category") or r.get("product_category") or "")).lower()
+            or "accessoire" in (str(r.get("name") or r.get("product_name") or "")).lower()
+            or "accessory" in (str(r.get("name") or r.get("product_name") or "")).lower()
+            or "accessories" in (str(r.get("name") or r.get("product_name") or "")).lower()
+            or any(k in (str(r.get("name") or r.get("product_name") or "")).lower() for k in ("casque", "gant", "masque", "chapeau", "lunette", "fart", "fixation"))
+        ]
+        if not acc_rows:
+            if spanish:
+                return "Actualmente no tenemos accesorios disponibles en nuestro catálogo. ¿Desea información sobre nuestros otros productos?"
+            if romanian:
+                return "În prezent nu avem accesorii disponibile în catalogul nostru. Doriți informații despre celelalte produse?"
+            return (
+                "Nous n'avons actuellement aucun accessoire disponible dans notre catalogue. Souhaitez-vous des renseignements sur nos autres articles ?"
+                if french else
+                "We do not currently have any accessories available in our catalog. Would you like information on our other items?"
+            )
+        rows = acc_rows
+    elif active_category == "planche":
+        board_rows = [
+            r for r in rows
+            if "planche" in (str(r.get("category") or r.get("product_category") or "")).lower()
+            or "snowboard" in (str(r.get("category") or r.get("product_category") or "")).lower()
+            or "planche" in (str(r.get("name") or r.get("product_name") or "")).lower()
+            or "snowboard" in (str(r.get("name") or r.get("product_name") or "")).lower()
+        ]
+        if board_rows:
+            rows = board_rows
+    elif query:
+        query_norm = unicodedata.normalize("NFKD", query.casefold())
+        query_norm = "".join(c for c in query_norm if not unicodedata.combining(c))
+        query_words = set(re.findall(r"\b\w+\b", query_norm))
+        stopwords = {
+            "quel", "quels", "quelle", "quelles", "combien", "coute", "coutent", "prix",
+            "tarif", "tarifs", "est", "sont", "le", "la", "les", "du", "de", "des",
+            "un", "une", "avez", "vous", "notre", "votre", "catalogue", "produit", "produits",
+            "article", "articles", "what", "which", "how", "much", "is", "are", "the", "a", "an",
+            "in", "for", "do", "you", "have", "price", "catalog", "product", "products",
+            "pour", "dans", "avec", "sur", "vos", "nos", "prochain", "prochains", "suivant", "suivants",
+        }
+        specific_tokens = {w for w in query_words if w not in stopwords and len(w) >= 3}
+        if specific_tokens:
+            name_matches = []
+            for r in rows:
+                r_name_norm = unicodedata.normalize("NFKD", str(r.get("name") or r.get("title") or r.get("product_name") or "").casefold())
+                r_name_norm = "".join(c for c in r_name_norm if not unicodedata.combining(c))
+                score = sum(1 for tok in specific_tokens if tok in r_name_norm)
+                if score > 0:
+                    name_matches.append((score, r))
+            if name_matches:
+                name_matches.sort(key=lambda x: x[0], reverse=True)
+                rows = [m[1] for m in name_matches]
+
+    target_slice = rows[offset : offset + limit]
+    if not target_slice and offset > 0:
+        if spanish:
+            return f"No hay más productos disponibles en esta sección del catálogo. Hemos recorrido los {len(rows)} artículos."
+        if romanian:
+            return f"Nu mai există alte produse în această secțiune. Am parcurs toate cele {len(rows)} articole."
+        return (
+            f"Il n'y a plus d'autres articles dans cette sélection. Nous avons parcouru les {len(rows)} produits disponibles."
+            if french else
+            f"There are no more items in this section. We have reviewed all {len(rows)} available products."
+        )
 
     spoken = []
-    for row in rows[:3]:
+    presented_records = []
+    for row in target_slice:
         name = str(row.get("name") or row.get("title") or row.get("product_name") or "").strip()
         price = row.get("price")
         raw_unit = str(row.get("currency") or currency or "").strip().upper()
@@ -457,7 +809,6 @@ def spoken_catalog_answer(
                 price_text += hist_tag
 
         available = ""
-        inventory = row.get("inventory_count")
         stock_avail = row.get("stock_availability")
         if is_demo_row:
             available = ", datos de demostración" if spanish else (", date demonstrative" if romanian else (", données de démonstration" if french else ", demo data"))
@@ -471,14 +822,29 @@ def spoken_catalog_answer(
             available = ", stock no disponible" if spanish else (", stoc indisponibil" if romanian else (", stock indisponible" if french else ", stock unavailable"))
         elif freshness == "SYNCING":
             available = ", sincronización de stock en curso" if spanish else (", sincronizare stoc în curs" if romanian else (", synchronisation de stock en cours" if french else ", stock syncing in progress"))
-        elif freshness == "UNCONFIRMED_HISTORICAL":
-            available = ", stock en directo no confirmado" if spanish else (", stoc direct neconfirmat" if romanian else (", stock en direct non synchronisé" if french else ", live stock unconfirmed"))
         else:
-            available = ", stock en directo no confirmado" if spanish else (", stoc direct neconfirmat" if romanian else (", stock direct non confirmé" if french else ", live stock unconfirmed"))
+            available = ", données de référence" if french else ", reference data"
+
         spoken.append(f"{name}, {price_text}{available}")
+        presented_records.append({
+            "name": name,
+            "price": price,
+            "currency": unit,
+            "price_text": price_text,
+            "category": str(row.get("category") or row.get("product_category") or ""),
+            "available": available,
+        })
+
+    if call is not None:
+        ctx = dict(call.source_context or {})
+        ctx["presented_catalog_products"] = presented_records
+        ctx["catalog_pagination_offset"] = offset + len(target_slice)
+        ctx["catalog_category_filter"] = active_category
+        call.source_context = ctx
+
     extra = ""
-    if len(rows) > 3:
-        remaining = len(rows) - 3
+    remaining = len(rows) - (offset + len(target_slice))
+    if remaining > 0:
         if spanish:
             extra = f" Y {remaining} {'artículo' if remaining == 1 else 'artículos'} más en el catálogo."
         elif romanian:
@@ -487,21 +853,30 @@ def spoken_catalog_answer(
             extra = f" Et {remaining} autre{'s' if remaining > 1 else ''} article{'s' if remaining > 1 else ''} au catalogue."
         else:
             extra = f" And {remaining} more items in the catalog."
+
+    hist_note = ""
+    if any(not r.get("is_live_stock") for r in target_slice):
+        hist_note = (
+            " (Données issues de notre catalogue de référence historique.)"
+            if french else
+            " (Data from our historical reference catalog.)"
+        )
+
     if is_accessories_query:
         if spanish:
-            return "Como accesorios, ofrecemos en particular: " + " ; ".join(spoken) + "." + extra
+            return "Como accesorios, ofrecemos en particular: " + " ; ".join(spoken) + "." + extra + hist_note
         if romanian:
-            return "Ca accesorii, vă oferim în special: " + " ; ".join(spoken) + "." + extra
+            return "Ca accesorii, vă oferim în special: " + " ; ".join(spoken) + "." + extra + hist_note
         if french:
-            return "Nous proposons notamment comme accessoires : " + " ; ".join(spoken) + "." + extra
-        return "As accessories, we notably offer: " + "; ".join(spoken) + "." + extra
+            return "Nous proposons notamment comme accessoires : " + " ; ".join(spoken) + "." + extra + hist_note
+        return "As accessories, we notably offer: " + "; ".join(spoken) + "." + extra + hist_note
     if spanish:
-        return "Tenemos en el catálogo: " + " ; ".join(spoken) + "." + extra
+        return "Tenemos en el catálogo: " + " ; ".join(spoken) + "." + extra + hist_note
     if romanian:
-        return "Avem în catalog: " + " ; ".join(spoken) + "." + extra
+        return "Avem în catalog: " + " ; ".join(spoken) + "." + extra + hist_note
     if french:
-        return "Nous avons au catalogue : " + " ; ".join(spoken) + "." + extra
-    return "In our catalog, we have: " + "; ".join(spoken) + "." + extra
+        return "Nous avons au catalogue : " + " ; ".join(spoken) + "." + extra + hist_note
+    return "In our catalog, we have: " + "; ".join(spoken) + "." + extra + hist_note
 
 
 def is_language_inquiry(text: str) -> str | None:
@@ -561,6 +936,7 @@ def resolve_direct_voice_answer(
     staff_role: str | None = None,
     locale: str,
     user_id: UUID | None = None,
+    call: Any | None = None,
 ) -> str | None:
     """Return a spoken answer, or None when Central AI should handle the turn."""
     if db is None:
@@ -616,7 +992,28 @@ def resolve_direct_voice_answer(
         elif lang_inquiry == "fr":
             return f"Bonjour ! Oui, je parle français. Comment puis-je vous aider aujourd'hui chez {brand_name} ?" if brand_name else "Bonjour ! Oui, je parle français. Comment puis-je vous aider aujourd'hui ?"
 
-    # 2. Check for employee internal requests: identity, modules, coach tasks, coaching efficiency, briefing, optimize, executive
+    # 2. Marketing / customer acquisition advice
+    if is_marketing_acquisition_question(transcript):
+        if not authenticated_staff or user_id is None:
+            loc = locale.lower()
+            if loc.startswith("es"):
+                return "Los consejos de estrategia de marketing y captación de clientes están reservados para colaboradores autenticados. Ingrese su NIP en el teclado para identificarse."
+            if loc.startswith("ro"):
+                return "Consilierea privind strategia de marketing și atragerea clienților este rezervată angajaților autentificați prin PIN. Vă rugăm să introduceți codul PIN pe tastatura telefonului."
+            if loc.startswith("fr"):
+                return "Les conseils de stratégie marketing et d'acquisition client sont réservés aux employés authentifiés par NIP. Veuillez saisir votre code NIP sur le clavier de votre téléphone pour vous identifier."
+            return "Marketing strategy and customer acquisition advice is reserved for employees authenticated with a PIN. Please enter your PIN on your phone keypad to authenticate."
+
+        from backend.app.services.employee_coach_service import EmployeeCoachService
+        actor = db.get(User, user_id)
+        if actor is not None and actor.company_id == company_id:
+            coach = EmployeeCoachService(db)
+            mktg = coach.get_marketing_acquisition_advice(actor, query=transcript, locale=locale)
+            summary_mktg = mktg.get("spoken_summary")
+            if summary_mktg:
+                return str(summary_mktg)
+
+    # 3. Check for employee internal requests: identity, modules, coach tasks, coaching efficiency, briefing, optimize, executive
     has_identity = is_identity_inquiry(transcript)
     has_modules = is_module_access_question(transcript)
     has_tasks = is_coach_tasks_question(transcript)
@@ -765,7 +1162,82 @@ def resolve_direct_voice_answer(
         if parts:
             return " ".join(parts)
 
-    # 3. Open catalog check
+    # 4. Superlative CRM service inquiries (e.g. "Quel service est le plus cher ?")
+    if is_superlative_service_question(transcript):
+        from backend.app.services.company_intelligence_service import CompanyIntelligenceService
+
+        profile = CompanyIntelligenceService(db).get_profile(company_id)
+        services = list(getattr(profile, "configured_crm_services", ()) or ())
+        priced_services = []
+        for s in services:
+            p = s.get("price")
+            if p is not None:
+                try:
+                    val = float(str(p).replace("$", "").replace("€", "").strip())
+                    priced_services.append((val, s))
+                except (ValueError, TypeError):
+                    pass
+        if priced_services:
+            priced_services.sort(key=lambda x: x[0], reverse=True)
+            top_val, top_s = priced_services[0]
+            curr = top_s.get("currency") or getattr(profile, "currency_code", "CAD")
+            dur = top_s.get("duration_minutes")
+            dur_str = f" d'une durée de {dur} minutes" if dur else ""
+            name = top_s.get("name", "Service")
+            loc = locale.lower()
+            if loc.startswith("fr"):
+                return f"Notre prestation la plus chère est {name} au tarif de {top_val:g} {curr}{dur_str}."
+            elif loc.startswith("es"):
+                return f"Nuestro servicio más exclusivo es {name} a {top_val:g} {curr}."
+            elif loc.startswith("ro"):
+                return f"Cel mai scump serviciu al nostru este {name} la {top_val:g} {curr}."
+            return f"Our most expensive service is {name} at {top_val:g} {curr}."
+
+    # 5. Ordinal product lookup in conversational memory (e.g. "Combien coûte le deuxième ?")
+    is_ord, ord_idx = is_ordinal_product_question(transcript)
+    if is_ord and call is not None:
+        presented = list((call.source_context or {}).get("presented_catalog_products") or [])
+        if presented:
+            return spoken_ordinal_product_answer(presented, ord_idx, locale=locale)
+
+    # 6. Superlative product inquiries (e.g. "Quelle planche est la plus chère ?")
+    is_sup, sup_cat = is_superlative_product_question(transcript)
+    if is_sup:
+        from backend.app.services.company_intelligence_service import CompanyIntelligenceService
+
+        profile = CompanyIntelligenceService(db).get_profile(company_id)
+        products = list(getattr(profile, "public_products", ()) or ())
+        return spoken_superlative_product_answer(
+            products,
+            sup_cat,
+            locale=locale,
+            currency=getattr(profile, "currency_code", None),
+        )
+
+    # 7. Catalog pagination (e.g. "Quels sont les cinq prochains produits ?")
+    is_page, req_count = is_catalog_pagination_question(transcript)
+    if is_page:
+        from backend.app.services.company_intelligence_service import CompanyIntelligenceService
+
+        presented = list((call.source_context or {}).get("presented_catalog_products") or []) if call is not None else []
+        has_catalog_context = bool(presented) or any(w in transcript.lower() for w in ("produit", "article", "catalogue", "planche", "accessoire", "product", "item"))
+        if has_catalog_context:
+            profile = CompanyIntelligenceService(db).get_profile(company_id)
+            retail_enabled = bool(getattr(profile, "has_retail_commerce", False)) or "retail" in set(getattr(profile, "active_modules", ()) or ())
+            products = list(getattr(profile, "public_products", ()) or ())
+            current_offset = int((call.source_context or {}).get("catalog_pagination_offset", 3)) if call is not None else 3
+            return spoken_catalog_answer(
+                products,
+                retail_enabled=retail_enabled,
+                locale=locale,
+                currency=getattr(profile, "currency_code", None),
+                query=transcript,
+                offset=current_offset,
+                limit=req_count,
+                call=call,
+            )
+
+    # 7. Open catalog check
     if is_open_catalog_question(transcript):
         from backend.app.services.company_intelligence_service import CompanyIntelligenceService
 
@@ -778,6 +1250,9 @@ def resolve_direct_voice_answer(
             locale=locale,
             currency=getattr(profile, "currency_code", None),
             query=transcript,
+            offset=0,
+            limit=3,
+            call=call,
         )
 
     return None

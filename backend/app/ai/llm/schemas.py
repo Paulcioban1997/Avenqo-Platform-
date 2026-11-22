@@ -24,6 +24,7 @@ class LLMUsage:
     cached_audio_input_units: Decimal = Decimal("0")
     audio_output_units: Decimal = Decimal("0")
     audio_input_seconds: Decimal = Decimal("0")
+    audio_idle_seconds: Decimal = Decimal("0")
     tool_calls: int = 0
     provider_request_id: str | None = None
     avenqo_request_id: str | None = None
