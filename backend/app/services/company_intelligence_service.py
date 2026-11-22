@@ -15,6 +15,20 @@ from shared.ai_engine.contracts import TenantContext
 
 BOOKING_TOOLS = frozenset({"check_availability", "list_available_slots", "create_appointment", "book_appointment"})
 
+
+def _parse_optional_float(value: object) -> float | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    raw = str(value).replace("$", "").replace("€", "").replace("£", "").replace(",", ".").strip()
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except (ValueError, TypeError):
+        return None
+
 def classify_connector_freshness(
     conn: CommerceConnection | None,
     now: datetime | None = None,
@@ -151,10 +165,19 @@ class CompanyIntelligenceProfile:
         data["voice_display_name"] = self.voice_display_name or self.business_name.replace("_", " ")
         data["voice_pronunciation"] = self.voice_pronunciation or data["voice_display_name"]
         if public:
-            # Connection/dataset identities and operational state are private.
+            # Connection/dataset identities, operational state, and supplier cost/margins are private.
             data.pop("connected_integrations", None)
             data.pop("available_datasets", None)
             data.pop("calendar_resources", None)
+            if isinstance(data.get("public_products"), (list, tuple)):
+                data["public_products"] = tuple(
+                    {
+                        k: v for k, v in p.items()
+                        if k not in {"unit_cost", "profit_margin_amount", "profit_margin_pct"}
+                    }
+                    if isinstance(p, dict) else p
+                    for p in data["public_products"]
+                )
         return data
 
 class CompanyIntelligenceService:
@@ -227,9 +250,67 @@ class CompanyIntelligenceService:
                     variants = pdata.get("variants") or []
                     price = pdata.get("unit_price")
                     if price is None:
-                        price = pdata.get("price") if pdata.get("price") is not None else pdata.get("regular_price")
+                        price = pdata.get("price") if pdata.get("price") is not None else pdata.get("sale_price")
+                    if price is None:
+                        price = pdata.get("regular_price")
                     if price is None and isinstance(variants, list) and variants:
-                        price = variants[0].get("unit_price") or variants[0].get("price")
+                        first_v = variants[0] if isinstance(variants[0], dict) else {}
+                        price = first_v.get("unit_price") if first_v.get("unit_price") is not None else first_v.get("price")
+
+                    compare_at_raw = (
+                        pdata.get("compare_at_price")
+                        if pdata.get("compare_at_price") is not None
+                        else (pdata.get("original_price") if pdata.get("original_price") is not None else pdata.get("list_price"))
+                    )
+                    if compare_at_raw is None and pdata.get("regular_price") is not None and price is not None:
+                        p_float = _parse_optional_float(price)
+                        reg_float = _parse_optional_float(pdata.get("regular_price"))
+                        if p_float is not None and reg_float is not None and reg_float > p_float:
+                            compare_at_raw = reg_float
+                    if compare_at_raw is None and isinstance(variants, list) and variants:
+                        for v in variants:
+                            if isinstance(v, dict):
+                                v_cmp = (
+                                    v.get("compare_at_price")
+                                    if v.get("compare_at_price") is not None
+                                    else v.get("original_price")
+                                )
+                                if v_cmp is not None:
+                                    compare_at_raw = v_cmp
+                                    break
+                    compare_at_price = _parse_optional_float(compare_at_raw)
+
+                    cost_raw = (
+                        pdata.get("unit_cost") if pdata.get("unit_cost") is not None
+                        else (
+                            pdata.get("cost_price") if pdata.get("cost_price") is not None
+                            else (pdata.get("cost") if pdata.get("cost") is not None else pdata.get("cogs"))
+                        )
+                    )
+                    if cost_raw is None and isinstance(variants, list) and variants:
+                        for v in variants:
+                            if isinstance(v, dict):
+                                v_cost = (
+                                    v.get("unit_cost") if v.get("unit_cost") is not None
+                                    else (v.get("cost_price") if v.get("cost_price") is not None else v.get("cost"))
+                                )
+                                if v_cost is not None:
+                                    cost_raw = v_cost
+                                    break
+                    unit_cost = _parse_optional_float(cost_raw)
+                    price_num = _parse_optional_float(price)
+                    margin_amt = _parse_optional_float(
+                        pdata.get("profit_margin") if pdata.get("profit_margin") is not None
+                        else (pdata.get("gross_margin") if pdata.get("gross_margin") is not None else pdata.get("margin"))
+                    )
+                    margin_pct = _parse_optional_float(
+                        pdata.get("profit_margin_pct") if pdata.get("profit_margin_pct") is not None
+                        else (pdata.get("gross_margin_pct") if pdata.get("gross_margin_pct") is not None else pdata.get("margin_pct"))
+                    )
+                    if margin_amt is None and unit_cost is not None and price_num is not None:
+                        margin_amt = round(price_num - unit_cost, 2)
+                    if margin_pct is None and margin_amt is not None and price_num is not None and price_num > 0:
+                        margin_pct = round((margin_amt / price_num) * 100.0, 2)
 
                     inventory = pdata.get("inventory_level")
                     if inventory is None:
@@ -280,6 +361,10 @@ class CompanyIntelligenceService:
                         "name": str(pname).strip(),
                         "category": pdata.get("product_category") or pdata.get("category") or "",
                         "price": str(price) if isinstance(price, str) else (float(price) if isinstance(price, (int, float)) else None),
+                        "compare_at_price": compare_at_price,
+                        "unit_cost": unit_cost,
+                        "profit_margin_amount": margin_amt,
+                        "profit_margin_pct": margin_pct,
                         "currency": company.currency_code,
                         "currency_symbol": curr_sym,
                         "price_display": p_disp,

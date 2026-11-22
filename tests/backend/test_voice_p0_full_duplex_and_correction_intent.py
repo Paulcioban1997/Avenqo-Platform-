@@ -50,6 +50,7 @@ from backend.app.models.company_module import CompanyModule, CompanyModuleStatus
 from backend.app.models.module import Module
 from backend.app.models.user import User, UserRole
 from backend.app.models.voice import CompanyRoutingNip, VoiceAuthSession, VoiceBusinessConfig, VoiceCall
+from backend.app.services.company_intelligence_service import CompanyIntelligenceService
 from backend.app.services.employee_coach_service import EmployeeCoachService
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.voice.auth import VoiceCallerAuth
@@ -60,6 +61,7 @@ from backend.app.voice.direct_answers import (
     spoken_catalog_answer,
 )
 from backend.app.voice.realtime_provider import (
+    FallbackRealtimeAudioAdapter,
     GeminiLiveRealtimeAudioAdapter,
     NaturalInterruptionManager,
 )
@@ -73,6 +75,7 @@ from backend.app.voice.turn_control import (
     adjudicate_transcript,
     build_correction_clarification,
     extract_reformulation_after_correction,
+    extract_request_after_attention_check,
     is_attention_check,
     is_backchannel,
     is_correction_or_objection,
@@ -759,7 +762,7 @@ def test_07_short_allo_during_playback_triggers_barge_in():
 
 @pytest.mark.asyncio
 async def test_08_missing_final_transcription_stops_monologue_and_recovers():
-    """When a caller speaks (>450ms) during playback and STT delivers no transcript,
+    """When confirmed non-echo caller speech (>450ms) during playback loses its final transcript,
     speech_stopped_without_transcript increments separately from silence, TTS stops, and short cue is spoken."""
     events_q: asyncio.Queue[Any] = asyncio.Queue()
     adapter = QueueDrivenAdapter(events_q)
@@ -778,11 +781,21 @@ async def test_08_missing_final_transcription_stops_monologue_and_recovers():
     bridge.stream_id = "stream-missing-stt"
     bridge._set_phase("PLAYING")
     bridge.response_id = "resp-runaway"
+    bridge._last_spoken = "Nous avons au catalogue la Planche Alpine à quatre cent quatre-vingt-dix-neuf dollars."
     bridge._output.put_nowait((bridge.epoch, b"\xff" * 160))
 
     drain_task = asyncio.create_task(bridge._drain_provider_events())
 
     await events_q.put(SimpleNamespace(type="input_audio_buffer.speech_started", item_id="miss-1"))
+    # Non-echo partial transcript proves a human caller actually spoke (not speakerphone echo)
+    await events_q.put(
+        SimpleNamespace(
+            type="conversation.item.input_audio_transcription.delta",
+            item_id="miss-1",
+            delta="quel est le",
+            transcript="quel est le",
+        )
+    )
     await events_q.put(SimpleNamespace(type="input_audio_buffer.speech_stopped", item_id="miss-1", duration_ms=700))
     await events_q.put(
         SimpleNamespace(
@@ -791,6 +804,8 @@ async def test_08_missing_final_transcription_stops_monologue_and_recovers():
             duration_ms=700,
             peak_rms=1900,
             tts_playing=True,
+            echo_rejected=True,
+            caller_speech_confirmed=True,
         )
     )
     await asyncio.sleep(0.08)
@@ -947,8 +962,8 @@ def test_12_ambiguous_retail_commercial_question_and_followup(db_session: Sessio
     assert "stock" in clar.lower() and "rentables" in clar.lower()
     assert (call.source_context or {}).get("pending_retail_clarification") is True
 
-    # Follow-up: caller chooses "Les plus rentables"
-    followup = resolve_direct_voice_answer(
+    # Follow-up 1: caller chooses "Les plus rentables" on catalog WITHOUT cost/margin data -> honest answer
+    followup_prof = resolve_direct_voice_answer(
         db_session,
         company_id=company.id,
         transcript="Les plus rentables",
@@ -958,10 +973,28 @@ def test_12_ambiguous_retail_commercial_question_and_followup(db_session: Sessio
         user_id=owner.id,
         call=call,
     )
-    assert followup is not None
-    assert "Planche Alpine" in followup
-    assert "compare_at_price" not in followup
+    assert followup_prof is not None
+    assert "coûts" in followup_prof.lower() or "marges" in followup_prof.lower()
+    assert "Planche Alpine" not in followup_prof
     assert (call.source_context or {}).get("pending_retail_clarification") is None
+
+    # Follow-up 2: caller asks again and chooses "Les meilleures opportunités à promouvoir"
+    call.source_context = {**(call.source_context or {}), "pending_retail_clarification": True}
+    db_session.commit()
+    followup_promo = resolve_direct_voice_answer(
+        db_session,
+        company_id=company.id,
+        transcript="Les meilleures opportunités à promouvoir",
+        authenticated_staff=True,
+        staff_role="OWNER",
+        locale="fr-CA",
+        user_id=owner.id,
+        call=call,
+    )
+    assert followup_promo is not None
+    assert "au lieu de" in followup_promo.lower()
+    assert "compare_at_price" not in followup_promo
+    assert (call.source_context or {}).get("catalog_view_mode") == "promote"
 
 
 # =====================================================================
@@ -1405,3 +1438,1029 @@ async def test_20_latency_p50_p95_and_playback_mark_acknowledgment():
 
     await events_q.put(None)
     await drain_task
+
+
+# =====================================================================
+# 21. Early STT Rescue Emits Partial Only & Finalizes Utterance Once
+# =====================================================================
+
+@pytest.mark.asyncio
+async def test_21_early_stt_rescue_emits_partial_only_and_finalizes_once():
+    """During active TTS playback, speaking >500ms (25 frames) triggers ONLY a partial delta
+    for fast barge-in, retains the same item_id, and finalizes the complete utterance ONCE
+    at speech_stopped with zero duplicate business turns."""
+    server_q: asyncio.Queue[Any] = asyncio.Queue()
+    fake_session = FakeGeminiLiveSession(server_q)
+    fake_client = FakeGeminiClient([fake_session])
+
+    class SequentialSTT:
+        provider_id = "mock_seq_stt"
+
+        def __init__(self) -> None:
+            self.calls: list[int] = []
+
+        async def transcribe(self, audio: bytes, *, locale: str, content_type: str) -> str:
+            self.calls.append(len(audio))
+            if len(self.calls) == 1:
+                return "Non, c'est pas de ça"
+            return "Non, c'est pas de ça que je parlais, montre-moi les casques"
+
+    seq_stt = SequentialSTT()
+    adapter = GeminiLiveRealtimeAudioAdapter(
+        _make_test_settings(),
+        api_key="fake-gemini-key",
+        company_name="Produits Ero",
+        client_factory=lambda _k: fake_client,
+        stt_adapter=seq_stt,
+        vad_rms_threshold=450,
+        silence_frames_threshold=3,
+        stt_rescue_delay_seconds=0.03,
+        min_speech_ms_for_rescue=200,
+    )
+    await adapter.open(locale="fr-CA")
+    adapter.set_playback_active(True)
+
+    # Stream 35 loud frames (~700ms) continuously — still speaking, NO silence yet!
+    for _ in range(35):
+        await adapter.send_audio(_pcm_tone(1800))
+    await asyncio.sleep(0.06)
+
+    # Caller is still speaking: segment ID MUST still be retained, NOT finalized yet!
+    active_id_mid_speech = adapter._current_item_id
+    assert active_id_mid_speech is not None
+    assert active_id_mid_speech not in adapter._emitted_items
+
+    # Caller continues speaking 20 more frames (~400ms), then stops (4 silence frames)
+    for _ in range(20):
+        await adapter.send_audio(_pcm_tone(1800))
+    for _ in range(4):
+        await adapter.send_audio(_pcm_silence())
+    await asyncio.sleep(0.12)
+
+    await server_q.put(None)
+    await adapter.close()
+
+    emitted: list[Any] = []
+    while not adapter._event_queue.empty():
+        ev = adapter._event_queue.get_nowait()
+        if hasattr(ev, "type"):
+            emitted.append(ev)
+
+    deltas = [e for e in emitted if e.type == "conversation.item.input_audio_transcription.delta"]
+    finals = [e for e in emitted if e.type == "conversation.item.input_audio_transcription.completed"]
+    assert len(deltas) == 1, f"Expected 1 early partial delta, got {len(deltas)}"
+    assert len(finals) == 1, f"Expected exactly 1 final completion, got {len(finals)}"
+    assert deltas[0].item_id == active_id_mid_speech
+    assert finals[0].item_id == active_id_mid_speech
+    assert deltas[0].finished is False
+    assert "montre-moi les casques" in finals[0].transcript
+
+
+# =====================================================================
+# 22. Delayed Rescue for Segment A Never Flushes Segment B's Buffer
+# =====================================================================
+
+@pytest.mark.asyncio
+async def test_22_delayed_rescue_for_segment_a_never_flushes_segment_b():
+    """If Segment A's delayed rescue fires after Segment B has started accumulating Gemini
+    partials in _transcript_parts, A's rescue MUST NOT flush B's unfinished buffer."""
+    server_q: asyncio.Queue[Any] = asyncio.Queue()
+    fake_session = FakeGeminiLiveSession(server_q)
+    fake_client = FakeGeminiClient([fake_session])
+    mock_stt = MockIndependentSTT("Première question sur les horaires")
+
+    adapter = GeminiLiveRealtimeAudioAdapter(
+        _make_test_settings(),
+        api_key="fake-gemini-key",
+        company_name="Produits Ero",
+        client_factory=lambda _k: fake_client,
+        stt_adapter=mock_stt,
+        vad_rms_threshold=450,
+        silence_frames_threshold=3,
+        stt_rescue_delay_seconds=0.12,
+        min_speech_ms_for_rescue=100,
+    )
+    await adapter.open(locale="fr-CA")
+
+    # Segment A: caller speaks & stops -> schedules delayed rescue (0.12s)
+    for _ in range(10):
+        await adapter.send_audio(_pcm_tone(1800))
+    seg_a_id = adapter._current_item_id
+    assert seg_a_id is not None
+    for _ in range(4):
+        await adapter.send_audio(_pcm_silence())
+
+    # Before A's rescue fires, Segment B starts and Gemini emits an unfinished partial for B
+    await asyncio.sleep(0.02)
+    for _ in range(6):
+        await adapter.send_audio(_pcm_tone(1800))
+    seg_b_id = adapter._current_item_id
+    assert seg_b_id is not None and seg_b_id != seg_a_id
+    await server_q.put(
+        SimpleNamespace(
+            server_content=SimpleNamespace(
+                input_transcription=SimpleNamespace(text="Deuxième question en cours", finished=False),
+            )
+        )
+    )
+    # Let A's delayed rescue run while B is STILL unfinished!
+    await asyncio.sleep(0.18)
+
+    # B must NOT have been prematurely flushed by A's rescue!
+    assert adapter._transcript_item_id == seg_b_id
+    assert adapter._transcript_parts == ["Deuxième question en cours"]
+    assert seg_b_id not in adapter._emitted_items
+    assert seg_a_id in adapter._emitted_items
+
+    # Now finish Segment B via Gemini final transcription
+    await server_q.put(
+        SimpleNamespace(
+            server_content=SimpleNamespace(
+                input_transcription=SimpleNamespace(text="sur les casques", finished=True),
+                turn_complete=True,
+            )
+        )
+    )
+    await asyncio.sleep(0.06)
+
+    await server_q.put(None)
+    await adapter.close()
+
+    emitted: list[Any] = []
+    while not adapter._event_queue.empty():
+        ev = adapter._event_queue.get_nowait()
+        if hasattr(ev, "type"):
+            emitted.append(ev)
+
+    finals = [e for e in emitted if e.type == "conversation.item.input_audio_transcription.completed"]
+    by_id = {e.item_id: e.transcript for e in finals}
+    assert by_id[seg_a_id] == "Première question sur les horaires"
+    assert by_id[seg_b_id] == "Deuxième question en cours sur les casques"
+
+
+# =====================================================================
+# 23. Task-Identity Cleanup in _rescue_tasks Prevents Leaked Tasks
+# =====================================================================
+
+@pytest.mark.asyncio
+async def test_23_rescue_task_replacement_cleanup_preserves_new_task_identity():
+    """Replacing an in-flight rescue task for the same item_id must NOT allow the cancelled
+    old task's finally block to remove the replacement task from _rescue_tasks."""
+    server_q: asyncio.Queue[Any] = asyncio.Queue()
+    fake_session = FakeGeminiLiveSession(server_q)
+    fake_client = FakeGeminiClient([fake_session])
+
+    slow_stt_started = asyncio.Event()
+    slow_stt_gate = asyncio.Event()
+
+    class SlowSTT:
+        provider_id = "slow_stt"
+
+        async def transcribe(self, audio: bytes, *, locale: str, content_type: str) -> str:
+            slow_stt_started.set()
+            await slow_stt_gate.wait()
+            return "texte final"
+
+    adapter = GeminiLiveRealtimeAudioAdapter(
+        _make_test_settings(),
+        api_key="fake-gemini-key",
+        company_name="Produits Ero",
+        client_factory=lambda _k: fake_client,
+        stt_adapter=SlowSTT(),
+        stt_rescue_delay_seconds=0.0,
+        min_speech_ms_for_rescue=100,
+    )
+    await adapter.open(locale="fr-CA")
+
+    pcm = _pcm_tone(1800) * 10
+    # 1. Start early rescue task #1
+    adapter._schedule_stt_rescue("item-race-1", pcm, 500, 1800, tts_playing=True, delay_seconds=0.0, early_partial=True)
+    task1 = adapter._rescue_tasks["item-race-1"]
+    await slow_stt_started.wait()
+
+    # 2. Replace with final rescue task #2 for the SAME item_id
+    adapter._schedule_stt_rescue("item-race-1", pcm, 900, 1800, tts_playing=True, delay_seconds=0.5, early_partial=False)
+    task2 = adapter._rescue_tasks["item-race-1"]
+    assert task2 is not task1
+
+    # 3. Yield so cancelled task1 completes its finally block
+    await asyncio.sleep(0.05)
+    assert task1.done()
+    # task2 MUST still be tracked in _rescue_tasks!
+    assert adapter._rescue_tasks.get("item-race-1") is task2
+    assert not task2.done()
+
+    # 4. clear_input() MUST cancel task2 cleanly!
+    await adapter.clear_input()
+    await asyncio.sleep(0.03)
+    assert task2.cancelled() or task2.done()
+    assert "item-race-1" not in adapter._rescue_tasks
+
+    await server_q.put(None)
+    await adapter.close()
+
+
+# =====================================================================
+# 24. Sustained Echo/Noise Missing-Transcript Never Clears Playback
+# =====================================================================
+
+@pytest.mark.asyncio
+async def test_24_sustained_echo_or_noise_transcription_missing_never_clears_playback():
+    """Sustained speakerphone echo or background noise (>450ms) producing transcription_missing
+    WITHOUT echo-rejected caller speech evidence must NOT clear playback or call interrupt()."""
+    events_q: asyncio.Queue[Any] = asyncio.Queue()
+    adapter = QueueDrivenAdapter(events_q)
+    mock_socket = MagicMock()
+    mock_socket.send_json = AsyncMock()
+
+    bridge = TelnyxMediaBridge(
+        socket=mock_socket,
+        adapter=adapter,
+        locale="fr-CA",
+        validate_start=AsyncMock(),
+        authorize=AsyncMock(),
+        execute_turn=AsyncMock(),
+        allow_natural_interruptions=True,
+    )
+    bridge.stream_id = "stream-echo-noise-guard"
+    bridge._set_phase("PLAYING")
+    bridge._set_playback_active(True)
+    bridge.response_id = "resp-keep-playing"
+    bridge._last_spoken = "Voici la description complète de votre catalogue de produits."
+    bridge._output.put_nowait((bridge.epoch, b"\xff" * 160))
+
+    drain_task = asyncio.create_task(bridge._drain_provider_events())
+
+    # Simulate loud echo/noise (>700ms) where even an echo partial arrived (rejected as echo)
+    await events_q.put(SimpleNamespace(type="input_audio_buffer.speech_started", item_id="echo-noise-1"))
+    await events_q.put(
+        SimpleNamespace(
+            type="conversation.item.input_audio_transcription.delta",
+            item_id="echo-noise-1",
+            delta="Voici la description complète",
+            transcript="Voici la description complète",
+        )
+    )
+    await events_q.put(
+        SimpleNamespace(
+            type="input_audio_buffer.transcription_missing",
+            item_id="echo-noise-1",
+            duration_ms=820,
+            peak_rms=2100,
+            tts_playing=True,
+            echo_rejected=False,
+            caller_speech_confirmed=False,
+        )
+    )
+    await asyncio.sleep(0.08)
+    await events_q.put(None)
+    await drain_task
+
+    clears = [c[0][0] for c in mock_socket.send_json.call_args_list if isinstance(c[0][0], dict) and c[0][0].get("event") == "clear"]
+    assert bridge.telemetry["speech_stopped_without_transcript"] == 1
+    assert bridge.telemetry["unconfirmed_barge_in_suppressed"] == 1
+    assert len(clears) == 0
+    assert bridge.telemetry["telnyx_clear_sent_count"] == 0
+    assert adapter.interrupted_count == 0
+    assert bridge.phase == "PLAYING"
+    assert bridge._playback_active is True
+
+
+# =====================================================================
+# 25. play-* Marker Guaranteed Under Full Output Queue & Preserves Epoch
+# =====================================================================
+
+@pytest.mark.asyncio
+async def test_25_play_mark_guaranteed_when_output_queue_full_and_preserves_epoch():
+    """Even when _output is 100% full, play-* completion marker is delivered at the tail so
+    playback acknowledgment transitions back to LISTENING without getting stuck in PLAYING."""
+    events_q: asyncio.Queue[Any] = asyncio.Queue()
+    adapter = QueueDrivenAdapter(events_q)
+    inbound_events = [
+        {"event": "mark", "stream_id": "stream-full-q", "mark": {"name": "play-resp-full-1"}},
+        {"event": "stop", "stream_id": "stream-full-q"},
+    ]
+    inbound_iter = iter(inbound_events)
+    mock_socket = MagicMock()
+    mock_socket.send_json = AsyncMock()
+    mock_socket.receive_json = AsyncMock(side_effect=lambda: next(inbound_iter))
+
+    bridge = TelnyxMediaBridge(
+        socket=mock_socket,
+        adapter=adapter,
+        locale="fr-CA",
+        validate_start=AsyncMock(),
+        authorize=AsyncMock(),
+        execute_turn=AsyncMock(),
+        max_output_queue=4,
+    )
+    bridge.stream_id = "stream-full-q"
+    bridge.epoch = 2
+    bridge.response_id = "resp-full-1"
+    bridge.response_epoch = 2
+    bridge._responses["resp-full-1"] = ("item-full-1", 2, None)
+    bridge._set_phase("PLAYING")
+    bridge._set_playback_active(True)
+
+    # Completely saturate the bounded output queue (4/4 frames)
+    for i in range(4):
+        bridge._output.put_nowait((2, bytes([i]) * 160))
+    assert bridge._output.full()
+
+    drain_task = asyncio.create_task(bridge._drain_provider_events())
+    await events_q.put(
+        SimpleNamespace(
+            type="response.done",
+            response=SimpleNamespace(id="resp-full-1", status="completed", usage=None),
+        )
+    )
+    await asyncio.sleep(0.06)
+
+    assert bridge._active_play_mark == "play-resp-full-1"
+    queued: list[tuple[int, Any]] = []
+    while not bridge._output.empty():
+        queued.append(bridge._output.get_nowait())
+    assert len(queued) == 4
+    # Tail item MUST be the control mark with matching epoch=2
+    assert queued[-1] == (2, {"event": "mark", "mark": {"name": "play-resp-full-1"}})
+    assert bridge.dropped_outbound_frames >= 1
+
+    # Telnyx echoes back play-resp-full-1 -> playback exits cleanly to LISTENING
+    await bridge._read_audio()
+    assert bridge.telemetry["outbound_playback_acknowledged"] == 1
+    assert bridge._active_play_mark is None
+    assert bridge._playback_active is False
+    assert bridge.phase == "LISTENING"
+
+    await events_q.put(None)
+    await drain_task
+
+
+# =====================================================================
+# 26. Serialized Gemini Reconnect With Concurrent Mic Streaming
+# =====================================================================
+
+@pytest.mark.asyncio
+async def test_26_concurrent_gemini_reconnect_with_continuous_mic_audio_no_race():
+    """Concurrent microphone writes during a slow Gemini reconnect must buffer cleanly without
+    raising errors, without triggering competing fallbacks, and without detached sessions."""
+    q1: asyncio.Queue[Any] = asyncio.Queue()
+    q2: asyncio.Queue[Any] = asyncio.Queue()
+    sess1 = FakeGeminiLiveSession(q1)
+    sess2 = FakeGeminiLiveSession(q2)
+    reconnect_entered = asyncio.Event()
+    allow_reopen = asyncio.Event()
+
+    class SlowReconnectClient:
+        def __init__(self) -> None:
+            self.connect_count = 0
+            self.aio = SimpleNamespace(live=SimpleNamespace(connect=self._connect))
+
+        def _connect(self, *, model: str, config: Any):
+            self.connect_count += 1
+            idx = self.connect_count
+
+            class _Ctx:
+                async def __aenter__(self):
+                    if idx == 2:
+                        reconnect_entered.set()
+                        await allow_reopen.wait()
+                        return sess2
+                    return sess1
+
+                async def __aexit__(self, exc_type, exc, tb):
+                    return False
+
+            return _Ctx()
+
+    slow_client = SlowReconnectClient()
+    fallback_opened = 0
+
+    def _make_primary():
+        return GeminiLiveRealtimeAudioAdapter(
+            _make_test_settings(),
+            api_key="fake-gemini-key",
+            company_name="Produits Ero",
+            client_factory=lambda _k: slow_client,
+        )
+
+    class DummyFallback:
+        provider_id = "openai_fallback"
+        _model = "gpt-realtime-2.1"
+
+        async def open(self, *, locale: str = "fr-CA") -> None:
+            nonlocal fallback_opened
+            fallback_opened += 1
+
+        async def send_audio(self, audio: bytes) -> None:
+            pass
+
+        async def speak(self, text: str) -> None:
+            pass
+
+        async def interrupt(self) -> None:
+            pass
+
+        async def clear_input(self) -> None:
+            pass
+
+        async def close(self) -> None:
+            pass
+
+        async def events(self):
+            if False:
+                yield None
+
+    wrapper = FallbackRealtimeAudioAdapter(
+        primary_factory=_make_primary,
+        fallback_factory=lambda: DummyFallback(),  # type: ignore[arg-type]
+    )
+    await wrapper.open(locale="fr-CA")
+
+    # Start mid-call reconnect while simultaneously blasting 25 mic frames
+    rec_task = asyncio.create_task(wrapper.reconnect(locale="fr-CA"))
+    await reconnect_entered.wait()
+
+    mic_errors: list[Exception] = []
+
+    async def _stream_mic() -> None:
+        frame = _pcm_tone(150)
+        for _ in range(25):
+            try:
+                await wrapper.send_audio(frame)
+            except Exception as exc:
+                mic_errors.append(exc)
+            await asyncio.sleep(0.002)
+
+    mic_task = asyncio.create_task(_stream_mic())
+    await asyncio.sleep(0.03)
+    allow_reopen.set()
+    await asyncio.gather(rec_task, mic_task)
+
+    # Zero errors, zero competing fallbacks, primary reconnected cleanly, buffered audio delivered!
+    assert mic_errors == []
+    assert fallback_opened == 0
+    assert wrapper.used_fallback is False
+    assert slow_client.connect_count == 2
+    assert len(sess2.audio_chunks) >= 10
+
+    await q2.put(None)
+    await wrapper.close()
+
+
+# =====================================================================
+# 27. Per-Turn first_audio_latency_ms Samples Every Turn for p50/p95
+# =====================================================================
+
+@pytest.mark.asyncio
+async def test_27_per_turn_first_audio_latency_p50_p95_samples_all_turns():
+    """Every turn's first audio chunk must contribute one sample to first_audio_latency_ms,
+    keeping session-level first_audible_response_latency_ms separate."""
+    events_q: asyncio.Queue[Any] = asyncio.Queue()
+    adapter = QueueDrivenAdapter(events_q)
+    mock_socket = MagicMock()
+    mock_socket.send_json = AsyncMock()
+
+    bridge = TelnyxMediaBridge(
+        socket=mock_socket,
+        adapter=adapter,
+        locale="fr-CA",
+        validate_start=AsyncMock(),
+        authorize=AsyncMock(),
+        execute_turn=AsyncMock(),
+    )
+    bridge.stream_id = "stream-per-turn-lat"
+    bridge.epoch = 1
+
+    drain_task = asyncio.create_task(bridge._drain_provider_events())
+    pcm_chunk = base64.b64encode(_pcm_tone(250)).decode("ascii")
+
+    # Simulate 5 distinct turns with distinct response IDs and multiple audio chunks each
+    expected_delays = [0.05, 0.12, 0.20, 0.08, 0.30]
+    for idx, delay_s in enumerate(expected_delays, start=1):
+        resp_id = f"resp-turn-{idx}"
+        item_id = f"item-turn-{idx}"
+        bridge.response_id = resp_id
+        bridge.response_epoch = bridge.epoch
+        bridge._responses[resp_id] = (item_id, bridge.epoch, None)
+        bridge._turn_metrics[item_id] = {
+            "speech_stopped_at": time.monotonic() - delay_s,
+            "first_pcm_sent_at": None,
+            "playback_completed_at": None,
+        }
+        # Send 3 chunks for the same turn -> MUST record exactly 1 sample per turn!
+        for _ in range(3):
+            await events_q.put(
+                SimpleNamespace(type="response.output_audio.delta", response_id=resp_id, delta=pcm_chunk)
+            )
+        await events_q.put(
+            SimpleNamespace(
+                type="response.done",
+                response=SimpleNamespace(id=resp_id, status="completed", usage=None),
+            )
+        )
+        await asyncio.sleep(0.02)
+
+    await events_q.put(None)
+    await drain_task
+
+    summary = bridge.get_latency_summary()
+    assert bridge.telemetry["tts_first_audio_chunk_received"] == 1
+    assert summary["first_audio_latency_ms"]["count"] == 5
+    p50 = summary["first_audio_latency_ms"]["p50"]
+    p95 = summary["first_audio_latency_ms"]["p95"]
+    assert p50 is not None and p95 is not None
+    assert p95 >= p50
+
+
+# =====================================================================
+# 28. Sanitization Never Upgrades Stale in_stock: true to Confirmed
+# =====================================================================
+
+def test_28_sanitize_retail_voice_text_never_confirms_stale_in_stock_true():
+    """Sanitizing raw text containing `in_stock: true` + `freshness_status: STALE` must use
+    neutral wording and NEVER claim 'en stock confirmé' or 'confirmed in stock'."""
+    raw_fr = "Planche Alpine, in_stock: true, freshness_status: STALE, is_live_stock: false, compare_at_price: 599$"
+    cleaned_fr = sanitize_retail_voice_text(raw_fr, locale="fr-CA")
+    assert "confirmé" not in cleaned_fr.lower()
+    assert "in_stock" not in cleaned_fr.lower()
+    assert "freshness_status" not in cleaned_fr.lower()
+    assert "stale" not in cleaned_fr.lower()
+    assert "compare_at_price" not in cleaned_fr.lower()
+    assert "non récentes" in cleaned_fr.lower() or "à confirmer" in cleaned_fr.lower()
+
+    raw_en = "Alpine Board, in_stock: true, freshness_status: STALE, is_live_stock: false"
+    cleaned_en = sanitize_retail_voice_text(raw_en, locale="en-US")
+    assert "confirmed in stock" not in cleaned_en.lower()
+    assert "unverified" in cleaned_en.lower() or "not recent" in cleaned_en.lower()
+
+
+# =====================================================================
+# 29. DB Profile compare_at_price -> Voice & Profitability Honesty
+# =====================================================================
+
+def test_29_db_profile_compare_at_price_to_voice_and_profitability_honesty(db_session: Session):
+    """Verify CompanyIntelligenceService.get_profile().public_products populates compare_at_price
+    (top-level AND variant-level), enables natural comparative speech, refuses to equate selling
+    price with profitability when cost/margin is absent, and ranks by real margin when present."""
+    # Case A: Variant-level compare_at_price + NO cost/margin data
+    company_a, _cfg_a, call_a, owner_a, _emp_a = _create_tenant_with_products(
+        db_session,
+        company_name="PromoDB",
+        live_stock=True,
+        products_spec=[
+            {
+                "product_id": "pa-1",
+                "product_name": "Planche Prestige",
+                "unit_price": 699.0,
+                "inventory_level": 5,
+                "product_category": "planche",
+            },
+            {
+                "product_id": "pa-2",
+                "product_name": "Casque Promo Variant",
+                "variants": [{"unit_price": 89.0, "compare_at_price": 139.0, "inventory_level": 10}],
+                "product_category": "accessoire",
+            },
+        ],
+    )
+    profile_a = CompanyIntelligenceService(db_session).get_profile(company_a.id)
+    by_name = {p["name"]: p for p in profile_a.public_products}
+    assert by_name["Casque Promo Variant"]["compare_at_price"] == 139.0
+
+    # Real DB-backed voice catalog output speaks comparative price naturally
+    ans_cat = resolve_direct_voice_answer(
+        db_session,
+        company_id=company_a.id,
+        transcript="Quels accessoires avez-vous au catalogue ?",
+        authenticated_staff=True,
+        staff_role="OWNER",
+        locale="fr-CA",
+        user_id=owner_a.id,
+        call=call_a,
+    )
+    assert ans_cat is not None
+    assert "89 $ au lieu de 139 $" in ans_cat
+    assert "compare_at_price" not in ans_cat.lower()
+
+    # Profitability without cost/margin MUST NOT return highest-priced product
+    ans_no_prof = resolve_direct_voice_answer(
+        db_session,
+        company_id=company_a.id,
+        transcript="Quels sont les produits les plus rentables ?",
+        authenticated_staff=True,
+        staff_role="OWNER",
+        locale="fr-CA",
+        user_id=owner_a.id,
+        call=call_a,
+    )
+    assert ans_no_prof is not None
+    assert "coûts" in ans_no_prof.lower() or "marges" in ans_no_prof.lower()
+    assert "Planche Prestige" not in ans_no_prof
+
+    # Case B: Authorized unit_cost present -> ranks by REAL margin, NOT selling price, and blocks non-exec!
+    company_b, _cfg_b, call_b, owner_b, emp_b = _create_tenant_with_products(
+        db_session,
+        company_name="MarginDB",
+        live_stock=True,
+        products_spec=[
+            {
+                "product_id": "pb-1",
+                "product_name": "Planche Chère Faible Marge",
+                "unit_price": 500.0,
+                "unit_cost": 450.0,  # margin = 50$
+                "inventory_level": 4,
+                "product_category": "planche",
+            },
+            {
+                "product_id": "pb-2",
+                "product_name": "Casque Haute Marge",
+                "unit_price": 200.0,
+                "unit_cost": 60.0,  # margin = 140$ (MORE profitable despite lower price!)
+                "inventory_level": 9,
+                "product_category": "accessoire",
+            },
+        ],
+    )
+    profile_b = CompanyIntelligenceService(db_session).get_profile(company_b.id)
+    # Public context MUST strip private supplier costs & margins!
+    pub_ctx = profile_b.as_context(public=True)
+    for prod in pub_ctx["public_products"]:
+        assert "unit_cost" not in prod
+        assert "profit_margin_amount" not in prod
+        assert "profit_margin_pct" not in prod
+
+    # Owner gets genuine highest-margin product first
+    ans_owner_prof = resolve_direct_voice_answer(
+        db_session,
+        company_id=company_b.id,
+        transcript="Quels sont les produits les plus rentables ?",
+        authenticated_staff=True,
+        staff_role="OWNER",
+        locale="fr-CA",
+        user_id=owner_b.id,
+        call=call_b,
+    )
+    assert ans_owner_prof is not None
+    assert ans_owner_prof.index("Casque Haute Marge") < ans_owner_prof.index("Planche Chère Faible Marge")
+
+    # Operational employee is blocked from margin rankings
+    ans_emp_prof = resolve_direct_voice_answer(
+        db_session,
+        company_id=company_b.id,
+        transcript="Quels sont les produits les plus rentables ?",
+        authenticated_staff=True,
+        staff_role="USER",
+        locale="fr-CA",
+        user_id=emp_b.id,
+        call=call_b,
+    )
+    assert ans_emp_prof is not None
+    assert "réservées à la direction" in ans_emp_prof.lower()
+
+
+# =====================================================================
+# 30. Persisted Filter & Ranking Across Catalog Pagination
+# =====================================================================
+
+def test_30_filtered_and_ranked_catalog_pagination_persists_across_pages(db_session: Session):
+    """Pagination after 'en stock' or 'promouvoir' must preserve the selected filter/ordering
+    across subsequent pages without repeating items or leaking out-of-stock products."""
+    company, _cfg, call, owner, _emp = _create_tenant_with_products(
+        db_session,
+        company_name="PageFilterCo",
+        live_stock=True,
+        products_spec=[
+            {"product_id": "p1", "product_name": "Article Stock 1", "unit_price": 100.0, "inventory_level": 5},
+            {"product_id": "p2", "product_name": "Article Rupture A", "unit_price": 200.0, "inventory_level": 0},
+            {"product_id": "p3", "product_name": "Article Stock 2", "unit_price": 80.0, "compare_at_price": 160.0, "inventory_level": 6},
+            {"product_id": "p4", "product_name": "Article Stock 3", "unit_price": 150.0, "inventory_level": 3},
+            {"product_id": "p5", "product_name": "Article Rupture B", "unit_price": 300.0, "inventory_level": 0},
+            {"product_id": "p6", "product_name": "Article Stock 4", "unit_price": 90.0, "compare_at_price": 120.0, "inventory_level": 7},
+        ],
+    )
+
+    # 1. Start in-stock filtered view via clarification follow-up
+    call.source_context = {**(call.source_context or {}), "pending_retail_clarification": True}
+    db_session.commit()
+    page1 = resolve_direct_voice_answer(
+        db_session,
+        company_id=company.id,
+        transcript="Les produits en stock",
+        authenticated_staff=True,
+        staff_role="OWNER",
+        locale="fr-CA",
+        user_id=owner.id,
+        call=call,
+    )
+    assert page1 is not None
+    assert "Article Rupture A" not in page1 and "Article Rupture B" not in page1
+    ctx_p1: dict[str, Any] = dict(call.source_context or {})
+    assert ctx_p1.get("catalog_view_mode") == "in_stock"
+    page1_names = [r["name"] for r in list(ctx_p1.get("presented_catalog_products") or [])]
+    assert len(page1_names) == 3
+
+    # 2. Request next page -> MUST return ONLY the 4th live in-stock item, zero duplicates, zero out-of-stock!
+    page2 = resolve_direct_voice_answer(
+        db_session,
+        company_id=company.id,
+        transcript="Quels sont les trois prochains produits ?",
+        authenticated_staff=True,
+        staff_role="OWNER",
+        locale="fr-CA",
+        user_id=owner.id,
+        call=call,
+    )
+    assert page2 is not None
+    assert "Article Rupture A" not in page2 and "Article Rupture B" not in page2
+    ctx_p2: dict[str, Any] = dict(call.source_context or {})
+    page2_names = [r["name"] for r in list(ctx_p2.get("presented_catalog_products") or [])]
+    assert len(page2_names) == 1
+    assert set(page1_names).isdisjoint(set(page2_names))
+
+    # 3. Promotion ranking persists across pages (50% discount Stock 2 & 25% discount Stock 4 come first!)
+    call.source_context = {**(call.source_context or {}), "pending_retail_clarification": True}
+    db_session.commit()
+    promo_p1 = resolve_direct_voice_answer(
+        db_session,
+        company_id=company.id,
+        transcript="Les meilleures opportunités à promouvoir",
+        authenticated_staff=True,
+        staff_role="OWNER",
+        locale="fr-CA",
+        user_id=owner.id,
+        call=call,
+    )
+    assert promo_p1 is not None
+    ctx_promo1: dict[str, Any] = dict(call.source_context or {})
+    promo_p1_names = [r["name"] for r in list(ctx_promo1.get("presented_catalog_products") or [])]
+    assert promo_p1_names[0] == "Article Stock 2"  # 50% off
+    assert promo_p1_names[1] == "Article Stock 4"  # 25% off
+    assert ctx_promo1.get("catalog_view_mode") == "promote"
+
+    promo_p2 = resolve_direct_voice_answer(
+        db_session,
+        company_id=company.id,
+        transcript="Quels sont les trois prochains produits ?",
+        authenticated_staff=True,
+        staff_role="OWNER",
+        locale="fr-CA",
+        user_id=owner.id,
+        call=call,
+    )
+    assert promo_p2 is not None
+    ctx_promo2: dict[str, Any] = dict(call.source_context or {})
+    promo_p2_names = [r["name"] for r in list(ctx_promo2.get("presented_catalog_products") or [])]
+    assert len(promo_p2_names) == 3
+    assert set(promo_p1_names).isdisjoint(set(promo_p2_names))
+
+
+# =====================================================================
+# 31. "Allô, tu m'entends ? Quel est le prix des casques ?" + 10 Real Sequence
+# =====================================================================
+
+@pytest.mark.asyncio
+async def test_31_allo_with_embedded_commercial_question_and_10_consecutive_interruptions(db_session: Session):
+    """Verify 'Allô, tu m'entends ? Quel est le prix des casques ?' extracts and answers the
+    product question (while pure 'Allô, tu m'entends ?' returns confirmation), AND run a 10-turn
+    full-duplex interruption sequence with partial+final+echo+objection+latency telemetry."""
+    assert extract_request_after_attention_check("Allô ?") is None
+    assert extract_request_after_attention_check("Allô, tu m'entends ?") is None
+    assert extract_request_after_attention_check("Hello, can you hear me?") is None
+
+    extracted_fr = extract_request_after_attention_check("Allô, tu m'entends ? Quel est le prix des casques ?")
+    assert extracted_fr == "Quel est le prix des casques ?"
+    extracted_en = extract_request_after_attention_check("Hello, can you hear me? What is the price of helmets?")
+    assert extracted_en == "What is the price of helmets?"
+    extracted_es = extract_request_after_attention_check("¿Aló, me escuchas? ¿Cuál es el precio de los cascos?")
+    assert extracted_es == "¿Cuál es el precio de los cascos?"
+    extracted_ro = extract_request_after_attention_check("Alo, mă auzi? Care este prețul căștilor?")
+    assert extracted_ro == "Care este prețul căștilor?"
+
+    company, _cfg, call, owner, _emp = _create_tenant_with_products(
+        db_session, company_name="AlloRetail", live_stock=True
+    )
+    ans = resolve_direct_voice_answer(
+        db_session,
+        company_id=company.id,
+        transcript="Allô, tu m'entends ? Quel est le prix des casques ?",
+        authenticated_staff=True,
+        staff_role="OWNER",
+        locale="fr-CA",
+        user_id=owner.id,
+        call=call,
+    )
+    assert ans is not None
+    assert "Casque Pro AlloRetail" in ans
+    assert "129 $ au lieu de 159 $" in ans
+
+    events_q: asyncio.Queue[Any] = asyncio.Queue()
+    adapter = QueueDrivenAdapter(events_q)
+    mock_socket = MagicMock()
+    mock_socket.send_json = AsyncMock()
+    executed_questions: list[str] = []
+
+    async def _exec(item_id: str, transcript: str):
+        executed_questions.append(transcript)
+        emb = extract_request_after_attention_check(transcript)
+        effective = emb or transcript
+        if is_correction_or_objection(effective):
+            return {"status": "success", "answer": build_correction_clarification("fr-CA", last_topic="retail_catalog")}
+        da = resolve_direct_voice_answer(
+            db_session,
+            company_id=company.id,
+            transcript=effective,
+            authenticated_staff=True,
+            staff_role="OWNER",
+            locale="fr-CA",
+            user_id=owner.id,
+            call=call,
+        )
+        return {"status": "success", "answer": da or "Réponse traitée."}
+
+    bridge = TelnyxMediaBridge(
+        socket=mock_socket,
+        adapter=adapter,
+        locale="fr-CA",
+        validate_start=AsyncMock(),
+        authorize=AsyncMock(),
+        execute_turn=_exec,
+        allow_natural_interruptions=True,
+    )
+    bridge.stream_id = "stream-10-real-seq"
+    drain_task = asyncio.create_task(bridge._drain_provider_events())
+    exec_task = asyncio.create_task(bridge._execute_turns())
+
+    scenarios = [
+        ("Non, c'est pas de ça", "Non, c'est pas de ça que je parlais"),
+        ("Allô, tu m'entends ?", "Allô, tu m'entends ? Quel est le prix des casques ?"),
+        ("Attends, écoute-moi", "Attends, écoute-moi, quels produits sont en stock ?"),
+        ("Non, tu m'as mal compris", "Non, tu m'as mal compris, montre les accessoires"),
+        ("Stop, arrête", "Stop, arrête, quels sont les horaires ?"),
+        ("Allô ?", "Allô ? Quel est le prix de la planche ?"),
+        ("Non, pas de ça", "Non, pas de ça, je veux les promotions"),
+        ("Attends une seconde", "Attends une seconde, combien coûte le casque ?"),
+        ("Arrête, autre chose", "Arrête, autre chose, quels sont les produits ?"),
+        ("Allô, vous m'entendez ?", "Allô, vous m'entendez ? Quel est le prix des gants ?"),
+    ]
+    pcm_chunk = base64.b64encode(_pcm_tone(200)).decode("ascii")
+    for idx, (partial_t, final_t) in enumerate(scenarios, start=1):
+        resp_id = f"resp-seq-{idx}"
+        item_id = f"seq-{idx}"
+        bridge._set_phase("PLAYING")
+        bridge._set_playback_active(True)
+        bridge.response_id = resp_id
+        bridge.response_epoch = bridge.epoch
+        bridge._responses[resp_id] = (f"prev-{idx}", bridge.epoch, None)
+        bridge._last_spoken = "Voici la liste complète de notre catalogue de produits disponibles aujourd'hui."
+
+        # Inject an echo event before real interruption -> must NOT clear!
+        await events_q.put(
+            SimpleNamespace(
+                type="conversation.item.input_audio_transcription.delta",
+                item_id=f"echo-seq-{idx}",
+                delta="Voici la liste complète de notre catalogue",
+                transcript="Voici la liste complète de notre catalogue",
+            )
+        )
+        # Real caller speech starts -> partial triggers fast clear -> final executes once without double clear
+        await events_q.put(SimpleNamespace(type="input_audio_buffer.speech_started", item_id=item_id))
+        await events_q.put(
+            SimpleNamespace(
+                type="conversation.item.input_audio_transcription.delta",
+                item_id=item_id,
+                delta=partial_t,
+                transcript=partial_t,
+            )
+        )
+        await events_q.put(SimpleNamespace(type="input_audio_buffer.speech_stopped", item_id=item_id))
+        await events_q.put(
+            SimpleNamespace(
+                type="conversation.item.input_audio_transcription.completed",
+                item_id=item_id,
+                transcript=final_t,
+            )
+        )
+        await asyncio.sleep(0.05)
+        bridge.response_id = f"ans-resp-{idx}"
+        bridge.response_epoch = bridge.epoch
+        bridge._responses[f"ans-resp-{idx}"] = (item_id, bridge.epoch, None)
+        await events_q.put(
+            SimpleNamespace(type="response.output_audio.delta", response_id=f"ans-resp-{idx}", delta=pcm_chunk)
+        )
+        await asyncio.sleep(0.02)
+
+    await events_q.put(None)
+    await drain_task
+    exec_task.cancel()
+    try:
+        await exec_task
+    except asyncio.CancelledError:
+        pass
+
+    assert len(executed_questions) == 10
+    assert bridge.telemetry["telnyx_clear_sent_count"] == 10
+    lat = bridge.get_latency_summary()
+    assert lat["barge_in_reaction_ms"]["count"] == 10
+    assert lat["first_audio_latency_ms"]["count"] == 10
+    assert lat["central_ai_latency_ms"]["count"] == 10
+
+
+# =====================================================================
+# 32. Fallback Reconnect Failure Switches Once Under Lock + Buffered Audio
+# =====================================================================
+
+@pytest.mark.asyncio
+async def test_32_fallback_reconnect_failure_switches_once_under_lock():
+    """If primary reconnect fails while concurrent microphone writes arrive, FallbackRealtimeAudioAdapter
+    switches to fallback exactly once under lock and flushes buffered mic audio without raising."""
+    fallback_opens = 0
+    fallback_audio: list[bytes] = []
+    rec_started = asyncio.Event()
+    fail_rec = asyncio.Event()
+
+    class FailingPrimary:
+        provider_id = "gemini_live"
+        _model = "gemini-3.8-live"
+
+        async def open(self, *, locale: str = "fr-CA") -> None:
+            pass
+
+        async def send_audio(self, audio: bytes) -> None:
+            pass
+
+        async def speak(self, text: str) -> None:
+            pass
+
+        async def interrupt(self) -> None:
+            pass
+
+        async def clear_input(self) -> None:
+            pass
+
+        async def reconnect(self, fallback_model: str | None = None, locale: str | None = None) -> None:
+            rec_started.set()
+            await fail_rec.wait()
+            raise ConnectionError("Primary reconnect failed")
+
+        async def close(self) -> None:
+            pass
+
+        async def events(self):
+            if False:
+                yield None
+
+    class HealthyFallback:
+        provider_id = "openai_fallback"
+        _model = "gpt-realtime-2.1"
+
+        async def open(self, *, locale: str = "fr-CA") -> None:
+            nonlocal fallback_opens
+            fallback_opens += 1
+
+        async def send_audio(self, audio: bytes) -> None:
+            fallback_audio.append(audio)
+
+        async def speak(self, text: str) -> None:
+            pass
+
+        async def interrupt(self) -> None:
+            pass
+
+        async def clear_input(self) -> None:
+            pass
+
+        async def close(self) -> None:
+            pass
+
+        async def events(self):
+            if False:
+                yield None
+
+    wrapper = FallbackRealtimeAudioAdapter(
+        primary_factory=lambda: FailingPrimary(),  # type: ignore[arg-type]
+        fallback_factory=lambda: HealthyFallback(),  # type: ignore[arg-type]
+    )
+    await wrapper.open(locale="fr-CA")
+
+    rec_task = asyncio.create_task(wrapper.reconnect(locale="fr-CA"))
+    await rec_started.wait()
+
+    errors: list[Exception] = []
+    for _ in range(15):
+        try:
+            await wrapper.send_audio(_pcm_tone(200))
+        except Exception as exc:
+            errors.append(exc)
+
+    fail_rec.set()
+    await rec_task
+
+    assert errors == []
+    assert fallback_opens == 1
+    assert wrapper.used_fallback is True
+    assert wrapper.fallback_reason == "mid_session_reconnect_failed"
+    assert len(fallback_audio) == 15
+    await wrapper.close()
+
+

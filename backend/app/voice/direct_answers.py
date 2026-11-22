@@ -66,16 +66,36 @@ def sanitize_retail_voice_text(text: str, *, locale: str = "fr-CA") -> str:
             "prix de vente" if is_fr else ("precio de venta" if is_es else ("preț de vânzare" if is_ro else "selling price")),
         ),
         (
+            r"\bfreshness[_\s]+status\b\s*[:=]\s*stale\b",
+            "données de stock non récentes" if is_fr else ("datos de stock no recientes" if is_es else ("date de stoc expirate" if is_ro else "stock data not recent")),
+        ),
+        (
+            r"\bfreshness[_\s]+status\b\s*[:=]\s*unconfirmed[_\s]+historical\b",
+            "données de référence historique" if is_fr else ("datos de referencia histórica" if is_es else ("date istorice de referință" if is_ro else "historical reference data")),
+        ),
+        (
+            r"\bfreshness[_\s]+status\b\s*[:=]\s*demo[_\s]+simulation\b",
+            "données de démonstration" if is_fr else ("datos de demostración" if is_es else ("date demonstrative" if is_ro else "demo data")),
+        ),
+        (
+            r"\bis[_\s]+live[_\s]+stock\b\s*[:=]\s*false\b",
+            "stock non vérifié en temps réel" if is_fr else ("stock no verificado en tiempo real" if is_es else ("stoc neverificat în timp real" if is_ro else "stock not verified in real time")),
+        ),
+        (
+            r"\bis[_\s]+live[_\s]+stock\b\s*[:=]\s*true\b",
+            "synchronisation récente" if is_fr else ("sincronización reciente" if is_es else ("sincronizare recentă" if is_ro else "recent sync")),
+        ),
+        (
             r"\b(?:freshness[_\s]+status|stock[_\s]+availability|stock[_\s]+status|price[_\s]+status|is[_\s]+live[_\s]+stock)\b\s*[:=]?",
             "état du stock" if is_fr else ("estado del stock" if is_es else ("starea stocului" if is_ro else "stock status")),
         ),
         (
             r"\b(?:in[_\s]+stock)\b\s*[:=]\s*true\b",
-            "en stock confirmé" if is_fr else ("en stock confirmado" if is_es else ("în stoc confirmat" if is_ro else "confirmed in stock")),
+            "indiqué en stock au catalogue (à confirmer)" if is_fr else ("indicado en stock en el catálogo (sin confirmar)" if is_es else ("menționat în stoc în catalog (neconfirmat)" if is_ro else "listed in stock in catalog (unverified)")),
         ),
         (
             r"\b(?:in[_\s]+stock)\b\s*[:=]\s*false\b",
-            "en rupture de stock" if is_fr else ("agotado" if is_es else ("stoc epuizat" if is_ro else "out of stock")),
+            "indiqué en rupture au catalogue" if is_fr else ("indicado agotado en el catálogo" if is_es else ("menționat cu stoc epuizat în catalog" if is_ro else "listed out of stock in catalog")),
         ),
         (
             r"\b(?:product[_\s]+id|product[_\s]+name|product[_\s]+category|historical[_\s]+observed[_\s]+units)\b\s*[:=]?",
@@ -804,6 +824,116 @@ def spoken_ordinal_product_answer(
     return f"The {ord_names_en.get(ordinal_index, f'{ordinal_index}th')} product mentioned is {name}, priced at {price_text}{available}."
 
 
+def _parse_money_value(value: Any) -> float | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    raw = str(value).replace("$", "").replace("€", "").replace("£", "").replace(",", ".").strip()
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except (ValueError, TypeError):
+        return None
+
+
+def _format_spoken_price_number(raw: Any, numeric: float | None) -> str:
+    if numeric is not None:
+        if numeric.is_integer():
+            return str(int(numeric))
+        return f"{numeric:.2f}".rstrip("0").rstrip(".")
+    return str(raw).strip()
+
+
+def _extract_profitability_score(row: dict[str, Any]) -> tuple[float, float] | None:
+    """Return (margin_amount, margin_pct) ONLY when authorized cost/margin data is present.
+
+    Never substitutes selling price for profitability.
+    """
+    price_val = _parse_money_value(row.get("price"))
+    margin_amt = _parse_money_value(
+        row.get("profit_margin_amount")
+        if row.get("profit_margin_amount") is not None
+        else (row.get("profit_margin") if row.get("profit_margin") is not None else row.get("gross_margin"))
+    )
+    margin_pct = _parse_money_value(
+        row.get("profit_margin_pct")
+        if row.get("profit_margin_pct") is not None
+        else (row.get("gross_margin_pct") if row.get("gross_margin_pct") is not None else row.get("margin_pct"))
+    )
+    unit_cost = _parse_money_value(
+        row.get("unit_cost")
+        if row.get("unit_cost") is not None
+        else (row.get("cost_price") if row.get("cost_price") is not None else row.get("cost"))
+    )
+    if margin_amt is None and unit_cost is not None and price_val is not None:
+        margin_amt = round(price_val - unit_cost, 2)
+    if margin_pct is None and margin_amt is not None and price_val is not None and price_val > 0:
+        margin_pct = round((margin_amt / price_val) * 100.0, 2)
+    if margin_amt is None and margin_pct is None:
+        return None
+    return (
+        margin_amt if margin_amt is not None else 0.0,
+        margin_pct if margin_pct is not None else 0.0,
+    )
+
+
+def _apply_catalog_view_mode(
+    rows: list[dict[str, Any]],
+    *,
+    view_mode: str | None,
+) -> list[dict[str, Any]]:
+    """Apply persisted filter/ordering mode before slicing any catalog page."""
+    if not view_mode or view_mode == "default":
+        return rows
+    if view_mode == "in_stock":
+        return [
+            r for r in rows
+            if r.get("is_live_stock") is True
+            and (r.get("in_stock") is True or r.get("stock_availability") == "IN_STOCK")
+        ]
+    if view_mode == "promote":
+        def _promo_key(r: dict[str, Any]) -> tuple[int, float, float]:
+            p_val = _parse_money_value(r.get("price")) or 0.0
+            c_val = _parse_money_value(r.get("compare_at_price")) or 0.0
+            if c_val > p_val > 0:
+                discount_amt = c_val - p_val
+                discount_pct = discount_amt / c_val
+                return (1, round(discount_pct, 4), round(discount_amt, 2))
+            return (0, 0.0, p_val)
+        return sorted(rows, key=_promo_key, reverse=True)
+    if view_mode == "profitable":
+        scored: list[tuple[tuple[float, float], dict[str, Any]]] = []
+        for r in rows:
+            prof = _extract_profitability_score(r)
+            if prof is not None:
+                scored.append((prof, r))
+        scored.sort(key=lambda pair: (pair[0][0], pair[0][1]), reverse=True)
+        return [pair[1] for pair in scored]
+    return rows
+
+
+def spoken_profitability_unavailable_answer(locale: str) -> str:
+    loc = (locale or "fr-CA").casefold()
+    if loc.startswith("es"):
+        return "No puedo determinar los productos más rentables solo a partir del catálogo porque no disponemos de los datos de costos o márgenes. ¿Desea ver los artículos en promoción con precio comparativo o el catálogo por precio?"
+    if loc.startswith("ro"):
+        return "Nu pot determina cele mai profitabile produse doar din catalog deoarece nu avem datele de cost sau marjă. Doriți să vedeți produsele la promoție cu preț comparativ sau catalogul după preț?"
+    if loc.startswith("en"):
+        return "I cannot determine the most profitable products from the catalog alone because unit cost and margin data are unavailable. Would you like to see discounted promotions or the catalog by price instead?"
+    return "Je ne peux pas établir quels produits sont les plus rentables à partir du catalogue seul, car les données de coûts et de marges ne sont pas disponibles. Souhaitez-vous voir les articles en promotion avec prix comparatif ou le catalogue général ?"
+
+
+def is_profitability_catalog_question(text: str) -> bool:
+    norm = unicodedata.normalize("NFKD", text.casefold())
+    norm = "".join(c for c in norm if not unicodedata.combining(c))
+    words = _words(text)
+    has_profit_word = bool(words & {"rentable", "rentables", "marge", "marges", "profitable", "margin", "margins", "profitabile"})
+    has_catalog_word = bool(words & {"produit", "produits", "article", "articles", "catalogue", "catalog", "product", "products", "vendre", "sell"})
+    return has_profit_word and has_catalog_word
+
+
 def spoken_catalog_answer(
     products: Any,
     *,
@@ -814,6 +944,7 @@ def spoken_catalog_answer(
     offset: int = 0,
     limit: int = 3,
     call: Any | None = None,
+    view_mode: str | None = None,
 ) -> str:
     loc = locale.lower()
     french = loc.startswith("fr")
@@ -843,6 +974,25 @@ def spoken_catalog_answer(
             if french else
             "The catalog does not currently list any products for sale."
         )
+
+    # Inherit persisted filter/ordering mode when paginating (offset > 0)
+    active_view_mode = view_mode
+    if active_view_mode is None and offset > 0 and call is not None:
+        active_view_mode = (call.source_context or {}).get("catalog_view_mode")
+    if active_view_mode:
+        rows = _apply_catalog_view_mode(rows, view_mode=active_view_mode)
+        if not rows and active_view_mode == "in_stock":
+            if spanish:
+                return "Actualmente ningún producto tiene stock confirmado en tiempo real."
+            if romanian:
+                return "În prezent niciun produs nu are stoc confirmat în timp real."
+            return (
+                "Aucun produit n'a actuellement de stock confirmé en temps réel."
+                if french else
+                "No products currently have confirmed real-time stock."
+            )
+        if not rows and active_view_mode == "profitable":
+            return spoken_profitability_unavailable_answer(locale)
 
     # Optional category / semantic filter based on query or inherited from call session context
     active_category = None
@@ -907,6 +1057,8 @@ def spoken_catalog_answer(
             "article", "articles", "what", "which", "how", "much", "is", "are", "the", "a", "an",
             "in", "for", "do", "you", "have", "price", "catalog", "product", "products",
             "pour", "dans", "avec", "sur", "vos", "nos", "prochain", "prochains", "suivant", "suivants",
+            "cinq", "trois", "quatre", "deux", "dix", "autre", "autres", "suite",
+            "next", "more", "other", "others", "five", "three", "four", "two", "ten",
         }
         specific_tokens = {w for w in query_words if w not in stopwords and len(w) >= 3}
         if specific_tokens:
@@ -914,7 +1066,11 @@ def spoken_catalog_answer(
             for r in rows:
                 r_name_norm = unicodedata.normalize("NFKD", str(r.get("name") or r.get("title") or r.get("product_name") or "").casefold())
                 r_name_norm = "".join(c for c in r_name_norm if not unicodedata.combining(c))
-                score = sum(1 for tok in specific_tokens if tok in r_name_norm)
+                score = 0
+                for tok in specific_tokens:
+                    singular = tok[:-1] if len(tok) >= 4 and tok.endswith("s") else tok
+                    if tok in r_name_norm or (singular != tok and singular in r_name_norm):
+                        score += 1
                 if score > 0:
                     name_matches.append((score, r))
             if name_matches:
@@ -954,21 +1110,20 @@ def spoken_catalog_answer(
         if price is None or price == "":
             price_text = "precio no especificado" if spanish else ("preț nespecificat" if romanian else ("prix non indiqué" if french else "price not listed"))
         else:
-            price_text = f"{price} {unit}".strip()
-            try:
-                p_num = float(str(price).replace("$", "").replace("€", "").replace(",", ".").strip())
-                c_num = float(str(compare_at).replace("$", "").replace("€", "").replace(",", ".").strip()) if compare_at not in (None, "") else None
-            except (ValueError, TypeError):
-                p_num, c_num = None, None
+            p_num = _parse_money_value(price)
+            c_num = _parse_money_value(compare_at)
+            price_disp = _format_spoken_price_number(price, p_num) if isinstance(price, float) else str(price).strip()
+            price_text = f"{price_disp} {unit}".strip()
             if p_num is not None and c_num is not None and c_num > p_num:
+                cmp_disp = _format_spoken_price_number(compare_at, c_num)
                 if spanish:
-                    price_text += f" en lugar de {compare_at} {unit}"
+                    price_text += f" en lugar de {cmp_disp} {unit}"
                 elif romanian:
-                    price_text += f" redus de la {compare_at} {unit}"
+                    price_text += f" redus de la {cmp_disp} {unit}"
                 elif french:
-                    price_text += f" au lieu de {compare_at} {unit}"
+                    price_text += f" au lieu de {cmp_disp} {unit}"
                 else:
-                    price_text += f" down from {compare_at} {unit}"
+                    price_text += f" down from {cmp_disp} {unit}"
             if is_demo_row:
                 demo_tag = " (precio de demostración)" if spanish else (" (preț demonstrativ)" if romanian else (" (prix démonstration)" if french else " (demo price)"))
                 price_text += demo_tag
@@ -1008,6 +1163,7 @@ def spoken_catalog_answer(
         ctx["presented_catalog_products"] = presented_records
         ctx["catalog_pagination_offset"] = offset + len(target_slice)
         ctx["catalog_category_filter"] = active_category
+        ctx["catalog_view_mode"] = active_view_mode
         ctx["last_voice_topic"] = "retail_catalog"
         call.source_context = ctx
 
@@ -1114,6 +1270,13 @@ def resolve_direct_voice_answer(
     """Return a spoken answer, or None when Central AI should handle the turn."""
     if db is None:
         return None
+
+    # Strip leading attention check when paired with an actual business question
+    # (e.g. "Allô, tu m'entends ? Quel est le prix des casques ?" -> "Quel est le prix des casques ?")
+    from backend.app.voice.turn_control import extract_request_after_attention_check
+    embedded_after_attn = extract_request_after_attention_check(transcript)
+    if embedded_after_attn:
+        transcript = embedded_after_attn
 
     # 1. Tenant-authorized language detection (Spanish, English, French, Romanian)
     lang_inquiry = is_language_inquiry(transcript)
@@ -1399,6 +1562,7 @@ def resolve_direct_voice_answer(
             retail_enabled = bool(getattr(profile, "has_retail_commerce", False)) or "retail" in set(getattr(profile, "active_modules", ()) or ())
             products = list(getattr(profile, "public_products", ()) or ())
             current_offset = int((call.source_context or {}).get("catalog_pagination_offset", 3)) if call is not None else 3
+            saved_view_mode = (call.source_context or {}).get("catalog_view_mode") if call is not None else None
             return spoken_catalog_answer(
                 products,
                 retail_enabled=retail_enabled,
@@ -1408,6 +1572,7 @@ def resolve_direct_voice_answer(
                 offset=current_offset,
                 limit=req_count,
                 call=call,
+                view_mode=saved_view_mode,
             )
 
     # 7a. Follow-up after commercial selling clarification
@@ -1415,7 +1580,7 @@ def resolve_direct_voice_answer(
         words_fu = _words(transcript)
         wants_in_stock = bool(words_fu & {"stock", "disponible", "disponibles", "available", "stoc", "confirmes", "confirme"})
         wants_profitable = bool(words_fu & {"rentable", "rentables", "marge", "marges", "profitable", "margin", "profit", "profitabile"})
-        wants_promote = bool(words_fu & {"promouvoir", "promotion", "opportunite", "opportunites", "promote", "promocionar", "promovare"})
+        wants_promote = bool(words_fu & {"promouvoir", "promotion", "promotions", "opportunite", "opportunites", "promote", "promocionar", "promovare"})
         if wants_in_stock or wants_profitable or wants_promote:
             from backend.app.services.company_intelligence_service import CompanyIntelligenceService
 
@@ -1425,14 +1590,9 @@ def resolve_direct_voice_answer(
             call.source_context = ctx_fu
             profile = CompanyIntelligenceService(db).get_profile(company_id)
             retail_enabled = bool(getattr(profile, "has_retail_commerce", False)) or "retail" in set(getattr(profile, "active_modules", ()) or ())
-            products = list(getattr(profile, "public_products", ()) or ())
+            products = [p for p in (getattr(profile, "public_products", ()) or ()) if isinstance(p, dict)]
             if wants_in_stock:
-                live_available = [
-                    p for p in products
-                    if isinstance(p, dict)
-                    and p.get("is_live_stock") is True
-                    and (p.get("in_stock") is True or p.get("stock_availability") == "IN_STOCK")
-                ]
+                live_available = _apply_catalog_view_mode(products, view_mode="in_stock")
                 if not live_available:
                     loc = locale.lower()
                     if loc.startswith("es"):
@@ -1443,41 +1603,88 @@ def resolve_direct_voice_answer(
                         return "No products currently have confirmed real-time stock because the inventory sync is not recent. Would you like to review the indicative catalog?"
                     return "Aucun produit n'a actuellement de stock confirmé en temps réel car la synchronisation d'inventaire n'est pas récente. Voulez-vous consulter le catalogue indicatif ?"
                 return spoken_catalog_answer(
-                    live_available,
+                    products,
                     retail_enabled=retail_enabled,
                     locale=locale,
                     currency=getattr(profile, "currency_code", None),
                     offset=0,
                     limit=3,
                     call=call,
+                    view_mode="in_stock",
                 )
-            # Sort by comparative discount or highest price for profitability/promotion focus
-            def _promo_score(row: dict[str, Any]) -> tuple[int, float]:
-                try:
-                    p_val = float(str(row.get("price") or 0).replace("$", "").replace("€", "").replace(",", ".").strip())
-                except (ValueError, TypeError):
-                    p_val = 0.0
-                try:
-                    c_val = float(str(row.get("compare_at_price") or 0).replace("$", "").replace("€", "").replace(",", ".").strip())
-                except (ValueError, TypeError):
-                    c_val = 0.0
-                has_promo = 1 if (wants_promote and c_val > p_val > 0) else 0
-                return (has_promo, p_val)
-
-            ranked = sorted(
-                [p for p in products if isinstance(p, dict)],
-                key=_promo_score,
-                reverse=True,
-            )
+            if wants_profitable:
+                # Never confuse selling price with profitability: require real cost/margin evidence
+                # and enforce executive role authorization before exposing cost/margin rankings.
+                role_upper = (staff_role or "").upper()
+                is_exec_role = role_upper in {"OWNER", "ADMIN", "SUPER_ADMIN", "DIRECTOR", "EXECUTIVE", "MANAGER"}
+                if not is_exec_role:
+                    loc = locale.lower()
+                    if loc.startswith("es"):
+                        return "Los datos de rentabilidad y márgenes están reservados a la dirección."
+                    if loc.startswith("ro"):
+                        return "Datele de profitabilitate și marje sunt rezervate conducerii."
+                    if loc.startswith("en"):
+                        return "Profitability and margin data are restricted to management."
+                    return "Les données de rentabilité et de marges sont réservées à la direction."
+                profitable_rows = _apply_catalog_view_mode(products, view_mode="profitable")
+                if not profitable_rows:
+                    ctx_no_prof = dict(call.source_context or {})
+                    ctx_no_prof.pop("catalog_view_mode", None)
+                    call.source_context = ctx_no_prof
+                    return spoken_profitability_unavailable_answer(locale)
+                return spoken_catalog_answer(
+                    products,
+                    retail_enabled=retail_enabled,
+                    locale=locale,
+                    currency=getattr(profile, "currency_code", None),
+                    offset=0,
+                    limit=3,
+                    call=call,
+                    view_mode="profitable",
+                )
+            # Promotion opportunities: discount-aware ranking persisted across pagination
             return spoken_catalog_answer(
-                ranked,
+                products,
                 retail_enabled=retail_enabled,
                 locale=locale,
                 currency=getattr(profile, "currency_code", None),
                 offset=0,
                 limit=3,
                 call=call,
+                view_mode="promote",
             )
+
+    # 7a-bis. Direct profitability catalog question (even without prior clarification)
+    if authenticated_staff and is_profitability_catalog_question(transcript):
+        from backend.app.services.company_intelligence_service import CompanyIntelligenceService
+
+        role_upper = (staff_role or "").upper()
+        is_exec_role = role_upper in {"OWNER", "ADMIN", "SUPER_ADMIN", "DIRECTOR", "EXECUTIVE", "MANAGER"}
+        if not is_exec_role:
+            loc = locale.lower()
+            if loc.startswith("es"):
+                return "Los datos de rentabilidad y márgenes están reservados a la dirección."
+            if loc.startswith("ro"):
+                return "Datele de profitabilitate și marje sunt rezervate conducerii."
+            if loc.startswith("en"):
+                return "Profitability and margin data are restricted to management."
+            return "Les données de rentabilité et de marges sont réservées à la direction."
+        profile = CompanyIntelligenceService(db).get_profile(company_id)
+        retail_enabled = bool(getattr(profile, "has_retail_commerce", False)) or "retail" in set(getattr(profile, "active_modules", ()) or ())
+        products = [p for p in (getattr(profile, "public_products", ()) or ()) if isinstance(p, dict)]
+        profitable_rows = _apply_catalog_view_mode(products, view_mode="profitable")
+        if not profitable_rows:
+            return spoken_profitability_unavailable_answer(locale)
+        return spoken_catalog_answer(
+            products,
+            retail_enabled=retail_enabled,
+            locale=locale,
+            currency=getattr(profile, "currency_code", None),
+            offset=0,
+            limit=3,
+            call=call,
+            view_mode="profitable",
+        )
 
     # 7b. Ambiguous commercial selling intent from authenticated staff/owner
     if authenticated_staff and is_ambiguous_commercial_selling_question(transcript):

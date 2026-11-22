@@ -133,6 +133,56 @@ def is_attention_check(text: str) -> bool:
     return any(re.search(p, normalized) for p in patterns)
 
 
+def extract_request_after_attention_check(text: str) -> str | None:
+    """Extract an embedded substantive request following a leading attention check.
+
+    Examples:
+        "Allô, tu m'entends ? Quel est le prix des casques ?" -> "Quel est le prix des casques ?"
+        "Hello, can you hear me? What are your opening hours?" -> "What are your opening hours?"
+        "Allô, tu m'entends ?" -> None
+    """
+    if not text or not is_attention_check(text):
+        return None
+
+    stripped = text.strip()
+    remainder = stripped
+    clause_patterns = [
+        # Greeting/attention prefixes (FR/EN/ES/RO)
+        r"^[¿¡\s]*(?:all[oô]|al[oó]|hello)(?:[\s,?!.:;\-]+(?:all[oô]|al[oó]|hello))*[\s,?!.:;\-]+",
+        r"^[¿¡\s]*(?:est[- ]ce\s+que\s+)?(?:tu\s+m['’]?entends|vous\s+m['’]?entendez|tu\s+es\s+l[aà]|vous\s+[eê]tes\s+l[aà])[\s,?!.:;\-]+",
+        r"^[¿¡\s]*(?:can\s+you\s+hear\s+me|do\s+you\s+hear\s+me|are\s+you\s+there|are\s+you\s+listening)[\s,?!.:;\-]+",
+        r"^[¿¡\s]*(?:me\s+escuchas?|est[aá]s\s+ah[ií]|me\s+oyes?)[\s,?!.:;\-]+",
+        r"^[¿¡\s]*(?:m[aă]\s+auzi(?:[tț]i)?|e[sș]ti\s+acolo|sunte[tț]i\s+acolo)[\s,?!.:;\-]+",
+    ]
+
+    for _ in range(4):
+        changed = False
+        for pat in clause_patterns:
+            updated = re.sub(pat, "", remainder, flags=re.IGNORECASE).strip()
+            if updated != remainder:
+                remainder = updated
+                changed = True
+                break
+        if not changed:
+            break
+
+    # Remove optional leading transition connectors after the attention check
+    remainder = re.sub(
+        r"^(?:et|mais|alors|donc|dis[- ]moi|dites[- ]moi|and|so|well|y|pero|si|și)\s+",
+        "",
+        remainder,
+        flags=re.IGNORECASE,
+    ).strip()
+
+    if not remainder or remainder == stripped:
+        return None
+    if is_attention_check(remainder) or is_backchannel(remainder):
+        return None
+    if is_substantive_utterance(remainder) or is_correction_or_objection(remainder):
+        return remainder
+    return None
+
+
 def is_correction_or_objection(text: str) -> bool:
     """Context-aware multilingual detection of human objections and corrections (FR/EN/ES/RO)."""
     normalized = _normalize(text)
