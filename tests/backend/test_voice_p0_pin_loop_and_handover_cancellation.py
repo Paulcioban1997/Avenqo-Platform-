@@ -157,6 +157,17 @@ def _make_test_company_and_call(db_session: Session):
     return company, voice_config, call, francis, marie
 
 
+def _make_test_settings() -> Settings:
+    settings = Settings()
+    settings.database_url = "sqlite:///:memory:"
+    settings.auth_jwt_secret = "test_secret_for_voice_unit_tests_32_bytes_long!!"
+    settings.telnyx_api_key = "test-telnyx-key"
+    settings.telnyx_public_key = "test-public-key"
+    settings.telnyx_media_enabled = True
+    settings.telnyx_media_inbound_enabled = True
+    return settings
+
+
 # =====================================================================
 # 1. Handover Intent Parsers & Session Retention Guard
 # =====================================================================
@@ -279,8 +290,9 @@ async def test_handover_positive_triggers_revocation(db_session: Session):
     db_session.commit()
 
     reloaded = db_session.get(VoiceCall, call.id)
+    assert reloaded is not None
     assert reloaded.authenticated_user_id is None
-    assert reloaded.source_context.get("handover_revoked") is True
+    assert (reloaded.source_context or {}).get("handover_revoked") is True
 
 
 # =====================================================================
@@ -291,10 +303,7 @@ def test_dtmf_star_cancels_pin_challenge(db_session: Session):
     """When a caller enters '*' via DTMF during PIN challenge, verify_gather
     returns cancelled=True and clears handover_revoked without penalizing attempts."""
     company, voice_config, call, _, _ = _make_test_company_and_call(db_session)
-    settings = Settings(
-        auth_jwt_secret="test_secret_for_jwt_32_bytes_long!!",
-        voice_pin_max_attempts=5,
-    )
+    settings = _make_test_settings()
     auth = VoiceCallerAuth(db_session, settings)
     call.pin_challenge_hash = "mock_hash"
     call.pin_challenge_expires_at = datetime.now(timezone.utc)
@@ -374,8 +383,9 @@ async def test_voice_cancellation_during_pin_challenge_in_bridge(db_session: Ses
     assert any("Saisie du NIP annulée" in t for t in adapter.spoken_texts)
 
     reloaded = db_session.get(VoiceCall, call.id)
-    assert reloaded.source_context.get("handover_revoked") is None
-    assert reloaded.source_context.get("handover_cancelled") is True
+    assert reloaded is not None
+    assert (reloaded.source_context or {}).get("handover_revoked") is None
+    assert (reloaded.source_context or {}).get("handover_cancelled") is True
 
 
 # =====================================================================
@@ -391,11 +401,7 @@ def test_no_automatic_privilege_restoration_after_revocation(db_session: Session
     call.source_context = {**(call.source_context or {}), "handover_cancelled": True}
     db_session.commit()
 
-    settings = Settings(
-        auth_jwt_secret="test_secret_for_jwt_32_bytes_long!!",
-        telnyx_media_enabled=True,
-        telnyx_media_inbound_enabled=True,
-    )
+    settings = _make_test_settings()
     conv = PublicInboundConversation(db_session, settings, call.id)
 
     # 1. Mere utterance of name does not restore credentials
@@ -467,7 +473,8 @@ async def test_max_pin_retries_exits_cleanly_without_loop(db_session: Session):
     assert any("Nombre maximal de tentatives atteint" in t for t in adapter.spoken_texts)
 
     reloaded = db_session.get(VoiceCall, call.id)
-    assert reloaded.source_context.get("handover_revoked") is None
+    assert reloaded is not None
+    assert (reloaded.source_context or {}).get("handover_revoked") is None
 
 
 # =====================================================================
@@ -478,9 +485,7 @@ def test_late_gather_webhook_ignored_after_cancellation(db_session: Session):
     """When a stale or duplicate call.gather.ended arrives after cancellation,
     it must return stale=True without modifying call context."""
     company, voice_config, call, _, _ = _make_test_company_and_call(db_session)
-    settings = Settings(
-        auth_jwt_secret="test_secret_for_jwt_32_bytes_long!!",
-    )
+    settings = _make_test_settings()
     auth = VoiceCallerAuth(db_session, settings)
 
     # Session is already cancelled, hash is None
@@ -510,10 +515,7 @@ def test_successful_handover_to_second_employee(db_session: Session):
     """After handover revocation, second employee Marie enters her valid PIN.
     Session is successfully transferred and authenticated as Marie."""
     company, voice_config, call, francis, marie = _make_test_company_and_call(db_session)
-    settings = Settings(
-        auth_jwt_secret="test_secret_for_jwt_32_bytes_long!!",
-        voice_pin_max_attempts=5,
-    )
+    settings = _make_test_settings()
     auth = VoiceCallerAuth(db_session, settings)
 
     # Configure PIN for Marie: 719284
@@ -607,14 +609,7 @@ async def test_end_to_end_staff_handover_verbal_refusal_and_public_fallback(db_s
     6. Public question ('Quels sont vos horaires ?') answered in public mode.
     """
     company, voice_config, call, francis, marie = _make_test_company_and_call(db_session)
-    settings = Settings(
-        DATABASE_URL="sqlite:///:memory:",
-        SECRET_KEY="test_secret_for_voice_unit_tests",
-        TELNYX_API_KEY="test-telnyx-key",
-        TELNYX_PUBLIC_KEY="test-public-key",
-        TELNYX_MEDIA_ENABLED=True,
-        TELNYX_MEDIA_INBOUND_ENABLED=True,
-    )
+    settings = _make_test_settings()
 
     # 1. Staff session active
     call.caller_type = "EMPLOYEE"
@@ -645,10 +640,11 @@ async def test_end_to_end_staff_handover_verbal_refusal_and_public_fallback(db_s
     pub_conv.cancel_pin()
 
     reloaded = db_session.get(VoiceCall, call.id)
-    assert reloaded.source_context.get("handover_revoked") is None
-    assert reloaded.source_context.get("handover_cancelled") is True
-    assert reloaded.source_context.get("public_fallback") is True
-    assert reloaded.source_context.get("pin_gather_status") == "cancelled"
+    assert reloaded is not None
+    assert (reloaded.source_context or {}).get("handover_revoked") is None
+    assert (reloaded.source_context or {}).get("handover_cancelled") is True
+    assert (reloaded.source_context or {}).get("public_fallback") is True
+    assert (reloaded.source_context or {}).get("pin_gather_status") == "cancelled"
     assert reloaded.pin_challenge_hash is None
 
     # 4. Same connection authorize() must succeed (not raise PermissionError)
@@ -674,14 +670,7 @@ async def test_end_to_end_staff_handover_verbal_refusal_and_public_fallback(db_s
 def test_public_fallback_then_private_request_triggers_new_pin(db_session: Session):
     """When in public fallback, asking for confidential data triggers a new PIN challenge."""
     company, voice_config, call, francis, marie = _make_test_company_and_call(db_session)
-    settings = Settings(
-        DATABASE_URL="sqlite:///:memory:",
-        SECRET_KEY="test_secret_for_voice_unit_tests",
-        TELNYX_API_KEY="test-telnyx-key",
-        TELNYX_PUBLIC_KEY="test-public-key",
-        TELNYX_MEDIA_ENABLED=True,
-        TELNYX_MEDIA_INBOUND_ENABLED=True,
-    )
+    settings = _make_test_settings()
 
     call.caller_type = "UNKNOWN"
     call.authenticated_user_id = None
@@ -718,14 +707,7 @@ def test_public_fallback_then_private_request_triggers_new_pin(db_session: Sessi
 def test_cancelled_challenge_stale_valid_webhook_rejected(db_session: Session):
     """If a valid PIN webhook arrives after cancellation, it is strictly rejected as stale."""
     company, voice_config, call, francis, marie = _make_test_company_and_call(db_session)
-    settings = Settings(
-        DATABASE_URL="sqlite:///:memory:",
-        SECRET_KEY="test_secret_for_voice_unit_tests",
-        TELNYX_API_KEY="test-telnyx-key",
-        TELNYX_PUBLIC_KEY="test-public-key",
-        TELNYX_MEDIA_ENABLED=True,
-        TELNYX_MEDIA_INBOUND_ENABLED=True,
-    )
+    settings = _make_test_settings()
 
     auth_controller = VoiceCallerAuth(db_session, settings)
     # Cancelled challenge state
@@ -751,6 +733,7 @@ def test_cancelled_challenge_stale_valid_webhook_rejected(db_session: Session):
 
     # 3. Call remains in public mode with no authenticated user
     reloaded = db_session.get(VoiceCall, call.id)
+    assert reloaded is not None
     assert reloaded.authenticated_user_id is None
     assert reloaded.caller_type == "UNKNOWN"
 
@@ -762,14 +745,7 @@ def test_cancelled_challenge_stale_valid_webhook_rejected(db_session: Session):
 def test_dtmf_star_cancellation_real_gather(db_session: Session):
     """Pressing '*' alone in gather cancels challenge without penalty."""
     company, voice_config, call, francis, marie = _make_test_company_and_call(db_session)
-    settings = Settings(
-        DATABASE_URL="sqlite:///:memory:",
-        SECRET_KEY="test_secret_for_voice_unit_tests",
-        TELNYX_API_KEY="test-telnyx-key",
-        TELNYX_PUBLIC_KEY="test-public-key",
-        TELNYX_MEDIA_ENABLED=True,
-        TELNYX_MEDIA_INBOUND_ENABLED=True,
-    )
+    settings = _make_test_settings()
 
     auth_controller = VoiceCallerAuth(db_session, settings)
     call.pin_challenge_hash = "active-hash-123"
@@ -782,9 +758,10 @@ def test_dtmf_star_cancellation_real_gather(db_session: Session):
     assert result.get("authenticated") is False
 
     reloaded = db_session.get(VoiceCall, call.id)
+    assert reloaded is not None
     assert reloaded.pin_challenge_hash is None
-    assert reloaded.source_context.get("public_fallback") is True
-    assert reloaded.source_context.get("pin_gather_status") == "cancelled"
+    assert (reloaded.source_context or {}).get("public_fallback") is True
+    assert (reloaded.source_context or {}).get("pin_gather_status") == "cancelled"
     assert reloaded.verification_attempts == 0
 
 
@@ -994,7 +971,6 @@ async def test_execute_turn_auth_required_does_not_cancel_own_task():
     await asyncio.sleep(0.1)
 
     # Terminate queue and wait for exec_task
-    bridge._running = False
     exec_task.cancel()
     try:
         await exec_task
@@ -1022,14 +998,7 @@ def test_authorize_media_session_staff_handover_and_public_fallback(db_session: 
     call.source_context = {"dispatcher_routing": True}
     db_session.commit()
 
-    settings = Settings(
-        DATABASE_URL="sqlite:///:memory:",
-        SECRET_KEY="test_secret_for_voice_unit_tests",
-        TELNYX_API_KEY="test-telnyx-key",
-        TELNYX_PUBLIC_KEY="test-public-key",
-        TELNYX_MEDIA_ENABLED=True,
-        TELNYX_MEDIA_INBOUND_ENABLED=True,
-    )
+    settings = _make_test_settings()
     plan = ModuleEntitlementService(db_session).get_company_plan(TenantContext(company.id)).code.value
 
     # Configure Francis PIN and active session
