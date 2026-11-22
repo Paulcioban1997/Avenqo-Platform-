@@ -46,6 +46,7 @@ from backend.app.models import (
     VoicePhoneNumber,
     VoiceToolAction,
 )
+from backend.app.services.company_intelligence_service import CompanyIntelligenceService
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.voice.adapters import OpenAIRealtimeAudioAdapter
 from backend.app.voice.messages import apply_spoken_pronunciation
@@ -935,6 +936,8 @@ class TelnyxMediaBridge:
         self._pin_deadline = None
         self._pin_prompt_spoken = False
         self._pin_prompt_finish_time = None
+        self._pin_retry_count = 0
+        self.max_pin_retries = 3
         # Backpressure & health metrics (no raw audio)
         self.dropped_inbound_frames = 0
         self.dropped_outbound_frames = 0
@@ -1495,7 +1498,7 @@ class TelnyxMediaBridge:
                             self.dropped_outbound_frames += 1
                         self._pin_prompt_spoken = True
                         self._pin_prompt_finish_time = asyncio.get_running_loop().time()
-                        self._pin_prompt_safe_duration = max(len(str(result.get("answer") or "")) * 0.075, 4.0)
+                        self._pin_prompt_safe_duration = getattr(self, "_pin_prompt_safe_duration", 4.0)
                     self.response_id = None
                     self.response_epoch = None
                     self._set_phase("LISTENING")
@@ -1659,6 +1662,15 @@ class TelnyxMediaBridge:
 
     async def _reprompt_pin(self) -> None:
         if getattr(self, "_pin_reprompting", False):
+            return
+        self._pin_retry_count += 1
+        if self._pin_retry_count > self.max_pin_retries:
+            logger.warning(
+                "pin_gather_max_retries_exceeded count=%s max=%s",
+                self._pin_retry_count,
+                self.max_pin_retries,
+            )
+            await self._finish_pin("refused")
             return
         self._pin_reprompting = True
         try:
@@ -2014,9 +2026,9 @@ async def telnyx_media_socket(
     adapter = realtime_router.build_realtime_adapter(
         config,
         tenant_audio,
-        fallback_factory=lambda: build_phone_adapter(
+        fallback_factory=lambda model=None: build_phone_adapter(
             settings,
-            lambda: OpenAIRealtimeAudioAdapter(tenant_audio, settings.voice_realtime_model),
+            lambda: OpenAIRealtimeAudioAdapter(tenant_audio, model or settings.voice_realtime_model),
         ),
     )
     bridge: TelnyxMediaBridge
@@ -2549,9 +2561,9 @@ async def telnyx_media_socket(
             lambda: realtime_router.build_realtime_adapter(
                 config,
                 tenant_audio,
-                fallback_factory=lambda: build_phone_adapter(
+                fallback_factory=lambda model=None: build_phone_adapter(
                     settings,
-                    lambda: OpenAIRealtimeAudioAdapter(tenant_audio, settings.voice_realtime_model),
+                    lambda: OpenAIRealtimeAudioAdapter(tenant_audio, model or settings.voice_realtime_model),
                 ),
             ),
             authorize,

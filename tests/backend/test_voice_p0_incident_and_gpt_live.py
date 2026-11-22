@@ -2,13 +2,14 @@ import asyncio
 from datetime import datetime, timezone
 from decimal import Decimal
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from backend.app.ai.llm.schemas import LLMUsage
 from backend.app.config.settings import Settings
 from backend.app.models.base import Base
 from backend.app.models.billing import BillingAccount
@@ -18,6 +19,7 @@ from backend.app.models.company_module import CompanyModule, CompanyModuleStatus
 from backend.app.models.module import Module
 from backend.app.models.user import User
 from backend.app.models.voice import CompanyRoutingNip, VoiceBusinessConfig, VoiceCall
+from backend.app.services.employee_coach_service import EmployeeCoachService
 from backend.app.voice.adapters import OpenAIAudioConfig, OpenAIRealtimeAudioAdapter
 from backend.app.voice.auth import VoiceCallerAuth
 from backend.app.voice.direct_answers import (
@@ -33,6 +35,7 @@ from backend.app.voice.direct_answers import (
 from backend.app.voice.realtime_provider import (
     GeminiLiveRealtimeAudioAdapter,
     NaturalInterruptionManager,
+    VoiceRealtimeRouter,
     build_personality_system_prompt,
 )
 from backend.app.voice.telnyx_media import PublicInboundConversation, TelnyxMediaBridge
@@ -292,7 +295,7 @@ def test_public_receptionist_prompt_strict_mode():
 
 
 @pytest.mark.asyncio
-async def test_gemini_live_interruption_event_dispatch():
+async def test_gemini_live_real_receive_loop_interruption_integration():
     config = MagicMock()
     config.company_name = "Produits Héros"
     config.custom_pronunciation = None
@@ -311,73 +314,290 @@ async def test_gemini_live_interruption_event_dispatch():
         audio_config=audio_cfg,
         model="gemini-3.8-live",
         company_name="Produits Héros",
+        vad_rms_threshold=400,
     )
 
-    # Set up active TTS response
-    adapter._tts_response_id = "test-response-1"
-    adapter._current_response_id = "test-response-1"
+    # Set up mock session receive queue
+    recv_queue = asyncio.Queue()
+
+    class MockSession:
+        async def receive(self):
+            while True:
+                msg = await recv_queue.get()
+                if msg is None:
+                    break
+                yield msg
+
+        async def send_realtime_input(self, **kwargs):
+            pass
+
+    adapter._session = MockSession()
+    adapter._tts_response_id = "turn-tts-99"
+    adapter._current_response_id = "turn-tts-99"
     adapter._tts_active = True
-    adapter._session = MagicMock()
 
-    # Simulate receiving interrupted=True
-    msg = SimpleNamespace(
-        server_content=SimpleNamespace(
-            interrupted=True,
-            input_transcription=None,
-            model_turn=None,
-            turn_complete=None,
+    # Start the REAL _receive_loop in a background task
+    receive_task = asyncio.create_task(adapter._receive_loop())
+
+    try:
+        # 1. Verify VAD echo suppression during active TTS
+        # Audio chunk with low RMS (below threshold * 1.5 = 600)
+        quiet_pcm = b"\x64\x00" * 120
+        await adapter.send_audio(quiet_pcm)
+        assert adapter._speech_active is False
+
+        # 2. Feed an interruption event from Gemini Live
+        msg_interrupted = SimpleNamespace(
+            server_content=SimpleNamespace(
+                interrupted=True,
+                input_transcription=None,
+                model_turn=None,
+            )
         )
+        await recv_queue.put(msg_interrupted)
+
+        # Allow receive_loop to process
+        await asyncio.sleep(0.05)
+
+        # Assert TTS state is cleared and recorded as interrupted
+        assert adapter._tts_active is False
+        assert "turn-tts-99" in adapter._interrupted_responses
+
+        # Events emitted to event queue
+        ev1 = await adapter._event_queue.get()
+        assert ev1.type == "response.done"
+        assert ev1.response.status == "cancelled"
+        assert ev1.response.id == "turn-tts-99"
+
+        ev2 = await adapter._event_queue.get()
+        assert ev2.type == "response.interrupted"
+        assert ev2.response_id == "turn-tts-99"
+
+        # 3. Caller speaks new query right after interruption
+        msg_transcript = SimpleNamespace(
+            server_content=SimpleNamespace(
+                interrupted=False,
+                input_transcription=SimpleNamespace(
+                    text="Avez-vous des masques ?",
+                    finished=True,
+                ),
+                model_turn=None,
+            )
+        )
+        await recv_queue.put(msg_transcript)
+        await asyncio.sleep(0.05)
+
+        ev3 = await adapter._event_queue.get()
+        assert ev3.type == "conversation.item.input_audio_transcription.completed"
+        assert ev3.transcript == "Avez-vous des masques ?"
+
+    finally:
+        adapter._closed = True
+        await recv_queue.put(None)
+        await receive_task
+
+
+@pytest.mark.asyncio
+async def test_gpt_live_1_1_real_session_model_propagation():
+    settings = Settings()
+    settings.voice_realtime_model = "gpt-live-1"
+    router = VoiceRealtimeRouter(settings)
+    audio_cfg = OpenAIAudioConfig(api_key="fake-openai-key")
+
+    # 1. Sandbox call with experimental flag enabled
+    config_allowed = MagicMock()
+    config_allowed.company_id = uuid4()
+    config_allowed.realtime_provider = "telnyx"
+    config_allowed.gemini_live_enabled = False
+    config_allowed.call_policy = {
+        "experimental_realtime_enabled": True,
+        "experimental_realtime_model": "gpt-live-1.1",
+        "is_sandbox": True,
+    }
+
+    adapter = router.build_realtime_adapter(
+        config_allowed,
+        audio_cfg,
+        fallback_factory=lambda model=None: OpenAIRealtimeAudioAdapter(
+            audio_cfg, model or settings.voice_realtime_model
+        ),
     )
+    assert adapter._model == "gpt-live-1.1"
 
-    async def fake_receive():
-        yield msg
+    # Verify adapter.open() actually attempts connection with model="gpt-live-1.1"
+    with patch("backend.app.voice.adapters.AsyncOpenAI") as mock_openai_cls:
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+        mock_manager = AsyncMock()
+        mock_client.realtime.connect.return_value = mock_manager
+        mock_manager.__aenter__.return_value = AsyncMock()
 
-    adapter._session.receive = fake_receive
+        await adapter.open(locale="fr-CA")
+        mock_client.realtime.connect.assert_called_once_with(model="gpt-live-1.1")
 
-    # Run one pass of _receive_loop logic
-    async for message in adapter._session.receive():
-        server_content = message.server_content
-        if server_content.interrupted:
-            if adapter._tts_response_id is not None:
-                adapter._interrupted_responses.add(adapter._tts_response_id)
-            interrupted_resp = adapter._current_response_id or adapter._tts_response_id
-            adapter._tts_active = False
-            adapter._tts_response_id = None
-            adapter._current_response_id = None
-            if interrupted_resp is not None:
-                await adapter._event_queue.put(
-                    SimpleNamespace(
-                        type="response.done",
-                        response=SimpleNamespace(
-                            id=interrupted_resp,
-                            status="cancelled",
-                            usage=None,
-                        ),
-                    )
-                )
-                await adapter._event_queue.put(
-                    SimpleNamespace(
-                        type="response.interrupted",
-                        response_id=interrupted_resp,
-                    )
-                )
+    # 2. Production guard: environment="production" and is_sandbox=False -> falls back to gpt-live-1
+    prod_settings = Settings()
+    prod_settings.environment = "production"
+    prod_settings.voice_realtime_model = "gpt-live-1"
+    prod_router = VoiceRealtimeRouter(prod_settings)
 
-    assert adapter._tts_active is False
-    assert "test-response-1" in adapter._interrupted_responses
+    config_prod = MagicMock()
+    config_prod.company_id = uuid4()
+    config_prod.realtime_provider = "telnyx"
+    config_prod.gemini_live_enabled = False
+    config_prod.call_policy = {
+        "experimental_realtime_enabled": True,
+        "experimental_realtime_model": "gpt-live-1.1",
+        "is_sandbox": False,
+    }
 
-    event1 = await adapter._event_queue.get()
-    assert event1.type == "response.done"
-    assert event1.response.status == "cancelled"
+    prod_adapter = prod_router.build_realtime_adapter(
+        config_prod,
+        audio_cfg,
+        fallback_factory=lambda model=None: OpenAIRealtimeAudioAdapter(
+            audio_cfg, model or prod_settings.voice_realtime_model
+        ),
+    )
+    assert prod_adapter._model == "gpt-live-1"
 
-    event2 = await adapter._event_queue.get()
-    assert event2.type == "response.interrupted"
-    assert event2.response_id == "test-response-1"
+    # 3. Unauthorized model requested -> falls back to gpt-live-1
+    config_unauth = MagicMock()
+    config_unauth.company_id = uuid4()
+    config_unauth.realtime_provider = "telnyx"
+    config_unauth.gemini_live_enabled = False
+    config_unauth.call_policy = {
+        "experimental_realtime_enabled": True,
+        "experimental_realtime_model": "gpt-unauthorized-custom",
+        "is_sandbox": True,
+    }
+
+    unauth_adapter = router.build_realtime_adapter(
+        config_unauth,
+        audio_cfg,
+        fallback_factory=lambda model=None: OpenAIRealtimeAudioAdapter(
+            audio_cfg, model or settings.voice_realtime_model
+        ),
+    )
+    assert unauth_adapter._model == "gpt-live-1"
 
 
-def test_gpt_live_1_1_pricing_catalog():
+@pytest.mark.asyncio
+async def test_pin_handover_retry_limit_prevents_infinite_loop():
+    mock_adapter = MagicMock()
+    mock_adapter.speak = AsyncMock()
+    bridge = TelnyxMediaBridge(
+        MagicMock(),
+        mock_adapter,
+        locale="fr-CA",
+        validate_start=AsyncMock(),
+        authorize=AsyncMock(),
+        execute_turn=AsyncMock(),
+        begin_pin=AsyncMock(return_value={"success": True}),
+        poll_pin=AsyncMock(return_value="retry_needed"),
+    )
+    bridge._pin_turn = "turn-pin-1"
+    bridge._pin_started = True
+
+    # Run _reprompt_pin 3 times (the max allowed)
+    await bridge._reprompt_pin()
+    assert bridge._pin_retry_count == 1
+    bridge._pin_reprompting = False
+
+    await bridge._reprompt_pin()
+    assert bridge._pin_retry_count == 2
+    bridge._pin_reprompting = False
+
+    await bridge._reprompt_pin()
+    assert bridge._pin_retry_count == 3
+    bridge._pin_reprompting = False
+
+    # 4th attempt exceeds max_pin_retries and finishes with refused
+    bridge._finish_pin = AsyncMock()
+    await bridge._reprompt_pin()
+    assert bridge._pin_retry_count == 4
+    bridge._finish_pin.assert_awaited_once_with("refused")
+
+
+def test_data_driven_marketing_acquisition_coaching(db_session: Session):
+    company, voice_config, call = _make_test_company_and_call(
+        db_session, "Apex Mountain Sports", slug="apex-mountain"
+    )
+    user = User(
+        id=uuid4(),
+        company_id=company.id,
+        email="francois@example.com",
+        password_hash="mock_hash_123",
+        first_name="François",
+        last_name="Tremblay",
+        role=UserRole.OWNER,
+        is_active=True,
+    )
+    db_session.add(user)
+
+    # Add CRM module
+    mod_crm = Module(id=uuid4(), name="CRM AI", code="crm", is_active=True)
+    db_session.add(mod_crm)
+    db_session.flush()
+    cm_crm = CompanyModule(
+        company_id=company.id,
+        module_id=mod_crm.id,
+        status=CompanyModuleStatus.ACTIVE,
+        activated_at=datetime.now(timezone.utc),
+    )
+    db_session.add(cm_crm)
+    db_session.commit()
+
+    coach = EmployeeCoachService(db_session)
+
+    # 1. With Company Profile having real products
+    with patch(
+        "backend.app.services.company_intelligence_service.CompanyIntelligenceService.get_profile"
+    ) as mock_prof:
+        mock_prof.return_value = SimpleNamespace(
+            company_name="Apex Mountain Sports",
+            public_products=[
+                {"name": "Planche Alpine 150", "category": "Planches"},
+                {"name": "Casque Sécurité MIPS", "category": "Accessoires"},
+            ],
+        )
+        res = coach.get_marketing_acquisition_advice(user, locale="fr-CA")
+        assert res["status"] == "success"
+        summary = res["spoken_summary"]
+        assert "François" in summary
+        assert "d'après les données de votre activité" in summary
+        assert "Apex Mountain Sports" in summary
+        assert "Planche Alpine 150" in summary
+        assert "CRM" in summary
+
+    # 2. Without products and without modules: explicit disclosure of general advice
+    with patch(
+        "backend.app.services.company_intelligence_service.CompanyIntelligenceService.get_profile"
+    ) as mock_prof, patch(
+        "backend.app.services.module_entitlement_service.ModuleEntitlementService.get_active_modules"
+    ) as mock_mods:
+        mock_prof.return_value = None
+        mock_mods.return_value = []
+        res_empty = coach.get_marketing_acquisition_advice(user, locale="fr-CA")
+        summary_empty = res_empty["spoken_summary"]
+        assert "en l'absence de données de catalogue ou de campagne" in summary_empty
+
+
+def test_gpt_live_1_1_billing_no_double_charging():
     catalog = voice_pricing_catalog()
     entry = catalog.lookup("openai", "gpt-live-1.1")
     assert entry is not None
-    assert entry.input_cost_per_million_usd == Decimal("2.50")
-    assert entry.output_cost_per_million_usd == Decimal("10.00")
+    # Input audio per second is $0.05 / 60s
+    assert entry.audio_input_cost_per_second_usd == Decimal("0.0008333")
+    # Check 60s cost computation
+    usage_60s = LLMUsage(
+        provider="openai",
+        model="gpt-live-1.1",
+        input_tokens=0,
+        output_tokens=0,
+        audio_input_seconds=Decimal("60"),
+    )
+    cost = entry.cost_for(usage_60s)
+    # 60 * 0.0008333 = 0.049998 (~0.05 USD)
+    assert round(cost, 2) == Decimal("0.05")
+
 
