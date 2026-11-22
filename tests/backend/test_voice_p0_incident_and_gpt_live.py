@@ -63,6 +63,9 @@ def _make_test_company_and_call(
     status="in_progress",
     source_context=None,
     verification_attempts=0,
+    caller_phone="+15145551234",
+    callee_phone=None,
+    **kwargs,
 ):
     uid = uuid4().hex[:8]
     company = Company(
@@ -100,8 +103,9 @@ def _make_test_company_and_call(
         business_name=name,
         preferred_language="fr-CA",
         greeting_message="Bonjour! Bienvenue.",
-        voice_api_key_hash="dummy_hash",
+        voice_api_key_hash=f"dummy_hash_{uid}",
         voice_api_key_last4="1234",
+        telnyx_phone_number=callee_phone or f"+1514555{uid[:4]}",
         enabled=True,
     )
     db_session.add(voice_config)
@@ -109,8 +113,8 @@ def _make_test_company_and_call(
         id=uuid4(),
         company_id=company.id,
         config_id=voice_config.id,
-        telnyx_call_control_id="v-call-ctl-123",
-        caller_phone="+15145551234",
+        telnyx_call_control_id=kwargs.get("telnyx_call_control_id", f"v-call-ctl-{uid}"),
+        caller_phone=caller_phone,
         status=status,
         verification_attempts=verification_attempts,
         source_context=source_context,
