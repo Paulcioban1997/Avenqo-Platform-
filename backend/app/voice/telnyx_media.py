@@ -305,6 +305,9 @@ _RE_PRIVATE_DATA = re.compile(
     r"|\b(je suis|i am|yo soy|sunt)\b.{0,15}\b(proprietaire|owner|patron|boss|manager|employe|employee|due[nñ]o|gerente|sef|proprietar)\b"
     r"|\b(mode|espace|session|connexion|portail|acceso|spatiu)\b.{0,20}\b(proprietaire|owner|patron|boss|manager|employe|employee|gestion|direction|due[nñ]o|gerente|conducere)\b"
     r"|\b(mon shift|mes taches|mes priorites|briefing employe|coaching employe|my shift|my tasks|my priorities|employee briefing|mis tareas|mi turno|mi coaching|sarcinile mele|tura mea)\b"
+    r"|\b(coaching|conseils?|astuces?)\b.{0,20}\b(marketing|vente|ventes|commercial|clients?|acquisition)\b"
+    r"|\b(strategie marketing|acquisition client|acquisition de clients|marketing strategy|customer acquisition|captacion de clientes|atragerea clientilor)\b"
+    r"|\b(attirer|trouver|avoir|gagner)\b.{0,20}\b(clients?|clientele|customers)\b"
 )
 _RE_MANAGEMENT_CONTACT = re.compile(
     r"\b(proprietaire|owner|patron|boss|manager|direction|due[nñ]o|jefe|gerente|encargado|proprietar|sef|conducere|conducerea|director|directorul)\b"
@@ -506,6 +509,8 @@ class PublicInboundConversation:
         # MUST BE ANALYZED UNCONDITIONALLY across all languages
         private = _RE_PRIVATE_DATA.search(normalized)
         if private:
+            call.source_context = {**(call.source_context or {}), "pending_auth_query": safe}
+            self.db.commit()
             prompt = voice_auth_message(call.locale or config.preferred_language, 0)
             return {"status": "success", "answer": prompt + " " + self.portal_message(), "auth_required": True, "public": True}
 
@@ -1249,13 +1254,14 @@ class TelnyxMediaBridge:
                     logger.info("Voice conversation reply submitted to TTS; count=%s", self.central_ai_replies_queued)
                     if result.get("auth_required"):
                         self._pin_mark = "pin-prompt:" + hashlib.sha256(item_id.encode()).hexdigest()[:24]
-                        try:
-                            self._output.put_nowait((self.epoch, {"event": "mark", "mark": {"name": self._pin_mark}}))
-                        except asyncio.QueueFull:
-                            self.dropped_outbound_frames += 1
-                        self._pin_prompt_spoken = True
-                        self._pin_prompt_finish_time = asyncio.get_running_loop().time()
                         self._pin_prompt_safe_duration = max(len(str(result.get("answer") or "")) * 0.075, 4.0)
+                        if not getattr(self, "_draining_events", False):
+                            try:
+                                self._output.put_nowait((self.epoch, {"event": "mark", "mark": {"name": self._pin_mark}}))
+                            except asyncio.QueueFull:
+                                self.dropped_outbound_frames += 1
+                            self._pin_prompt_spoken = True
+                            self._pin_prompt_finish_time = asyncio.get_running_loop().time()
                 except Exception as exc:
                     self.tts_failures += 1
                     self.telemetry["tts_provider_error"] += 1
@@ -1371,6 +1377,7 @@ class TelnyxMediaBridge:
                         await asyncio.sleep(delay)
 
     async def _drain_provider_events(self) -> None:
+        self._draining_events = True
         async for event in self.adapter.events():
             kind = getattr(event, "type", "")
             if kind == "session.updated":
@@ -1510,8 +1517,14 @@ class TelnyxMediaBridge:
                 if self.response_epoch == self.epoch and self.response_id == getattr(getattr(event, "response", None), "id", None):
                     self._enqueue(b"", final=True)
                     self.telemetry["voice_response_completed"] += 1
-                    if completed is not None and completed[0] == self._pin_turn and self._pin_turn is not None:
-                        self._pin_mark = "pin-prompt:" + hashlib.sha256(self._pin_turn.encode()).hexdigest()[:24]
+                    is_pin_turn = completed is not None and (
+                        completed[0] == self._pin_turn
+                        or str(completed[0]).startswith("pin-reprompt:")
+                        or (self._pin_turn is not None and str(completed[0]).endswith(str(self._pin_turn)))
+                    )
+                    if is_pin_turn and self._pin_turn is not None:
+                        mark_item = str(completed[0]) if completed is not None else self._pin_turn
+                        self._pin_mark = "pin-prompt:" + hashlib.sha256(mark_item.encode()).hexdigest()[:24]
                         try:
                             self._output.put_nowait((self.epoch, {"event": "mark", "mark": {"name": self._pin_mark}}))
                         except asyncio.QueueFull:
@@ -1542,7 +1555,11 @@ class TelnyxMediaBridge:
         max_reconnects = 2
         while not self._stop_event.is_set():
             try:
-                await self._drain_provider_events()
+                self._draining_events = True
+                try:
+                    await self._drain_provider_events()
+                finally:
+                    self._draining_events = False
                 if not self._stop_event.is_set() and hasattr(self.adapter, "reconnect") and reconnect_attempts < max_reconnects:
                     reconnect_attempts += 1
                     logger.warning(
@@ -1708,13 +1725,14 @@ class TelnyxMediaBridge:
             item_id = f"pin-reprompt:{new_pin_turn}"
             await self._speak_system(item_id, reprompt)
             self._pin_mark = "pin-prompt:" + hashlib.sha256(item_id.encode()).hexdigest()[:24]
-            try:
-                self._output.put_nowait((self.epoch, {"event": "mark", "mark": {"name": self._pin_mark}}))
-            except asyncio.QueueFull:
-                self.dropped_outbound_frames += 1
-            self._pin_prompt_spoken = True
-            self._pin_prompt_finish_time = asyncio.get_running_loop().time()
             self._pin_prompt_safe_duration = max(len(reprompt) * 0.075, 4.0)
+            if not getattr(self, "_draining_events", False):
+                try:
+                    self._output.put_nowait((self.epoch, {"event": "mark", "mark": {"name": self._pin_mark}}))
+                except asyncio.QueueFull:
+                    self.dropped_outbound_frames += 1
+                self._pin_prompt_spoken = True
+                self._pin_prompt_finish_time = asyncio.get_running_loop().time()
         finally:
             self._pin_reprompting = False
 
@@ -2429,6 +2447,23 @@ async def telnyx_media_socket(
                     provider="central_ai",
                     model=settings.voice_realtime_model,
                 )
+            if principal_id is None:
+                pin_triggers = (
+                    "code nip", "code pin", "votre nip", "votre pin",
+                    "su nip", "su pin", "codul pin",
+                    "authentifies par nip", "authentifiés par nip",
+                    "authenticated with a pin", "autenticados con nip", "autentificati prin pin",
+                    "veuillez saisir votre code nip", "please enter your pin",
+                    "por favor ingrese su", "va rugam sa introduceti",
+                )
+                direct_lower = direct_answer.casefold()
+                if any(trig in direct_lower for trig in pin_triggers):
+                    current_call.source_context = {
+                        **(current_call.source_context or {}),
+                        "pending_auth_query": transcript,
+                    }
+                    db.commit()
+                    return {"status": "success", "answer": direct_answer, "auth_required": True}
             return {"status": "success", "answer": direct_answer}
 
         if is_hangup_request(transcript):

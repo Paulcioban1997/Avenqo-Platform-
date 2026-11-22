@@ -160,24 +160,29 @@ def is_catalog_pagination_question(text: str) -> tuple[bool, int]:
     norm = unicodedata.normalize("NFKD", text.casefold())
     norm = "".join(c for c in norm if not unicodedata.combining(c))
 
-    # Strict exclusion: CRM appointments, bookings, or meeting slots must NEVER be routed as catalog pagination
+    # Strict exclusion: CRM appointments, bookings, or general conversational next-step queries
     if any(
         term in norm
         for term in (
             "rendez vous", "rendez-vous", "rdv", "appointment", "appointments",
             "booking", "bookings", "reservation", "reservations", "creneau", "creneaux",
             "horaire", "horaires", "heure", "heures", "date", "dates", "rencontre",
+            "what next", "what's next", "what should i do next", "what do we do next",
+            "what happens next", "and next", "et ensuite", "que faire ensuite", "quoi d'autre",
+            "what else", "et apres", "y despues", "ce facem acum", "ce urmeaza", "quand",
         )
     ):
         return False, 0
 
     match = re.search(
-        r"\b(?:les?\s+)?(?:(\d+|cinq|trois|quatre|deux|dix|cinco|tres|cuatro|cinci|trei|patru|five|three|four|ten)\s+)?(?:prochains?|suivants?|next|siguientes?|urmatoarele?)\s*(?:produits?|articles?|items?|planches?|accessoires?)?\b|"
-        r"\b(?:quels?\s+sont\s+les?\s+)?(?:(\d+|cinq|trois|quatre|deux|dix|five|three|four|ten)\s+)?(?:prochains?|suivants?)\b",
+        r"\b(?:les?\s+|the\s+)?(?:(\d+|cinq|trois|quatre|deux|dix|cinco|tres|cuatro|cinci|trei|patru|five|three|four|ten)\s+)(?:prochains?|suivants?|next|siguientes?|urmatoarele?)\s*(?:produits?|articles?|items?|planches?|accessoires?)?\b|"
+        r"\b(?:les?\s+|the\s+|los?\s+|urmatoarele\s+)?(?:prochains?|suivants?|next|siguientes?|urmatoarele)\s+(?:(\d+|cinq|trois|quatre|deux|dix|cinco|tres|cuatro|cinci|trei|patru|five|three|four|ten)\s+)(?:produits?|articles?|items?|planches?|accessoires?|ones?)?\b|"
+        r"\b(?:les?\s+|the\s+|los?\s+|urmatoarele\s+)(?:prochains?|suivants?|next|siguientes?|urmatoarele)\s+(?:produits?|articles?|items?|planches?|accessoires?|ones?)\b|"
+        r"\b(?:quels?\s+sont\s+les?\s+|what\s+are\s+the\s+)(?:(\d+|cinq|trois|quatre|deux|dix|five|three|four|ten)\s+)?(?:prochains?|suivants?|next)\s*(?:produits?|articles?|items?|planches?|accessoires?)\b",
         norm,
     )
     if match:
-        num_str = match.group(1) or match.group(2)
+        num_str = match.group(1) or match.group(2) or match.group(3)
         word_to_num = {
             "cinq": 5, "five": 5, "cinco": 5, "cinci": 5,
             "trois": 3, "three": 3, "tres": 3, "trei": 3,
@@ -212,14 +217,28 @@ def is_ordinal_product_question(text: str) -> tuple[bool, int]:
     ):
         return False, 0
 
+    # Conversational pauses, hold requests, or polite time delays must NEVER be routed as catalog ordinals
+    if any(
+        phrase in norm
+        for phrase in (
+            "one second", "a second", "just a second", "wait a second", "give me a second",
+            "hold on a second", "hold on", "second please", "seconds please",
+            "une seconde", "un instant", "attends", "attendez", "attendez une seconde",
+            "attends une seconde", "juste une seconde", "un moment", "juste un instant",
+            "un segundo", "espera un segundo", "o secunda", "stai o secunda", "asteapta",
+        )
+    ):
+        return False, 0
+
     match = re.search(
         r"\b(?:combien\s+coute|quel\s+est\s+le\s+prix\s+d[ue]|et\s+le|prix\s+d[ue]|how\s+much\s+(?:is|does)\s+the|cuanto\s+cuesta\s+el|cat\s+costa\s+al)\s+"
-        r"(?:le\s+)?(premier|deuxieme|troisieme|quatrieme|cinquieme|1er|2e|2eme|3e|3eme|4e|5e|first|second|third|fourth|fifth|primero|segundo|tercero|primul|al\s+doilea|al\s+treilea)\b|"
-        r"\b(premier|deuxieme|troisieme|quatrieme|cinquieme|1er|2e|2eme|3e|3eme|4e|5e|first|second|third|fourth|fifth|segundo|tercero)\s*(?:produit|article|one|item)?\s*(?:combien|coute|prix)?\b",
+        r"(?:le\s+|the\s+|el\s+)?(premier|deuxieme|troisieme|quatrieme|cinquieme|1er|2e|2eme|3e|3eme|4e|5e|first|second|third|fourth|fifth|primero|segundo|tercero|primul|al\s+doilea|al\s+treilea)\b|"
+        r"\b(?:le\s+|the\s+|el\s+)(premier|deuxieme|troisieme|quatrieme|cinquieme|1er|2e|2eme|3e|3eme|4e|5e|first|second|third|fourth|fifth|segundo|tercero)\s*(?:produit|article|one|item)\s*(?:combien|coute|prix)?\b|"
+        r"\b(premier|deuxieme|troisieme|quatrieme|cinquieme|1er|2e|2eme|3e|3eme|4e|5e|first|third|fourth|fifth|primero|segundo|tercero)\s+(?:produit|article|option|item)\b",
         norm,
     )
     if match:
-        ord_word = match.group(1) or match.group(2)
+        ord_word = match.group(1) or match.group(2) or match.group(3)
         mapping = {
             "premier": 1, "1er": 1, "first": 1, "primero": 1, "primul": 1,
             "deuxieme": 2, "2e": 2, "2eme": 2, "second": 2, "segundo": 2, "al doilea": 2,
@@ -233,10 +252,38 @@ def is_ordinal_product_question(text: str) -> tuple[bool, int]:
     return False, 0
 
 
+def is_superlative_service_question(text: str) -> bool:
+    """Detect queries asking for the most expensive CRM service/prestation."""
+    norm = unicodedata.normalize("NFKD", text.casefold())
+    norm = "".join(c for c in norm if not unicodedata.combining(c))
+    has_service_noun = bool(re.search(
+        r"\b(service|services|prestation|prestations|forfait|forfaits|consultation|soin|soins|coupe)\b",
+        norm,
+    ))
+    has_superlative = bool(re.search(
+        r"\b(plus\s+chere?|le\s+plus\s+cher|most\s+expensive|highest\s+price|mas\s+car[ao]|cea\s+mai\s+scumpa|cel\s+mai\s+scump)\b",
+        norm,
+    ))
+    return has_service_noun and has_superlative
+
+
 def is_superlative_product_question(text: str) -> tuple[bool, str | None]:
     """Detect superlative product queries (e.g. 'Quelle planche est la plus chère ?')."""
     norm = unicodedata.normalize("NFKD", text.casefold())
     norm = "".join(c for c in norm if not unicodedata.combining(c))
+
+    # Strict exclusion: CRM services, appointments, treatments belong to CRM, NOT retail products
+    if any(
+        term in norm
+        for term in (
+            "service", "services", "prestation", "prestations", "forfait", "forfaits",
+            "consultation", "consultations", "rendez vous", "rendez-vous", "rdv",
+            "appointment", "appointments", "soin", "soins", "coupe", "coupes",
+            "seance", "seances", "abonnement", "abonnements",
+        )
+    ):
+        return False, None
+
     is_expensive = bool(re.search(
         r"\b(plus\s+chere?|le\s+plus\s+cher|most\s+expensive|highest\s+price|mas\s+car[ao]|cea\s+mai\s+scumpa|cel\s+mai\s+scump)\b",
         norm,
@@ -252,6 +299,16 @@ def is_superlative_product_question(text: str) -> tuple[bool, str | None]:
 
 
 def is_open_catalog_question(text: str) -> bool:
+    norm = unicodedata.normalize("NFKD", text.casefold())
+    norm = "".join(c for c in norm if not unicodedata.combining(c))
+    if any(
+        term in norm
+        for term in (
+            "rendez vous", "rendez-vous", "rdv", "appointment", "appointments",
+            "booking", "bookings", "reservation", "reservations", "creneau", "creneaux",
+        )
+    ):
+        return False
     words = _words(text)
     products = bool(words & {
         "produit", "produits", "product", "products", "article", "articles",
@@ -1105,14 +1162,45 @@ def resolve_direct_voice_answer(
         if parts:
             return " ".join(parts)
 
-    # 4. Ordinal product lookup in conversational memory (e.g. "Combien coûte le deuxième ?")
+    # 4. Superlative CRM service inquiries (e.g. "Quel service est le plus cher ?")
+    if is_superlative_service_question(transcript):
+        from backend.app.services.company_intelligence_service import CompanyIntelligenceService
+
+        profile = CompanyIntelligenceService(db).get_profile(company_id)
+        services = list(getattr(profile, "configured_crm_services", ()) or ())
+        priced_services = []
+        for s in services:
+            p = s.get("price")
+            if p is not None:
+                try:
+                    val = float(str(p).replace("$", "").replace("€", "").strip())
+                    priced_services.append((val, s))
+                except (ValueError, TypeError):
+                    pass
+        if priced_services:
+            priced_services.sort(key=lambda x: x[0], reverse=True)
+            top_val, top_s = priced_services[0]
+            curr = top_s.get("currency") or getattr(profile, "currency_code", "CAD")
+            dur = top_s.get("duration_minutes")
+            dur_str = f" d'une durée de {dur} minutes" if dur else ""
+            name = top_s.get("name", "Service")
+            loc = locale.lower()
+            if loc.startswith("fr"):
+                return f"Notre prestation la plus chère est {name} au tarif de {top_val:g} {curr}{dur_str}."
+            elif loc.startswith("es"):
+                return f"Nuestro servicio más exclusivo es {name} a {top_val:g} {curr}."
+            elif loc.startswith("ro"):
+                return f"Cel mai scump serviciu al nostru este {name} la {top_val:g} {curr}."
+            return f"Our most expensive service is {name} at {top_val:g} {curr}."
+
+    # 5. Ordinal product lookup in conversational memory (e.g. "Combien coûte le deuxième ?")
     is_ord, ord_idx = is_ordinal_product_question(transcript)
     if is_ord and call is not None:
         presented = list((call.source_context or {}).get("presented_catalog_products") or [])
         if presented:
             return spoken_ordinal_product_answer(presented, ord_idx, locale=locale)
 
-    # 5. Superlative product inquiries (e.g. "Quelle planche est la plus chère ?")
+    # 6. Superlative product inquiries (e.g. "Quelle planche est la plus chère ?")
     is_sup, sup_cat = is_superlative_product_question(transcript)
     if is_sup:
         from backend.app.services.company_intelligence_service import CompanyIntelligenceService
@@ -1126,25 +1214,28 @@ def resolve_direct_voice_answer(
             currency=getattr(profile, "currency_code", None),
         )
 
-    # 6. Catalog pagination (e.g. "Quels sont les cinq prochains produits ?")
+    # 7. Catalog pagination (e.g. "Quels sont les cinq prochains produits ?")
     is_page, req_count = is_catalog_pagination_question(transcript)
     if is_page:
         from backend.app.services.company_intelligence_service import CompanyIntelligenceService
 
-        profile = CompanyIntelligenceService(db).get_profile(company_id)
-        retail_enabled = bool(getattr(profile, "has_retail_commerce", False)) or "retail" in set(getattr(profile, "active_modules", ()) or ())
-        products = list(getattr(profile, "public_products", ()) or ())
-        current_offset = int((call.source_context or {}).get("catalog_pagination_offset", 3)) if call is not None else 3
-        return spoken_catalog_answer(
-            products,
-            retail_enabled=retail_enabled,
-            locale=locale,
-            currency=getattr(profile, "currency_code", None),
-            query=transcript,
-            offset=current_offset,
-            limit=req_count,
-            call=call,
-        )
+        presented = list((call.source_context or {}).get("presented_catalog_products") or []) if call is not None else []
+        has_catalog_context = bool(presented) or any(w in transcript.lower() for w in ("produit", "article", "catalogue", "planche", "accessoire", "product", "item"))
+        if has_catalog_context:
+            profile = CompanyIntelligenceService(db).get_profile(company_id)
+            retail_enabled = bool(getattr(profile, "has_retail_commerce", False)) or "retail" in set(getattr(profile, "active_modules", ()) or ())
+            products = list(getattr(profile, "public_products", ()) or ())
+            current_offset = int((call.source_context or {}).get("catalog_pagination_offset", 3)) if call is not None else 3
+            return spoken_catalog_answer(
+                products,
+                retail_enabled=retail_enabled,
+                locale=locale,
+                currency=getattr(profile, "currency_code", None),
+                query=transcript,
+                offset=current_offset,
+                limit=req_count,
+                call=call,
+            )
 
     # 7. Open catalog check
     if is_open_catalog_question(transcript):

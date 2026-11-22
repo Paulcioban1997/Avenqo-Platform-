@@ -586,19 +586,44 @@ def test_gpt_live_1_1_billing_no_double_charging():
     catalog = voice_pricing_catalog()
     entry = catalog.lookup("openai", "gpt-live-1.1")
     assert entry is not None
-    # Input audio per second is $0.05 / 60s
+    # Active audio rate: $0.05 / 60s
     assert entry.audio_input_cost_per_second_usd == Decimal("0.0008333")
-    # Check 60s cost computation
-    usage_60s = LLMUsage(
+    # Idle/standby audio rate: $0.02 / 60s
+    assert entry.audio_idle_cost_per_second_usd == Decimal("0.0003333")
+
+    # 1. 60s active speech: ~$0.05
+    usage_active = LLMUsage(
         provider="openai",
         model="gpt-live-1.1",
         input_tokens=0,
         output_tokens=0,
         audio_input_seconds=Decimal("60"),
     )
-    cost = entry.cost_for(usage_60s)
-    # 60 * 0.0008333 = 0.049998 (~0.05 USD)
-    assert round(cost, 2) == Decimal("0.05")
+    cost_active = entry.cost_for(usage_active)
+    assert round(cost_active, 2) == Decimal("0.05")
+
+    # 2. 60s idle/listening: ~$0.02
+    usage_idle = LLMUsage(
+        provider="openai",
+        model="gpt-live-1.1",
+        input_tokens=0,
+        output_tokens=0,
+        audio_idle_seconds=Decimal("60"),
+    )
+    cost_idle = entry.cost_for(usage_idle)
+    assert round(cost_idle, 2) == Decimal("0.02")
+
+    # 3. Combined 60s active + 60s idle: ~$0.07 without double-counting
+    usage_combined = LLMUsage(
+        provider="openai",
+        model="gpt-live-1.1",
+        input_tokens=0,
+        output_tokens=0,
+        audio_input_seconds=Decimal("60"),
+        audio_idle_seconds=Decimal("60"),
+    )
+    cost_combined = entry.cost_for(usage_combined)
+    assert round(cost_combined, 2) == Decimal("0.07")
 
 
 def test_call_policy_experimental_fields_and_production_guard():
@@ -822,6 +847,204 @@ async def test_pin_handover_reprompt_unique_action_id_and_mark():
     # 4. Safe prompt duration is set
     assert bridge._pin_prompt_safe_duration >= 4.0
     assert bridge._pin_prompt_spoken is True
+
+
+def test_conversational_phrase_disambiguation():
+    from backend.app.voice.direct_answers import (
+        is_ordinal_product_question,
+        is_catalog_pagination_question,
+        is_superlative_product_question,
+        is_superlative_service_question,
+        is_open_catalog_question,
+    )
+
+    # 1. "One second, please" / "wait a second" must NOT route as ordinal #2
+    assert is_ordinal_product_question("One second, please") == (False, 0)
+    assert is_ordinal_product_question("wait a second") == (False, 0)
+    assert is_ordinal_product_question("just a second") == (False, 0)
+    assert is_ordinal_product_question("attendez une seconde s'il vous plaît") == (False, 0)
+    assert is_ordinal_product_question("un instant") == (False, 0)
+
+    # Valid ordinals still route correctly
+    assert is_ordinal_product_question("Combien coûte le deuxième ?") == (True, 2)
+    assert is_ordinal_product_question("Quel est le prix du 3e produit ?") == (True, 3)
+    assert is_ordinal_product_question("How much is the second one?") == (True, 2)
+
+    # 2. "What next?" / "Et ensuite ?" must NOT trigger catalog pagination
+    assert is_catalog_pagination_question("What next?") == (False, 0)
+    assert is_catalog_pagination_question("What should I do next?") == (False, 0)
+    assert is_catalog_pagination_question("Et ensuite ?") == (False, 0)
+    assert is_catalog_pagination_question("Que faire ensuite ?") == (False, 0)
+
+    # Valid catalog pagination still routes correctly
+    assert is_catalog_pagination_question("Quels sont les cinq prochains produits ?") == (True, 5)
+    assert is_catalog_pagination_question("les 5 prochains") == (True, 5)
+    assert is_catalog_pagination_question("the next 3 items") == (True, 3)
+
+    # 3. "Quel service est le plus cher ?" must NOT route as retail product
+    assert is_superlative_product_question("Quel service est le plus cher ?") == (False, None)
+    assert is_superlative_product_question("Quelle prestation est la plus chère ?") == (False, None)
+    assert is_superlative_service_question("Quel service est le plus cher ?") is True
+    assert is_superlative_service_question("Quelle est votre prestation la plus chère ?") is True
+
+    # Valid retail product superlative still routes correctly
+    assert is_superlative_product_question("Quelle planche est la plus chère ?") == (True, "planche")
+    assert is_superlative_product_question("Quel accessoire est le plus cher ?") == (True, "accessoire")
+
+    # 4. "Quand est mon prochain rendez-vous ?" must stay in CRM
+    assert is_catalog_pagination_question("Quand est mon prochain rendez-vous ?") == (False, 0)
+    assert is_open_catalog_question("Quand est mon prochain rendez-vous ?") is False
+
+
+@pytest.mark.asyncio
+async def test_telnyx_streaming_mark_delayed_until_audio_deltas_complete():
+    """Verify that in a streaming session, the PIN mark is enqueued in _output strictly
+    AFTER all audio deltas are drained and response.done completes, never prematurely in _execute."""
+    events_queue: asyncio.Queue = asyncio.Queue()
+
+    class StreamingAdapter:
+        def __init__(self):
+            self.spoken_texts = []
+
+        async def speak(self, text):
+            self.spoken_texts.append(text)
+
+        async def interrupt(self):
+            pass
+
+        async def clear_input(self):
+            pass
+
+        async def events(self):
+            while True:
+                ev = await events_queue.get()
+                if ev is None:
+                    break
+                yield ev
+
+    mock_socket = MagicMock()
+    mock_socket.send_json = AsyncMock()
+    adapter = StreamingAdapter()
+    begin_pin_mock = AsyncMock(return_value={"success": True})
+
+    bridge = TelnyxMediaBridge(
+        socket=mock_socket,
+        adapter=adapter,
+        locale="fr-CA",
+        validate_start=AsyncMock(),
+        authorize=AsyncMock(),
+        execute_turn=AsyncMock(),
+        begin_pin=begin_pin_mock,
+        poll_pin=AsyncMock(return_value="collecting"),
+    )
+
+    # 1. Start _drain_provider_events in background
+    drain_task = asyncio.create_task(bridge._drain_provider_events())
+
+    # 2. Execute turn with auth_required
+    auth_turn_result = {
+        "status": "success",
+        "answer": "Veuillez saisir votre code NIP.",
+        "auth_required": True,
+    }
+    bridge._pin_turn = "turn-pin-streaming-1"
+    bridge.input_paused = True
+
+    # Call _execute directly
+    bridge.execute_turn = AsyncMock(return_value=auth_turn_result)
+    await bridge._execute("turn-pin-streaming-1", "coaching", bridge.epoch)
+
+    # CRITICAL CHECK: In streaming mode, _output must NOT yet contain the mark!
+    # Because audio frames haven't arrived from provider yet!
+    assert bridge._output.empty(), "Mark MUST NOT be enqueued before provider audio deltas are generated!"
+    assert bridge._pin_started is False
+
+    # 3. Simulate audio deltas streaming from provider
+    import base64
+    delta_event = MagicMock()
+    delta_event.type = "response.output_audio.delta"
+    delta_event.response_id = "resp-123"
+    delta_event.delta = base64.b64encode(b"\x00" * 1200).decode("utf-8")
+    bridge.response_id = "resp-123"
+    bridge.response_epoch = bridge.epoch
+    bridge._responses["resp-123"] = ("turn-pin-streaming-1", bridge.epoch, None)
+
+    await events_queue.put(delta_event)
+    await asyncio.sleep(0.02)
+
+    # Audio frames are now in _output, but NO mark yet
+    assert not bridge._output.empty()
+    queued_epoch, first_frame = bridge._output.get_nowait()
+    assert isinstance(first_frame, bytes), "First queued items must be raw audio PCM/ULAW frames!"
+
+    # 4. Now provider signals response.done
+    done_event = MagicMock()
+    done_event.type = "response.done"
+    done_event.response = MagicMock()
+    done_event.response.id = "resp-123"
+    done_event.response.status = "completed"
+
+    await events_queue.put(done_event)
+    await asyncio.sleep(0.02)
+
+    # Now the mark event must be present at the tail of _output
+    mark_found = False
+    while not bridge._output.empty():
+        _ep, item = bridge._output.get_nowait()
+        if isinstance(item, dict) and item.get("event") == "mark":
+            mark_found = True
+            assert item["mark"]["name"].startswith("pin-prompt:")
+            break
+
+    assert mark_found is True, "Mark MUST be enqueued strictly upon response.done after all audio deltas!"
+
+    # Clean up background task
+    await events_queue.put(None)
+    await drain_task
+
+
+@pytest.mark.asyncio
+async def test_unauthenticated_caller_marketing_coaching_triggers_pin_challenge(db_session: Session):
+    import hashlib
+    from backend.app.voice.telnyx_media import PublicInboundConversation, media_call_context
+    from backend.app.services.company_intelligence_service import CompanyIntelligenceService
+
+    # Setup company and call
+    company, voice_config, call = _make_test_company_and_call(
+        db_session,
+        name="Ski Shop Test",
+        source_context={"dispatcher_routing": True},
+    )
+    from backend.app.models.voice import VoiceCallerCredential
+    cred = VoiceCallerCredential(
+        id=uuid4(),
+        company_id=company.id,
+        principal_type="USER",
+        principal_id=uuid4(),
+        phone_number=call.caller_phone,
+        pin_hash=hashlib.sha256("123456".encode()).hexdigest(),
+        enabled=True,
+    )
+    db_session.add(cred)
+    db_session.commit()
+
+    # 1. Unauthenticated caller asking for marketing acquisition strategy
+    conversation = PublicInboundConversation(
+        db_session,
+        Settings(TELNYX_MEDIA_ENABLED=True, TELNYX_MEDIA_INBOUND_ENABLED=True),
+        call.id,
+    )
+    answer = conversation.public_answer("Comment attirer plus de clients pour mon commerce ?")
+
+    # MUST require PIN authentication
+    assert answer.get("auth_required") is True
+    assert "réservés aux employés authentifiés" in answer["answer"] or "NIP" in answer["answer"]
+
+    # Pending auth query must be saved in call.source_context for execution post-authentication
+    db_session.refresh(call)
+    assert call.source_context is not None
+    assert call.source_context.get("pending_auth_query") == "Comment attirer plus de clients pour mon commerce ?"
+
 
 
 
