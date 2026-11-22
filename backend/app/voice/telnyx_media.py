@@ -14,7 +14,7 @@ import json
 import re
 import unicodedata
 import logging
-from typing import Any, Awaitable, Callable, cast
+from typing import Any, Awaitable, Callable, Optional, Tuple, cast
 from uuid import UUID, uuid4
 
 import jwt
@@ -50,7 +50,7 @@ from backend.app.services.company_intelligence_service import CompanyIntelligenc
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.voice.adapters import OpenAIRealtimeAudioAdapter
 from backend.app.voice.messages import apply_spoken_pronunciation
-from backend.app.voice.turn_control import adjudicate_transcript
+from backend.app.voice.turn_control import adjudicate_transcript, is_playback_echo
 from backend.app.voice.auth import VoiceCallerAuth, utc, normalized_phone
 from backend.app.voice.usage import VoiceUsageLedger, voice_pricing_catalog
 from backend.app.voice.service import resolve_voice_source_context
@@ -324,6 +324,50 @@ _RE_PICKUP = re.compile(
 _RE_BOOKING = re.compile(
     r"rendez[- .]vous|appointment|booking|disponibilit|disponible|availability|available"
 )
+
+_RE_SESSION_RETENTION = re.compile(
+    r"\b(non\b.*(ne\s*passe\s*pas|pas\s*changer|pas\s*passer|garde|reste))"
+    r"|\b(ne\s*passe\s*pas|ne\s*pas\s*changer|pas\s*changer\s*d\W*employe|pas\s*passer\s*le\s*telephone)\b"
+    r"|\b(je\s*vais\s*rester|je\s*reste|rester\s*moi\W*meme|reviens\s*a|garde\s*ma\s*session|garde\s*la\s*session|garde\s*mon\s*compte|c'?est\s*toujours\s*moi|garder\s*la\s*session)\b"
+    r"|\b(no\s*voy\s*a\s*pasar|no\s*cambiar|no\s*le\s*paso|me\s*quedo(\s*yo)?|sigo\s*siendo|mantener\s*sesion|conservar\s*sesion)\b"
+    r"|\b(nu\s*schimb|nu\s*dau\s*telefonul|raman(\s*eu)?|pastreaza\s*sesiunea)\b"
+    r"|\b(do\s*not\s*pass|don'?t\s*pass|keep\s*my\s*session|i\s*will\s*stay|i'?ll\s*stay|remain)\b"
+)
+
+_RE_PIN_CANCELLATION = re.compile(
+    r"\b(annuler|annule|annulez|laisse\s*tomber|non\s*merci|arrete|arret|stop|quitter|abandonner|pas\s*de\s*nip|annule\s*le\s*code|annule\s*le\s*nip|cancel|abort|quit|never\s*mind|no\s*thanks|cancelar|dejarlo|anulare|anuleaza|renunta)\b"
+    r"|\b(non\b.{0,20}\b(veux\s*pas|pas\s*de\s*code|pas\s*de\s*nip|reviens|reste))\b"
+)
+
+_RE_HANDOVER_POSITIVE = re.compile(
+    r"\b(changer\s*d\W*employe|change\s*employe|autre\s*employe|nouvel\s*employe|passe\s*mon\s*collegue|passe\s*le\s*telephone|je\s*te\s*passe|switch\s*employee|change\s*employee|pass\s*the\s*phone|hand\s*over|schimba\s*angajatul|iti\s*dau\s*colegul|pasez\s*telefonul|cambiar\s*de\s*empleado|te\s*paso\s*a\s*mi\s*colega)\b"
+)
+
+
+def is_session_retention_intent(text: str) -> bool:
+    if not isinstance(text, str) or not text.strip():
+        return False
+    norm = "".join(c for c in unicodedata.normalize("NFKD", text.casefold()) if not unicodedata.combining(c))
+    return bool(_RE_SESSION_RETENTION.search(norm))
+
+
+def is_pin_challenge_cancellation(text: str) -> bool:
+    if not isinstance(text, str) or not text.strip():
+        return False
+    norm = "".join(c for c in unicodedata.normalize("NFKD", text.casefold()) if not unicodedata.combining(c))
+    return bool(_RE_PIN_CANCELLATION.search(norm))
+
+
+def is_handover_positive_intent(text: str) -> bool:
+    if not isinstance(text, str) or not text.strip():
+        return False
+    norm = "".join(c for c in unicodedata.normalize("NFKD", text.casefold()) if not unicodedata.combining(c))
+    if is_session_retention_intent(norm):
+        return False
+    neg_prefix = r"\b(ne\s*pas|pas\s*de|ne\s*veux\s*pas|pas\s*question|jamais|don'?t|do\s*not|no\s*quiero|no\s*voy\s*a|nu\s*vreau)\s*"
+    if re.search(neg_prefix + r".{0,15}" + _RE_HANDOVER_POSITIVE.pattern, norm):
+        return False
+    return bool(_RE_HANDOVER_POSITIVE.search(norm))
 
 
 class PublicInboundConversation:
@@ -755,9 +799,23 @@ class PublicInboundConversation:
         if gather_status == "authenticated":
             auth = VoiceCallerAuth(self.db, self.settings).valid_session(call)
             return "authenticated" if auth is not None and auth.caller_type in {"OWNER", "EMPLOYEE"} else "refused"
+        if gather_status == "cancelled":
+            return "cancelled"
         if gather_status == "retry_needed":
             return "retry_needed"
         return "refused"
+
+    def cancel_pin(self) -> None:
+        call, _config, _company = self.context()
+        call.pin_challenge_hash = None
+        call.pin_challenge_expires_at = None
+        existing_ctx = dict(call.source_context or {})
+        existing_ctx.pop("handover_revoked", None)
+        existing_ctx["handover_cancelled"] = True
+        existing_ctx["public_fallback"] = True
+        existing_ctx["pin_gather_status"] = "cancelled"
+        call.source_context = existing_ctx
+        self.db.commit()
 
     def reset_pin_retry(self) -> None:
         call, _config, _company = self.context()
@@ -882,6 +940,7 @@ class TelnyxMediaBridge:
         begin_pin: Callable[[str], Awaitable[dict]] | None = None,
         poll_pin: Callable[[], Awaitable[str]] | None = None,
         reset_pin_retry: Callable[[], Awaitable[None]] | None = None,
+        cancel_pin: Callable[[], Awaitable[None]] | None = None,
         consume_pending_query: Callable[[], Awaitable[str | None]] | None = None,
         hangup_call: Callable[[], Awaitable[None]] | None = None,
         max_output_queue: int = 64,
@@ -905,6 +964,7 @@ class TelnyxMediaBridge:
         self.begin_pin: Callable[[str], Awaitable[dict]] | None = begin_pin
         self.poll_pin: Callable[[], Awaitable[str]] | None = poll_pin
         self.reset_pin_retry: Callable[[], Awaitable[None]] | None = reset_pin_retry
+        self.cancel_pin: Callable[[], Awaitable[None]] | None = cancel_pin
         self.consume_pending_query: Callable[[], Awaitable[str | None]] | None = consume_pending_query
         self.hangup_call: Callable[[], Awaitable[None]] | None = hangup_call
         self.allow_natural_interruptions = bool(allow_natural_interruptions)
@@ -1067,8 +1127,13 @@ class TelnyxMediaBridge:
         )
         session_key = str(self.stream_id or "default")
 
-        # Co-operatively abort any in-flight Central AI execution task
-        if self._current_turn_task is not None and not self._current_turn_task.done():
+        # Co-operatively abort any in-flight Central AI execution task (except current task)
+        curr_task = asyncio.current_task()
+        if (
+            self._current_turn_task is not None
+            and self._current_turn_task is not curr_task
+            and not self._current_turn_task.done()
+        ):
             self._current_turn_task.cancel()
 
         old_epoch = self.epoch
@@ -1267,7 +1332,7 @@ class TelnyxMediaBridge:
             if result.get("auth_required"):
                 if self.begin_pin is None or self.poll_pin is None:
                     raise PermissionError("Keypad authentication unavailable")
-                await self.interrupt(pause_input=True)
+                await self.interrupt(pause_input=False)
                 epoch = self.epoch
                 self._pin_turn = item_id
                 self._pin_started = False
@@ -1302,6 +1367,7 @@ class TelnyxMediaBridge:
                     self.central_ai_replies_queued += 1
                     logger.info("Voice conversation reply submitted to TTS; count=%s", self.central_ai_replies_queued)
                     if result.get("auth_required"):
+                        self._last_spoken_prompt = self._spoken(result["answer"])
                         self._pin_mark = "pin-prompt:" + hashlib.sha256(item_id.encode()).hexdigest()[:24]
                         self._pin_prompt_safe_duration = max(len(str(result.get("answer") or "")) * 0.075, 4.0)
                         if not getattr(self, "_draining_events", False):
@@ -1447,8 +1513,10 @@ class TelnyxMediaBridge:
                 self._last_activity = time.monotonic()
                 logger.info("Caller speech started (epoch=%s)", self.epoch)
                 self.telemetry["speech_detected"] = True
-                # Phone echo trips VAD as soon as playback starts. Clearing the
-                # Telnyx buffer here drops audio the caller never hears.
+                # Phone echo trips VAD as soon as playback starts. Do NOT send Telnyx clear
+                # or interrupt audio on raw speech_started during PIN prompt, as acoustic echo
+                # would cut off the prompt immediately. Instead, cancellation and verbal
+                # barge-in are safely adjudicated on transcription completion.
             elif kind == "input_audio_buffer.speech_stopped" and not self.input_paused:
                 self._last_speech_stopped_at = time.monotonic()
                 logger.info("Caller speech stopped (epoch=%s)", self.epoch)
@@ -1469,6 +1537,27 @@ class TelnyxMediaBridge:
                 self._seen_items.add(item_id)
                 self.telemetry["transcription_received"] = True
                 self.telemetry["final_state"] = "PROCESSING"
+
+                if self._pin_turn is not None:
+                    last_prompt = getattr(self, "_last_spoken_prompt", None)
+                    if last_prompt and is_playback_echo(transcript, last_prompt):
+                        logger.info("Acoustic echo detected during PIN challenge ignored (item_id=%s, length=%d)", item_id, len(transcript))
+                        continue
+                    if is_pin_challenge_cancellation(transcript) or is_session_retention_intent(transcript):
+                        logger.info("Caller cancelled PIN challenge verbally (item_id=%s, length=%d)", item_id, len(transcript))
+                        playing = (
+                            self.response_id is not None
+                            or self.pending_epoch is not None
+                            or not self._output.empty()
+                            or self.phase == "PLAYING"
+                        )
+                        if playing:
+                            await self.interrupt(reason="pin_challenge_verbal_cancellation")
+                        await self._finish_pin("cancelled")
+                        continue
+                    else:
+                        logger.info("Non-cancellation speech during PIN challenge ignored (item_id=%s, length=%d)", item_id, len(transcript))
+                        continue
                 if str(item_id) not in self._turn_metrics:
                     self._turn_metrics[str(item_id)] = {
                         "transcript_final_at": now_t,
@@ -1719,7 +1808,12 @@ class TelnyxMediaBridge:
                         await self._send_inbound_audio(pcm)
                 return
             if kind == "dtmf":
-                await self.interrupt(pause_input=True)
+                dtmf_digit = str(event.get("digit") or (event.get("dtmf", {}) if isinstance(event.get("dtmf"), dict) else {}).get("digit") or "")
+                if dtmf_digit == "*" and self._pin_turn is not None:
+                    logger.info("Caller cancelled PIN challenge via DTMF '*' in media stream")
+                    await self._finish_pin("cancelled")
+                    continue
+                await self.interrupt(pause_input=False)
                 continue
             if kind == "mark":
                 marker = event.get("mark")
@@ -1765,14 +1859,22 @@ class TelnyxMediaBridge:
         self._pin_deadline = None
         self._pin_prompt_spoken = False
         self._pin_prompt_finish_time = None
+        self._pin_retry_count = 0
+        playing = (
+            self.response_id is not None
+            or self.pending_epoch is not None
+            or not self._output.empty()
+            or self.phase == "PLAYING"
+        )
+        if playing:
+            await self.interrupt(reason=f"pin_{status}")
         await self.adapter.clear_input()
         if status == "authenticated":
             await self.authorize()
-        pending_query = None
-        if status == "authenticated" and self.consume_pending_query is not None:
-            pending_query = await self.consume_pending_query()
+            pending_query = None
+            if self.consume_pending_query is not None:
+                pending_query = await self.consume_pending_query()
 
-        if status == "authenticated":
             if pending_query:
                 await self._speak_system(
                     "pin-result:" + hashlib.sha256(str(item_id).encode()).hexdigest()[:24],
@@ -1790,10 +1892,37 @@ class TelnyxMediaBridge:
                     "pin-result:" + hashlib.sha256(str(item_id).encode()).hexdigest()[:24],
                     voice_auth_message(self.locale, 1),
                 )
-        else:
+        elif status == "cancelled":
+            if self.cancel_pin is not None:
+                await self.cancel_pin()
+            loc = resolve_locale(self.locale).casefold()
+            if loc.startswith("fr"):
+                cancel_msg = "Saisie du NIP annulée. Vous êtes en mode accueil public. Que puis-je faire pour vous ?"
+            elif loc.startswith("es"):
+                cancel_msg = "Entrada de PIN cancelada. Está en modo de recepción pública. ¿En qué puedo ayudarle?"
+            elif loc.startswith("ro"):
+                cancel_msg = "Introducerea codului PIN a fost anulată. Sunteți în modul de primire public. Cu ce vă pot ajuta?"
+            else:
+                cancel_msg = "PIN entry cancelled. You are in public reception mode. How can I help you?"
             await self._speak_system(
                 "pin-result:" + hashlib.sha256(str(item_id).encode()).hexdigest()[:24],
-                voice_auth_message(self.locale, 2),
+                cancel_msg,
+            )
+        else:
+            if self.cancel_pin is not None:
+                await self.cancel_pin()
+            loc = resolve_locale(self.locale).casefold()
+            if loc.startswith("fr"):
+                refused_msg = "Nombre maximal de tentatives atteint. La saisie du NIP est abandonnée. Vous êtes en mode accueil public. Que souhaitez-vous savoir ?"
+            elif loc.startswith("es"):
+                refused_msg = "Número máximo de intentos alcanzado. Se cancela la entrada de PIN. Está en modo de recepción pública. ¿Qué desea consultar?"
+            elif loc.startswith("ro"):
+                refused_msg = "Numărul maxim de încercări a fost atins. Introducerea codului PIN este abandonată. Sunteți în modul public. Cu ce vă pot ajuta?"
+            else:
+                refused_msg = "Maximum attempts reached. PIN entry cancelled. You are in public reception mode. How can I help you?"
+            await self._speak_system(
+                "pin-result:" + hashlib.sha256(str(item_id).encode()).hexdigest()[:24],
+                refused_msg,
             )
         await asyncio.sleep(0.2)
         await self.adapter.clear_input()
@@ -1817,14 +1946,19 @@ class TelnyxMediaBridge:
             self._pin_mark = None
             if self.reset_pin_retry is not None:
                 await self.reset_pin_retry()
-            reprompt = (
-                "Aucun chiffre n'a été reçu. Veuillez saisir votre code NIP sur le clavier de votre téléphone."
-                if resolve_locale(self.locale).startswith("fr")
-                else "No digits were received. Please enter your PIN on your phone keypad."
-            )
+            loc = resolve_locale(self.locale).casefold()
+            if loc.startswith("fr"):
+                reprompt = "Aucun chiffre n'a été reçu. Veuillez saisir votre code NIP sur le clavier de votre téléphone, ou appuyez sur étoile pour annuler et revenir à l'accueil."
+            elif loc.startswith("es"):
+                reprompt = "No se recibió ningún dígito. Ingrese su PIN en el teclado de su teléfono, o presione asterisco para cancelar y volver a la recepción."
+            elif loc.startswith("ro"):
+                reprompt = "Niciun număr nu a fost primit. Vă rugăm să introduceți PIN-ul sau apăsați stea pentru a anula și a reveni la recepție."
+            else:
+                reprompt = "No digits were received. Please enter your PIN on your phone keypad, or press star to cancel and return to reception."
             new_pin_turn = f"{self._pin_turn or 'pin'}-retry-{self._pin_retry_count}"
             self._pin_turn = new_pin_turn
             item_id = f"pin-reprompt:{new_pin_turn}"
+            self._last_spoken_prompt = reprompt
             await self._speak_system(item_id, reprompt)
             self._pin_mark = "pin-prompt:" + hashlib.sha256(item_id.encode()).hexdigest()[:24]
             self._pin_prompt_safe_duration = max(len(reprompt) * 0.075, 4.0)
@@ -1856,7 +1990,7 @@ class TelnyxMediaBridge:
                         await self._finish_pin("refused")
             if self._pin_started and self.poll_pin is not None:
                 status = await self.poll_pin()
-                if status in {"authenticated", "refused"}:
+                if status in {"authenticated", "refused", "cancelled"}:
                     await self._finish_pin(status)
                 elif status == "retry_needed":
                     await self._reprompt_pin()
@@ -2133,6 +2267,95 @@ def media_session_opening_line(
     return None
 
 
+def authorize_media_session(
+    db: Session,
+    settings: Settings,
+    call_id: Any,
+    plan: str,
+    *,
+    public_mode: bool = False,
+    principal_id: Optional[str] = None,
+    auth_epoch: Optional[str] = None,
+    ledger: Optional[VoiceUsageLedger] = None,
+    bridge: Optional[Any] = None,
+    claim: Optional[Any] = None,
+    locale: str = "fr-CA",
+    usage_service: Optional[Any] = None,
+    on_settlement: Optional[Any] = None,
+) -> Tuple[bool, Optional[str], Optional[str], Optional[VoiceUsageLedger]]:
+    """Authorize a media stream session, supporting staff continuity, handover revocation, and public fallback."""
+    current_call, current_config, current_company = media_transport_context(
+        db, settings, call_id, allow_statuses=_SESSION_MEDIA_STATUSES,
+    )
+    from backend.app.voice.call_policy import check
+    check(db, settings, current_call)
+    if ModuleEntitlementService(db).get_company_plan(TenantContext(current_company.id)).code.value != plan:
+        raise PermissionError("Billing plan changed during media session")
+    try:
+        _call, _config, _company, current_user, _permissions, current_auth = media_call_context(
+            db, settings, call_id, allow_statuses=_SESSION_MEDIA_STATUSES,
+        )
+    except PermissionError:
+        ctx = current_call.source_context or {}
+        is_handover_pending = bool(ctx.get("handover_revoked"))
+        is_public_fallback = bool(
+            ctx.get("public_fallback")
+            or ctx.get("handover_cancelled")
+            or ctx.get("pin_gather_status") in {"cancelled", "refused"}
+        )
+        if is_handover_pending or is_public_fallback:
+            if is_public_fallback:
+                public_mode = True
+            if principal_id is not None:
+                principal_id = None
+                auth_epoch = None
+            if ledger is not None:
+                ledger.attach_identity(None, None)
+            if bridge is not None and hasattr(bridge.adapter, "update_staff_identity"):
+                bridge.adapter.update_staff_identity(False, None, None)
+        if principal_id is not None or (not public_mode and not is_handover_pending and not is_public_fallback):
+            raise
+        return public_mode, principal_id, auth_epoch, ledger
+
+    current_epoch = utc(current_auth.authenticated_at).isoformat()
+    if principal_id is not None:
+        if current_user.id != principal_id or current_epoch != auth_epoch:
+            raise PermissionError("Caller authentication changed")
+        return public_mode, principal_id, auth_epoch, ledger
+    if claim is None:
+        return public_mode, principal_id, auth_epoch, ledger
+    if current_call.central_conversation_id is None:
+        conversation = ConversationService(db).create(
+            current_company.id, current_user.id, f"Voice call {current_call.id}", current_call.locale or locale
+        )
+        current_call.central_conversation_id = conversation.id
+        db.commit()
+    else:
+        ConversationService(db).get(current_company.id, current_user.id, current_call.central_conversation_id)
+    principal_id = current_user.id
+    auth_epoch = current_epoch
+    if ledger is None and usage_service is not None:
+        ledger = VoiceUsageLedger(
+            usage_service,
+            voice_pricing_catalog(settings.ai_model_rate_card),
+            company_id=current_company.id,
+            user_id=current_user.id,
+            conversation_id=current_call.central_conversation_id,
+            plan_code=plan,
+            request_namespace=call_id,
+            on_settlement=on_settlement,
+        )
+        if bridge is not None:
+            bridge.use_ledger(ledger)
+    elif ledger is not None:
+        ledger.attach_identity(current_user.id, current_call.central_conversation_id)
+    if bridge is not None and hasattr(bridge.adapter, "update_staff_identity"):
+        user_role = str(getattr(current_user, "role", "Employee"))
+        bridge.adapter.update_staff_identity(True, current_user.first_name, user_role)
+
+    return public_mode, principal_id, auth_epoch, ledger
+
+
 async def telnyx_media_socket(
     websocket: WebSocket, call_id: UUID, db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings), service=Depends(get_central_ai_service),
@@ -2181,49 +2404,22 @@ async def telnyx_media_socket(
     bridge: TelnyxMediaBridge
 
     async def authorize() -> None:
-        nonlocal ledger, principal_id, auth_epoch
-        current_call, current_config, current_company = media_transport_context(
-            db, settings, call_id, allow_statuses=_SESSION_MEDIA_STATUSES,
+        nonlocal ledger, principal_id, auth_epoch, public_mode
+        public_mode, principal_id, auth_epoch, ledger = authorize_media_session(
+            db,
+            settings,
+            call_id,
+            plan,
+            public_mode=public_mode,
+            principal_id=principal_id,
+            auth_epoch=auth_epoch,
+            ledger=ledger,
+            bridge=bridge,
+            claim=claim,
+            locale=locale,
+            usage_service=service.usage_service,
+            on_settlement=record_call_cost,
         )
-        from backend.app.voice.call_policy import check
-        check(db, settings, current_call)
-        if ModuleEntitlementService(db).get_company_plan(TenantContext(current_company.id)).code.value != plan:
-            raise PermissionError("Billing plan changed during media session")
-        try:
-            _call, _config, _company, current_user, _permissions, current_auth = media_call_context(
-                db, settings, call_id, allow_statuses=_SESSION_MEDIA_STATUSES,
-            )
-        except PermissionError:
-            is_handover_pending = bool((current_call.source_context or {}).get("handover_revoked"))
-            if principal_id is not None or (not public_mode and not is_handover_pending):
-                raise
-            return
-        current_epoch = utc(current_auth.authenticated_at).isoformat()
-        if principal_id is not None:
-            if current_user.id != principal_id or current_epoch != auth_epoch:
-                raise PermissionError("Caller authentication changed")
-            return
-        if claim is None:
-            return
-        if current_call.central_conversation_id is None:
-            conversation = ConversationService(db).create(current_company.id, current_user.id, f"Voice call {current_call.id}", current_call.locale or locale)
-            current_call.central_conversation_id = conversation.id
-            db.commit()
-        else:
-            ConversationService(db).get(current_company.id, current_user.id, current_call.central_conversation_id)
-        principal_id = current_user.id
-        auth_epoch = current_epoch
-        if ledger is None:
-            ledger = VoiceUsageLedger(service.usage_service, voice_pricing_catalog(settings.ai_model_rate_card),
-                company_id=current_company.id, user_id=current_user.id, conversation_id=current_call.central_conversation_id,
-                plan_code=plan, request_namespace=call_id,
-                on_settlement=record_call_cost)
-            bridge.use_ledger(ledger)
-        else:
-            ledger.attach_identity(current_user.id, current_call.central_conversation_id)
-        if bridge is not None and hasattr(bridge.adapter, "update_staff_identity"):
-            user_role = str(getattr(current_user, "role", "Employee"))
-            bridge.adapter.update_staff_identity(True, current_user.first_name, user_role)
 
     async def validate_start(start: dict) -> None:
         nonlocal ledger, claim
@@ -2272,12 +2468,12 @@ async def telnyx_media_socket(
         await authorize()
 
     async def execute_turn(item_id: str, transcript: str) -> dict:
-        nonlocal ledger, principal_id, auth_epoch
+        nonlocal ledger, principal_id, auth_epoch, public_mode
+        current_call: VoiceCall | None = db.get(VoiceCall, call_id)
         # Synchronize employee identity if session authenticated via PIN
         if principal_id is None:
-            c_call = db.get(VoiceCall, call_id)
-            if c_call is not None and c_call.authenticated_user_id is not None:
-                valid_auth = VoiceCallerAuth(db, settings).valid_session(c_call)
+            if current_call is not None and current_call.authenticated_user_id is not None:
+                valid_auth = VoiceCallerAuth(db, settings).valid_session(current_call)
                 if valid_auth is not None and valid_auth.caller_type in {"OWNER", "EMPLOYEE"}:
                     principal_id = valid_auth.principal_id
                     auth_epoch = utc(valid_auth.authenticated_at).isoformat()
@@ -2294,8 +2490,19 @@ async def telnyx_media_socket(
         if principal_id is not None:
             norm_trans = unicodedata.normalize("NFKD", transcript.casefold())
             norm_trans = "".join(c for c in norm_trans if not unicodedata.combining(c))
-            handover_pattern = r"\b(changer\s*d\W*employe|change\s*employe|autre\s*employe|nouvel\s*employe|passe\s*mon\s*collegue|passe\s*le\s*telephone|je\s*te\s*passe|switch\s*employee|change\s*employee|pass\s*the\s*phone|hand\s*over|schimba\s*angajatul|iti\s*dau\s*colegul|pasez\s*telefonul|cambiar\s*de\s*empleado|te\s*paso\s*a\s*mi\s*colega)\b"
-            if re.search(handover_pattern, norm_trans):
+            if is_session_retention_intent(norm_trans):
+                call_loc = resolve_locale(current_call.locale if current_call and current_call.locale else locale)
+                if call_loc.startswith("fr"):
+                    retention_msg = "Très bien, votre session reste active. Comment puis-je vous aider ?"
+                elif call_loc.startswith("es"):
+                    retention_msg = "Entendido, su sesión permanece activa. ¿En qué puedo ayudarle?"
+                elif call_loc.startswith("ro"):
+                    retention_msg = "Am înțeles, sesiunea dumneavoastră rămâne activă. Cu ce vă pot ajuta?"
+                else:
+                    retention_msg = "Understood, your session remains active. How can I help you?"
+                return {"status": "success", "answer": retention_msg, "authenticated": True}
+
+            if is_handover_positive_intent(norm_trans):
                 logger.info(
                     "AUDIT_VOICE_HANDOVER_REVOCATION: call=%s previous_user_id=%s timestamp=%s",
                     call_id, principal_id, datetime.now(timezone.utc).isoformat(),
@@ -2321,7 +2528,6 @@ async def telnyx_media_socket(
                 principal_id = None
                 auth_epoch = None
                 if bridge is not None:
-                    bridge.input_paused = True
                     bridge._pin_turn = item_id
                     bridge._pin_started = False
                     bridge._pin_deadline = asyncio.get_running_loop().time() + 120
@@ -2349,20 +2555,70 @@ async def telnyx_media_socket(
             )
             is_handover_pending = bool((current_call.source_context or {}).get("handover_revoked"))
             if is_handover_pending:
+                norm_trans = "".join(c for c in unicodedata.normalize("NFKD", transcript.casefold()) if not unicodedata.combining(c))
+                if is_pin_challenge_cancellation(norm_trans) or is_session_retention_intent(norm_trans):
+                    logger.info("Handover pending cancelled by caller: call=%s length=%d", call_id, len(transcript))
+                    if bridge is not None:
+                        bridge._pin_turn = None
+                        bridge._pin_started = False
+                        bridge._pin_deadline = None
+                        bridge._pin_retry_count = 0
+                        bridge.input_paused = False
+                    existing_ctx = dict(current_call.source_context or {})
+                    existing_ctx.pop("handover_revoked", None)
+                    existing_ctx["handover_cancelled"] = True
+                    existing_ctx["public_fallback"] = True
+                    existing_ctx["pin_gather_status"] = "cancelled"
+                    current_call.pin_challenge_hash = None
+                    current_call.pin_challenge_expires_at = None
+                    current_call.source_context = existing_ctx
+                    db.commit()
+                    public_mode = True
+                    call_loc = resolve_locale(current_call.locale if current_call and current_call.locale else locale)
+                    if call_loc.startswith("fr"):
+                        cancel_msg = "Demande de transfert annulée. Vous êtes en mode accueil public. Que puis-je faire pour vous ?"
+                    elif call_loc.startswith("es"):
+                        cancel_msg = "Solicitud de transferencia cancelada. Está en modo de recepción pública. ¿En qué puedo ayudarle?"
+                    elif call_loc.startswith("ro"):
+                        cancel_msg = "Cererea de transfer a fost anulată. Sunteți în modul public. Cu ce vă pot ajuta?"
+                    else:
+                        cancel_msg = "Transfer request cancelled. You are in public reception mode. How can I help you?"
+                    return {"status": "success", "answer": cancel_msg, "public": True}
+
+                if public_conversation is not None:
+                    sec = public_conversation.security_gate(transcript)
+                    if sec is None:
+                        existing_ctx = dict(current_call.source_context or {})
+                        existing_ctx.pop("handover_revoked", None)
+                        existing_ctx["handover_cancelled"] = True
+                        existing_ctx["public_fallback"] = True
+                        existing_ctx["pin_gather_status"] = "cancelled"
+                        current_call.pin_challenge_hash = None
+                        current_call.pin_challenge_expires_at = None
+                        current_call.source_context = existing_ctx
+                        db.commit()
+                        public_mode = True
+                        if bridge is not None:
+                            bridge._pin_turn = None
+                            bridge._pin_started = False
+                            bridge._pin_deadline = None
+                            bridge._pin_retry_count = 0
+                            bridge.input_paused = False
+                        return public_conversation.public_answer(transcript)
+
                 if bridge is not None:
-                    bridge.input_paused = True
                     bridge._pin_turn = item_id
                     bridge._pin_started = False
                     bridge._pin_deadline = asyncio.get_running_loop().time() + 120
                 call_loc = resolve_locale(current_call.locale if current_call and current_call.locale else locale)
                 if call_loc.startswith("fr"):
-                    handover_answer = "Veuillez saisir votre code NIP sur le clavier de votre téléphone pour vous identifier."
+                    handover_answer = "Veuillez saisir votre code NIP sur le clavier de votre téléphone pour vous identifier, ou dites annuler pour revenir à l'accueil."
                 elif call_loc.startswith("es"):
-                    handover_answer = "Por favor, ingrese su código PIN en el teclado de su teléfono para identificarse."
+                    handover_answer = "Por favor, ingrese su código PIN en el teclado de su teléfono para identificarse, o diga cancelar para volver a la recepción."
                 elif call_loc.startswith("ro"):
-                    handover_answer = "Vă rugăm să introduceți codul PIN pe tastatura telefonului pentru a vă autentifica."
+                    handover_answer = "Vă rugăm să introduceți codul PIN pe tastatura telefonului pentru a vă autentifica, sau spuneți anulare."
                 else:
-                    handover_answer = "Please enter your PIN on your phone keypad to authenticate."
+                    handover_answer = "Please enter your PIN on your phone keypad to authenticate, or say cancel to return to reception."
                 return {"status": "success", "answer": handover_answer, "auth_required": True}
             owner_membership = db.scalar(
                 select(CompanyMembership)
@@ -2678,6 +2934,10 @@ async def telnyx_media_socket(
         if public_conversation is not None:
             public_conversation.reset_pin_retry()
 
+    async def cancel_pin() -> None:
+        if public_conversation is not None:
+            public_conversation.cancel_pin()
+
     async def consume_pending_query() -> str | None:
         if public_conversation is None:
             return None
@@ -2759,6 +3019,7 @@ async def telnyx_media_socket(
         ),
         begin_pin=begin_pin, poll_pin=poll_pin,
         reset_pin_retry=reset_pin_retry,
+        cancel_pin=cancel_pin,
         consume_pending_query=consume_pending_query,
         hangup_call=hangup_call,
         max_session_seconds=sandbox_duration,

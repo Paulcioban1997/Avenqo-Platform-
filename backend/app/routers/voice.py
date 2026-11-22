@@ -2781,6 +2781,9 @@ async def telnyx_webhook(
             return {"received": True, "authenticated": False}
         auth_controller = VoiceCallerAuth(db, settings)
         if not auth_controller.valid_challenge(call, str(call_payload.get("client_state") or "")):
+            current_status = (call.source_context or {}).get("pin_gather_status")
+            if (current_status in {"cancelled", "authenticated", "refused"} or (call.source_context or {}).get("public_fallback")) and not call.pin_challenge_hash:
+                return {"received": True, "authenticated": False, "stale": True}
             return {"received": True, "authenticated": False}
         call.pin_challenge_hash = None
         call.pin_challenge_expires_at = None
@@ -3153,15 +3156,27 @@ async def telnyx_webhook(
         # Standard PIN authentication (Customer, Employee, or Owner)
         result = auth_controller.verify_gather(call, digits_str)
         if media_mode:
-            if result["authenticated"]:
+            if result.get("cancelled") or result.get("reason") == "user_cancelled":
+                gather_status = "cancelled"
+                call.pin_challenge_hash = None
+                call.pin_challenge_expires_at = None
+                existing_ctx = dict(call.source_context or {})
+                existing_ctx.pop("handover_revoked", None)
+                existing_ctx["handover_cancelled"] = True
+                existing_ctx["public_fallback"] = True
+                existing_ctx["pin_gather_status"] = "cancelled"
+                call.source_context = existing_ctx
+            elif result["authenticated"]:
                 gather_status = "authenticated"
+                call.source_context = {**(call.source_context or {}), "pin_gather_status": gather_status}
             elif result.get("is_empty") or result.get("reason") in ("empty_pin", "timeout"):
                 gather_status = "retry_needed"
+                call.source_context = {**(call.source_context or {}), "pin_gather_status": gather_status}
             else:
                 gather_status = "refused"
-            call.source_context = {**(call.source_context or {}), "pin_gather_status": gather_status}
+                call.source_context = {**(call.source_context or {}), "pin_gather_status": gather_status}
         receipt.result = {**receipt.result, "authenticated": result["authenticated"]}
-        if not result.get("is_empty"):
+        if not result.get("is_empty") and not (result.get("cancelled") or result.get("reason") == "user_cancelled"):
             AuditLogService(db).record(actor_user_id=call.authenticated_user_id if result["authenticated"] else None,
                 action="voice_pin_authentication_succeeded" if result["authenticated"] else "voice_pin_authentication_failed",
                 target_type="voice_call", target_id=str(call.id), company_id=call.company_id,

@@ -535,6 +535,25 @@ class VoiceCallerAuth:
                 "message": "Trop d'échecs d'authentification pour cette organisation. Veuillez réessayer plus tard.",
             }
 
+        # Check for explicit DTMF cancellation via '*' key
+        if isinstance(pin, str) and pin.strip().rstrip("#") == "*":
+            logger.info("VoiceCallerAuth.verify_gather: caller cancelled via DTMF '*' for call=%s", call.id)
+            call.pin_challenge_hash = None
+            call.pin_challenge_expires_at = None
+            existing_ctx = dict(call.source_context or {})
+            existing_ctx.pop("handover_revoked", None)
+            existing_ctx["handover_cancelled"] = True
+            existing_ctx["public_fallback"] = True
+            existing_ctx["pin_gather_status"] = "cancelled"
+            call.source_context = existing_ctx
+            self.db.flush()
+            return {
+                "success": False,
+                "authenticated": False,
+                "reason": "user_cancelled",
+                "cancelled": True,
+            }
+
         # Check compound DTMF input format (e.g. "<identifier>*<pin>" or "<identifier>#<pin>")
         if isinstance(pin, str) and not identifier:
             raw_stripped = pin.strip().rstrip("#")
