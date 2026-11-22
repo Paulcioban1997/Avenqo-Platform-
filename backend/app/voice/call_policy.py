@@ -30,6 +30,10 @@ class CallPolicy(BaseModel):
     lifecycle_status: str | None = None
     ivr_greeting: str | None = None
     allow_phone_reservations: bool | None = False
+    experimental_realtime_model: str | None = None
+    experimental_realtime_enabled: bool | None = False
+    gpt_live_1_1_enabled: bool | None = False
+    is_sandbox: bool | None = None
 
 
 def utc(value):

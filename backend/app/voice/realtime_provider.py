@@ -1997,7 +1997,9 @@ class VoiceRealtimeRouter:
                     is_env_sandbox = getattr(self._settings, "environment", "").lower() in (
                         "sandbox", "development", "test", "testing"
                     )
-                    is_sandbox_call = is_env_sandbox or bool(policy.get("is_sandbox", False))
+                    # Le garde-fou Sandbox repose strictement sur l'environnement serveur vérifié :
+                    # Un appelant en production ne peut jamais forcer un état Sandbox via la configuration tenant.
+                    is_sandbox_call = is_env_sandbox
 
                     if not feature_flag_active:
                         logger.warning(

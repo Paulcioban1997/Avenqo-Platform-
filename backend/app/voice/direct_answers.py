@@ -159,6 +159,18 @@ def is_catalog_pagination_question(text: str) -> tuple[bool, int]:
     """Detect inquiries asking for next paginated catalog items (e.g. 'les 5 prochains', 'produits suivants')."""
     norm = unicodedata.normalize("NFKD", text.casefold())
     norm = "".join(c for c in norm if not unicodedata.combining(c))
+
+    # Strict exclusion: CRM appointments, bookings, or meeting slots must NEVER be routed as catalog pagination
+    if any(
+        term in norm
+        for term in (
+            "rendez vous", "rendez-vous", "rdv", "appointment", "appointments",
+            "booking", "bookings", "reservation", "reservations", "creneau", "creneaux",
+            "horaire", "horaires", "heure", "heures", "date", "dates", "rencontre",
+        )
+    ):
+        return False, 0
+
     match = re.search(
         r"\b(?:les?\s+)?(?:(\d+|cinq|trois|quatre|deux|dix|cinco|tres|cuatro|cinci|trei|patru|five|three|four|ten)\s+)?(?:prochains?|suivants?|next|siguientes?|urmatoarele?)\s*(?:produits?|articles?|items?|planches?|accessoires?)?\b|"
         r"\b(?:quels?\s+sont\s+les?\s+)?(?:(\d+|cinq|trois|quatre|deux|dix|five|three|four|ten)\s+)?(?:prochains?|suivants?)\b",
@@ -187,6 +199,19 @@ def is_ordinal_product_question(text: str) -> tuple[bool, int]:
     """Detect inquiries about an ordinal product previously presented (e.g. 'Combien coûte le deuxième ?')."""
     norm = unicodedata.normalize("NFKD", text.casefold())
     norm = "".join(c for c in norm if not unicodedata.combining(c))
+
+    # Strict exclusion: CRM appointments, employee tasks, or client inquiries must NEVER be routed as catalog ordinals
+    if any(
+        term in norm
+        for term in (
+            "rendez vous", "rendez-vous", "rdv", "appointment", "appointments",
+            "booking", "bookings", "reservation", "reservations", "creneau", "creneaux",
+            "horaire", "horaires", "heure", "heures", "date", "dates", "rencontre",
+            "tache", "taches", "task", "tasks", "client", "clients",
+        )
+    ):
+        return False, 0
+
     match = re.search(
         r"\b(?:combien\s+coute|quel\s+est\s+le\s+prix\s+d[ue]|et\s+le|prix\s+d[ue]|how\s+much\s+(?:is|does)\s+the|cuanto\s+cuesta\s+el|cat\s+costa\s+al)\s+"
         r"(?:le\s+)?(premier|deuxieme|troisieme|quatrieme|cinquieme|1er|2e|2eme|3e|3eme|4e|5e|first|second|third|fourth|fifth|primero|segundo|tercero|primul|al\s+doilea|al\s+treilea)\b|"
@@ -453,8 +478,19 @@ def spoken_superlative_product_answer(
             if category in (str(r.get("category") or r.get("product_category") or "")).lower()
             or category in (str(r.get("name") or r.get("title") or r.get("product_name") or "")).lower()
         ]
-        if cat_rows:
-            rows = cat_rows
+        # Strict category filtering: do NOT fall back to other categories when requested category is absent
+        rows = cat_rows
+        if not rows:
+            cat_name = "accessoires" if category == "accessoire" else ("planches" if category == "planche" else category)
+            if spanish:
+                return f"No se encontró ningún producto en la categoría '{cat_name}' en nuestro catálogo."
+            if romanian:
+                return f"Nu a fost găsit niciun produs în categoria '{cat_name}' în catalogul nostru."
+            return (
+                f"Aucun produit dans la catégorie '{cat_name}' n'a été trouvé dans notre catalogue."
+                if french else
+                f"No products in the '{cat_name}' category were found in our catalog."
+            )
 
     if not rows:
         return (
@@ -465,26 +501,56 @@ def spoken_superlative_product_answer(
 
     def _parse_price(r: dict) -> float:
         p = r.get("price")
+        if p is None or p == "":
+            return -1.0
         try:
             return float(str(p).replace("$", "").replace("€", "").replace(",", ".").strip())
         except (ValueError, TypeError):
             return -1.0
 
-    best = max(rows, key=_parse_price)
+    priced_rows = [r for r in rows if _parse_price(r) > 0]
+    if not priced_rows:
+        if spanish:
+            return "Ningún producto en esta categoría tiene un precio verificable en nuestro catálogo."
+        if romanian:
+            return "Niciun produs din această categorie nu are un preț verificabil în catalogul nostru."
+        return (
+            "Aucun produit dans cette sélection ne dispose d'un prix vérifiable dans notre catalogue."
+            if french else
+            "No products in this selection have a verifiable price in our catalog."
+        )
+
+    best = max(priced_rows, key=_parse_price)
     name = str(best.get("name") or best.get("title") or best.get("product_name") or "").strip()
     price = best.get("price")
     unit = str(best.get("currency") or currency or "$").strip()
     if unit in ("CAD", "USD", ""):
         unit = "$"
 
-    cat_label = "planche" if category == "planche" else ("article" if french else "item")
+    cat_label = "planche" if category == "planche" else ("accessoire" if category == "accessoire" else ("produit" if french else "item"))
+
+    is_live = best.get("is_live_stock") is True
+    is_demo = best.get("is_demo") is True or str(best.get("freshness_status") or "").upper() == "DEMO_SIMULATION"
+    if is_demo:
+        price_provenance = " (precio de demostración)" if spanish else (" (preț demonstrativ)" if romanian else (" (prix de démonstration)" if french else " (demo price)"))
+    elif not is_live:
+        price_provenance = " (datos históricos de referencia)" if spanish else (" (date de referință istorice)" if romanian else (" (données issues du catalogue de référence historique)" if french else " (data from historical reference catalog)"))
+    else:
+        price_provenance = ""
+
     if spanish:
-        return f"La tabla más cara de nuestro catálogo es {name} a un precio de {price} {unit} (datos históricos de referencia)."
+        art = "La" if cat_label in ("planche", "tabla") else "El"
+        return f"{art} {cat_label} más cara de nuestro catálogo es {name} a un precio de {price} {unit}{price_provenance}."
     if romanian:
-        return f"Cea mai scumpă placă din catalogul nostru este {name} la prețul de {price} {unit} (date de referință istorice)."
+        return f"Cel mai scump produs ({cat_label}) din catalogul nostru este {name} la prețul de {price} {unit}{price_provenance}."
     if french:
-        return f"La {cat_label} la plus chère de notre catalogue est {name} au prix de {price} {unit} (données issues du catalogue de référence historique)."
-    return f"The most expensive {cat_label} in our catalog is {name} priced at {price} {unit} (data from historical reference catalog)."
+        genre_fem = cat_label in ("planche",)
+        article_fem = "La" if genre_fem else "Le"
+        adj_fem = "chère" if genre_fem else "cher"
+        if genre_fem:
+            return f"La {cat_label} la plus chère de notre catalogue est {name} au prix de {price} {unit}{price_provenance}."
+        return f"L'{cat_label} le plus cher de notre catalogue est {name} au prix de {price} {unit}{price_provenance}." if cat_label.startswith("a") else f"Le {cat_label} le plus cher de notre catalogue est {name} au prix de {price} {unit}{price_provenance}."
+    return f"The most expensive {cat_label} in our catalog is {name} priced at {price} {unit}{price_provenance}."
 
 
 def spoken_ordinal_product_answer(
@@ -568,56 +634,82 @@ def spoken_catalog_answer(
             "The catalog does not currently list any products for sale."
         )
 
-    # Optional category / semantic filter based on query
+    # Optional category / semantic filter based on query or inherited from call session context
+    active_category = None
     is_accessories_query = False
     if query:
         query_norm = unicodedata.normalize("NFKD", query.casefold())
         query_norm = "".join(c for c in query_norm if not unicodedata.combining(c))
-        is_accessories_query = bool(re.search(r"\b(accessoire|accessoires|accessory|accessories)\b", query_norm))
-        if is_accessories_query:
-            acc_rows = [
-                r for r in rows
-                if "accessoire" in (str(r.get("category") or r.get("product_category") or "")).lower()
-                or "accessory" in (str(r.get("category") or r.get("product_category") or "")).lower()
-                or "accessories" in (str(r.get("category") or r.get("product_category") or "")).lower()
-                or "accessoire" in (str(r.get("name") or r.get("product_name") or "")).lower()
-                or "accessory" in (str(r.get("name") or r.get("product_name") or "")).lower()
-                or "accessories" in (str(r.get("name") or r.get("product_name") or "")).lower()
-                or any(k in (str(r.get("name") or r.get("product_name") or "")).lower() for k in ("casque", "gant", "masque", "chapeau", "lunette", "fart", "fixation"))
-            ]
-            if not acc_rows:
-                if spanish:
-                    return "Actualmente no tenemos accesorios disponibles en nuestro catálogo. ¿Desea información sobre nuestros otros productos?"
-                if romanian:
-                    return "În prezent nu avem accesorii disponibile în catalogul nostru. Doriți informații despre celelalte produse?"
-                return (
-                    "Nous n'avons actuellement aucun accessoire disponible dans notre catalogue. Souhaitez-vous des renseignements sur nos autres articles ?"
-                    if french else
-                    "We do not currently have any accessories available in our catalog. Would you like information on our other items?"
-                )
-            rows = acc_rows
-        elif query_norm:
-            query_words = set(re.findall(r"\b\w+\b", query_norm))
-            stopwords = {
-                "quel", "quels", "quelle", "quelles", "combien", "coute", "coutent", "prix",
-                "tarif", "tarifs", "est", "sont", "le", "la", "les", "du", "de", "des",
-                "un", "une", "avez", "vous", "notre", "votre", "catalogue", "produit", "produits",
-                "article", "articles", "what", "which", "how", "much", "is", "are", "the", "a", "an",
-                "in", "for", "do", "you", "have", "price", "catalog", "product", "products",
-                "pour", "dans", "avec", "sur", "vos", "nos", "prochain", "prochains", "suivant", "suivants",
-            }
-            specific_tokens = {w for w in query_words if w not in stopwords and len(w) >= 3}
-            if specific_tokens:
-                name_matches = []
-                for r in rows:
-                    r_name_norm = unicodedata.normalize("NFKD", str(r.get("name") or r.get("title") or r.get("product_name") or "").casefold())
-                    r_name_norm = "".join(c for c in r_name_norm if not unicodedata.combining(c))
-                    score = sum(1 for tok in specific_tokens if tok in r_name_norm)
-                    if score > 0:
-                        name_matches.append((score, r))
-                if name_matches:
-                    name_matches.sort(key=lambda x: x[0], reverse=True)
-                    rows = [m[1] for m in name_matches]
+        if re.search(r"\b(accessoire|accessoires|accessory|accessories)\b", query_norm):
+            active_category = "accessoire"
+            is_accessories_query = True
+        elif re.search(r"\b(planche|planches|snowboard|snowboards)\b", query_norm):
+            active_category = "planche"
+
+    # If query does not specify a category and this is pagination, inherit previous category filter from call context
+    if not active_category and offset > 0 and call is not None:
+        ctx_cat = (call.source_context or {}).get("catalog_category_filter")
+        if ctx_cat:
+            active_category = ctx_cat
+            if active_category == "accessoire":
+                is_accessories_query = True
+
+    if active_category == "accessoire":
+        acc_rows = [
+            r for r in rows
+            if "accessoire" in (str(r.get("category") or r.get("product_category") or "")).lower()
+            or "accessory" in (str(r.get("category") or r.get("product_category") or "")).lower()
+            or "accessories" in (str(r.get("category") or r.get("product_category") or "")).lower()
+            or "accessoire" in (str(r.get("name") or r.get("product_name") or "")).lower()
+            or "accessory" in (str(r.get("name") or r.get("product_name") or "")).lower()
+            or "accessories" in (str(r.get("name") or r.get("product_name") or "")).lower()
+            or any(k in (str(r.get("name") or r.get("product_name") or "")).lower() for k in ("casque", "gant", "masque", "chapeau", "lunette", "fart", "fixation"))
+        ]
+        if not acc_rows:
+            if spanish:
+                return "Actualmente no tenemos accesorios disponibles en nuestro catálogo. ¿Desea información sobre nuestros otros productos?"
+            if romanian:
+                return "În prezent nu avem accesorii disponibile în catalogul nostru. Doriți informații despre celelalte produse?"
+            return (
+                "Nous n'avons actuellement aucun accessoire disponible dans notre catalogue. Souhaitez-vous des renseignements sur nos autres articles ?"
+                if french else
+                "We do not currently have any accessories available in our catalog. Would you like information on our other items?"
+            )
+        rows = acc_rows
+    elif active_category == "planche":
+        board_rows = [
+            r for r in rows
+            if "planche" in (str(r.get("category") or r.get("product_category") or "")).lower()
+            or "snowboard" in (str(r.get("category") or r.get("product_category") or "")).lower()
+            or "planche" in (str(r.get("name") or r.get("product_name") or "")).lower()
+            or "snowboard" in (str(r.get("name") or r.get("product_name") or "")).lower()
+        ]
+        if board_rows:
+            rows = board_rows
+    elif query:
+        query_norm = unicodedata.normalize("NFKD", query.casefold())
+        query_norm = "".join(c for c in query_norm if not unicodedata.combining(c))
+        query_words = set(re.findall(r"\b\w+\b", query_norm))
+        stopwords = {
+            "quel", "quels", "quelle", "quelles", "combien", "coute", "coutent", "prix",
+            "tarif", "tarifs", "est", "sont", "le", "la", "les", "du", "de", "des",
+            "un", "une", "avez", "vous", "notre", "votre", "catalogue", "produit", "produits",
+            "article", "articles", "what", "which", "how", "much", "is", "are", "the", "a", "an",
+            "in", "for", "do", "you", "have", "price", "catalog", "product", "products",
+            "pour", "dans", "avec", "sur", "vos", "nos", "prochain", "prochains", "suivant", "suivants",
+        }
+        specific_tokens = {w for w in query_words if w not in stopwords and len(w) >= 3}
+        if specific_tokens:
+            name_matches = []
+            for r in rows:
+                r_name_norm = unicodedata.normalize("NFKD", str(r.get("name") or r.get("title") or r.get("product_name") or "").casefold())
+                r_name_norm = "".join(c for c in r_name_norm if not unicodedata.combining(c))
+                score = sum(1 for tok in specific_tokens if tok in r_name_norm)
+                if score > 0:
+                    name_matches.append((score, r))
+            if name_matches:
+                name_matches.sort(key=lambda x: x[0], reverse=True)
+                rows = [m[1] for m in name_matches]
 
     target_slice = rows[offset : offset + limit]
     if not target_slice and offset > 0:
@@ -690,6 +782,7 @@ def spoken_catalog_answer(
         ctx = dict(call.source_context or {})
         ctx["presented_catalog_products"] = presented_records
         ctx["catalog_pagination_offset"] = offset + len(target_slice)
+        ctx["catalog_category_filter"] = active_category
         call.source_context = ctx
 
     extra = ""

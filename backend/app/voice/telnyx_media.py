@@ -1478,9 +1478,29 @@ class TelnyxMediaBridge:
                             "Voice TTS chunk rejected; call=%s turn=%s",
                             self.call_correlation, self.turn_correlation,
                         )
+            elif kind == "response.interrupted":
+                logger.info(
+                    "Voice provider response interrupted; call=%s resp_id=%s",
+                    self.call_correlation,
+                    getattr(event, "response_id", None),
+                )
+                if not (self.input_paused or self._pin_turn is not None):
+                    await self.interrupt()
             elif kind == "response.done":
                 self.telemetry["final_state"] = "LISTENING"
-                completed_id = getattr(getattr(event, "response", None), "id", None)
+                resp_obj = getattr(event, "response", None)
+                resp_status = getattr(resp_obj, "status", None)
+                completed_id = getattr(resp_obj, "id", None)
+                if resp_status == "cancelled":
+                    logger.info("Voice provider response cancelled; call=%s id=%s", self.call_correlation, completed_id)
+                    completed = self._responses.pop(completed_id, None)
+                    if completed is not None and self.interruption_manager is not None:
+                        self.interruption_manager.cancel_turn(str(self.stream_id or "default"), str(completed[0]))
+                    if completed is not None and completed[2] is not None:
+                        completed[2].settle(completed[0])
+                    if not (self.input_paused or self._pin_turn is not None):
+                        await self.interrupt()
+                    continue
                 completed = self._responses.pop(completed_id, None)
                 if completed is not None and self.interruption_manager is not None:
                     self.interruption_manager.complete_turn(str(self.stream_id or "default"), str(completed[0]))
@@ -1683,8 +1703,15 @@ class TelnyxMediaBridge:
                 if resolve_locale(self.locale).startswith("fr")
                 else "No digits were received. Please enter your PIN on your phone keypad."
             )
-            item_id = f"pin-reprompt:{self._pin_turn or 'retry'}"
+            new_pin_turn = f"{self._pin_turn or 'pin'}-retry-{self._pin_retry_count}"
+            self._pin_turn = new_pin_turn
+            item_id = f"pin-reprompt:{new_pin_turn}"
             await self._speak_system(item_id, reprompt)
+            self._pin_mark = "pin-prompt:" + hashlib.sha256(item_id.encode()).hexdigest()[:24]
+            try:
+                self._output.put_nowait((self.epoch, {"event": "mark", "mark": {"name": self._pin_mark}}))
+            except asyncio.QueueFull:
+                self.dropped_outbound_frames += 1
             self._pin_prompt_spoken = True
             self._pin_prompt_finish_time = asyncio.get_running_loop().time()
             self._pin_prompt_safe_duration = max(len(reprompt) * 0.075, 4.0)

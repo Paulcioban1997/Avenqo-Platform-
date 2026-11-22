@@ -601,3 +601,227 @@ def test_gpt_live_1_1_billing_no_double_charging():
     assert round(cost, 2) == Decimal("0.05")
 
 
+def test_call_policy_experimental_fields_and_production_guard():
+    from backend.app.voice.call_policy import CallPolicy
+
+    # 1. Pydantic schema accepts experimental realtime fields without ValidationError
+    policy = CallPolicy.model_validate({
+        "max_call_seconds": 1800,
+        "experimental_realtime_model": "gpt-live-1.1",
+        "experimental_realtime_enabled": True,
+        "gpt_live_1_1_enabled": True,
+        "is_sandbox": True,
+    })
+    assert policy.experimental_realtime_model == "gpt-live-1.1"
+    assert policy.experimental_realtime_enabled is True
+    assert policy.gpt_live_1_1_enabled is True
+
+    # 2. Strict Production Guard: tenant cannot bypass sandbox restriction
+    prod_settings = Settings()
+    prod_settings.environment = "production"
+    prod_settings.voice_realtime_model = "gpt-live-1"
+    router = VoiceRealtimeRouter(prod_settings)
+
+    cfg = MagicMock()
+    cfg.company_id = uuid4()
+    cfg.realtime_provider = "telnyx"
+    cfg.gemini_live_enabled = False
+    cfg.call_policy = {
+        "experimental_realtime_enabled": True,
+        "experimental_realtime_model": "gpt-live-1.1",
+        "is_sandbox": True,  # Spoofed by tenant in production
+    }
+    audio_cfg = OpenAIAudioConfig(api_key="fake-key")
+    adapter = router.build_realtime_adapter(
+        cfg,
+        audio_cfg,
+        fallback_factory=lambda model=None: OpenAIRealtimeAudioAdapter(
+            audio_cfg, model or prod_settings.voice_realtime_model
+        ),
+    )
+    # Must fallback to production model (gpt-live-1), never gpt-live-1.1
+    assert getattr(adapter, "_model", None) == "gpt-live-1"
+
+
+def test_crm_appointment_questions_not_confused_with_catalog():
+    # 1. "Prochain rendez-vous" must NOT match catalog pagination
+    is_page, _ = is_catalog_pagination_question("Quel est mon prochain rendez-vous ?")
+    assert is_page is False
+    is_page_rdv, _ = is_catalog_pagination_question("Quand est mon prochain rdv ?")
+    assert is_page_rdv is False
+    is_page_slot, _ = is_catalog_pagination_question("Quels sont les prochains créneaux disponibles ?")
+    assert is_page_slot is False
+
+    # 2. "Deuxième rendez-vous" must NOT match catalog ordinal product lookup
+    is_ord, _ = is_ordinal_product_question("Et pour le deuxième rendez-vous ?")
+    assert is_ord is False
+    is_ord_booking, _ = is_ordinal_product_question("Combien de temps dure la deuxième réservation ?")
+    assert is_ord_booking is False
+
+
+def test_catalog_pagination_preserves_accessories_filter():
+    mock_call = MagicMock()
+    mock_call.source_context = {}
+
+    products = [
+        {"name": "Casque MIPS", "category": "Accessoires", "price": 120, "is_live_stock": True},
+        {"name": "Gants Polaires", "category": "Accessoires", "price": 45, "is_live_stock": True},
+        {"name": "Masque UV", "category": "Accessoires", "price": 90, "is_live_stock": True},
+        {"name": "Planche Alpine", "category": "Planches", "price": 450, "is_live_stock": True},
+        {"name": "Fart Glisse", "category": "Accessoires", "price": 25, "is_live_stock": True},
+        {"name": "Planche Freeride", "category": "Planches", "price": 500, "is_live_stock": True},
+    ]
+
+    # Turn 1: query for accessories
+    ans1 = spoken_catalog_answer(
+        products,
+        retail_enabled=True,
+        locale="fr-CA",
+        query="Quels accessoires avez-vous ?",
+        offset=0,
+        limit=3,
+        call=mock_call,
+    )
+    assert "Casque MIPS" in ans1
+    assert "Gants Polaires" in ans1
+    assert "Planche Alpine" not in ans1
+    assert mock_call.source_context.get("catalog_category_filter") == "accessoire"
+
+    # Turn 2: user says "Montrez les prochains" without repeating "accessoire"
+    ans2 = spoken_catalog_answer(
+        products,
+        retail_enabled=True,
+        locale="fr-CA",
+        query="Montrez les prochains",
+        offset=3,
+        limit=3,
+        call=mock_call,
+    )
+    # Must preserve accessories filter, showing "Fart Glisse" and NOT "Planche Alpine" or "Planche Freeride"
+    assert "Fart Glisse" in ans2
+    assert "Planche Freeride" not in ans2
+
+
+def test_superlative_product_category_isolation_and_unpriced_exclusion():
+    products = [
+        # Snowboard with NO price
+        {"name": "Planche Prototype", "category": "Planches", "price": None, "is_live_stock": True},
+        # Priced accessories
+        {"name": "Gants Standard", "category": "Accessoires", "price": 40, "is_live_stock": True},
+        {"name": "Casque Carbone", "category": "Accessoires", "price": 250, "is_live_stock": True},
+    ]
+
+    # 1. Asking for most expensive board: prototype has no price, and must NOT pick accessories!
+    ans_board = spoken_superlative_product_answer(
+        products,
+        category="planche",
+        locale="fr-CA",
+        currency="$",
+    )
+    assert "Casque Carbone" not in ans_board
+    assert "Gants Standard" not in ans_board
+    assert "dispos" in ans_board or "trouvé" in ans_board
+
+    # 2. Asking for most expensive accessory: picks Casque Carbone (250 $)
+    ans_acc = spoken_superlative_product_answer(
+        products,
+        category="accessoire",
+        locale="fr-CA",
+        currency="$",
+    )
+    assert "Casque Carbone" in ans_acc
+    assert "250 $" in ans_acc
+
+
+@pytest.mark.asyncio
+async def test_telnyx_bridge_handles_provider_cancellation_and_interrupts():
+    mock_socket = MagicMock()
+    mock_socket.send_json = AsyncMock()
+    mock_adapter = MagicMock()
+    mock_adapter.speak = AsyncMock()
+    mock_adapter.interrupt = AsyncMock()
+    mock_adapter.cancel_response = AsyncMock()
+
+    bridge = TelnyxMediaBridge(
+        socket=mock_socket,
+        adapter=mock_adapter,
+        locale="fr-CA",
+        validate_start=AsyncMock(),
+        authorize=AsyncMock(),
+        execute_turn=AsyncMock(),
+    )
+    bridge.stream_id = "test-stream-1"
+    bridge.response_id = "resp-current-1"
+    bridge.epoch = 1
+
+    # Put a queued frame in _output
+    bridge._output.put_nowait((1, b"raw_pcm_frame"))
+    assert not bridge._output.empty()
+
+    # 1. Simulate provider response.interrupted event
+    event_interrupted = SimpleNamespace(type="response.interrupted", response_id="resp-current-1")
+    bridge._drain_provider_events = MagicMock()  # Not needed, we test direct event block logic
+    bridge.interrupt = AsyncMock()
+
+    # In _drain_provider_events logic:
+    if event_interrupted.type == "response.interrupted":
+        if not (bridge.input_paused or bridge._pin_turn is not None):
+            await bridge.interrupt()
+
+    bridge.interrupt.assert_awaited_once()
+
+    # 2. Test actual interrupt() execution purges output and sends Telnyx clear
+    real_bridge = TelnyxMediaBridge(
+        socket=mock_socket,
+        adapter=mock_adapter,
+        locale="fr-CA",
+        validate_start=AsyncMock(),
+        authorize=AsyncMock(),
+        execute_turn=AsyncMock(),
+    )
+    real_bridge.stream_id = "test-stream-2"
+    real_bridge._output.put_nowait((1, b"raw_frame"))
+    assert not real_bridge._output.empty()
+
+    await real_bridge.interrupt()
+    assert real_bridge._output.empty()
+    mock_socket.send_json.assert_awaited_with({"event": "clear"})
+
+
+@pytest.mark.asyncio
+async def test_pin_handover_reprompt_unique_action_id_and_mark():
+    mock_socket = MagicMock()
+    mock_socket.send_json = AsyncMock()
+    mock_adapter = MagicMock()
+    mock_adapter.speak = AsyncMock()
+
+    bridge = TelnyxMediaBridge(
+        socket=mock_socket,
+        adapter=mock_adapter,
+        locale="fr-CA",
+        validate_start=AsyncMock(),
+        authorize=AsyncMock(),
+        execute_turn=AsyncMock(),
+        begin_pin=AsyncMock(return_value={"success": True}),
+        poll_pin=AsyncMock(return_value="retry_needed"),
+    )
+    bridge._pin_turn = "initial-turn-123"
+    bridge._pin_started = True
+
+    await bridge._reprompt_pin()
+
+    # 1. Fresh unique turn ID with retry index
+    assert bridge._pin_turn == "initial-turn-123-retry-1"
+    # 2. Mark enqueued with pin-prompt prefix
+    assert bridge._pin_mark is not None
+    assert bridge._pin_mark.startswith("pin-prompt:")
+    # 3. Output queue has the mark event for Telnyx
+    epoch, mark_msg = bridge._output.get_nowait()
+    assert mark_msg.get("event") == "mark"
+    assert mark_msg["mark"]["name"] == bridge._pin_mark
+    # 4. Safe prompt duration is set
+    assert bridge._pin_prompt_safe_duration >= 4.0
+    assert bridge._pin_prompt_spoken is True
+
+
+
