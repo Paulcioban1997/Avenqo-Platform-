@@ -422,7 +422,7 @@ async def test_gpt_live_1_1_real_session_model_propagation():
             audio_cfg, model or settings.voice_realtime_model
         ),
     )
-    assert adapter._model == "gpt-live-1.1"
+    assert getattr(adapter, "_model", None) == "gpt-live-1.1"
 
     # Verify adapter.open() actually attempts connection with model="gpt-live-1.1"
     with patch("backend.app.voice.adapters.AsyncOpenAI") as mock_openai_cls:
@@ -458,7 +458,7 @@ async def test_gpt_live_1_1_real_session_model_propagation():
             audio_cfg, model or prod_settings.voice_realtime_model
         ),
     )
-    assert prod_adapter._model == "gpt-live-1"
+    assert getattr(prod_adapter, "_model", None) == "gpt-live-1"
 
     # 3. Unauthorized model requested -> falls back to gpt-live-1
     config_unauth = MagicMock()
@@ -478,7 +478,7 @@ async def test_gpt_live_1_1_real_session_model_propagation():
             audio_cfg, model or settings.voice_realtime_model
         ),
     )
-    assert unauth_adapter._model == "gpt-live-1"
+    assert getattr(unauth_adapter, "_model", None) == "gpt-live-1"
 
 
 @pytest.mark.asyncio
@@ -486,8 +486,8 @@ async def test_pin_handover_retry_limit_prevents_infinite_loop():
     mock_adapter = MagicMock()
     mock_adapter.speak = AsyncMock()
     bridge = TelnyxMediaBridge(
-        MagicMock(),
-        mock_adapter,
+        socket=MagicMock(),
+        adapter=mock_adapter,
         locale="fr-CA",
         validate_start=AsyncMock(),
         authorize=AsyncMock(),
