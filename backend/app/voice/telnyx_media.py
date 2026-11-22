@@ -935,6 +935,10 @@ class TelnyxMediaBridge:
         self._turns = asyncio.Queue(maxsize=2)
         self._pending_speech = deque()
         self._responses = {}
+        self._cancelled_responses: set[str] = set()
+        self._current_turn_task: asyncio.Task | None = None
+        self._turn_metrics: dict[str, dict[str, Any]] = {}
+        self._last_transcription_at: float | None = None
         self._pin_turn = None
         self._pin_mark = None
         self._pin_started = False
@@ -1033,8 +1037,28 @@ class TelnyxMediaBridge:
         self._last_spoken = cleaned
         return cleaned
 
-    async def interrupt(self, *, pause_input: bool = False) -> None:
+    def get_turn_metrics(self, item_id: str) -> dict[str, Any]:
+        """Return instrumentation latency metrics for a specific turn."""
+        return dict(self._turn_metrics.get(str(item_id), {}))
+
+    async def interrupt(
+        self,
+        *,
+        pause_input: bool = False,
+        originating_response_id: str | None = None,
+        reason: str = "interruption",
+    ) -> None:
+        if originating_response_id:
+            if originating_response_id in self._cancelled_responses:
+                return
+            self._cancelled_responses.add(originating_response_id)
+            if len(self._cancelled_responses) > 500:
+                self._cancelled_responses.clear()
+
         self.telemetry["vad_interruptions_count"] += 1
+        if self.response_id and str(self.response_id) in self._turn_metrics:
+            self._turn_metrics[str(self.response_id)]["interruption_reason"] = reason
+
         cancel_response = (
             self.response_id is not None
             or self.pending_epoch is not None
@@ -1042,6 +1066,12 @@ class TelnyxMediaBridge:
             or not self._output.empty()
         )
         session_key = str(self.stream_id or "default")
+
+        # Co-operatively abort any in-flight Central AI execution task
+        if self._current_turn_task is not None and not self._current_turn_task.done():
+            self._current_turn_task.cancel()
+
+        old_epoch = self.epoch
         self.epoch += 1
         self.pending_epoch = None
         self.response_epoch = None
@@ -1049,12 +1079,25 @@ class TelnyxMediaBridge:
         self._remainder = b""
         self.codec.reset()
         self.reorder_buffer.reset()
+
+        # IMPORTANT: Preserve turns queued for the current or future epoch!
+        # Only discard turns whose epoch is strictly older than old_epoch.
+        preserved_turns = []
         while not self._turns.empty():
-            item_id, _transcript, _epoch = self._turns.get_nowait()
-            if self.interruption_manager is not None:
-                self.interruption_manager.cancel_turn(session_key, str(item_id))
-            if self.usage is not None:
-                self.usage.settle(item_id)
+            t = self._turns.get_nowait()
+            if t[2] >= old_epoch:
+                preserved_turns.append((t[0], t[1], self.epoch))
+            else:
+                if self.interruption_manager is not None:
+                    self.interruption_manager.cancel_turn(session_key, str(t[0]))
+                if self.usage is not None:
+                    self.usage.settle(t[0])
+        for t in preserved_turns:
+            try:
+                self._turns.put_nowait(t)
+            except asyncio.QueueFull:
+                break
+
         while not self._output.empty():
             self._output.get_nowait()
         while self._pending_speech:
@@ -1106,16 +1149,19 @@ class TelnyxMediaBridge:
             self._executing_turn = True
             self._set_phase("THINKING")
 
+            metric = self._turn_metrics.setdefault(str(item_id), {})
+            metric["tool_start_at"] = time.monotonic()
+
             filler_task = None
             async def _play_thinking_filler() -> None:
                 try:
-                    await asyncio.sleep(3.5)
+                    await asyncio.sleep(2.8)
                     now_time = asyncio.get_event_loop().time()
                     if (
                         self._executing_turn
                         and epoch == self.epoch
                         and not self.input_paused
-                        and (now_time - getattr(self, "_last_filler_time", 0.0)) >= 30.0
+                        and (now_time - getattr(self, "_last_filler_time", 0.0)) >= 25.0
                     ):
                         self._last_filler_time = now_time
                         loc = resolve_locale(self.locale)
@@ -1189,8 +1235,10 @@ class TelnyxMediaBridge:
             finally:
                 if filler_task is not None and not filler_task.done():
                     filler_task.cancel()
+                metric["tool_end_at"] = time.monotonic()
             if epoch != self.epoch:
                 self.central_ai_discarded_epochs += 1
+                metric["discard_reason"] = f"epoch_superseded_{epoch}_vs_{self.epoch}"
                 logger.info(
                     "Voice AI result superseded by caller interruption; call=%s turn=%s count=%s",
                     self.call_correlation,
@@ -1245,6 +1293,7 @@ class TelnyxMediaBridge:
                 self.telemetry["tts_request_started"] += 1
                 self.telemetry["final_state"] = "RESPONDING"
                 self._set_phase("SYNTHESIZING")
+                metric["response_ready_at"] = time.monotonic()
                 try:
                     await asyncio.wait_for(
                         self.adapter.speak(self._spoken(result["answer"])),
@@ -1310,7 +1359,18 @@ class TelnyxMediaBridge:
     async def _execute_turns(self) -> None:
         while True:
             item_id, transcript, epoch = await self._turns.get()
-            await self._execute(item_id, transcript, epoch)
+            if epoch != self.epoch:
+                logger.info("Voice turn %s skipped (epoch %s != %s)", item_id, epoch, self.epoch)
+                continue
+            self._current_turn_task = asyncio.create_task(
+                self._execute(item_id, transcript, epoch)
+            )
+            try:
+                await self._current_turn_task
+            except asyncio.CancelledError:
+                logger.info("Voice turn %s task cancelled (stale calculation halted)", item_id)
+            finally:
+                self._current_turn_task = None
             # A completed wait_for child can race with cancellation during
             # shutdown. Do not re-enter the queue with a pending cancellation.
             task = asyncio.current_task()
@@ -1379,7 +1439,7 @@ class TelnyxMediaBridge:
     async def _drain_provider_events(self) -> None:
         self._draining_events = True
         async for event in self.adapter.events():
-            kind = getattr(event, "type", "")
+            kind = getattr(event, "type", None) or getattr(event, "kind", "")
             if kind == "session.updated":
                 logger.info("Realtime session configured successfully (model=%s, stt=%s)", self.realtime_model, self.stt_model)
                 self.telemetry["final_state"] = "LISTENING"
@@ -1394,7 +1454,9 @@ class TelnyxMediaBridge:
                 logger.info("Caller speech stopped (epoch=%s)", self.epoch)
                 self.telemetry["final_state"] = "PROCESSING"
             elif kind == "conversation.item.input_audio_transcription.completed" and not self.input_paused:
-                self._last_activity = time.monotonic()
+                now_t = time.monotonic()
+                self._last_activity = now_t
+                self._last_transcription_at = now_t
                 item_id = getattr(event, "item_id", "")
                 transcript = getattr(event, "transcript", "")
                 logger.info("Caller speech transcribed (item_id=%s, length=%d)", item_id, len(transcript) if isinstance(transcript, str) else 0)
@@ -1407,6 +1469,17 @@ class TelnyxMediaBridge:
                 self._seen_items.add(item_id)
                 self.telemetry["transcription_received"] = True
                 self.telemetry["final_state"] = "PROCESSING"
+                if str(item_id) not in self._turn_metrics:
+                    self._turn_metrics[str(item_id)] = {
+                        "transcript_final_at": now_t,
+                        "tool_start_at": None,
+                        "tool_end_at": None,
+                        "response_ready_at": None,
+                        "first_pcm_sent_at": None,
+                        "playback_completed_at": None,
+                        "interruption_reason": None,
+                        "discard_reason": None,
+                    }
                 if self.usage is not None:
                     if not self.usage.reserve(item_id):
                         raise PermissionError("Voice usage quota unavailable")
@@ -1438,8 +1511,12 @@ class TelnyxMediaBridge:
                                 is_dtmf_pin_entry=bool(self.input_paused or self._pin_turn is not None),
                                 allow_interruptions=True,
                             )
-                        await self.interrupt()
+                        if self._current_turn_task is not None and not self._current_turn_task.done():
+                            self._current_turn_task.cancel()
+                        await self.interrupt(reason="caller_speech_barge_in")
                     elif self._executing_turn:
+                        if self._current_turn_task is not None and not self._current_turn_task.done():
+                            self._current_turn_task.cancel()
                         self.epoch += 1
                         logger.info(
                             "Voice in-flight answer superseded by a confirmed question; call=%s epoch=%s",
@@ -1472,9 +1549,18 @@ class TelnyxMediaBridge:
                         self.telemetry["tts_audio_bytes_generated"] += pcm_length
                         if self.telemetry["tts_first_audio_chunk_received"] == 0:
                             self.telemetry["tts_first_audio_chunk_received"] = 1
-                            if self._last_speech_stopped_at is not None:
-                                latency_ms = int((time.monotonic() - self._last_speech_stopped_at) * 1000)
+                            baseline_time = (
+                                self._last_speech_stopped_at
+                                or getattr(self, "_last_transcription_at", None)
+                                or self._last_activity
+                            )
+                            if baseline_time is not None:
+                                latency_ms = max(1, int((time.monotonic() - baseline_time) * 1000))
                                 self.telemetry["first_audible_response_latency_ms"] = latency_ms
+                            if self.response_id and self.response_id in self._responses:
+                                r_item_id = str(self._responses[self.response_id][0])
+                                if r_item_id in self._turn_metrics and self._turn_metrics[r_item_id]["first_pcm_sent_at"] is None:
+                                    self._turn_metrics[r_item_id]["first_pcm_sent_at"] = time.monotonic()
                         encoded = self.codec.outbound_pcm(delta)
                         self.telemetry["audio_encoding_completed"] += 1
                         self._set_phase("PLAYING")
@@ -1486,27 +1572,43 @@ class TelnyxMediaBridge:
                             self.call_correlation, self.turn_correlation,
                         )
             elif kind == "response.interrupted":
+                resp_id = getattr(event, "response_id", None)
                 logger.info(
                     "Voice provider response interrupted; call=%s resp_id=%s",
                     self.call_correlation,
-                    getattr(event, "response_id", None),
+                    resp_id,
                 )
-                if not (self.input_paused or self._pin_turn is not None):
-                    await self.interrupt()
+                if resp_id and str(resp_id) in self._cancelled_responses:
+                    continue
+                if resp_id and resp_id in self._responses:
+                    r_item_id = str(self._responses[resp_id][0])
+                    if r_item_id in self._turn_metrics:
+                        self._turn_metrics[r_item_id]["interruption_reason"] = "provider_response_interrupted"
+                is_active = (self.response_id == resp_id and self.response_epoch == self.epoch)
+                if not (self.input_paused or self._pin_turn is not None) and is_active:
+                    await self.interrupt(originating_response_id=str(resp_id) if resp_id else None, reason="provider_response_interrupted")
             elif kind == "response.done":
                 self.telemetry["final_state"] = "LISTENING"
                 resp_obj = getattr(event, "response", None)
                 resp_status = getattr(resp_obj, "status", None)
                 completed_id = getattr(resp_obj, "id", None)
+                if completed_id and completed_id in self._responses:
+                    r_item_id = str(self._responses[completed_id][0])
+                    if r_item_id in self._turn_metrics:
+                        self._turn_metrics[r_item_id]["playback_completed_at"] = time.monotonic()
                 if resp_status == "cancelled":
                     logger.info("Voice provider response cancelled; call=%s id=%s", self.call_correlation, completed_id)
+                    already_cancelled = completed_id and str(completed_id) in self._cancelled_responses
                     completed = self._responses.pop(completed_id, None)
                     if completed is not None and self.interruption_manager is not None:
                         self.interruption_manager.cancel_turn(str(self.stream_id or "default"), str(completed[0]))
                     if completed is not None and completed[2] is not None:
                         completed[2].settle(completed[0])
-                    if not (self.input_paused or self._pin_turn is not None):
-                        await self.interrupt()
+                    if not (self.input_paused or self._pin_turn is not None) and not already_cancelled:
+                        if completed is not None and completed[1] == self.epoch:
+                            await self.interrupt(originating_response_id=str(completed_id) if completed_id else None, reason="provider_response_cancelled")
+                    if completed_id:
+                        self._cancelled_responses.add(str(completed_id))
                     continue
                 completed = self._responses.pop(completed_id, None)
                 if completed is not None and self.interruption_manager is not None:
