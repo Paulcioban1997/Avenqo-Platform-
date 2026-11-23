@@ -3286,8 +3286,43 @@ async def telnyx_media_socket(
                 call=current_call,
             )
             if fallback_direct:
+                fallback_answer = _with_attention_ack(fallback_direct)
+                # Keep a coherent follow-up context after an LLM provider failure.
+                # ChatService may have persisted the user turn before raising;
+                # never duplicate it or the same fallback response.
+                if current_call.central_conversation_id is not None:
+                    conv_service = ConversationService(db)
+                    recent_msgs = conv_service.messages(
+                        current_company.id,
+                        current_call.central_conversation_id,
+                        limit=5,
+                    )
+                    if not any(
+                        m.role == AIMessageRole.USER
+                        and (m.content or "").strip() == transcript.strip()
+                        for m in recent_msgs
+                    ):
+                        conv_service.add_message(
+                            current_company.id,
+                            current_call.central_conversation_id,
+                            AIMessageRole.USER,
+                            transcript,
+                        )
+                    if not any(
+                        m.role == AIMessageRole.ASSISTANT
+                        and (m.content or "").strip() == fallback_answer.strip()
+                        for m in recent_msgs
+                    ):
+                        conv_service.add_message(
+                            current_company.id,
+                            current_call.central_conversation_id,
+                            AIMessageRole.ASSISTANT,
+                            fallback_answer,
+                            provider="central_ai",
+                            model=settings.voice_realtime_model,
+                        )
                 db.commit()
-                return {"status": "success", "answer": _with_attention_ack(fallback_direct)}
+                return {"status": "success", "answer": fallback_answer}
             if principal_id is None and public_conversation is not None:
                 fallback_res = public_conversation.public_answer(transcript)
                 if current_call.central_conversation_id is not None and isinstance(fallback_res, dict) and fallback_res.get("answer"):
