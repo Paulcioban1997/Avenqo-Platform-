@@ -1664,3 +1664,40 @@ async def test_pr131_full_catalog_lookup_finds_product_beyond_preview_limit(tmp_
         assert result.data["total_catalog_products"] == len(catalog)
         assert any("Fraiseuse Unique" in (r.get("name") or "") for r in result.data["matches"])
     engine.dispose()
+
+
+def test_pr131_public_identity_and_modules_request_starts_pin_challenge(tmp_path):
+    from backend.app.voice.telnyx_media import PublicInboundConversation
+
+    engine = _make_engine(tmp_path, "pin_private_questions.db")
+    with Session(engine) as db:
+        company = _seed_company(
+            db, name="Identité Commerce", slug="identite-commerce",
+            industry="Retail", modules=("voice", "retail"),
+        )
+        cfg = db.scalar(select(VoiceBusinessConfig).where(
+            VoiceBusinessConfig.company_id == company["company_id"]
+        ))
+        assert cfg is not None
+        call = VoiceCall(
+            company_id=company["company_id"], config_id=cfg.id,
+            telnyx_call_control_id="private-question-test",
+            caller_phone="+15145550111", caller_type="CLIENT", status="in_progress",
+        )
+        db.add(call)
+        db.commit()
+
+        # Use the real security_gate implementation but replace the transport and
+        # credential lookup so no phone network or actual PIN is required.
+        public = object.__new__(PublicInboundConversation)
+        public.db = db
+        public.settings = Settings()
+        public.call_id = call.id
+        public.context = lambda: (call, cfg, company["company"])
+        public.has_configured_pin = lambda _call: True
+
+        for phrase in ("Qui suis-je ?", "Quels modules ai-je activés ?"):
+            response = public.security_gate(phrase)
+            assert response is not None and response.get("auth_required") is True
+            assert (call.source_context or {}).get("pending_auth_query") == phrase
+    engine.dispose()
