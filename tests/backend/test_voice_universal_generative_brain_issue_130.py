@@ -1561,13 +1561,11 @@ def test_pr131_private_costs_absent_from_non_executive_llm_context(tmp_path):
             ModuleEntitlementService(db),
             AIUsageService(db, AIQuotaPolicy(Settings())),
         )
-        common = {
-            "user_language": "fr-CA", "company_country": "CA",
-            "company_currency": "CAD", "company_timezone": "America/Toronto",
-        }
         analyst_ctx = context_builder.build(
             TenantContext(company["company_id"], analyst.id), analyst.id,
-            permissions=frozenset(permissions_for(UserRole.ANALYST)), **common,
+            permissions=frozenset(permissions_for(UserRole.ANALYST)),
+            user_language="fr-CA", company_country="CA", company_currency="CAD",
+            company_timezone="America/Toronto",
         )
         analyst_prompt = analyst_ctx.as_prompt_context()
         assert "unit_cost" not in analyst_prompt
@@ -1577,7 +1575,9 @@ def test_pr131_private_costs_absent_from_non_executive_llm_context(tmp_path):
 
         owner_ctx = context_builder.build(
             company["tenant_owner"], company["owner_id"],
-            permissions=frozenset(permissions_for(UserRole.OWNER)), **common,
+            permissions=frozenset(permissions_for(UserRole.OWNER)),
+            user_language="fr-CA", company_country="CA", company_currency="CAD",
+            company_timezone="America/Toronto",
         )
         assert (owner_ctx.caller_identity or {}).get("can_view_margins") is True
         assert "unit_cost" in owner_ctx.as_prompt_context()
