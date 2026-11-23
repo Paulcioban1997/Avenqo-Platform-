@@ -79,6 +79,15 @@ VOICE_RETAIL_NATIVE_TOOLS: frozenset[str] = frozenset({
     "get_inventory_freshness",
 })
 
+# Native data tools must satisfy the same company Voice action grants as
+# the equivalent assistant tools. Identity and IVR tools remain Voice-native.
+VOICE_NATIVE_DATA_ACTIONS: dict[str, tuple[str, str]] = {
+    "search_products": ("retail", "read_products"),
+    "get_product_margins": ("retail", "read_products"),
+    "get_inventory_freshness": ("retail", "read_inventory"),
+}
+
+
 VOICE_EXECUTIVE_NATIVE_TOOLS: frozenset[str] = frozenset({
     "get_product_margins",
     "get_executive_briefing",
