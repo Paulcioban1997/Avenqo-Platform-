@@ -152,17 +152,39 @@ class CentralAIContextBuilder:
                         )
                     )
                     role_val = normalize_role(
-                        getattr(membership, "role", None) if membership is not None else getattr(actor, "role", None)
+                        membership.role if membership is not None else None
                     ) or "member"
+                    # A user's account role alone does not establish active tenant membership.
+                    verified_exec = bool(
+                        membership is not None
+                        and is_executive_role(role_val)
+                        and "data:read" in permissions
+                    )
                     caller_identity = {
                         "user_id": str(user_id),
                         "full_name": f"{actor.first_name or ''} {actor.last_name or ''}".strip() or actor.first_name or "Collaborateur",
                         "first_name": actor.first_name or "",
                         "role": role_val,
-                        "is_executive_role": is_executive_role(role_val),
-                        "can_view_margins": is_executive_role(role_val),
+                        "is_executive_role": verified_exec,
+                        "can_view_margins": verified_exec,
                         "job_title": actor.job_title or "",
                     }
+        # Security boundary: never place private supplier costs or margins in
+        # the model's prompt for a public caller or non-executive staff member.
+        # Tool-level denials cannot undo an already-exposed prompt field.
+        can_see_margins = bool(caller_identity and caller_identity.get("can_view_margins"))
+        if not can_see_margins:
+            margin_fields = {"unit_cost", "profit_margin_amount", "profit_margin_pct", "profit_margin", "gross_margin", "cost_price", "cogs"}
+            products = company_profile.get("public_products")
+            if isinstance(products, (tuple, list)):
+                company_profile = {
+                    **company_profile,
+                    "public_products": tuple(
+                        {k: v for k, v in row.items() if k not in margin_fields}
+                        if isinstance(row, dict) else row
+                        for row in products
+                    ),
+                }
         from backend.app.ai.tools.business.voice_intelligence_tools import MODULE_CAPABILITY_DESCRIPTIONS
         enabled_mod_details = tuple(
             {
