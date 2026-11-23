@@ -79,6 +79,7 @@ from backend.app.models import (
     VoiceCall,
 )
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
+from backend.app.services.voice_module_permission_service import VoiceModulePermissionService
 from backend.app.services.semantic_product_search import semantic_search_products
 from backend.app.voice.caller_scope import PUBLIC_VOICE_CALLER_PERMISSIONS
 from backend.app.voice.direct_answers import (
@@ -170,6 +171,13 @@ def _seed_company(
     ent = ModuleEntitlementService(db)
     for mod in modules:
         ent.activate_module(tenant, mod, auto_init_voice=(mod == "voice"))
+
+    # Tests exercising native Retail data tools use explicit customer-configured
+    # grants. Subscription/module activation alone must not enable them.
+    if "retail" in modules:
+        grants = VoiceModulePermissionService(db)
+        grants.grant(tenant, "retail", "read_products", granted_by=owner.id)
+        grants.grant(tenant, "retail", "read_inventory", granted_by=owner.id)
 
     if "crm" in modules:
         from backend.app.models.crm import CRMService
