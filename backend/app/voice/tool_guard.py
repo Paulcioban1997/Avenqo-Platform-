@@ -14,6 +14,7 @@ from backend.app.services.voice_module_permission_service import VoiceModulePerm
 from backend.app.voice.caller_scope import is_public_voice_caller, public_voice_tool_allowed
 from backend.app.voice.module_actions import (
     VOICE_EXECUTIVE_NATIVE_TOOLS,
+    VOICE_NATIVE_DATA_ACTIONS,
     VOICE_RETAIL_NATIVE_TOOLS,
     VOICE_STAFF_ONLY_NATIVE_TOOLS,
     VOICE_TOOL_ALIASES,
@@ -81,6 +82,20 @@ class VoiceToolGuard:
                 raise VoiceToolDenied("Caller authentication is required for this tool.")
             if tool_name in VOICE_RETAIL_NATIVE_TOOLS and "retail" not in active:
                 raise VoiceToolDenied("The Retail subscription module is not active.")
+            native_action = VOICE_NATIVE_DATA_ACTIONS.get(tool_name)
+            if native_action is not None:
+                module_code, action_code = native_action
+                plan = self._entitlements.get_company_plan(tenant)
+                if module_code not in active or not plan.allows_module(module_code):
+                    raise VoiceToolDenied("The required subscription module is not active.")
+                from backend.app.services.voice_onboarding_service import stored_business_profile
+                business = stored_business_profile(self._session, tenant.company_id)
+                if business and f"{module_code}:{action_code}" not in business.get("allowed_actions", []):
+                    raise VoiceToolDenied("This capability is disabled in company Voice settings")
+                if not self._grants.is_granted(tenant.company_id, module_code, action_code):
+                    raise VoiceToolDenied("Voice tool action grant is missing or revoked.")
+                if not public_caller and "data:read" not in perms:
+                    raise VoiceToolDenied("Private company data requires an authenticated data reader")
             if tool_name in VOICE_EXECUTIVE_NATIVE_TOOLS:
                 from backend.app.core.permissions import is_executive_role, resolve_verified_staff_role
                 effective_uid = user_id if user_id is not None else tenant.user_id
