@@ -999,14 +999,11 @@ def spoken_catalog_answer(
     # Optional category / semantic filter based on query or inherited from call session context
     active_category = None
     is_accessories_query = False
-    if query:
-        query_norm = unicodedata.normalize("NFKD", query.casefold())
-        query_norm = "".join(c for c in query_norm if not unicodedata.combining(c))
-        if re.search(r"\b(accessoire|accessoires|accessory|accessories)\b", query_norm):
-            active_category = "accessoire"
-            is_accessories_query = True
-        elif re.search(r"\b(planche|planches|snowboard|snowboards)\b", query_norm):
-            active_category = "planche"
+    # Always run specific caller requests through semantic head-noun matching.
+    # A modifier such as "snowboard" in "casque de snowboard" must NOT
+    # force the broad "planche" branch before the helmet is considered.
+    # Only an inherited filter from a previous catalog page may bypass
+    # a fresh semantic search.
 
     # If query does not specify a category and this is pagination, inherit previous category filter from call context
     if not active_category and offset > 0 and call is not None:
