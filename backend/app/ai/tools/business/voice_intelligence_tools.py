@@ -261,7 +261,7 @@ class SearchProductsTool(AITool):
         self._session = session
 
     async def run(self, context: ToolExecutionContext, arguments: SearchProductsArgs) -> ToolResult:
-        profile = CompanyIntelligenceService(self._session).get_profile(context.tenant.company_id)
+        profile = CompanyIntelligenceService(self._session).get_profile(context.tenant.company_id, product_limit=None)
         if not profile.has_retail_commerce:
             return ToolResult(
                 success=True,
@@ -404,7 +404,7 @@ class GetProductMarginsTool(AITool):
                 },
             )
 
-        profile = CompanyIntelligenceService(self._session).get_profile(context.tenant.company_id)
+        profile = CompanyIntelligenceService(self._session).get_profile(context.tenant.company_id, product_limit=None)
         products = [p for p in (profile.public_products or ()) if isinstance(p, dict)]
         if arguments.product_query:
             sem = semantic_search_products(products, arguments.product_query, limit=arguments.limit)
@@ -494,7 +494,7 @@ class GetInventoryFreshnessTool(AITool):
     async def run(self, context: ToolExecutionContext, arguments: EmptyVoiceIntelArgs) -> ToolResult:
         if is_public_voice_caller(context.permissions) or context.user_id is None:
             return ToolResult(success=False, error="authentication_required")
-        profile = CompanyIntelligenceService(self._session).get_profile(context.tenant.company_id)
+        profile = CompanyIntelligenceService(self._session).get_profile(context.tenant.company_id, product_limit=None)
         if not profile.has_retail_commerce:
             return ToolResult(
                 success=True,
