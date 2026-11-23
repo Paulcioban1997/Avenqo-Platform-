@@ -383,9 +383,27 @@ def semantic_search_products(
         folded_name = _fold_ascii(name)
         folded_all = _fold_ascii(f"{name} {meta} {desc}")
 
+        # A domain match is only a candidate, NEVER a perfect match.
+        # Preserve explicit brand, model and use-case qualifiers, e.g.
+        # "Sony headphones" != Bose, "casque de snowboard" != hard hat.
+        domain_head_words = {
+            "casque", "casqu", "helmet", "headgear", "hardhat",
+            "casco", "headphone", "headset", "earbud", "earphone",
+            "auricular", "ecouteur", "casti", "casca",
+            "protection", "protecteur", "safety", "audio",
+        }
+        domain_qualifiers = [
+            token for token in content_q
+            if _stem_token(token) not in domain_head_words
+        ]
+        domain_qualifiers_ok = all(
+            _tokens_match(token, all_tokens, all_stems, folded_all) >= 0.85
+            for token in domain_qualifiers
+        )
+
         # 1. Polysemy / domain conflict guard for protective helmet vs audio headphones
         if casque_sense == "protective_helmet":
-            if domain == "audio_headphones":
+            if domain == "audio_headphones" and domain_qualifiers_ok:
                 other_category_notes.append({
                     "name": name,
                     "price": row.get("price"),
@@ -398,7 +416,7 @@ def semantic_search_products(
             if domain == "snowboard":
                 # A snowboard board is NEVER a snowboard helmet!
                 continue
-            if domain == "protective_helmet":
+            if domain == "protective_helmet" and domain_qualifiers_ok:
                 scored_matches.append(
                     SemanticProductMatch(
                         product=row,
@@ -415,7 +433,7 @@ def semantic_search_products(
         elif casque_sense == "audio_headphones":
             if domain == "protective_helmet" or domain == "snowboard":
                 continue
-            if domain == "audio_headphones":
+            if domain == "audio_headphones" and domain_qualifiers_ok:
                 scored_matches.append(
                     SemanticProductMatch(
                         product=row,
@@ -427,7 +445,7 @@ def semantic_search_products(
                 continue
 
         elif casque_sense == "ambiguous_casque":
-            if domain == "protective_helmet":
+            if domain == "protective_helmet" and domain_qualifiers_ok:
                 scored_matches.append(
                     SemanticProductMatch(
                         product=row,
@@ -437,7 +455,7 @@ def semantic_search_products(
                     )
                 )
                 continue
-            if domain == "audio_headphones":
+            if domain == "audio_headphones" and domain_qualifiers_ok:
                 scored_matches.append(
                     SemanticProductMatch(
                         product=row,
