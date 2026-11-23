@@ -10,6 +10,7 @@ from backend.app.services.voice_module_permission_service import VoiceModulePerm
 from backend.app.voice.caller_scope import is_public_voice_caller, public_voice_tool_allowed
 from backend.app.voice.module_actions import (
     VOICE_EXECUTIVE_NATIVE_TOOLS,
+    VOICE_NATIVE_DATA_ACTIONS,
     VOICE_NATIVE_TOOLS,
     VOICE_RETAIL_NATIVE_TOOLS,
     VOICE_WRITE_TOOLS,
@@ -185,6 +186,24 @@ class VoiceToolRegistryService:
                     continue
                 names.add(tool_name)
                 owners[tool_name] = defn.agent_id
+        # Never advertise a native Retail tool whose backing Voice action has
+        # been revoked or disabled, even when the Retail subscription is active.
+        native_plan = self._entitlements.get_company_plan(tenant)
+        for native_name in list(names):
+            native_action = VOICE_NATIVE_DATA_ACTIONS.get(native_name)
+            if native_action is None:
+                continue
+            module_code, action_code = native_action
+            action_enabled = bool(
+                module_code in active
+                and native_plan.allows_module(module_code)
+                and self._grants.is_granted(tenant.company_id, module_code, action_code)
+            )
+            if business and f"{module_code}:{action_code}" not in business.get("allowed_actions", []):
+                action_enabled = False
+            if not action_enabled:
+                names.discard(native_name)
+                owners.pop(native_name, None)
         return frozenset(names), owners
 
 
