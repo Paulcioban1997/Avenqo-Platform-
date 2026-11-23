@@ -1505,3 +1505,162 @@ async def test_08_blind_evaluation_35_unpredictable_prompts_end_to_end(tmp_path)
             f"classifier_calls={llm.classify_calls} db_messages={total_msgs}"
         )
     engine.dispose()
+
+
+# ==============================================================================
+# PR #131 independent review: security and semantic regression coverage
+# ==============================================================================
+
+
+def test_pr131_rejects_brand_and_helmet_substitutions():
+    products = [
+        {"name": "Casque de chantier", "category": "protection construction", "description": "hard hat for building site"},
+        {"name": "Bose Headphones 700", "category": "audio", "description": "wireless headphones"},
+        {"name": "Planche de snowboard", "category": "snowboard", "description": "winter sports board"},
+    ]
+    assert semantic_search_products(products, "casque de snowboard").status == "not_found"
+    assert semantic_search_products(products, "Sony headphones").status == "not_found"
+    assert semantic_search_products(products, "Bose headphones").status == "found"
+    answer = spoken_catalog_answer(
+        products,
+        retail_enabled=True,
+        locale="fr-CA",
+        query="Quel est le prix des casques de snowboard ?",
+    )
+    assert "planche de snowboard" not in answer.casefold()
+    assert "casque de chantier" not in answer.casefold()
+
+
+def test_pr131_private_costs_absent_from_non_executive_llm_context(tmp_path):
+    engine = _make_engine(tmp_path, "margin_prompt_redaction.db")
+    with Session(engine) as db:
+        company = _seed_company(
+            db, name="Test Quincaillerie", slug="test-quincaillerie",
+            industry="Retail", modules=("voice", "retail"),
+        )
+        _seed_commerce_catalog(db, company["company_id"], [
+            {"name": "Perceuse Secrète", "unit_price": 199, "unit_cost": 73,
+             "inventory_level": 2, "in_stock": True},
+        ], is_fresh=True)
+        analyst = User(
+            company_id=company["company_id"],
+            first_name="Ari", last_name="Analyste",
+            email="analyst@test-quincaillerie.example.ca",
+            password_hash="hashed-secret",
+            role=UserRole.ANALYST,
+            is_active=True,
+        )
+        db.add(analyst)
+        db.flush()
+        db.add(CompanyMembership(
+            company_id=company["company_id"], user_id=analyst.id,
+            role=UserRole.ANALYST, is_active=True,
+        ))
+        db.commit()
+        context_builder = CentralAIContextBuilder(
+            ModuleEntitlementService(db),
+            AIUsageService(db, AIQuotaPolicy(Settings())),
+        )
+        common = {
+            "user_language": "fr-CA", "company_country": "CA",
+            "company_currency": "CAD", "company_timezone": "America/Toronto",
+        }
+        analyst_ctx = context_builder.build(
+            TenantContext(company["company_id"], analyst.id), analyst.id,
+            permissions=frozenset(permissions_for(UserRole.ANALYST)), **common,
+        )
+        analyst_prompt = analyst_ctx.as_prompt_context()
+        assert "unit_cost" not in analyst_prompt
+        assert "profit_margin_amount" not in analyst_prompt
+        assert "profit_margin_pct" not in analyst_prompt
+        assert not (analyst_ctx.caller_identity or {}).get("can_view_margins")
+
+        owner_ctx = context_builder.build(
+            company["tenant_owner"], company["owner_id"],
+            permissions=frozenset(permissions_for(UserRole.OWNER)), **common,
+        )
+        assert (owner_ctx.caller_identity or {}).get("can_view_margins") is True
+        assert "unit_cost" in owner_ctx.as_prompt_context()
+    engine.dispose()
+
+
+def test_pr131_native_retail_tool_revocation_blocks_exposure_and_execution(tmp_path):
+    engine = _make_engine(tmp_path, "native_retail_grants.db")
+    with Session(engine) as db:
+        company = _seed_company(
+            db, name="Retail Protected", slug="retail-protected",
+            industry="Retail", modules=("voice", "retail"),
+        )
+        db.commit()
+        tools = build_business_tool_registry(
+            db, cast(Any, SimpleNamespace()), cast(Any, SimpleNamespace()),
+        )
+        registry = VoiceToolRegistryService(db, build_default_assistant_registry(tools))
+        guard = VoiceToolGuard(db)
+        tenant = company["tenant_owner"]
+        perms = frozenset(permissions_for(UserRole.OWNER))
+
+        grants = VoiceModulePermissionService(db)
+        grants.revoke(tenant, "retail", "read_products")
+        db.commit()
+        available, _ = registry.allowed_tools(tenant, perms)
+        assert "search_products" not in available
+        assert "get_product_margins" not in available
+        with pytest.raises(VoiceToolDenied):
+            guard.authorize(tenant, "search_products", perms)
+        with pytest.raises(VoiceToolDenied):
+            guard.authorize(tenant, "get_product_margins", perms)
+
+        grants.revoke(tenant, "retail", "read_inventory")
+        db.commit()
+        available_after, _ = registry.allowed_tools(tenant, perms)
+        assert "get_inventory_freshness" not in available_after
+        with pytest.raises(VoiceToolDenied):
+            guard.authorize(tenant, "get_inventory_freshness", perms)
+    engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_pr131_full_catalog_lookup_finds_product_beyond_preview_limit(tmp_path):
+    from backend.app.services.company_intelligence_service import CompanyIntelligenceService
+    from backend.app.ai.tools.business.voice_intelligence_tools import SearchProductsArgs
+
+    engine = _make_engine(tmp_path, "full_catalog.db")
+    with Session(engine) as db:
+        company = _seed_company(
+            db, name="Boutique Large", slug="boutique-large",
+            industry="Retail", modules=("voice", "retail"),
+        )
+        catalog = [
+            {"name": f"Article Courant {i}", "unit_price": float(10 + i), "inventory_level": 3}
+            for i in range(62)
+        ]
+        catalog.append({
+            "name": "Fraiseuse Unique Série Kappa 999",
+            "unit_price": 899.00,
+            "inventory_level": 2,
+        })
+        _seed_commerce_catalog(db, company["company_id"], catalog, is_fresh=True)
+        db.commit()
+
+        intel = CompanyIntelligenceService(db)
+        assert len(intel.get_profile(company["company_id"]).public_products) <= 50
+        assert len(intel.get_profile(company["company_id"], product_limit=None).public_products) == len(catalog)
+
+        scope = ToolExecutionContext(
+            tenant=company["tenant_owner"],
+            user_id=company["owner_id"],
+            conversation_id=uuid4(),
+            permissions=frozenset(permissions_for(UserRole.OWNER)),
+            request_id=f"req-{uuid4().hex[:8]}",
+            selected_agent_id="voice",
+            voice_path=True,
+        )
+        result = await SearchProductsTool(db).run(
+            scope, SearchProductsArgs(query="Fraiseuse Unique Série Kappa 999"),
+        )
+        assert result.success is True
+        assert result.data["status"] == "found"
+        assert result.data["total_catalog_products"] == len(catalog)
+        assert any("Fraiseuse Unique" in (r.get("name") or "") for r in result.data["matches"])
+    engine.dispose()
