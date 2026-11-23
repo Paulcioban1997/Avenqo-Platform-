@@ -400,6 +400,8 @@ def semantic_search_products(
             _tokens_match(token, all_tokens, all_stems, folded_all) >= 0.85
             for token in domain_qualifiers
         )
+        if casque_sense in {"protective_helmet", "audio_headphones", "ambiguous_casque"} and not domain_qualifiers_ok:
+            continue
 
         # 1. Polysemy / domain conflict guard for protective helmet vs audio headphones
         if casque_sense == "protective_helmet":
