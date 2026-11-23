@@ -27,7 +27,7 @@ logger = logging.getLogger("avenqo.voice.media")
 from backend.app.ai.chat.conversation_service import ConversationService
 from backend.app.config.settings import Settings, get_settings
 from backend.app.core.locale_catalog import detect_spoken_language, resolve_locale
-from backend.app.core.permissions import permissions_for
+from backend.app.core.permissions import permissions_for, resolve_verified_staff_role
 from backend.app.core.rate_limit import allow_rate_limit
 from backend.app.database import get_db
 from backend.app.dependencies.central_ai import get_central_ai_service
@@ -2693,8 +2693,10 @@ def authorize_media_session(
     elif ledger is not None:
         ledger.attach_identity(current_user.id, current_call.central_conversation_id)
     if bridge is not None and hasattr(bridge.adapter, "update_staff_identity"):
-        user_role = str(getattr(current_user, "role", "Employee"))
-        bridge.adapter.update_staff_identity(True, current_user.first_name, user_role)
+        verified_role = resolve_verified_staff_role(
+            db, current_company.id, current_user.id, fallback_role=getattr(current_user, "role", None)
+        )
+        bridge.adapter.update_staff_identity(True, current_user.first_name, verified_role or "employee")
 
     return public_mode, principal_id, auth_epoch, ledger
 
@@ -2823,7 +2825,10 @@ async def telnyx_media_socket(
                     if bridge is not None and hasattr(bridge.adapter, "update_staff_identity"):
                         u_obj = db.get(User, principal_id)
                         if u_obj is not None:
-                            bridge.adapter.update_staff_identity(True, u_obj.first_name, str(getattr(u_obj, "role", "Employee")))
+                            verified_staff_role = resolve_verified_staff_role(
+                                db, current_call.company_id, principal_id, fallback_role=getattr(u_obj, "role", None)
+                            )
+                            bridge.adapter.update_staff_identity(True, u_obj.first_name, verified_staff_role or "employee")
 
         if public_conversation is not None and principal_id is None:
             security_check = public_conversation.security_gate(transcript)
@@ -3104,28 +3109,47 @@ async def telnyx_media_socket(
             is_language_inquiry,
             is_language_authorized_for_company,
         )
-        lang_target = is_language_inquiry(transcript)
-        if lang_target and is_language_authorized_for_company(db, current_company.id, lang_target):
-            target_locale_map = {"es": "es-ES", "en": "en-US", "fr": "fr-CA", "ro": "ro-RO"}
-            target_loc = target_locale_map.get(lang_target)
-            if target_loc:
-                current_call.locale = target_loc
-                bridge.locale = target_loc
-                call_lang_session.active_locale = target_loc
-                call_lang_session.last_confirmed_locale = target_loc
-                call_lang_session.explicit_switch_requested = True
-                call_lang_session.language_lock_state = "LOCKED"
-                current_call.source_context = {
-                    **(current_call.source_context or {}),
-                    "call_language_session": call_lang_session.as_dict(),
-                }
-                db.commit()
-
-        # Contextual objection / correction / attention-check handling:
-        # Stop repeating unwanted catalog/answers; if the caller combined an attention check
-        # ("Allô, tu m'entends ? Quel est le prix des casques ?") or objection with a concrete
-        # request, extract and execute that request instead of replying with a confirmation only.
         call_locale = current_call.locale or locale
+        lang_target = is_language_inquiry(transcript)
+        if lang_target:
+            if is_language_authorized_for_company(db, current_company.id, lang_target):
+                target_locale_map = {"es": "es-ES", "en": "en-US", "fr": "fr-CA", "ro": "ro-RO"}
+                target_loc = target_locale_map.get(lang_target)
+                if target_loc:
+                    current_call.locale = target_loc
+                    bridge.locale = target_loc
+                    call_locale = target_loc
+                    call_lang_session.active_locale = target_loc
+                    call_lang_session.last_confirmed_locale = target_loc
+                    call_lang_session.explicit_switch_requested = True
+                    call_lang_session.language_lock_state = "LOCKED"
+                    current_call.source_context = {
+                        **(current_call.source_context or {}),
+                        "call_language_session": call_lang_session.as_dict(),
+                    }
+                    db.commit()
+            else:
+                # Deterministic tenant language-policy enforcement: never switch to an unauthorized language.
+                brand_name = (
+                    getattr(current_config, "effective_voice_name", None)
+                    or getattr(current_config, "voice_display_name", None)
+                    or getattr(current_config, "business_name", None)
+                    or current_company.name
+                )
+                brand_clean = str(brand_name).replace("_", " ").strip()
+                unauth_map = {
+                    "es": f"Lo sentimos, la atención en español no está disponible para {brand_clean}.",
+                    "en": f"Sorry, English assistance is not currently available for {brand_clean}.",
+                    "ro": f"Ne pare rău, asistența în limba română nu este disponibilă pentru {brand_clean}.",
+                    "fr": f"Désolé, l'assistance en français n'est pas disponible pour {brand_clean}.",
+                }
+                return {"status": "success", "answer": unauth_map.get(lang_target, unauth_map["fr"])}
+
+        # Universal Generative Central AI-First Routing (Issue #130):
+        # Deterministic shortcuts are kept ONLY for security/auth/PIN/handover/hangup/language-policy
+        # and pure bare attention checks ("Allô ?"). Every real business question, objection,
+        # follow-up, identity/module/product inquiry, or unexpected/off-topic question goes
+        # straight to Avenqo Central AI with full conversation history and authorized tools.
         had_attention_prefix = False
         if is_attention_check(transcript):
             embedded_after_attention = extract_request_after_attention_check(transcript)
@@ -3166,80 +3190,12 @@ async def telnyx_media_socket(
                 return f"Yes, I hear you. {answer_text}"
             return f"Oui, je vous entends. {answer_text}"
 
-        if is_correction_or_objection(transcript):
-            reformulated = extract_reformulation_after_correction(transcript)
-            if reformulated:
-                transcript = reformulated
-            else:
-                ctx_obj = dict(current_call.source_context or {})
-                last_topic = ctx_obj.get("last_voice_topic")
-                ctx_obj.pop("pending_retail_clarification", None)
-                current_call.source_context = ctx_obj
-                db.commit()
-                clarification = build_correction_clarification(call_locale, last_topic=last_topic)
-                if current_call.central_conversation_id is not None:
-                    ConversationService(db).add_message(
-                        current_company.id,
-                        current_call.central_conversation_id,
-                        AIMessageRole.USER,
-                        transcript,
-                    )
-                    ConversationService(db).add_message(
-                        current_company.id,
-                        current_call.central_conversation_id,
-                        AIMessageRole.ASSISTANT,
-                        clarification,
-                        provider="central_ai",
-                        model=settings.voice_realtime_model,
-                    )
-                return {"status": "success", "answer": clarification}
-
-        direct_answer = resolve_direct_voice_answer(
-            db,
-            company_id=current_company.id,
-            transcript=transcript,
-            authenticated_staff=principal_id is not None,
-            staff_role=str(getattr(current_user, "role", "") or "") if principal_id is not None else None,
-            locale=current_call.locale or locale,
-            user_id=current_user.id if principal_id is not None else None,
-            call=current_call,
-        )
-        if direct_answer:
-            direct_answer = _with_attention_ack(direct_answer)
+        # Clear stale clarification flags when the caller objects or pivots so Central AI never gets stuck.
+        if is_correction_or_objection(transcript) and (current_call.source_context or {}).get("pending_retail_clarification"):
+            ctx_obj = dict(current_call.source_context or {})
+            ctx_obj.pop("pending_retail_clarification", None)
+            current_call.source_context = ctx_obj
             db.commit()
-            if current_call.central_conversation_id is not None:
-                ConversationService(db).add_message(
-                    current_company.id,
-                    current_call.central_conversation_id,
-                    AIMessageRole.USER,
-                    transcript,
-                )
-                ConversationService(db).add_message(
-                    current_company.id,
-                    current_call.central_conversation_id,
-                    AIMessageRole.ASSISTANT,
-                    direct_answer,
-                    provider="central_ai",
-                    model=settings.voice_realtime_model,
-                )
-            if principal_id is None:
-                pin_triggers = (
-                    "code nip", "code pin", "votre nip", "votre pin",
-                    "su nip", "su pin", "codul pin",
-                    "authentifies par nip", "authentifiés par nip",
-                    "authenticated with a pin", "autenticados con nip", "autentificati prin pin",
-                    "veuillez saisir votre code nip", "please enter your pin",
-                    "por favor ingrese su", "va rugam sa introduceti",
-                )
-                direct_lower = direct_answer.casefold()
-                if any(trig in direct_lower for trig in pin_triggers):
-                    current_call.source_context = {
-                        **(current_call.source_context or {}),
-                        "pending_auth_query": transcript,
-                    }
-                    db.commit()
-                    return {"status": "success", "answer": direct_answer, "auth_required": True}
-            return {"status": "success", "answer": direct_answer}
 
         if is_hangup_request(transcript):
             call_loc = resolve_locale(current_call.locale or locale)
@@ -3304,8 +3260,28 @@ async def telnyx_media_socket(
             final_ans = _with_attention_ack(result.answer) if isinstance(result.answer, str) else result.answer
             return {"status": result.status, "answer": final_ans, "hangup": hangup_detected}
         except Exception as exc:
+            logger.exception("Central AI execute error on voice turn, attempting safe fallback: %s", exc)
+            verified_role = (
+                resolve_verified_staff_role(
+                    db, current_company.id, current_user.id, fallback_role=getattr(current_user, "role", None)
+                )
+                if principal_id is not None
+                else None
+            )
+            fallback_direct = resolve_direct_voice_answer(
+                db,
+                company_id=current_company.id,
+                transcript=transcript,
+                authenticated_staff=principal_id is not None,
+                staff_role=verified_role,
+                locale=current_call.locale or locale,
+                user_id=current_user.id if principal_id is not None else None,
+                call=current_call,
+            )
+            if fallback_direct:
+                db.commit()
+                return {"status": "success", "answer": _with_attention_ack(fallback_direct)}
             if principal_id is None and public_conversation is not None:
-                logger.exception("Central AI execute error for public voice call, falling back: %s", exc)
                 fallback_res = public_conversation.public_answer(transcript)
                 if current_call.central_conversation_id is not None and isinstance(fallback_res, dict) and fallback_res.get("answer"):
                     conv_service = ConversationService(db)

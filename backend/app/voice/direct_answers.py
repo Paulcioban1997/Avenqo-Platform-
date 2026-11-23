@@ -14,7 +14,9 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from backend.app.core.permissions import is_executive_role, normalize_role, resolve_verified_staff_role
 from backend.app.models import Company, CompanyMembership, User, VoiceBusinessConfig
+from backend.app.services.semantic_product_search import semantic_search_products
 
 
 def _words(text: str) -> set[str]:
@@ -1047,35 +1049,48 @@ def spoken_catalog_answer(
         if board_rows:
             rows = board_rows
     elif query:
-        query_norm = unicodedata.normalize("NFKD", query.casefold())
-        query_norm = "".join(c for c in query_norm if not unicodedata.combining(c))
-        query_words = set(re.findall(r"\b\w+\b", query_norm))
-        stopwords = {
-            "quel", "quels", "quelle", "quelles", "combien", "coute", "coutent", "prix",
-            "tarif", "tarifs", "est", "sont", "le", "la", "les", "du", "de", "des",
-            "un", "une", "avez", "vous", "notre", "votre", "catalogue", "produit", "produits",
-            "article", "articles", "what", "which", "how", "much", "is", "are", "the", "a", "an",
-            "in", "for", "do", "you", "have", "price", "catalog", "product", "products",
-            "pour", "dans", "avec", "sur", "vos", "nos", "prochain", "prochains", "suivant", "suivants",
-            "cinq", "trois", "quatre", "deux", "dix", "autre", "autres", "suite",
-            "next", "more", "other", "others", "five", "three", "four", "two", "ten",
-        }
-        specific_tokens = {w for w in query_words if w not in stopwords and len(w) >= 3}
-        if specific_tokens:
-            name_matches = []
-            for r in rows:
-                r_name_norm = unicodedata.normalize("NFKD", str(r.get("name") or r.get("title") or r.get("product_name") or "").casefold())
-                r_name_norm = "".join(c for c in r_name_norm if not unicodedata.combining(c))
-                score = 0
-                for tok in specific_tokens:
-                    singular = tok[:-1] if len(tok) >= 4 and tok.endswith("s") else tok
-                    if tok in r_name_norm or (singular != tok and singular in r_name_norm):
-                        score += 1
-                if score > 0:
-                    name_matches.append((score, r))
-            if name_matches:
-                name_matches.sort(key=lambda x: x[0], reverse=True)
-                rows = [m[1] for m in name_matches]
+        sem = semantic_search_products(rows, query, limit=max(limit + offset, 20))
+        if sem.status == "not_found":
+            other_note = ""
+            if sem.related_other_category:
+                other_names = ", ".join(str(x.get("name") or "") for x in sem.related_other_category[:2] if x.get("name"))
+                if other_names and sem.not_found_reason == "no_protective_helmet_in_catalog":
+                    if spanish:
+                        other_note = f" Solo tenemos auriculares de audio ({other_names}), no cascos de protección."
+                    elif romanian:
+                        other_note = f" Avem doar căști audio ({other_names}), nu căști de protecție."
+                    elif french:
+                        other_note = f" Nous avons bien un casque audio ({other_names}), mais aucun casque de protection."
+                    else:
+                        other_note = f" We only carry audio headphones ({other_names}), not protective helmets."
+            if spanish:
+                return f"No tenemos ese producto en nuestro catálogo.{other_note}"
+            if romanian:
+                return f"Nu avem acest produs în catalogul nostru.{other_note}"
+            return (
+                f"Nous n'avons pas ce produit dans notre catalogue.{other_note}"
+                if french else
+                f"We do not carry that product in our catalog.{other_note}"
+            )
+        if sem.status == "ambiguous" and sem.matches:
+            first_p = sem.matches[0].product
+            p_name = str(first_p.get("name") or "").strip()
+            p_price = first_p.get("price")
+            p_unit = str(first_p.get("currency") or currency or "$").strip().upper()
+            p_sym = "$" if p_unit in ("CAD", "USD", "$") or not p_unit else ("€" if p_unit in ("EUR", "€") else p_unit)
+            price_str = f"{_format_spoken_price_number(p_price, _parse_money_value(p_price))} {p_sym}" if p_price not in (None, "") else ""
+            if french:
+                return (
+                    f"Si vous parlez de notre casque audio {p_name}, il est à {price_str}. "
+                    "Si vous cherchez plutôt un casque de protection, nous n'en avons pas au catalogue."
+                ).strip()
+            if spanish:
+                return f"Si se refiere a nuestros auriculares {p_name}, cuestan {price_str}. No tenemos cascos de protección en el catálogo."
+            if romanian:
+                return f"Dacă vă referiți la căștile audio {p_name}, costă {price_str}. Nu avem căști de protecție în catalog."
+            return f"If you mean our audio headphones {p_name}, they are priced at {price_str}. We do not carry protective helmets in our catalog."
+        if sem.status == "found" and sem.matches:
+            rows = [m.product for m in sem.matches]
 
     target_slice = rows[offset : offset + limit]
     if not target_slice and offset > 0:
@@ -1127,9 +1142,6 @@ def spoken_catalog_answer(
             if is_demo_row:
                 demo_tag = " (precio de demostración)" if spanish else (" (preț demonstrativ)" if romanian else (" (prix démonstration)" if french else " (demo price)"))
                 price_text += demo_tag
-            elif row.get("price_status") == "historical_catalog" or not is_live:
-                hist_tag = " (precio de referencia)" if spanish else (" (preț de referință)" if romanian else (" (prix indicatif)" if french else " (reference price)"))
-                price_text += hist_tag
 
         available = ""
         stock_avail = row.get("stock_availability")
@@ -1139,14 +1151,8 @@ def spoken_catalog_answer(
             available = ", disponible" if spanish else (", disponibil" if romanian else (", disponible" if french else ", available"))
         elif is_live and (stock_avail == "OUT_OF_STOCK" or row.get("in_stock") is False):
             available = ", agotado" if spanish else (", stoc epuizat" if romanian else (", en rupture de stock" if french else ", out of stock"))
-        elif freshness == "STALE":
-            available = ", stock no confirmado, datos no recientes" if spanish else (", stoc neconfirmat, date expirate" if romanian else (", stock non confirmé, données non récentes" if french else ", stock unconfirmed, data not recent"))
-        elif freshness == "UNAVAILABLE":
-            available = ", stock no disponible" if spanish else (", stoc indisponibil" if romanian else (", stock indisponible" if french else ", stock unavailable"))
-        elif freshness == "SYNCING":
-            available = ", sincronización de stock en curso" if spanish else (", sincronizare stoc în curs" if romanian else (", synchronisation de stock en cours" if french else ", stock syncing in progress"))
-        else:
-            available = ", stock non confirmé, données de référence" if french else ", unconfirmed stock, reference data"
+        # NEVER repeat ", stock non confirmé, données non récentes" on every product!
+        # A single concise note is appended ONCE at the end when live stock is not synced.
 
         spoken.append(f"{name}, {price_text}{available}")
         presented_records.append({
@@ -1180,12 +1186,15 @@ def spoken_catalog_answer(
             extra = f" And {remaining} more items in the catalog. Would you like to continue?"
 
     hist_note = ""
-    if any(not r.get("is_live_stock") for r in target_slice):
-        hist_note = (
-            " (Données issues de notre catalogue de référence historique.)"
-            if french else
-            " (Data from our historical reference catalog.)"
-        )
+    if any(not r.get("is_live_stock") and not r.get("is_demo") for r in target_slice):
+        if spanish:
+            hist_note = " El stock en tiempo real no está confirmado por teléfono."
+        elif romanian:
+            hist_note = " Stocul în timp real nu este confirmat la telefon."
+        elif french:
+            hist_note = " Le stock en temps réel est non confirmé."
+        else:
+            hist_note = " Live stock availability is unconfirmed."
 
     if is_accessories_query:
         if spanish:
@@ -1568,7 +1577,7 @@ def resolve_direct_voice_answer(
                 retail_enabled=retail_enabled,
                 locale=locale,
                 currency=getattr(profile, "currency_code", None),
-                query=transcript,
+                query=None,
                 offset=current_offset,
                 limit=req_count,
                 call=call,
@@ -1613,11 +1622,10 @@ def resolve_direct_voice_answer(
                     view_mode="in_stock",
                 )
             if wants_profitable:
-                # Never confuse selling price with profitability: require real cost/margin evidence
-                # and enforce executive role authorization before exposing cost/margin rankings.
-                role_upper = (staff_role or "").upper()
-                is_exec_role = role_upper in {"OWNER", "ADMIN", "SUPER_ADMIN", "DIRECTOR", "EXECUTIVE", "MANAGER"}
-                if not is_exec_role:
+                # Never confuse selling price with profitability: require verified server-side executive role
+                # (canonical role normalized across Enum/string) and real cost/margin evidence.
+                verified_role = resolve_verified_staff_role(db, company_id, user_id, fallback_role=staff_role)
+                if not is_executive_role(verified_role):
                     loc = locale.lower()
                     if loc.startswith("es"):
                         return "Los datos de rentabilidad y márgenes están reservados a la dirección."
@@ -1658,9 +1666,8 @@ def resolve_direct_voice_answer(
     if authenticated_staff and is_profitability_catalog_question(transcript):
         from backend.app.services.company_intelligence_service import CompanyIntelligenceService
 
-        role_upper = (staff_role or "").upper()
-        is_exec_role = role_upper in {"OWNER", "ADMIN", "SUPER_ADMIN", "DIRECTOR", "EXECUTIVE", "MANAGER"}
-        if not is_exec_role:
+        verified_role = resolve_verified_staff_role(db, company_id, user_id, fallback_role=staff_role)
+        if not is_executive_role(verified_role):
             loc = locale.lower()
             if loc.startswith("es"):
                 return "Los datos de rentabilidad y márgenes están reservados a la dirección."

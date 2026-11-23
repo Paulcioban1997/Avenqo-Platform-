@@ -36,8 +36,9 @@ class VoiceModuleAction(StrEnum):
     CROSS_AGENT_READ_BUSINESS_HEALTH = "cross_agent:read_business_health"
 
 
-# Voice-native tools are the agent itself (greeting, PIN, transfer). They do not
-# read other modules and do not require a VoiceModulePermission row.
+# Voice-native tools are the agent itself (greeting, PIN, transfer, verified identity,
+# active modules, semantic retail lookup when retail is active, executive margins when authorized).
+# They enforce strict server-side RBAC/module boundaries internally and at VoiceToolGuard.
 VOICE_NATIVE_TOOLS: frozenset[str] = frozenset({
     "get_business_info",
     "take_message",
@@ -45,11 +46,42 @@ VOICE_NATIVE_TOOLS: frozenset[str] = frozenset({
     "request_caller_verification",
     "request_pin_authentication",
     "verify_caller",
+    # Universal Voice Intelligence tools (Issue #130)
+    "get_my_identity",
+    "list_enabled_modules",
+    "search_products",
+    "get_product_margins",
+    "get_inventory_freshness",
     # Avenqo AI Employee Performance Coach tools (authenticated staff only)
     "get_my_daily_briefing",
     "get_my_tasks",
     "mark_my_task_completed",
     "get_coaching_advice",
+    "optimize_task_execution",
+    "get_executive_briefing",
+})
+
+VOICE_STAFF_ONLY_NATIVE_TOOLS: frozenset[str] = frozenset({
+    "get_my_identity",
+    "list_enabled_modules",
+    "get_product_margins",
+    "get_inventory_freshness",
+    "get_my_daily_briefing",
+    "get_my_tasks",
+    "mark_my_task_completed",
+    "get_coaching_advice",
+    "optimize_task_execution",
+    "get_executive_briefing",
+})
+
+VOICE_RETAIL_NATIVE_TOOLS: frozenset[str] = frozenset({
+    "search_products",
+    "get_inventory_freshness",
+})
+
+VOICE_EXECUTIVE_NATIVE_TOOLS: frozenset[str] = frozenset({
+    "get_product_margins",
+    "get_executive_briefing",
 })
 
 VOICE_WRITE_TOOLS: frozenset[str] = frozenset({
@@ -218,7 +250,10 @@ def company_call_language_session(db, config, call):
 
 __all__ = [
     "VOICE_ACTION_TOOLS",
+    "VOICE_EXECUTIVE_NATIVE_TOOLS",
     "VOICE_NATIVE_TOOLS",
+    "VOICE_RETAIL_NATIVE_TOOLS",
+    "VOICE_STAFF_ONLY_NATIVE_TOOLS",
     "VOICE_TOOL_ALIASES",
     "VOICE_WRITE_TOOLS",
     "VoiceModuleAction",

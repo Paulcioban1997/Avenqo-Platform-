@@ -13,6 +13,9 @@ from backend.app.services.module_entitlement_service import ModuleEntitlementSer
 from backend.app.services.voice_module_permission_service import VoiceModulePermissionService
 from backend.app.voice.caller_scope import is_public_voice_caller, public_voice_tool_allowed
 from backend.app.voice.module_actions import (
+    VOICE_EXECUTIVE_NATIVE_TOOLS,
+    VOICE_RETAIL_NATIVE_TOOLS,
+    VOICE_STAFF_ONLY_NATIVE_TOOLS,
     VOICE_TOOL_ALIASES,
     VOICE_WRITE_TOOLS,
     action_for_tool,
@@ -74,6 +77,18 @@ class VoiceToolGuard:
         if canonical in BOOKING_TOOLS and not CompanyIntelligenceService(self._session).get_profile(tenant.company_id).has_crm_booking:
             raise VoiceToolDenied("No verified bookable service is configured for this company")
         if is_voice_native_tool(tool_name):
+            if public_caller and tool_name in VOICE_STAFF_ONLY_NATIVE_TOOLS:
+                raise VoiceToolDenied("Caller authentication is required for this tool.")
+            if tool_name in VOICE_RETAIL_NATIVE_TOOLS and "retail" not in active:
+                raise VoiceToolDenied("The Retail subscription module is not active.")
+            if tool_name in VOICE_EXECUTIVE_NATIVE_TOOLS:
+                from backend.app.core.permissions import is_executive_role, resolve_verified_staff_role
+                effective_uid = user_id if user_id is not None else tenant.user_id
+                if public_caller or effective_uid is None:
+                    raise VoiceToolDenied("Executive authentication is required for this tool.")
+                v_role = resolve_verified_staff_role(self._session, tenant.company_id, effective_uid)
+                if not is_executive_role(v_role):
+                    raise VoiceToolDenied("executive_role_required: Executive role is required for this tool.")
             return
         canonical = VOICE_TOOL_ALIASES.get(tool_name, tool_name)
         if public_caller:

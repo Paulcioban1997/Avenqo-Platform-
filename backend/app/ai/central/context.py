@@ -38,7 +38,8 @@ class CentralAIContext:
     authorized_sources: dict[str, object] = field(default_factory=dict)
     plan_options: tuple[dict[str, object], ...] = ()
     company_profile: dict[str, object] = field(default_factory=dict)
-    caller_identity: dict[str, str] | None = None
+    caller_identity: dict[str, object] | None = None
+    enabled_module_details: tuple[dict[str, str], ...] = ()
 
     def as_capabilities(self) -> dict[str, object]:
         return {
@@ -74,6 +75,7 @@ class CentralAIContext:
                 "permissions": sorted(self.permissions),
                 "timezone": self.company_timezone,
                 "active_modules": self.active_modules,
+                "enabled_module_details": list(self.enabled_module_details),
                 "authorized_modules": self.authorized_modules,
                 "module_limit": self.module_limit,
                 "remaining_module_slots": self.remaining_module_slots,
@@ -139,6 +141,7 @@ class CentralAIContextBuilder:
             from backend.app.voice.caller_scope import is_public_voice_caller
             company_profile = CompanyIntelligenceService(session).get_profile(tenant.company_id).as_context(public=is_public_voice_caller(permissions) or "data:read" not in permissions)
             if user_id is not None and not is_public_voice_caller(permissions):
+                from backend.app.core.permissions import is_executive_role, normalize_role
                 actor = session.get(User, user_id)
                 if actor is not None and actor.company_id == tenant.company_id:
                     membership = session.scalar(
@@ -148,21 +151,32 @@ class CentralAIContextBuilder:
                             CompanyMembership.is_active.is_(True),
                         )
                     )
-                    role_val = (
-                        membership.role.value
-                        if membership and hasattr(membership.role, "value")
-                        else str(getattr(membership, "role", "") or getattr(actor, "role", "") or "member")
-                    )
+                    role_val = normalize_role(
+                        getattr(membership, "role", None) if membership is not None else getattr(actor, "role", None)
+                    ) or "member"
                     caller_identity = {
                         "user_id": str(user_id),
                         "full_name": f"{actor.first_name or ''} {actor.last_name or ''}".strip() or actor.first_name or "Collaborateur",
                         "first_name": actor.first_name or "",
                         "role": role_val,
+                        "is_executive_role": is_executive_role(role_val),
+                        "can_view_margins": is_executive_role(role_val),
                         "job_title": actor.job_title or "",
                     }
+        from backend.app.ai.tools.business.voice_intelligence_tools import MODULE_CAPABILITY_DESCRIPTIONS
+        enabled_mod_details = tuple(
+            {
+                "key": m.key,
+                "name": m.display_name or MODULE_CAPABILITY_DESCRIPTIONS.get(m.key, {}).get("name", m.key),
+                "purpose": MODULE_CAPABILITY_DESCRIPTIONS.get(m.key, {}).get("purpose", ""),
+            }
+            for m in summary.modules
+            if m.active
+        )
         return CentralAIContext(
             company_profile=company_profile,
             caller_identity=caller_identity,
+            enabled_module_details=enabled_mod_details,
             tenant=tenant,
             user_id=user_id,
             permissions=permissions,

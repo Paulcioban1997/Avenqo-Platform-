@@ -181,10 +181,10 @@ class ToolOrchestrator:
         }
 
         # Pour les canaux vocaux (faible latence obligatoire), borner strictement
-        # le nombre d'itérations et d'outils pour éviter les silences prolongés.
+        # le nombre d'itérations et d'outils tout en permettant 1-2 appels outils + synthèse finale.
         is_voice = bool(getattr(context, "voice_path", False))
-        effective_max_iterations = min(self._max_iterations, 2) if is_voice else self._max_iterations
-        effective_max_tools = min(self._max_tools_per_request, 3) if is_voice else self._max_tools_per_request
+        effective_max_iterations = min(self._max_iterations, 3) if is_voice else self._max_iterations
+        effective_max_tools = min(self._max_tools_per_request, 4) if is_voice else self._max_tools_per_request
 
         try:
             for _iteration in range(effective_max_iterations):
