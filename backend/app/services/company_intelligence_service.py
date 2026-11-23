@@ -184,7 +184,12 @@ class CompanyIntelligenceService:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def get_profile(self, company_id: UUID) -> CompanyIntelligenceProfile:
+    def get_profile(
+        self, company_id: UUID, *, product_limit: int | None = 50
+    ) -> CompanyIntelligenceProfile:
+        """Build the tenant profile. Voice search can request the full eligible
+        catalog; ordinary context construction stays bounded to a short preview.
+        """
         from backend.app.core.tenant_execution import peek_tenant_execution, TenantExecutionError
         execution = peek_tenant_execution()
         if execution is not None and execution.company_id != company_id:
@@ -232,13 +237,14 @@ class CompanyIntelligenceService:
         if "retail" in active:
             try:
                 from backend.app.models.commerce_connection import NormalizedCommerceRecord
-                records = self._session.scalars(
-                    select(NormalizedCommerceRecord).where(
-                        NormalizedCommerceRecord.company_id == company_id,
-                        NormalizedCommerceRecord.entity_type.in_(["products", "product"]),
-                        NormalizedCommerceRecord.deleted.is_(False),
-                    ).order_by(NormalizedCommerceRecord.source_updated_at.desc().nullslast()).limit(50)
-                ).all()
+                catalog_query = select(NormalizedCommerceRecord).where(
+                    NormalizedCommerceRecord.company_id == company_id,
+                    NormalizedCommerceRecord.entity_type.in_(["products", "product"]),
+                    NormalizedCommerceRecord.deleted.is_(False),
+                ).order_by(NormalizedCommerceRecord.source_updated_at.desc().nullslast())
+                if product_limit is not None:
+                    catalog_query = catalog_query.limit(max(0, product_limit))
+                records = self._session.scalars(catalog_query).all()
                 for r in records:
                     pdata = r.normalized_data or {}
                     status = str(pdata.get("status") or pdata.get("stock_status") or "").lower().strip()
