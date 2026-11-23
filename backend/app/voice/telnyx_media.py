@@ -463,9 +463,16 @@ class PublicInboundConversation:
         # Check if caller has a public customer intent (appointment, speaking/contacting, recruitment, job application)
         is_public_customer_intent = bool(_RE_PUBLIC_CUSTOMER_INTENT.search(normalized))
 
-        # 3. Requests for confidential business, financial or inventory data
-        # MUST BE ANALYZED UNCONDITIONALLY across all languages
-        private_data = _RE_PRIVATE_DATA.search(normalized)
+        # 3. Requests for confidential business, financial, account or inventory data
+        # MUST BE ANALYZED UNCONDITIONALLY across all languages.
+        # Identity and subscribed-module inquiries are personal to the company
+        # even when they do not contain a finance keyword.
+        from backend.app.voice.direct_answers import is_identity_inquiry, is_module_access_question
+        private_data = bool(
+            _RE_PRIVATE_DATA.search(normalized)
+            or is_identity_inquiry(safe)
+            or is_module_access_question(safe)
+        )
 
         # PRIORITY RULE: Private data or PIN inquiry ALWAYS takes precedence over public intent.
         # A mixed request containing both a public intent (e.g. contact/appointment) and private data
