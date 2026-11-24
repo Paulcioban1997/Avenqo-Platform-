@@ -114,30 +114,45 @@ def _python_product_search(
     sku: str | None,
     product_category: str | None = None,
 ) -> list[NormalizedCommerceRecord]:
-    """Filtre Python pour SQLite et bases sans support JSON avancé."""
-    result = []
-    query = (product_name or product_category or "").strip()
-    is_general_query = query.lower() in {"", "all", "tous", "tout", "produits", "produit", "catalogue", "catalog"}
-    for r in records:
+    """Recherche sémantique structurée sur NormalizedCommerceRecord (jamais de substitution hors catégorie)."""
+    from backend.app.services.semantic_product_search import semantic_search_products
+
+    if product_id is not None:
+        pid = str(product_id).strip()
+        return [
+            r for r in records
+            if str((r.normalized_data or {}).get("product_id") or (r.normalized_data or {}).get("id") or "") == pid
+        ]
+    if sku is not None:
+        sku_low = sku.lower().strip()
+        return [
+            r for r in records
+            if str((r.normalized_data or {}).get("sku") or "").lower() == sku_low
+        ]
+
+    projected: list[dict[str, Any]] = []
+    by_idx: dict[int, NormalizedCommerceRecord] = {}
+    for idx, r in enumerate(records):
+        d = _product_to_dict(r)
         data = r.normalized_data or {}
-        if product_id is not None:
-            if str(data.get("product_id") or data.get("id") or "") == str(product_id).strip():
-                result.append(r)
-            continue
-        if sku is not None:
-            if str(data.get("sku") or "").lower() == sku.lower().strip():
-                result.append(r)
-            continue
-        if is_general_query:
-            result.append(r)
-            continue
-        if query:
-            q_norm = _normalize_query(query)
-            name = str(data.get("product_name") or data.get("name") or "").lower()
-            category = str(data.get("product_category") or data.get("category") or "").lower()
-            if q_norm in name or q_norm in category:
-                result.append(r)
-    return result
+        projected.append({
+            **d,
+            "name": d.get("product_name") or "",
+            "category": d.get("product_category") or "",
+            "description": str(data.get("description") or data.get("body_html") or ""),
+            "_record_idx": idx,
+        })
+        by_idx[idx] = r
+
+    sem = semantic_search_products(
+        projected,
+        product_name,
+        category=product_category,
+        limit=10,
+    )
+    if sem.status == "not_found":
+        return []
+    return [by_idx[int(m.product["_record_idx"])] for m in sem.matches if "_record_idx" in m.product]
 
 
 # ---------------------------------------------------------------------------
@@ -334,29 +349,21 @@ class GetProductDetailTool(RetailAITool):
         search_label = arguments.product_name or arguments.product_id or arguments.sku
 
         approximate_match_name: str | None = None
-        if not records and arguments.product_name:
-            # Recherche approximative sécurisée pour requêtes orales (ex: ASR 'The Hiva Board' -> 'The Hidden Snowboard')
-            from difflib import SequenceMatcher
-            q_norm = _normalize_query(arguments.product_name)
-            q_words = set(q_norm.split())
+        if not records and (arguments.product_name or arguments.product_category):
+            # Recherche sémantique structurée (synonymes multilingues, nom noyau, anti-substitution hors catégorie)
             all_records = list(self._session.scalars(base_query.limit(200)).all())
-            scored_candidates = []
-            for r in all_records:
-                data = r.normalized_data or {}
-                pname = str(data.get("product_name") or data.get("name") or "")
-                p_norm = _normalize_query(pname)
-                ratio = SequenceMatcher(None, q_norm, p_norm).ratio()
-                p_words = set(p_norm.split())
-                word_overlap = len(q_words & p_words) / max(len(q_words), 1)
-                score = max(ratio, word_overlap * 0.85)
-                if score >= 0.5:
-                    scored_candidates.append((score, r, pname))
-            scored_candidates.sort(key=lambda x: x[0], reverse=True)
-            if scored_candidates:
-                top_score = scored_candidates[0][0]
-                selected = [c for c in scored_candidates if c[0] >= max(0.5, top_score - 0.05)][:3]
-                records = [c[1] for c in selected]
-                approximate_match_name = ", ".join(c[2] for c in selected)
+            records = _python_product_search(
+                all_records,
+                product_name=arguments.product_name,
+                product_id=None,
+                sku=None,
+                product_category=arguments.product_category,
+            )
+            if records:
+                approximate_match_name = ", ".join(
+                    str((r.normalized_data or {}).get("product_name") or (r.normalized_data or {}).get("name") or "")
+                    for r in records[:3]
+                )
 
         if not records:
             logger.info(

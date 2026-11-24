@@ -100,6 +100,13 @@ from backend.app.ai.tools.business.trading_tools import (
     GetTradingPredictionsTool,
     GetTradingPortfolioRiskTool,
 )
+from backend.app.ai.tools.business.voice_intelligence_tools import (
+    GetInventoryFreshnessTool,
+    GetMyIdentityTool,
+    GetProductMarginsTool,
+    ListEnabledModulesTool,
+    SearchProductsTool,
+)
 from backend.app.ai.tools.registry import ToolRegistry
 from backend.app.models.enterprise_override import EnterpriseOverride
 from backend.app.services.company_dataset_ingestion_service import CompanyDatasetIngestionService
@@ -195,6 +202,12 @@ def build_business_tool_registry(
     registry.register(GetCoachingAdviceTool(session))
     registry.register(OptimizeTaskExecutionTool(session))
     registry.register(GetExecutiveBriefingTool(session))
+    # Universal Generative Voice & Central AI Intelligence Tools (Issue #130)
+    registry.register(GetMyIdentityTool(session))
+    registry.register(ListEnabledModulesTool(session))
+    registry.register(SearchProductsTool(session))
+    registry.register(GetProductMarginsTool(session))
+    registry.register(GetInventoryFreshnessTool(session))
     return registry
 
 

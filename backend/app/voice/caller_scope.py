@@ -33,6 +33,7 @@ PUBLIC_VOICE_CRM_TOOLS: frozenset[str] = frozenset({
 # Note: In accordance with business rules, product reservations (reserve_product) are NEVER allowed over the phone.
 PUBLIC_VOICE_RETAIL_TOOLS: frozenset[str] = frozenset({
     "get_product_detail",
+    "search_products",
 })
 
 # Public document & knowledge tools - tenant policy & FAQ search

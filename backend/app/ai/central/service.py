@@ -173,9 +173,21 @@ class CentralAIService:
                 names.add(tool_name)
                 owners[tool_name] = defn.agent_id
 
-        if not public_caller:
-            from backend.app.voice.module_actions import VOICE_NATIVE_TOOLS
+        if not public_caller and granted_voice_tools:
+            from backend.app.voice.module_actions import (
+                VOICE_EXECUTIVE_NATIVE_TOOLS,
+                VOICE_NATIVE_TOOLS,
+                VOICE_RETAIL_NATIVE_TOOLS,
+            )
             for native_tool in VOICE_NATIVE_TOOLS:
+                if native_tool not in granted_voice_tools:
+                    continue
+                if native_tool in VOICE_RETAIL_NATIVE_TOOLS and "retail" not in active_modules:
+                    continue
+                if native_tool in VOICE_EXECUTIVE_NATIVE_TOOLS and (
+                    "retail" not in active_modules or "data:read" not in permissions
+                ):
+                    continue
                 names.add(native_tool)
                 if native_tool not in owners:
                     owners[native_tool] = "voice"
@@ -264,45 +276,54 @@ class CentralAIService:
             )
             self._log_result(tenant.company_id, None, result, started_at, "permission_denied")
             return result
-        agent = self._router.select(query, page_context=page_context)
-        if agent is None and conversation_id is not None:
-            recent_msgs = self._chat._conversations.messages(tenant.company_id, conversation_id, limit=4)
-            if recent_msgs:
-                combined_history = " ".join(m.content for m in recent_msgs)
-                agent = self._router.select(f"{combined_history} {query}", page_context=page_context)
-        if agent is None:
-            try:
-                if not allow_existing_reservation:
-                    self._usage.ensure_quota_available(tenant.company_id, context.plan_code)
-            except AIQuotaExceededError:
-                result = self._result(
-                    tenant.company_id,
-                    None,
-                    "credits_exhausted",
-                    context.plan_code,
-                    "available",
-                )
-                self._log_result(tenant.company_id, None, result, started_at, "free_form_classification")
-                return result
+        # Universal Generative Voice Brain (Issue #130):
+        # On live /voice turns, skip single-agent keyword hijacking and skip the extra LLM
+        # classification round-trip. Tool scope is already resolved authoritatively via
+        # VoiceToolRegistryService (plan ∩ active_modules ∩ grants ∩ RBAC ∩ caller scope),
+        # allowing the generative LLM to handle any unforeseen, multi-domain, or off-topic
+        # question in a single low-latency pass with dynamic tool calling.
+        if is_voice_request:
+            agent = None
+        else:
+            agent = self._router.select(query, page_context=page_context)
+            if agent is None and conversation_id is not None:
+                recent_msgs = self._chat._conversations.messages(tenant.company_id, conversation_id, limit=4)
+                if recent_msgs:
+                    combined_history = " ".join(m.content for m in recent_msgs)
+                    agent = self._router.select(f"{combined_history} {query}", page_context=page_context)
+            if agent is None:
+                try:
+                    if not allow_existing_reservation:
+                        self._usage.ensure_quota_available(tenant.company_id, context.plan_code)
+                except AIQuotaExceededError:
+                    result = self._result(
+                        tenant.company_id,
+                        None,
+                        "credits_exhausted",
+                        context.plan_code,
+                        "available",
+                    )
+                    self._log_result(tenant.company_id, None, result, started_at, "free_form_classification")
+                    return result
 
-            async def classify(system_instruction: str, prompt: str) -> str:
-                classification_request_id = (
-                    request_id if allow_existing_reservation else f"{request_id}:classification"
-                )
-                from backend.app.services.tenant_rls import release_tenant_connection
+                async def classify(system_instruction: str, prompt: str) -> str:
+                    classification_request_id = (
+                        request_id if allow_existing_reservation else f"{request_id}:classification"
+                    )
+                    from backend.app.services.tenant_rls import release_tenant_connection
 
-                release_tenant_connection(getattr(self._usage, "_db", None))
-                return await self._chat.classify_intent(
-                    system_instruction,
-                    prompt,
-                    tenant_id=tenant.company_id,
-                    plan_code=context.plan_code,
-                    request_id=classification_request_id,
-                    allow_existing_reservation=allow_existing_reservation,
-                    attempt_sink=attempt_sink,
-                )
+                    release_tenant_connection(getattr(self._usage, "_db", None))
+                    return await self._chat.classify_intent(
+                        system_instruction,
+                        prompt,
+                        tenant_id=tenant.company_id,
+                        plan_code=context.plan_code,
+                        request_id=classification_request_id,
+                        allow_existing_reservation=allow_existing_reservation,
+                        attempt_sink=attempt_sink,
+                    )
 
-            agent = await self._router.select_free_form(query, classify)
+                agent = await self._router.select_free_form(query, classify)
         if agent is not None and not agent.status.is_executable:
             if central_is_included(tenant.company_id):
                 agent = None
