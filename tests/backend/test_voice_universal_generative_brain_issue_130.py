@@ -1694,7 +1694,7 @@ def test_pr131_public_identity_and_modules_request_starts_pin_challenge(tmp_path
         public.settings = Settings()
         public.call_id = call.id
         public.context = lambda: (call, cfg, company["company"])
-        public.has_configured_pin = lambda _call: True
+        public.has_configured_pin = lambda call: True
 
         for phrase in ("Qui suis-je ?", "Quels modules ai-je activés ?"):
             response = public.security_gate(phrase)

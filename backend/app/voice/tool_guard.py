@@ -94,8 +94,6 @@ class VoiceToolGuard:
                     raise VoiceToolDenied("This capability is disabled in company Voice settings")
                 if not self._grants.is_granted(tenant.company_id, module_code, action_code):
                     raise VoiceToolDenied("Voice tool action grant is missing or revoked.")
-                if not public_caller and "data:read" not in perms:
-                    raise VoiceToolDenied("Private company data requires an authenticated data reader")
             if tool_name in VOICE_EXECUTIVE_NATIVE_TOOLS:
                 from backend.app.core.permissions import is_executive_role, resolve_verified_staff_role
                 effective_uid = user_id if user_id is not None else tenant.user_id
@@ -104,6 +102,8 @@ class VoiceToolGuard:
                 v_role = resolve_verified_staff_role(self._session, tenant.company_id, effective_uid)
                 if not is_executive_role(v_role):
                     raise VoiceToolDenied("executive_role_required: Executive role is required for this tool.")
+                if "data:read" not in perms:
+                    raise VoiceToolDenied("Private company data requires an authenticated data reader")
             return
         canonical = VOICE_TOOL_ALIASES.get(tool_name, tool_name)
         if public_caller:

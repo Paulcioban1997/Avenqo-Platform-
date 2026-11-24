@@ -114,11 +114,17 @@ class SearchProductsArgs(ToolArguments):
         default=None,
         description="Optional filter/sort mode: 'in_stock' (verified live stock only), 'promote' (discounted/compare-at items first), or 'all'.",
     )
+    offset: int = Field(
+        default=0,
+        ge=0,
+        le=5000,
+        description="Pagination offset into matching catalog products (0-based).",
+    )
     limit: int = Field(
         default=8,
         ge=1,
         le=20,
-        description="Maximum number of products to return.",
+        description="Maximum number of products to return per page (hard-capped at 20).",
     )
 
 
@@ -261,8 +267,29 @@ class SearchProductsTool(AITool):
         self._session = session
 
     async def run(self, context: ToolExecutionContext, arguments: SearchProductsArgs) -> ToolResult:
-        profile = CompanyIntelligenceService(self._session).get_profile(context.tenant.company_id, product_limit=None)
-        if not profile.has_retail_commerce:
+        public_caller = is_public_voice_caller(context.permissions)
+        verified_role = (
+            ""
+            if public_caller
+            else resolve_verified_staff_role(self._session, context.tenant.company_id, context.user_id)
+        )
+        can_see_margins = (
+            (not public_caller)
+            and is_executive_role(verified_role)
+            and "data:read" in (context.permissions or frozenset())
+        )
+
+        fmode = (arguments.filter_mode or "").strip().lower()
+        catalog_res = CompanyIntelligenceService(self._session).search_tenant_catalog(
+            context.tenant.company_id,
+            query=arguments.query,
+            category=arguments.category,
+            filter_mode=fmode or None,
+            offset=arguments.offset,
+            limit=arguments.limit,
+            include_margins=can_see_margins,
+        )
+        if not catalog_res.get("available"):
             return ToolResult(
                 success=True,
                 data={
@@ -271,61 +298,31 @@ class SearchProductsTool(AITool):
                     "message": "Retail catalog module is not enabled for this company.",
                 },
             )
+        if catalog_res.get("status") == "no_live_stock_confirmed":
+            return ToolResult(
+                success=True,
+                data={
+                    "available": True,
+                    "status": "no_live_stock_confirmed",
+                    "found": False,
+                    "matches": [],
+                    "total_catalog_products": catalog_res.get("total_catalog_products", 0),
+                    "freshness_summary": catalog_res.get("freshness_summary", {}),
+                    "message": "No products currently have verified real-time stock because inventory sync is not live.",
+                },
+                source_refs=("normalized_commerce_records",),
+            )
 
-        public_caller = is_public_voice_caller(context.permissions)
-        verified_role = (
-            ""
-            if public_caller
-            else resolve_verified_staff_role(self._session, context.tenant.company_id, context.user_id)
-        )
-        can_see_margins = (not public_caller) and is_executive_role(verified_role)
-
-        products = [p for p in (profile.public_products or ()) if isinstance(p, dict)]
-        fmode = (arguments.filter_mode or "").strip().lower()
-        if fmode == "in_stock":
-            products = [
-                p for p in products
-                if p.get("is_live_stock") is True
-                and (p.get("in_stock") is True or p.get("stock_availability") == "IN_STOCK")
-            ]
-            if not products:
-                return ToolResult(
-                    success=True,
-                    data={
-                        "available": True,
-                        "status": "no_live_stock_confirmed",
-                        "found": False,
-                        "matches": [],
-                        "freshness_summary": summarize_catalog_freshness(list(profile.public_products or ())),
-                        "message": "No products currently have verified real-time stock because inventory sync is not live.",
-                    },
-                    source_refs=("normalized_commerce_records",),
-                )
-        elif fmode == "promote":
-            def _promo_key(p: dict[str, Any]) -> tuple[int, float, float]:
-                pv = _safe_float(p.get("price")) or 0.0
-                cv = _safe_float(p.get("compare_at_price")) or 0.0
-                if cv > pv > 0:
-                    return (1, round((cv - pv) / cv, 4), round(cv - pv, 2))
-                return (0, 0.0, pv)
-            products = sorted(products, key=_promo_key, reverse=True)
-
-        sem = semantic_search_products(
-            products,
-            arguments.query,
-            category=arguments.category,
-            limit=arguments.limit,
-        )
-
+        currency_code = catalog_res.get("currency_code") or "CAD"
         projected_matches: list[dict[str, Any]] = []
-        for match in sem.matches:
+        for match in catalog_res.get("matches") or ():
             row = match.product
             item: dict[str, Any] = {
                 "name": row.get("name"),
                 "category": row.get("category") or "",
                 "price": row.get("price"),
                 "compare_at_price": row.get("compare_at_price"),
-                "currency": row.get("currency") or profile.currency_code,
+                "currency": row.get("currency") or currency_code,
                 "is_live_stock": bool(row.get("is_live_stock")),
                 "stock_availability": row.get("stock_availability") or "UNKNOWN",
                 "in_stock": row.get("in_stock"),
@@ -348,16 +345,22 @@ class SearchProductsTool(AITool):
             success=True,
             data={
                 "available": True,
-                "status": sem.status,
-                "found": sem.found,
-                "query": sem.query,
+                "status": catalog_res["status"],
+                "found": bool(catalog_res["found"]),
+                "query": catalog_res["query"],
                 "filter_mode": fmode or "all",
-                "total_catalog_products": len(profile.public_products or ()),
+                "total_catalog_products": catalog_res["total_catalog_products"],
+                "offset": catalog_res["offset"],
+                "limit": catalog_res["limit"],
+                "returned_count": len(projected_matches),
+                "has_more": bool(catalog_res["has_more"]),
+                "candidates_scanned": catalog_res["candidates_scanned"],
+                "used_sql_prefilter": bool(catalog_res["used_sql_prefilter"]),
                 "matches": projected_matches,
-                "related_other_category": list(sem.related_other_category),
-                "ambiguity_note": sem.ambiguity_note,
-                "not_found_reason": sem.not_found_reason,
-                "freshness_summary": sem.freshness_summary,
+                "related_other_category": list(catalog_res["related_other_category"]),
+                "ambiguity_note": catalog_res["ambiguity_note"],
+                "not_found_reason": catalog_res["not_found_reason"],
+                "freshness_summary": catalog_res["freshness_summary"],
                 "spoken_style_hint": (
                     "State prices cleanly without repeating stock disclaimers on every item. "
                     "Mention live stock uncertainty at most ONCE briefly if the caller asked about stock/availability."
@@ -404,11 +407,13 @@ class GetProductMarginsTool(AITool):
                 },
             )
 
-        profile = CompanyIntelligenceService(self._session).get_profile(context.tenant.company_id, product_limit=None)
-        products = [p for p in (profile.public_products or ()) if isinstance(p, dict)]
-        if arguments.product_query:
-            sem = semantic_search_products(products, arguments.product_query, limit=arguments.limit)
-            products = [m.product for m in sem.matches] if sem.matches else []
+        margin_lookup = CompanyIntelligenceService(self._session).fetch_margin_candidates(
+            context.tenant.company_id,
+            product_query=arguments.product_query,
+            limit=arguments.limit,
+        )
+        products = list(margin_lookup.get("products") or ())
+        currency_code = margin_lookup.get("currency_code") or "CAD"
 
         margin_rows: list[dict[str, Any]] = []
         promo_rows: list[dict[str, Any]] = []
@@ -421,7 +426,7 @@ class GetProductMarginsTool(AITool):
                     "price": price,
                     "compare_at_price": cmp_price,
                     "discount_pct": round(((cmp_price - price) / cmp_price) * 100.0, 1),
-                    "currency": p.get("currency") or profile.currency_code,
+                    "currency": p.get("currency") or currency_code,
                 })
             unit_cost = _safe_float(p.get("unit_cost"))
             margin_amt = _safe_float(p.get("profit_margin_amount"))
@@ -437,7 +442,7 @@ class GetProductMarginsTool(AITool):
                     "unit_cost": unit_cost,
                     "profit_margin_amount": margin_amt,
                     "profit_margin_pct": margin_pct,
-                    "currency": p.get("currency") or profile.currency_code,
+                    "currency": p.get("currency") or currency_code,
                 })
 
         margin_rows.sort(
@@ -494,8 +499,11 @@ class GetInventoryFreshnessTool(AITool):
     async def run(self, context: ToolExecutionContext, arguments: EmptyVoiceIntelArgs) -> ToolResult:
         if is_public_voice_caller(context.permissions) or context.user_id is None:
             return ToolResult(success=False, error="authentication_required")
-        profile = CompanyIntelligenceService(self._session).get_profile(context.tenant.company_id, product_limit=None)
-        if not profile.has_retail_commerce:
+        from sqlalchemy import func
+        from backend.app.models.commerce_connection import NormalizedCommerceRecord
+
+        active_mods = set(ModuleEntitlementService(self._session).get_active_modules(context.tenant))
+        if "retail" not in active_mods:
             return ToolResult(
                 success=True,
                 data={"retail_enabled": False, "is_live_stock_available": False},
@@ -507,11 +515,22 @@ class GetInventoryFreshnessTool(AITool):
                 )
             ).all()
         )
+        total_products = int(
+            self._session.scalar(
+                select(func.count(NormalizedCommerceRecord.id)).where(
+                    NormalizedCommerceRecord.company_id == context.tenant.company_id,
+                    NormalizedCommerceRecord.entity_type.in_(["products", "product"]),
+                    NormalizedCommerceRecord.deleted.is_(False),
+                )
+            ) or 0
+        )
         now = datetime.now(timezone.utc)
         details = []
         any_fresh = False
+        statuses: set[str] = set()
         for c in conns:
             fresh = classify_connector_freshness(c, now=now)
+            statuses.add(fresh)
             if fresh == "FRESH":
                 any_fresh = True
             details.append({
@@ -526,8 +545,15 @@ class GetInventoryFreshnessTool(AITool):
             data={
                 "retail_enabled": True,
                 "is_live_stock_available": any_fresh,
+                "total_catalog_products": total_products,
                 "connectors": details,
-                "catalog_freshness": summarize_catalog_freshness(list(profile.public_products or ())),
+                "catalog_freshness": {
+                    "all_live": any_fresh and len(statuses) == 1,
+                    "any_live": any_fresh,
+                    "live_count": total_products if any_fresh else 0,
+                    "unverified_count": 0 if any_fresh else total_products,
+                    "freshness_statuses": sorted(statuses) if statuses else ["UNKNOWN"],
+                },
             },
             source_refs=("commerce_connections",),
         )

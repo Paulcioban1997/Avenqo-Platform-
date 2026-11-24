@@ -5,8 +5,9 @@ from dataclasses import dataclass, asdict
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
+from typing import Any
 from uuid import UUID
-from sqlalchemy import select
+from sqlalchemy import String, cast as sql_cast, func, or_, select
 from sqlalchemy.orm import Session
 from backend.app.models import Company, VoiceBusinessConfig, CommerceConnection, Dataset
 from backend.app.models.crm import CRMService, CRMCalendarConnection, CRMEmployee
@@ -14,6 +15,8 @@ from backend.app.services.module_entitlement_service import ModuleEntitlementSer
 from shared.ai_engine.contracts import TenantContext
 
 BOOKING_TOOLS = frozenset({"check_availability", "list_available_slots", "create_appointment", "book_appointment"})
+SQL_PREFILTER_THRESHOLD = 250
+MAX_SQL_CATALOG_CANDIDATES = 500
 
 
 def _parse_optional_float(value: object) -> float | None:
@@ -498,6 +501,500 @@ class CompanyIntelligenceService:
             online_ordering_available=has_store,
             phone_ordering_policy=ordering_policy,
         )
+
+    def _project_commerce_record(
+        self,
+        *,
+        record_id: UUID,
+        connection_id: UUID | None,
+        source_updated_at: datetime | None,
+        is_demo_flag: bool,
+        normalized_data: dict[str, Any] | None,
+        connections_by_id: dict[UUID, CommerceConnection],
+        currency_code: str | None,
+        now: datetime,
+        include_margins: bool = True,
+    ) -> dict[str, Any] | None:
+        pdata = normalized_data or {}
+        status = str(pdata.get("status") or pdata.get("stock_status") or "").lower().strip()
+        if status in ("archived", "draft", "trash"):
+            return None
+        pname = pdata.get("product_name") or pdata.get("name") or pdata.get("title")
+        if not pname:
+            return None
+        variants = pdata.get("variants") or []
+        price = pdata.get("unit_price")
+        if price is None:
+            price = pdata.get("price") if pdata.get("price") is not None else pdata.get("sale_price")
+        if price is None:
+            price = pdata.get("regular_price")
+        if price is None and isinstance(variants, list) and variants:
+            first_v = variants[0] if isinstance(variants[0], dict) else {}
+            price = first_v.get("unit_price") if first_v.get("unit_price") is not None else first_v.get("price")
+
+        compare_at_raw = (
+            pdata.get("compare_at_price")
+            if pdata.get("compare_at_price") is not None
+            else (pdata.get("original_price") if pdata.get("original_price") is not None else pdata.get("list_price"))
+        )
+        if compare_at_raw is None and pdata.get("regular_price") is not None and price is not None:
+            p_float = _parse_optional_float(price)
+            reg_float = _parse_optional_float(pdata.get("regular_price"))
+            if p_float is not None and reg_float is not None and reg_float > p_float:
+                compare_at_raw = reg_float
+        if compare_at_raw is None and isinstance(variants, list) and variants:
+            for v in variants:
+                if isinstance(v, dict):
+                    v_cmp = (
+                        v.get("compare_at_price")
+                        if v.get("compare_at_price") is not None
+                        else v.get("original_price")
+                    )
+                    if v_cmp is not None:
+                        compare_at_raw = v_cmp
+                        break
+        compare_at_price = _parse_optional_float(compare_at_raw)
+
+        unit_cost: float | None = None
+        margin_amt: float | None = None
+        margin_pct: float | None = None
+        if include_margins:
+            cost_raw = (
+                pdata.get("unit_cost") if pdata.get("unit_cost") is not None
+                else (
+                    pdata.get("cost_price") if pdata.get("cost_price") is not None
+                    else (pdata.get("cost") if pdata.get("cost") is not None else pdata.get("cogs"))
+                )
+            )
+            if cost_raw is None and isinstance(variants, list) and variants:
+                for v in variants:
+                    if isinstance(v, dict):
+                        v_cost = (
+                            v.get("unit_cost") if v.get("unit_cost") is not None
+                            else (v.get("cost_price") if v.get("cost_price") is not None else v.get("cost"))
+                        )
+                        if v_cost is not None:
+                            cost_raw = v_cost
+                            break
+            unit_cost = _parse_optional_float(cost_raw)
+            price_num = _parse_optional_float(price)
+            margin_amt = _parse_optional_float(
+                pdata.get("profit_margin") if pdata.get("profit_margin") is not None
+                else (pdata.get("gross_margin") if pdata.get("gross_margin") is not None else pdata.get("margin"))
+            )
+            margin_pct = _parse_optional_float(
+                pdata.get("profit_margin_pct") if pdata.get("profit_margin_pct") is not None
+                else (pdata.get("gross_margin_pct") if pdata.get("gross_margin_pct") is not None else pdata.get("margin_pct"))
+            )
+            if margin_amt is None and unit_cost is not None and price_num is not None:
+                margin_amt = round(price_num - unit_cost, 2)
+            if margin_pct is None and margin_amt is not None and price_num is not None and price_num > 0:
+                margin_pct = round((margin_amt / price_num) * 100.0, 2)
+
+        inventory = pdata.get("inventory_level")
+        if inventory is None:
+            inventory = pdata.get("stock_quantity")
+        if inventory is None and isinstance(variants, list) and variants:
+            inventory = sum(v.get("inventory_level", 0) for v in variants if isinstance(v.get("inventory_level"), (int, float)))
+        raw_count = int(inventory) if isinstance(inventory, (int, float)) else 0
+
+        class _RecordProxy:
+            __slots__ = ("connection_id", "source_updated_at", "is_demo")
+
+            def __init__(self, cid: UUID | None, supd: datetime | None, demo: bool) -> None:
+                self.connection_id = cid
+                self.source_updated_at = supd
+                self.is_demo = demo
+
+        freshness_status, is_live_stock = classify_product_freshness(
+            _RecordProxy(connection_id, source_updated_at, is_demo_flag), connections_by_id, now=now
+        )
+        if is_live_stock:
+            in_stock = bool(raw_count > 0 or status == "instock")
+            stock_availability = "IN_STOCK" if in_stock else "OUT_OF_STOCK"
+            confirmed_inventory_count = raw_count
+        else:
+            in_stock = None
+            stock_availability = "UNKNOWN"
+            confirmed_inventory_count = None
+
+        is_demo_product = freshness_status == "DEMO_SIMULATION" or is_demo_flag
+        stock_status_label = (
+            "demo_synthetic" if is_demo_product
+            else (
+                "live_synced" if freshness_status == "FRESH"
+                else (
+                    "stale" if freshness_status == "STALE"
+                    else (
+                        "syncing" if freshness_status == "SYNCING"
+                        else (
+                            "unavailable" if freshness_status == "UNAVAILABLE"
+                            else (
+                                "unverified_connected" if freshness_status == "CONNECTED"
+                                else "unconfirmed_historical"
+                            )
+                        )
+                    )
+                )
+            )
+        )
+
+        curr_str = str(currency_code or "").strip().upper()
+        curr_sym = "$" if curr_str in ("CAD", "USD", "$") or not curr_str else ("€" if curr_str in ("EUR", "€") else ("£" if curr_str in ("GBP", "£") else curr_str))
+        p_disp = f"{price} {curr_sym}".strip() if price is not None else ""
+
+        projected: dict[str, Any] = {
+            "id": str(record_id),
+            "name": str(pname).strip(),
+            "category": pdata.get("product_category") or pdata.get("category") or "",
+            "price": str(price) if isinstance(price, str) else (float(price) if isinstance(price, (int, float)) else None),
+            "compare_at_price": compare_at_price,
+            "currency": currency_code,
+            "currency_symbol": curr_sym,
+            "price_display": p_disp,
+            "price_status": "demo_reference" if is_demo_product else ("verified" if is_live_stock else "historical_catalog"),
+            "is_live_stock": is_live_stock and not is_demo_product,
+            "freshness_status": freshness_status,
+            "in_stock": in_stock if not is_demo_product else None,
+            "stock_availability": "UNKNOWN" if is_demo_product else stock_availability,
+            "inventory_count": confirmed_inventory_count if not is_demo_product else None,
+            "historical_reference_units": raw_count if not is_live_stock else None,
+            "stock_status": stock_status_label,
+            "is_demo": is_demo_product,
+            "demo_disclaimer": "Boutique de démonstration — données fictives" if is_demo_product else None,
+            "description": pdata.get("description") or pdata.get("body_html") or "",
+        }
+        if include_margins:
+            projected["unit_cost"] = unit_cost
+            projected["profit_margin_amount"] = margin_amt
+            projected["profit_margin_pct"] = margin_pct
+        return projected
+
+    def search_tenant_catalog(
+        self,
+        company_id: UUID,
+        *,
+        query: str | None = None,
+        category: str | None = None,
+        filter_mode: str | None = None,
+        offset: int = 0,
+        limit: int = 8,
+        include_margins: bool = False,
+    ) -> dict[str, Any]:
+        """Scalable, strictly tenant-scoped catalog search with DB-side pre-filtering & pagination.
+
+        For small catalogs (<= SQL_PREFILTER_THRESHOLD), evaluates all tenant rows in memory.
+        For large catalogs (1,000–10,000+ products), pre-filters candidates at the SQL layer
+        (or paginates directly via SQL OFFSET/LIMIT for browse queries) so neither Python RAM
+        nor the LLM prompt ever loads an entire 10,000-product catalog.
+        """
+        from backend.app.core.tenant_execution import peek_tenant_execution, TenantExecutionError
+        from backend.app.models.commerce_connection import NormalizedCommerceRecord
+        from backend.app.services.semantic_product_search import (
+            extract_sql_prefilter_terms,
+            semantic_search_products,
+            summarize_catalog_freshness,
+        )
+
+        execution = peek_tenant_execution()
+        if execution is not None and execution.company_id != company_id:
+            raise TenantExecutionError("Company catalog search cannot cross the bound tenant")
+
+        active = set(ModuleEntitlementService(self._session).get_active_modules(TenantContext(company_id)))
+        if "retail" not in active:
+            return {
+                "available": False,
+                "status": "retail_module_inactive",
+                "found": False,
+                "matches": [],
+                "total_catalog_products": 0,
+                "candidates_scanned": 0,
+                "used_sql_prefilter": False,
+            }
+
+        company = self._session.get(Company, company_id)
+        currency_code = company.currency_code if company else "CAD"
+        connections = self._session.scalars(
+            select(CommerceConnection).where(CommerceConnection.company_id == company_id)
+        ).all()
+        connections_by_id = {c.id: c for c in connections}
+
+        base_filters = (
+            NormalizedCommerceRecord.company_id == company_id,
+            NormalizedCommerceRecord.entity_type.in_(["products", "product"]),
+            NormalizedCommerceRecord.deleted.is_(False),
+        )
+        total_records = int(
+            self._session.scalar(select(func.count(NormalizedCommerceRecord.id)).where(*base_filters)) or 0
+        )
+        safe_offset = max(0, int(offset))
+        safe_limit = max(1, min(int(limit), 20))
+        fmode = (filter_mode or "").strip().lower()
+        now = datetime.now(timezone.utc)
+
+        if total_records == 0:
+            return {
+                "available": True,
+                "status": "not_found" if (query or category) else "browse_catalog",
+                "found": False,
+                "query": (query or "").strip(),
+                "matches": [],
+                "related_other_category": [],
+                "ambiguity_note": None,
+                "not_found_reason": "empty_catalog",
+                "freshness_summary": summarize_catalog_freshness([]),
+                "total_catalog_products": 0,
+                "candidates_scanned": 0,
+                "used_sql_prefilter": False,
+                "offset": safe_offset,
+                "limit": safe_limit,
+                "has_more": False,
+                "currency_code": currency_code,
+            }
+
+        row_select = select(
+            NormalizedCommerceRecord.id,
+            NormalizedCommerceRecord.connection_id,
+            NormalizedCommerceRecord.source_updated_at,
+            NormalizedCommerceRecord.is_demo,
+            NormalizedCommerceRecord.normalized_data,
+        ).where(*base_filters).order_by(
+            NormalizedCommerceRecord.source_updated_at.desc().nullslast(),
+            NormalizedCommerceRecord.id.asc(),
+        )
+
+        used_sql_prefilter = False
+        used_sql_offset = False
+        if total_records <= SQL_PREFILTER_THRESHOLD:
+            raw_rows = self._session.execute(row_select).all()
+        else:
+            used_sql_prefilter = True
+            is_browse, sql_terms = extract_sql_prefilter_terms(query, category)
+            payload_text = sql_cast(NormalizedCommerceRecord.normalized_data, String)
+            payload_lower = func.lower(payload_text)
+            if is_browse:
+                if fmode == "promote":
+                    promo_stmt = row_select.where(
+                        or_(
+                            payload_lower.like("%compare_at_price%"),
+                            payload_lower.like("%regular_price%"),
+                            payload_lower.like("%original_price%"),
+                        )
+                    ).limit(MAX_SQL_CATALOG_CANDIDATES)
+                    raw_rows = self._session.execute(promo_stmt).all()
+                    if not raw_rows:
+                        used_sql_offset = True
+                        raw_rows = self._session.execute(
+                            row_select.offset(safe_offset).limit(safe_limit + 25)
+                        ).all()
+                else:
+                    used_sql_offset = True
+                    raw_rows = self._session.execute(
+                        row_select.offset(safe_offset).limit(safe_limit + 25)
+                    ).all()
+            else:
+                like_clauses = []
+                for term in sql_terms:
+                    like_clauses.append(payload_lower.like(f"%{term}%"))
+                    if any(ord(ch) > 127 for ch in term):
+                        like_clauses.append(payload_text.like(f"%{term.capitalize()}%"))
+                        like_clauses.append(payload_text.like(f"%{term}%"))
+                if like_clauses:
+                    raw_rows = self._session.execute(
+                        row_select.where(or_(*like_clauses)).limit(MAX_SQL_CATALOG_CANDIDATES)
+                    ).all()
+                else:
+                    raw_rows = self._session.execute(
+                        row_select.limit(MAX_SQL_CATALOG_CANDIDATES)
+                    ).all()
+
+        candidates: list[dict[str, Any]] = []
+        for rec_id, conn_id, supd, demo_flag, ndata in raw_rows:
+            proj = self._project_commerce_record(
+                record_id=rec_id,
+                connection_id=conn_id,
+                source_updated_at=supd,
+                is_demo_flag=bool(demo_flag),
+                normalized_data=ndata if isinstance(ndata, dict) else {},
+                connections_by_id=connections_by_id,
+                currency_code=currency_code,
+                now=now,
+                include_margins=include_margins,
+            )
+            if proj is not None:
+                candidates.append(proj)
+
+        if fmode == "in_stock":
+            in_stock_candidates = [
+                p for p in candidates
+                if p.get("is_live_stock") is True
+                and (p.get("in_stock") is True or p.get("stock_availability") == "IN_STOCK")
+            ]
+            if not in_stock_candidates:
+                return {
+                    "available": True,
+                    "status": "no_live_stock_confirmed",
+                    "found": False,
+                    "query": (query or "").strip(),
+                    "matches": [],
+                    "related_other_category": [],
+                    "ambiguity_note": None,
+                    "not_found_reason": "no_live_stock_confirmed",
+                    "freshness_summary": summarize_catalog_freshness(candidates),
+                    "total_catalog_products": total_records,
+                    "candidates_scanned": len(raw_rows),
+                    "used_sql_prefilter": used_sql_prefilter,
+                    "offset": safe_offset,
+                    "limit": safe_limit,
+                    "has_more": False,
+                    "currency_code": currency_code,
+                }
+            candidates = in_stock_candidates
+        elif fmode == "promote":
+            def _promo_key(p: dict[str, Any]) -> tuple[int, float, float]:
+                pv = _parse_optional_float(p.get("price")) or 0.0
+                cv = _parse_optional_float(p.get("compare_at_price")) or 0.0
+                if cv > pv > 0:
+                    return (1, round((cv - pv) / cv, 4), round(cv - pv, 2))
+                return (0, 0.0, pv)
+            candidates = sorted(candidates, key=_promo_key, reverse=True)
+
+        sem_limit = safe_limit if used_sql_offset else (safe_offset + safe_limit + 1)
+        sem = semantic_search_products(
+            candidates,
+            query,
+            category=category,
+            limit=max(1, sem_limit),
+        )
+
+        if used_sql_offset:
+            page_matches = sem.matches[:safe_limit]
+            has_more = (safe_offset + len(page_matches)) < total_records
+        else:
+            page_matches = sem.matches[safe_offset : safe_offset + safe_limit]
+            has_more = len(sem.matches) > (safe_offset + safe_limit)
+
+        return {
+            "available": True,
+            "status": sem.status,
+            "found": sem.found and bool(page_matches),
+            "query": sem.query,
+            "matches": page_matches,
+            "related_other_category": list(sem.related_other_category),
+            "ambiguity_note": sem.ambiguity_note,
+            "not_found_reason": sem.not_found_reason,
+            "freshness_summary": sem.freshness_summary,
+            "total_catalog_products": total_records,
+            "candidates_scanned": len(raw_rows),
+            "used_sql_prefilter": used_sql_prefilter,
+            "offset": safe_offset,
+            "limit": safe_limit,
+            "has_more": has_more,
+            "currency_code": currency_code,
+        }
+
+    def fetch_margin_candidates(
+        self,
+        company_id: UUID,
+        *,
+        product_query: str | None = None,
+        limit: int = 5,
+    ) -> dict[str, Any]:
+        """Fetch eligible margin/cost and promotional candidates with SQL pre-filtering for large catalogs."""
+        from backend.app.core.tenant_execution import peek_tenant_execution, TenantExecutionError
+        from backend.app.models.commerce_connection import NormalizedCommerceRecord
+        from backend.app.services.semantic_product_search import (
+            extract_sql_prefilter_terms,
+            semantic_search_products,
+        )
+
+        execution = peek_tenant_execution()
+        if execution is not None and execution.company_id != company_id:
+            raise TenantExecutionError("Company margin lookup cannot cross the bound tenant")
+
+        active = set(ModuleEntitlementService(self._session).get_active_modules(TenantContext(company_id)))
+        if "retail" not in active:
+            return {"available": False, "products": [], "currency_code": "CAD", "candidates_scanned": 0}
+
+        company = self._session.get(Company, company_id)
+        currency_code = company.currency_code if company else "CAD"
+        connections = self._session.scalars(
+            select(CommerceConnection).where(CommerceConnection.company_id == company_id)
+        ).all()
+        connections_by_id = {c.id: c for c in connections}
+
+        base_filters = (
+            NormalizedCommerceRecord.company_id == company_id,
+            NormalizedCommerceRecord.entity_type.in_(["products", "product"]),
+            NormalizedCommerceRecord.deleted.is_(False),
+        )
+        total_records = int(
+            self._session.scalar(select(func.count(NormalizedCommerceRecord.id)).where(*base_filters)) or 0
+        )
+        row_select = select(
+            NormalizedCommerceRecord.id,
+            NormalizedCommerceRecord.connection_id,
+            NormalizedCommerceRecord.source_updated_at,
+            NormalizedCommerceRecord.is_demo,
+            NormalizedCommerceRecord.normalized_data,
+        ).where(*base_filters).order_by(
+            NormalizedCommerceRecord.source_updated_at.desc().nullslast(),
+            NormalizedCommerceRecord.id.asc(),
+        )
+
+        if total_records <= SQL_PREFILTER_THRESHOLD:
+            raw_rows = self._session.execute(row_select).all()
+        else:
+            payload_text = sql_cast(NormalizedCommerceRecord.normalized_data, String)
+            payload_lower = func.lower(payload_text)
+            if product_query:
+                _is_browse, sql_terms = extract_sql_prefilter_terms(product_query)
+                like_clauses = [payload_lower.like(f"%{t}%") for t in sql_terms]
+                stmt = row_select.where(or_(*like_clauses)).limit(MAX_SQL_CATALOG_CANDIDATES) if like_clauses else row_select.limit(MAX_SQL_CATALOG_CANDIDATES)
+                raw_rows = self._session.execute(stmt).all()
+            else:
+                raw_rows = self._session.execute(
+                    row_select.where(
+                        or_(
+                            payload_lower.like("%unit_cost%"),
+                            payload_lower.like("%cost_price%"),
+                            payload_lower.like("%profit_margin%"),
+                            payload_lower.like("%gross_margin%"),
+                            payload_lower.like("%cogs%"),
+                            payload_lower.like("%compare_at_price%"),
+                            payload_lower.like("%regular_price%"),
+                        )
+                    ).limit(MAX_SQL_CATALOG_CANDIDATES)
+                ).all()
+
+        now = datetime.now(timezone.utc)
+        products: list[dict[str, Any]] = []
+        for rec_id, conn_id, supd, demo_flag, ndata in raw_rows:
+            proj = self._project_commerce_record(
+                record_id=rec_id,
+                connection_id=conn_id,
+                source_updated_at=supd,
+                is_demo_flag=bool(demo_flag),
+                normalized_data=ndata if isinstance(ndata, dict) else {},
+                connections_by_id=connections_by_id,
+                currency_code=currency_code,
+                now=now,
+                include_margins=True,
+            )
+            if proj is not None:
+                products.append(proj)
+
+        if product_query:
+            sem = semantic_search_products(products, product_query, limit=max(1, limit))
+            products = [m.product for m in sem.matches] if sem.matches else []
+
+        return {
+            "available": True,
+            "products": products,
+            "currency_code": currency_code,
+            "total_catalog_products": total_records,
+            "candidates_scanned": len(raw_rows),
+        }
 
     def require_service(self, company_id: UUID, *, service_id=None, service_name=None) -> dict:
         profile = self.get_profile(company_id)

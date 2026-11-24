@@ -309,13 +309,16 @@ def test_t10_ocr_and_other_registry_modules_cannot_invent_tools(tmp_path):
         company, owner = _company(db, "ocr-shop")
         tenant = _activate(db, company, "voice", "ocr", "marketing")
         from backend.app.services.module_entitlement_service import ModuleUnavailable
+        # 'hr' was legitimately launched as AVAILABLE (commit 4c17d3f7);
+        # 'appointments' remains COMING_SOON and must still fail closed with ModuleUnavailable.
         with pytest.raises(ModuleUnavailable):
-            _activate(db, company, "hr")
+            _activate(db, company, "appointments")
         _grant(db, company, (("ocr", "read_documents"), ("marketing", "read")), owner.id)
         db.commit()
         assert tools_for_action("ocr", "read_documents") == frozenset()
+        assert tools_for_action("hr", "read") == frozenset()
         service = _central(db)
-        scope = _scope(service, {"voice", "ocr", "marketing", "hr"}, (("ocr", "read_documents"),))
+        scope = _scope(service, {"voice", "ocr", "marketing", "hr"}, (("ocr", "read_documents"), ("hr", "read")))
         assert scope is not None
         assert scope[0] == frozenset()
         with pytest.raises(VoiceToolDenied, match="unmapped"):

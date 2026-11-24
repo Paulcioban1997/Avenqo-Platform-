@@ -16,11 +16,13 @@ from typing import Any, Sequence
 _STOPWORDS: frozenset[str] = frozenset({
     # French
     "le", "la", "les", "un", "une", "des", "du", "de", "d", "l", "au", "aux", "a",
-    "en", "et", "ou", "est", "sont", "etait", "quel", "quels", "quelle", "quelles",
+    "en", "et", "ou", "est", "sont", "etait", "as", "ai", "ont", "peux", "peut", "pouvez", "puis",
+    "quel", "quels", "quelle", "quelles",
     "combien", "coute", "coutent", "prix", "tarif", "tarifs", "avez", "vous", "avons",
     "nous", "notre", "votre", "nos", "vos", "mon", "ma", "mes", "ce", "cet", "cette",
     "ces", "je", "tu", "il", "elle", "on", "me", "te", "se", "que", "qui", "quoi",
     "cherche", "voudrais", "veux", "aimerai", "aimerais", "savoir", "voir", "trouver",
+    "montre", "montrez", "moi", "donne", "donnez", "dis", "dites", "parle", "parlez", "liste",
     "proposez", "vendez", "vendre", "acheter", "disponible", "disponibles", "stock",
     "inventaire", "catalogue", "produit", "produits", "article", "articles", "magasin",
     "boutique", "commerce", "entreprise", "compagnie", "quincaillerie",
@@ -31,11 +33,12 @@ _STOPWORDS: frozenset[str] = frozenset({
     "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix",
     # English
     "the", "an", "of", "in", "on", "for", "to", "with", "without", "and", "or",
-    "is", "are", "was", "what", "which", "how", "much", "do", "does", "you", "we",
+    "is", "are", "was", "has", "can", "could", "got", "what", "which", "how", "much", "do", "does", "you", "we",
     "have", "sell", "offer", "price", "prices", "cost", "catalog", "product", "products",
     "item", "items", "stock", "available", "looking", "want", "need", "find", "show",
     "store", "shop", "business", "company", "tienda", "negocio", "empresa", "magazin", "companie",
     "your", "our", "my", "this", "that", "these", "those", "any", "some", "me",
+    "please", "give", "tell", "list",
     "next", "more", "other", "others", "two", "three", "four", "five", "ten",
     # Spanish
     "el", "los", "las", "uno", "una", "unos", "unas", "del", "al", "para", "con",
@@ -95,7 +98,7 @@ _CONCEPT_SYNONYMS: dict[str, frozenset[str]] = {
     "jacket": frozenset({"veste", "vestes", "manteau", "manteaux", "blouson", "jacket", "jackets", "coat", "coats", "chaqueta", "geaca"}),
     "wax": frozenset({"fart", "wax", "cire", "cera"}),
     "accessories": frozenset({"accessoire", "accessoires", "accessory", "accessories", "accesorio", "accesorios", "accesoriu", "accesorii"}),
-    "tire": frozenset({"pneu", "pneus", "tire", "tires", "tyre", "tyres", "neumatico", "anvelopa"}),
+    "tire": frozenset({"pneu", "pneus", "tire", "tires", "tyre", "tyres", "neumatico", "neumaticos", "anvelopa", "anvelope"}),
     "brake": frozenset({"frein", "freins", "brake", "brakes", "freno", "frana"}),
     "oil": frozenset({"huile", "oil", "aceite", "ulei"}),
     "filter": frozenset({"filtre", "filtres", "filter", "filters", "filtro", "filtru"}),
@@ -106,6 +109,7 @@ _CONCEPT_SYNONYMS: dict[str, frozenset[str]] = {
     "winter": frozenset({"hiver", "winter", "invierno", "iarna"}),
     "summer": frozenset({"ete", "summer", "verano", "vara"}),
     "waterproof": frozenset({"impermeable", "impermeables", "waterproof", "etanche"}),
+    "wireless": frozenset({"wireless", "sansfil", "bluetooth", "fil"}),
     "drill": frozenset({"perceuse", "perceuses", "drill", "drills", "taladro", "bormasina"}),
     "car": frozenset({"auto", "voiture", "vehicule", "car", "vehicle", "coche", "masina"}),
 }
@@ -400,12 +404,12 @@ def semantic_search_products(
             _tokens_match(token, all_tokens, all_stems, folded_all) >= 0.85
             for token in domain_qualifiers
         )
-        if casque_sense in {"protective_helmet", "audio_headphones", "ambiguous_casque"} and not domain_qualifiers_ok:
-            continue
 
         # 1. Polysemy / domain conflict guard for protective helmet vs audio headphones
         if casque_sense == "protective_helmet":
-            if domain == "audio_headphones" and domain_qualifiers_ok:
+            if domain == "audio_headphones":
+                # Record audio headphones strictly as a non-matching other-category note
+                # so the assistant can clarify what IS carried without ever matching it.
                 other_category_notes.append({
                     "name": name,
                     "price": row.get("price"),
@@ -415,10 +419,12 @@ def semantic_search_products(
                     "mismatch_reason": "audio_headphones_not_protective_helmet",
                 })
                 continue
+            if not domain_qualifiers_ok:
+                continue
             if domain == "snowboard":
                 # A snowboard board is NEVER a snowboard helmet!
                 continue
-            if domain == "protective_helmet" and domain_qualifiers_ok:
+            if domain == "protective_helmet":
                 scored_matches.append(
                     SemanticProductMatch(
                         product=row,
@@ -433,9 +439,11 @@ def semantic_search_products(
                 continue
 
         elif casque_sense == "audio_headphones":
+            if not domain_qualifiers_ok:
+                continue
             if domain == "protective_helmet" or domain == "snowboard":
                 continue
-            if domain == "audio_headphones" and domain_qualifiers_ok:
+            if domain == "audio_headphones":
                 scored_matches.append(
                     SemanticProductMatch(
                         product=row,
@@ -447,7 +455,9 @@ def semantic_search_products(
                 continue
 
         elif casque_sense == "ambiguous_casque":
-            if domain == "protective_helmet" and domain_qualifiers_ok:
+            if not domain_qualifiers_ok:
+                continue
+            if domain == "protective_helmet":
                 scored_matches.append(
                     SemanticProductMatch(
                         product=row,
@@ -457,7 +467,7 @@ def semantic_search_products(
                     )
                 )
                 continue
-            if domain == "audio_headphones" and domain_qualifiers_ok:
+            if domain == "audio_headphones":
                 scored_matches.append(
                     SemanticProductMatch(
                         product=row,
@@ -531,16 +541,24 @@ def semantic_search_products(
             continue
         coverage = matched_count / len(content_q)
         avg_score = sum(per_tok_best) / len(per_tok_best)
+        # Multi-item conjunction query ("la perceuse et le marteau" / "gloves and boots"):
+        # allow an exact name hit (>= 0.95) on one of the two conjoined items.
+        has_item_conjunction = (
+            len(content_q) == 2
+            and bool(set(ordered_q) & {"et", "ou", "and", "or", "si"})
+            and max(name_hits) >= 0.95
+        )
         # Require strong relevance (especially on multi-word queries) so unrelated items never sneak in
-        if len(content_q) >= 2 and coverage < 0.5:
-            continue
-        if avg_score < 0.55:
-            continue
+        if not has_item_conjunction:
+            if len(content_q) >= 2 and coverage < 0.5:
+                continue
+            if avg_score < 0.55:
+                continue
         scored_matches.append(
             SemanticProductMatch(
                 product=row,
-                score=round(avg_score, 3),
-                match_reason="semantic_lexical_match",
+                score=round(max(avg_score, max(name_hits) * 0.85) if has_item_conjunction else avg_score, 3),
+                match_reason="conjunction_item_match" if has_item_conjunction else "semantic_lexical_match",
                 product_domain=domain,
             )
         )
@@ -587,9 +605,70 @@ def semantic_search_products(
     )
 
 
+def extract_sql_prefilter_terms(
+    query: str | None,
+    category: str | None = None,
+    *,
+    max_terms: int = 24,
+) -> tuple[bool, tuple[str, ...]]:
+    """Extract DB-side SQL LIKE candidate terms from a user query for scalable large-catalog pre-filtering.
+
+    Returns `(is_browse_only, terms)`. Never drops valid candidates on multilingual synonyms
+    or polysemous 'casque' queries (audio/helmet terms are included so `related_other_category`
+    and `ambiguous` handling stay 100% accurate on 10,000+ product catalogs).
+    """
+    effective = " ".join(part.strip() for part in (query or "", category or "") if part and part.strip()).strip()
+    ordered_q = _tokenize_ordered(effective)
+    content_q = _content_tokens(ordered_q)
+    if (
+        not effective
+        or (len(ordered_q) <= 2 and all(t in _BROWSE_ONLY_QUERIES or t in _STOPWORDS for t in ordered_q))
+        or not content_q
+    ):
+        return True, ()
+
+    terms: list[str] = []
+    seen: set[str] = set()
+
+    def _add(term: str) -> None:
+        cleaned = term.strip().lower()
+        if len(cleaned) < 2 or cleaned in seen or len(terms) >= max_terms:
+            return
+        seen.add(cleaned)
+        terms.append(cleaned)
+
+    # Preserve raw Unicode tokens (for exact accented LIKE hits) alongside ASCII-folded stems
+    for raw_tok in re.findall(r"[^\W_]+", effective.casefold()):
+        folded_raw = _fold_ascii(raw_tok)
+        if folded_raw not in _STOPWORDS and len(folded_raw) >= 2:
+            if raw_tok != folded_raw:
+                _add(raw_tok)
+
+    for tok in content_q:
+        stem = _stem_token(tok)
+        _add(stem)
+        if tok != stem:
+            _add(tok)
+        concepts = _TOKEN_TO_CONCEPTS.get(tok, set()) | _TOKEN_TO_CONCEPTS.get(stem, set())
+        for ckey in sorted(concepts):
+            for syn in sorted(_CONCEPT_SYNONYMS.get(ckey, ())):
+                _add(_stem_token(syn))
+
+    casque_sense = _classify_query_casque_sense(effective)
+    if casque_sense in {"protective_helmet", "ambiguous_casque"}:
+        for extra in ("casque", "helmet", "casco", "headphone", "ecouteur", "headset"):
+            _add(extra)
+    elif casque_sense == "audio_headphones":
+        for extra in ("headphone", "headset", "earbud", "ecouteur", "audio", "casque"):
+            _add(extra)
+
+    return False, tuple(terms)
+
+
 __all__ = [
     "SemanticProductMatch",
     "SemanticSearchResult",
+    "extract_sql_prefilter_terms",
     "semantic_search_products",
     "summarize_catalog_freshness",
 ]

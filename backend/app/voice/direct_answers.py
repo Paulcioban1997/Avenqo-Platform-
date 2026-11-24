@@ -1048,6 +1048,19 @@ def spoken_catalog_answer(
     elif query:
         sem = semantic_search_products(rows, query, limit=max(limit + offset, 20))
         if sem.status == "not_found":
+            q_norm_nf = "".join(
+                c for c in unicodedata.normalize("NFKD", query.casefold()) if not unicodedata.combining(c)
+            )
+            if re.search(r"\b(accessoire|accessoires|accessory|accessories)\b", q_norm_nf) and not sem.related_other_category:
+                if spanish:
+                    return "Actualmente no tenemos accesorios disponibles en nuestro catálogo. ¿Desea información sobre nuestros otros productos?"
+                if romanian:
+                    return "În prezent nu avem accesorii disponibile în catalogul nostru. Doriți informații despre celelalte produse?"
+                return (
+                    "Nous n'avons actuellement aucun accessoire disponible dans notre catalogue. Souhaitez-vous des renseignements sur nos autres articles ?"
+                    if french else
+                    "We do not currently have any accessories available in our catalog. Would you like information on our other items?"
+                )
             other_note = ""
             if sem.related_other_category:
                 other_names = ", ".join(str(x.get("name") or "") for x in sem.related_other_category[:2] if x.get("name"))
@@ -1088,6 +1101,11 @@ def spoken_catalog_answer(
             return f"If you mean our audio headphones {p_name}, they are priced at {price_str}. We do not carry protective helmets in our catalog."
         if sem.status == "found" and sem.matches:
             rows = [m.product for m in sem.matches]
+            if all(m.match_reason == "accessories_category_match" for m in sem.matches):
+                active_category = "accessoire"
+                is_accessories_query = True
+            elif all(m.product_domain == "snowboard" for m in sem.matches):
+                active_category = "planche"
 
     target_slice = rows[offset : offset + limit]
     if not target_slice and offset > 0:
