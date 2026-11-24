@@ -284,6 +284,60 @@ class RealtimeProviderType(StrEnum):
     GEMINI_LIVE = "gemini_live"
 
 
+class VoiceArchitectureMode(StrEnum):
+    """Per-tenant selectable Voice execution architecture for Sandbox A/B testing."""
+
+    HYBRID_REALTIME_CENTRAL = "hybrid_realtime_central"
+    ARCHITECTURE_A_S2S = "architecture_a_s2s"
+    ARCHITECTURE_B_MODULAR = "architecture_b_modular"
+
+
+_ARCH_MODE_ALIASES: dict[str, VoiceArchitectureMode] = {
+    "hybrid": VoiceArchitectureMode.HYBRID_REALTIME_CENTRAL,
+    "hybrid_realtime_central": VoiceArchitectureMode.HYBRID_REALTIME_CENTRAL,
+    "default": VoiceArchitectureMode.HYBRID_REALTIME_CENTRAL,
+    "a": VoiceArchitectureMode.ARCHITECTURE_A_S2S,
+    "arch_a": VoiceArchitectureMode.ARCHITECTURE_A_S2S,
+    "architecture_a": VoiceArchitectureMode.ARCHITECTURE_A_S2S,
+    "architecture_a_s2s": VoiceArchitectureMode.ARCHITECTURE_A_S2S,
+    "s2s": VoiceArchitectureMode.ARCHITECTURE_A_S2S,
+    "s2s_realtime_2_1": VoiceArchitectureMode.ARCHITECTURE_A_S2S,
+    "gpt_realtime_2_1_s2s": VoiceArchitectureMode.ARCHITECTURE_A_S2S,
+    "b": VoiceArchitectureMode.ARCHITECTURE_B_MODULAR,
+    "arch_b": VoiceArchitectureMode.ARCHITECTURE_B_MODULAR,
+    "architecture_b": VoiceArchitectureMode.ARCHITECTURE_B_MODULAR,
+    "architecture_b_modular": VoiceArchitectureMode.ARCHITECTURE_B_MODULAR,
+    "modular": VoiceArchitectureMode.ARCHITECTURE_B_MODULAR,
+    "modular_sol_tts": VoiceArchitectureMode.ARCHITECTURE_B_MODULAR,
+    "stt_sol_tts": VoiceArchitectureMode.ARCHITECTURE_B_MODULAR,
+}
+
+
+def resolve_voice_architecture_mode(
+    config: VoiceBusinessConfig | None,
+    settings: Settings,
+) -> VoiceArchitectureMode:
+    """Resolve Voice architecture per tenant (Sandbox A/B) with safe production default."""
+    raw: str | None = None
+    if config is not None:
+        policy = getattr(config, "call_policy", None)
+        if isinstance(policy, dict) and policy.get("voice_architecture"):
+            raw = str(policy.get("voice_architecture")).strip().lower()
+    if not raw:
+        raw = str(getattr(settings, "voice_architecture_mode", "") or "").strip().lower()
+    mode = _ARCH_MODE_ALIASES.get(raw, VoiceArchitectureMode.HYBRID_REALTIME_CENTRAL)
+    # Experimental S2S architecture A is Sandbox-first unless explicitly permitted in environment
+    env = str(getattr(settings, "environment", "") or "").strip().lower()
+    if mode == VoiceArchitectureMode.ARCHITECTURE_A_S2S and env == "production":
+        allow_prod = bool(
+            isinstance(getattr(config, "call_policy", None), dict)
+            and (config.call_policy or {}).get("s2s_production_certified", False)
+        )
+        if not allow_prod:
+            return VoiceArchitectureMode.HYBRID_REALTIME_CENTRAL
+    return mode
+
+
 @dataclass(frozen=True)
 class VoiceAudioChunk:
     """Segment audio brut avec identifiant de séquence et de tour."""
@@ -570,6 +624,7 @@ class GeminiLiveRealtimeAudioAdapter:
         self._tts_active = False
         self._tts_response_id: str | None = None
         self._tts_audio_chunks = 0
+        self._verified_barge_in_for_tts: bool = False
         self._is_authenticated_staff: bool = False
         self._staff_name: str | None = None
         self._staff_role: str | None = None
@@ -865,6 +920,8 @@ class GeminiLiveRealtimeAudioAdapter:
                     )
                 )
             self._speech_frames += 1
+            if playback_on and self._speech_frames >= 3:
+                self._verified_barge_in_for_tts = True
             if rms > self._speech_peak_rms:
                 self._speech_peak_rms = rms
             if len(self._speech_pcm_buffer) < 720_000:
@@ -928,12 +985,18 @@ class GeminiLiveRealtimeAudioAdapter:
                 )
 
         # Conversion PCM16 24kHz (sortie TelnyxAudioCodec.inbound_pcm) -> PCM16 16kHz (entrée native Gemini Live)
+        # Pendant la lecture TTS, si aucune parole réelle n'est active au micro, remplacer le bruit de fond / écho
+        # par du silence numérique PCM16 afin d'empêcher Gemini Live d'émettre de fausses interruptions (`barge_in=0`).
         pcm_16k, self._in_rate_state = audioop.ratecv(audio, 2, 1, 24000, 16000, self._in_rate_state)
+        if playback_on and not self._speech_active and rms < max(effective_threshold, 650):
+            pcm_16k_out = b"\x00" * len(pcm_16k)
+        else:
+            pcm_16k_out = pcm_16k
         try:
             from google.genai import types
-            blob: Any = types.Blob(data=pcm_16k, mime_type="audio/pcm;rate=16000")
+            blob: Any = types.Blob(data=pcm_16k_out, mime_type="audio/pcm;rate=16000")
         except Exception:
-            blob = {"data": pcm_16k, "mime_type": "audio/pcm;rate=16000"}
+            blob = {"data": pcm_16k_out, "mime_type": "audio/pcm;rate=16000"}
         session_ref = self._session
         if session_ref is None or self._closed:
             if self._reconnecting:
@@ -963,6 +1026,7 @@ class GeminiLiveRealtimeAudioAdapter:
         self._tts_response_id = resp_id
         self._tts_active = True
         self._tts_audio_chunks = 0
+        self._verified_barge_in_for_tts = False
         self._current_response_id = resp_id
         await self._event_queue.put(
             SimpleNamespace(
@@ -991,6 +1055,7 @@ class GeminiLiveRealtimeAudioAdapter:
         self._tts_active = False
         self._tts_response_id = None
         self._tts_audio_chunks = 0
+        self._verified_barge_in_for_tts = False
         if self._current_response_id is not None:
             interrupted_id = self._current_response_id
             self._interrupted_responses.add(interrupted_id)
@@ -998,6 +1063,8 @@ class GeminiLiveRealtimeAudioAdapter:
             await self._event_queue.put(
                 SimpleNamespace(
                     type="response.done",
+                    verified_caller_barge_in=True,
+                    interruption_source="verified_caller_speech",
                     response=SimpleNamespace(
                         id=interrupted_id,
                         status="cancelled",
@@ -1081,10 +1148,20 @@ class GeminiLiveRealtimeAudioAdapter:
                             server_content.get("interrupted", False) if isinstance(server_content, dict) else False
                         )
                         if interrupted:
+                            verified_caller = bool(
+                                self._verified_barge_in_for_tts
+                                or (self._speech_active and self._speech_frames >= 3)
+                            )
+                            interruption_source = (
+                                "verified_caller_speech" if verified_caller else "provider_unconfirmed"
+                            )
+                            chunks_emitted = self._tts_audio_chunks
                             logger.info(
-                                "gemini_live_interrupted_handled tts_active=%s chunks=%s",
+                                "gemini_live_interrupted_handled tts_active=%s chunks=%s source=%s verified_caller=%s",
                                 self._tts_active,
-                                self._tts_audio_chunks,
+                                chunks_emitted,
+                                interruption_source,
+                                verified_caller,
                             )
                             if self._tts_response_id is not None:
                                 self._interrupted_responses.add(self._tts_response_id)
@@ -1092,10 +1169,15 @@ class GeminiLiveRealtimeAudioAdapter:
                             self._tts_active = False
                             self._tts_response_id = None
                             self._current_response_id = None
+                            self._tts_audio_chunks = 0
+                            self._verified_barge_in_for_tts = False
                             if interrupted_resp is not None:
                                 await self._event_queue.put(
                                     SimpleNamespace(
                                         type="response.done",
+                                        verified_caller_barge_in=verified_caller,
+                                        interruption_source=interruption_source,
+                                        audio_chunks_emitted=chunks_emitted,
                                         response=SimpleNamespace(
                                             id=interrupted_resp,
                                             status="cancelled",
@@ -1103,10 +1185,14 @@ class GeminiLiveRealtimeAudioAdapter:
                                         ),
                                     )
                                 )
+                            if interrupted_resp is not None or (verified_caller and self._playback_active):
                                 await self._event_queue.put(
                                     SimpleNamespace(
                                         type="response.interrupted",
                                         response_id=interrupted_resp,
+                                        verified_caller_barge_in=verified_caller,
+                                        interruption_source=interruption_source,
+                                        audio_chunks_emitted=chunks_emitted,
                                     )
                                 )
 
@@ -2443,15 +2529,60 @@ class VoiceRealtimeRouter:
         audio_config: OpenAIAudioConfig,
         *,
         fallback_factory: Callable[..., RealtimeAudioAdapter],
+        tool_provider: Any | None = None,
+        tool_executor: Any | None = None,
+        security_transcript_hook: Any | None = None,
+        assistant_transcript_hook: Any | None = None,
     ) -> RealtimeAudioAdapter:
         """Construit l'adaptateur audio temps réel pour `TelnyxMediaBridge`.
 
-        - Moteur primaire par défaut : OpenAI `gpt-live-1` (via `fallback_factory`,
-          avec bascule automatique vers `gpt-realtime-2.1`).
-        - Expérimental Sandbox : `gpt-live-1.1` autorisé uniquement si activé par tenant
-          et confiné aux appels de test Sandbox.
-        - Optionnel : Gemini Live si explicitement configuré et activé pour le tenant.
+        - Supporte les architectures A/B configurables par tenant (Sandbox) :
+          * `architecture_a_s2s`: `gpt-realtime-2.1` speech-to-speech natif + outils sécurisés
+          * `architecture_b_modular`: STT indépendant + Central AI (`gpt-6.2-sol`) + TTS indépendant
+          * `hybrid_realtime_central` (défaut): Gemini Live / OpenAI Realtime STT+TTS + Central AI
         """
+        arch_mode = resolve_voice_architecture_mode(config, self._settings)
+        policy = getattr(config, "call_policy", None) if config is not None else None
+        if arch_mode == VoiceArchitectureMode.ARCHITECTURE_A_S2S:
+            from backend.app.voice.s2s_realtime_adapter import OpenAISpeechToSpeechRealtimeAdapter
+            s2s_model = str((policy or {}).get("s2s_model") or "gpt-realtime-2.1") if isinstance(policy, dict) else "gpt-realtime-2.1"
+            company_label = (
+                getattr(config, "effective_voice_name", None)
+                or getattr(config, "voice_display_name", None)
+                or getattr(config, "business_name", None)
+                or "Avenqo"
+            )
+            logger.info(
+                "voice_realtime_route architecture=architecture_a_s2s provider=openai_s2s model=%s company_id=%s",
+                s2s_model,
+                getattr(config, "company_id", None),
+            )
+            return OpenAISpeechToSpeechRealtimeAdapter(
+                audio_config,
+                settings=self._settings,
+                config=config,
+                model=s2s_model,
+                company_name=str(company_label),
+                tool_provider=tool_provider,
+                tool_executor=tool_executor,
+                security_transcript_hook=security_transcript_hook,
+                assistant_transcript_hook=assistant_transcript_hook,
+                interruption_manager=self._interruptions,
+            )
+
+        if arch_mode == VoiceArchitectureMode.ARCHITECTURE_B_MODULAR:
+            from backend.app.voice.modular_pipeline_adapter import ModularVoicePipelineAdapter
+            central_model = getattr(self._settings, "voice_standard_reasoning_model", "gpt-6.2-sol")
+            logger.info(
+                "voice_realtime_route architecture=architecture_b_modular provider=openai_modular central_model=%s company_id=%s",
+                central_model,
+                getattr(config, "company_id", None),
+            )
+            return ModularVoicePipelineAdapter(
+                audio_config,
+                central_model=central_model,
+            )
+
         requested = (
             getattr(config, "realtime_provider", RealtimeProviderType.TELNYX)
             if config is not None

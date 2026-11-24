@@ -310,7 +310,8 @@ class AvenqoAIGateway(LLMProvider):
         attempt_number = 0
 
         try:
-            for provider in self._ordered_providers(operation):
+            ordered_providers = self._ordered_providers(operation)
+            for provider_idx, provider in enumerate(ordered_providers):
                 candidate_id = self._candidate_id(provider)
                 model_id = candidate_id.partition(":")[2]
                 max_retries, base_delay, max_delay = self._retry_policy(provider)
@@ -353,9 +354,25 @@ class AvenqoAIGateway(LLMProvider):
                             "ai_gateway_failure provider=%s model=%s operation=%s attempt=%d category=%s",
                             provider.name, model_id, operation, retry_index + 1, category.value,
                         )
-                        if not is_fallback_eligible(category):
+                        has_remaining_provider = any(
+                            not self._breaker.is_open(self._candidate_id(candidate))
+                            for candidate in ordered_providers[provider_idx + 1:]
+                        )
+                        allow_tool_schema_fallback = (
+                            operation == "generate_with_tools"
+                            and category.value == "invalid_request"
+                            and has_remaining_provider
+                        )
+                        if not is_fallback_eligible(category) and not allow_tool_schema_fallback:
                             exc.attempts = tuple(attempts)
                             raise
+                        if allow_tool_schema_fallback:
+                            logger.warning(
+                                "ai_gateway_tool_schema_fallback provider=%s model=%s reason=provider_invalid_request_with_tools",
+                                provider.name,
+                                model_id,
+                            )
+                            break
                         if is_retryable(category) and retry_index < max_retries:
                             await self._retry_delay(
                                 retry_index,

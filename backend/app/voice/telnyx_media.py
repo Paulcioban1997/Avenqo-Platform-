@@ -1014,7 +1014,7 @@ class TelnyxMediaBridge:
         self._remainder = b""
         self._send_lock = asyncio.Lock()
         self._background = []
-        self._turns = asyncio.Queue(maxsize=2)
+        self._turns = asyncio.Queue(maxsize=8)
         self._pending_speech = deque()
         self._responses = {}
         self._cancelled_responses: set[str] = set()
@@ -1047,6 +1047,12 @@ class TelnyxMediaBridge:
         self.central_ai_discarded_epochs = 0
         self._executing_turn = False
         self._in_flight_transcript: str | None = None
+        self._in_flight_turn_id: str | None = None
+        self._in_flight_started_at: float | None = None
+        self._coalescing_turn_id: str | None = None
+        self._caller_speech_during_playback: bool = False
+        self._last_turn_tts_payload: dict[str, tuple[str, int, int]] = {}
+        self.turn_lifecycles: list[dict[str, Any]] = []
         self._last_spoken: str | None = None
         self._last_filler_time: float = 0.0
         self.phase = "LISTENING"
@@ -1071,6 +1077,11 @@ class TelnyxMediaBridge:
             "stt_final_count": 0,
             "speech_stopped_without_transcript": 0,
             "unconfirmed_barge_in_suppressed": 0,
+            "unconfirmed_provider_interrupts_suppressed": 0,
+            "tts_auto_recoveries": 0,
+            "turns_coalesced": 0,
+            "turns_queued_during_thinking": 0,
+            "verified_caller_barge_ins": 0,
             "stt_rescue_succeeded": 0,
             "barge_in_triggered_count": 0,
             "telnyx_clear_sent_count": 0,
@@ -1135,6 +1146,8 @@ class TelnyxMediaBridge:
 
     def _set_playback_active(self, active: bool) -> None:
         self._playback_active = bool(active)
+        if not self._playback_active:
+            self._caller_speech_during_playback = False
         if hasattr(self.adapter, "set_playback_active"):
             fn: Any = getattr(self.adapter, "set_playback_active")
             with suppress(Exception):
@@ -1178,8 +1191,11 @@ class TelnyxMediaBridge:
             "partial_transcript_barge_in",
             "untranscribed_speech_barge_in",
             "pin_challenge_verbal_cancellation",
+            "verified_response.interrupted",
+            "verified_response.done",
         }:
             self.telemetry["barge_in_triggered_count"] += 1
+            self.telemetry["verified_caller_barge_ins"] += 1
             if self._last_speech_started_at is not None:
                 reaction_ms = max(0.0, (now_t - self._last_speech_started_at) * 1000.0)
                 self.orchestrator.record_barge_in_latency(reaction_ms)
@@ -1266,6 +1282,134 @@ class TelnyxMediaBridge:
             self.input_paused = True
             await self.adapter.clear_input()
 
+    async def _speak_turn_answer(self, item_id: str, spoken_text: str, *, epoch: int, turn_ledger=None, is_retry: bool = False) -> None:
+        """Submit an authorized answer to TTS, preserving epoch and retry tracking."""
+        if epoch != self.epoch:
+            return
+        if len(self._pending_speech) >= 8:
+            oldest = self._pending_speech.popleft()
+            if oldest[2] is not None:
+                oldest[2].settle(oldest[0])
+            self.dropped_outbound_frames += 1
+        self.pending_epoch = epoch
+        self._pending_speech.append((item_id, epoch, turn_ledger))
+        self.telemetry["tts_generated"] = True
+        self.telemetry["tts_request_started"] += 1
+        self.telemetry["final_state"] = "RESPONDING"
+        if not self._executing_turn:
+            self._set_phase("SYNTHESIZING")
+        await asyncio.wait_for(
+            self.adapter.speak(spoken_text),
+            timeout=self.tts_timeout,
+        )
+
+    async def _handle_provider_tts_interruption(self, event: Any, *, source_event: str) -> None:
+        """Separate causal TTS/provider interruption handling from full-turn cancellation.
+
+        Unconfirmed provider interrupts (barge_in=0, acoustic noise, or Gemini Live
+        send_client_content collision) must NEVER cancel an in-flight Central AI THINKING
+        task, advance epoch, or clear Telnyx outbound audio. When a real answer was
+        aborted before playing, automatically recover it.
+        """
+        resp_obj = getattr(event, "response", None)
+        resp_id = getattr(event, "response_id", None) or getattr(resp_obj, "id", None)
+        resp_key = str(resp_id) if resp_id else None
+        if resp_key and resp_key in self._cancelled_responses:
+            if source_event == "response.done":
+                self._responses.pop(resp_id, None)
+            return
+
+        interruption_source = str(getattr(event, "interruption_source", "") or "")
+        explicit_flag = getattr(event, "verified_caller_barge_in", None)
+        if interruption_source == "provider_unconfirmed" or explicit_flag is False:
+            verified_caller = False
+        elif interruption_source == "verified_caller_speech" or explicit_flag is True:
+            verified_caller = True
+        else:
+            # Untagged legacy/mock events: allow playback cancel ONLY if NOT currently in THINKING
+            verified_caller = not self._executing_turn
+
+        completed = self._responses.pop(resp_id, None) if resp_id else None
+        item_id_str = str(completed[0]) if completed is not None else ""
+        if item_id_str and item_id_str in self._turn_metrics:
+            self._turn_metrics[item_id_str]["interruption_reason"] = (
+                f"verified_{source_event}" if verified_caller else "provider_unconfirmed_suppressed"
+            )
+
+        if verified_caller:
+            if completed is not None and self.interruption_manager is not None:
+                self.interruption_manager.cancel_turn(str(self.stream_id or "default"), item_id_str)
+            if completed is not None and completed[2] is not None:
+                completed[2].settle(completed[0])
+            if not (self.input_paused or self._pin_turn is not None):
+                playback_draining = bool(
+                    self._playback_active
+                    or not self._output.empty()
+                    or self._active_play_mark is not None
+                    or self.phase in {"PLAYING", "SPEAKING", "SYNTHESIZING"}
+                )
+                is_active = (
+                    (resp_id is not None and self.response_id == resp_id and self.response_epoch == self.epoch)
+                    or (resp_id is None and playback_draining)
+                )
+                if is_active or (completed is not None and completed[1] == self.epoch):
+                    await self.interrupt(
+                        originating_response_id=resp_key,
+                        reason=f"verified_{source_event}",
+                    )
+            if resp_key:
+                self._cancelled_responses.add(resp_key)
+            return
+
+        # Unconfirmed provider interruption (barge_in == 0):
+        # NEVER cancel _current_turn_task, NEVER advance self.epoch, NEVER clear Telnyx audio.
+        self.telemetry["unconfirmed_provider_interrupts_suppressed"] += 1
+        if resp_key:
+            self._cancelled_responses.add(resp_key)
+            if len(self._cancelled_responses) > 500:
+                self._cancelled_responses.clear()
+        if self.response_id == resp_id:
+            self.response_id = None
+            self.response_epoch = None
+        if self.pending_epoch == self.epoch:
+            self.pending_epoch = None
+        if completed is not None and completed[2] is not None:
+            completed[2].settle(completed[0])
+
+        chunks_emitted = int(getattr(event, "audio_chunks_emitted", 0) or 0)
+        is_filler_or_greeting = item_id_str.startswith(("filler:", "inbound-greeting", "pin-"))
+        payload_entry = self._last_turn_tts_payload.get(item_id_str) if item_id_str else None
+        logger.warning(
+            "Suppressed unconfirmed provider interrupt without cancelling Central AI; call=%s resp_id=%s item_id=%s thinking=%s chunks=%d",
+            self.call_correlation,
+            resp_key,
+            item_id_str[:64],
+            self._executing_turn,
+            chunks_emitted,
+        )
+        if (
+            not is_filler_or_greeting
+            and payload_entry is not None
+            and not (self.input_paused or self._pin_turn is not None)
+        ):
+            spoken_text, payload_epoch, retry_count = payload_entry
+            if payload_epoch == self.epoch and chunks_emitted <= 2 and retry_count < 1:
+                self._last_turn_tts_payload[item_id_str] = (spoken_text, payload_epoch, retry_count + 1)
+                self.telemetry["tts_auto_recoveries"] += 1
+                try:
+                    await self._speak_turn_answer(
+                        item_id_str,
+                        spoken_text,
+                        epoch=payload_epoch,
+                        turn_ledger=completed[2] if completed is not None else self.usage,
+                        is_retry=True,
+                    )
+                except Exception as rec_exc:
+                    self.central_ai_missing_answers += 1
+                    logger.warning("TTS auto-recovery failed; item_id=%s error=%s", item_id_str[:64], type(rec_exc).__name__)
+            elif payload_epoch == self.epoch and chunks_emitted == 0 and retry_count >= 1:
+                self.central_ai_missing_answers += 1
+
     async def _speak_system(self, item_id: str, answer: str) -> None:
         if self.usage is not None and not self.usage.reserve(item_id):
             raise PermissionError("Voice usage quota unavailable")
@@ -1289,16 +1433,32 @@ class TelnyxMediaBridge:
             await self.authorize()
             self.turn_correlation = str(item_id)[:64]
             self._in_flight_transcript = transcript
+            self._in_flight_turn_id = str(item_id)
+            self._in_flight_started_at = time.monotonic()
             self.telemetry["central_ai_called"] = True
             self._executing_turn = True
             self._set_phase("THINKING")
 
             metric = self._turn_metrics.setdefault(str(item_id), {})
-            metric["tool_start_at"] = time.monotonic()
+            metric["tool_start_at"] = self._in_flight_started_at
+            lifecycle_entry: dict[str, Any] = {
+                "turn_id": str(item_id),
+                "epoch": epoch,
+                "started_at": self._in_flight_started_at,
+                "text_ready": False,
+                "tts_started": False,
+                "status": "thinking",
+                "cancel_reason": None,
+            }
+            self.turn_lifecycles.append(lifecycle_entry)
+            if len(self.turn_lifecycles) > 200:
+                del self.turn_lifecycles[:-200]
 
             filler_task = None
             async def _play_thinking_filler() -> None:
                 try:
+                    if not getattr(self.adapter, "supports_concurrent_filler", False):
+                        return
                     await asyncio.sleep(2.8)
                     now_time = asyncio.get_event_loop().time()
                     if (
@@ -1317,7 +1477,12 @@ class TelnyxMediaBridge:
                             filler_phrase = "Un momento, estoy verificando..."
                         else:
                             filler_phrase = "One moment, checking that for you..."
-                        await self._speak_system(f"filler:{item_id}", filler_phrase)
+                        # Keep THINKING phase active so filler never triggers self-cancellation
+                        if self.usage is None or self.usage.reserve(f"filler:{item_id}"):
+                            self._pending_speech.append((f"filler:{item_id}", self.epoch, self.usage))
+                            self.telemetry["tts_generated"] = True
+                            self.telemetry["tts_request_started"] += 1
+                            await self.adapter.speak(self._spoken(filler_phrase))
                 except asyncio.CancelledError:
                     pass
                 except Exception as ex:
@@ -1428,29 +1593,31 @@ class TelnyxMediaBridge:
                 return
             if result.get("status") == "success" and isinstance(result.get("answer"), str) and result["answer"].strip():
                 self.telemetry["central_ai_response_ready"] += 1
-                if len(self._pending_speech) >= 8:
-                    oldest = self._pending_speech.popleft()
-                    if oldest[2] is not None:
-                        oldest[2].settle(oldest[0])
-                    self.dropped_outbound_frames += 1
+                spoken_answer = self._spoken(result["answer"])
                 speak_epoch = self.epoch
-                self.pending_epoch = speak_epoch
-                self._pending_speech.append((item_id, speak_epoch, turn_ledger))
+                if len(self._last_turn_tts_payload) > 50:
+                    oldest_key = next(iter(self._last_turn_tts_payload))
+                    self._last_turn_tts_payload.pop(oldest_key, None)
+                self._last_turn_tts_payload[str(item_id)] = (spoken_answer, speak_epoch, 0)
                 requested_audio = True
-                self.telemetry["tts_generated"] = True
-                self.telemetry["tts_request_started"] += 1
-                self.telemetry["final_state"] = "RESPONDING"
-                self._set_phase("SYNTHESIZING")
                 metric["response_ready_at"] = time.monotonic()
+                for entry in reversed(self.turn_lifecycles):
+                    if entry.get("turn_id") == str(item_id):
+                        entry["text_ready"] = True
+                        entry["tts_started"] = True
+                        entry["status"] = "synthesizing"
+                        break
                 try:
-                    await asyncio.wait_for(
-                        self.adapter.speak(self._spoken(result["answer"])),
-                        timeout=self.tts_timeout
+                    await self._speak_turn_answer(
+                        str(item_id),
+                        spoken_answer,
+                        epoch=speak_epoch,
+                        turn_ledger=turn_ledger,
                     )
                     self.central_ai_replies_queued += 1
                     logger.info("Voice conversation reply submitted to TTS; count=%s", self.central_ai_replies_queued)
                     if result.get("auth_required"):
-                        self._last_spoken_prompt = self._spoken(result["answer"])
+                        self._last_spoken_prompt = spoken_answer
                         self._pin_mark = "pin-prompt:" + hashlib.sha256(item_id.encode()).hexdigest()[:24]
                         self._pin_prompt_safe_duration = max(len(str(result.get("answer") or "")) * 0.075, 4.0)
                         if not getattr(self, "_draining_events", False):
@@ -1497,6 +1664,8 @@ class TelnyxMediaBridge:
         finally:
             self._executing_turn = False
             self._in_flight_transcript = None
+            self._in_flight_turn_id = None
+            self._in_flight_started_at = None
             if self.phase == "THINKING":
                 self._set_phase("LISTENING")
             if turn_ledger is not None and not requested_audio:
@@ -1758,6 +1927,8 @@ class TelnyxMediaBridge:
                     if len(self._non_echo_partial_items) > 500:
                         self._non_echo_partial_items.clear()
                     self._non_echo_partial_items.add(item_id)
+                    if self._playback_active or self.phase in {"PLAYING", "SPEAKING"}:
+                        self._caller_speech_during_playback = True
                 if (
                     self._pin_turn is None
                     and partial_text
@@ -1866,6 +2037,11 @@ class TelnyxMediaBridge:
                     self.usage.record_transcription(item_id, event, model=self.stt_model)
                 secs_since_last = max(0.0, now_t - self.orchestrator.last_user_turn_at)
                 effective_phase = "PLAYING" if (self._playback_active or not self._output.empty()) and self.phase == "LISTENING" else self.phase
+                in_flight_age = (
+                    max(0.0, now_t - self._in_flight_started_at)
+                    if (self._executing_turn and self._in_flight_started_at is not None)
+                    else None
+                )
                 decision = adjudicate_transcript(
                     transcript,
                     phase=effective_phase,
@@ -1873,6 +2049,7 @@ class TelnyxMediaBridge:
                     last_spoken=self._last_spoken,
                     allow_barge_in=self.allow_natural_interruptions,
                     seconds_since_last_turn=secs_since_last,
+                    in_flight_age_seconds=in_flight_age,
                 )
                 if decision == "ignore":
                     logger.info(
@@ -1880,7 +2057,24 @@ class TelnyxMediaBridge:
                         self.call_correlation, str(item_id)[:64], effective_phase,
                     )
                     continue
-                if decision == "replace":
+                if decision == "coalesce" and self._in_flight_transcript:
+                    merged_transcript = f"{self._in_flight_transcript.rstrip()} {transcript.strip()}".strip()
+                    self.telemetry["turns_coalesced"] += 1
+                    logger.info(
+                        "Voice continuation coalesced into active turn; call=%s turn=%s merged_len=%d",
+                        self.call_correlation, str(item_id)[:64], len(merged_transcript),
+                    )
+                    if self._current_turn_task is not None and not self._current_turn_task.done():
+                        self._coalescing_turn_id = self._in_flight_turn_id
+                        self._current_turn_task.cancel()
+                    transcript = merged_transcript
+                elif decision == "queue":
+                    self.telemetry["turns_queued_during_thinking"] += 1
+                    logger.info(
+                        "Voice follow-up transcript queued cleanly; call=%s turn=%s phase=%s",
+                        self.call_correlation, str(item_id)[:64], effective_phase,
+                    )
+                elif decision == "replace":
                     already_interrupted_on_partial = (item_id == self._last_barge_in_item_id)
                     playing = (
                         self.response_id is not None
@@ -1911,6 +2105,46 @@ class TelnyxMediaBridge:
                             self.call_correlation,
                             self.epoch,
                         )
+                if getattr(self.adapter, "native_s2s_enabled", False):
+                    # In Architecture A (gpt-realtime-2.1 S2S), conversational reasoning + tools
+                    # run natively inside the S2S realtime session; deterministic security/PIN/hangup
+                    # still intercepts on the bridge before or during synthesis.
+                    intercept_result = getattr(event, "security_intercept", None)
+                    if intercept_result is None:
+                        on_s2s_transcript = getattr(self.adapter, "on_caller_transcript", None)
+                        if callable(on_s2s_transcript):
+                            intercept_result = await on_s2s_transcript(str(item_id), transcript)
+                    if isinstance(intercept_result, dict) and intercept_result.get("handled"):
+                        ans_text = str(intercept_result.get("answer") or "").strip()
+                        if intercept_result.get("auth_required"):
+                            if self.begin_pin is None or self.poll_pin is None:
+                                raise PermissionError("Keypad authentication unavailable")
+                            await self.interrupt(pause_input=False, reason="s2s_pin_challenge")
+                            self._pin_turn = str(item_id)
+                            self._pin_started = False
+                            self._pin_deadline = asyncio.get_running_loop().time() + 120
+                            self._pin_prompt_spoken = False
+                            self._pin_prompt_finish_time = None
+                        if ans_text:
+                            await self._speak_system(f"s2s-sec:{item_id}", ans_text)
+                            if intercept_result.get("auth_required"):
+                                self._last_spoken_prompt = self._spoken(ans_text)
+                                self._pin_mark = "pin-prompt:" + hashlib.sha256(str(item_id).encode()).hexdigest()[:24]
+                                self._pin_prompt_safe_duration = max(len(ans_text) * 0.075, 4.0)
+                                self._enqueue_control_marker(self.epoch, self._pin_mark)
+                                self._pin_prompt_spoken = True
+                                self._pin_prompt_finish_time = asyncio.get_running_loop().time()
+                        if intercept_result.get("hangup"):
+                            drained = 0
+                            while not self._output.empty() and drained < 40:
+                                await asyncio.sleep(0.05)
+                                drained += 1
+                            await asyncio.sleep(0.15)
+                            if self.hangup_call is not None:
+                                with suppress(Exception):
+                                    await self.hangup_call()
+                            self._stop_event.set()
+                    continue
                 self.orchestrator.begin_turn(str(item_id), self.epoch)
                 try:
                     self._turns.put_nowait((item_id, transcript, self.epoch))
@@ -1925,10 +2159,18 @@ class TelnyxMediaBridge:
                     self.response_epoch = response_epoch
                     if self.interruption_manager is not None:
                         self.interruption_manager.register_playback(str(self.stream_id or "default"), str(item_id))
+                elif getattr(self.adapter, "native_s2s_enabled", False) and self.response_id:
+                    s2s_item_id = f"s2s-{self.response_id}"
+                    self._responses[self.response_id] = (s2s_item_id, self.epoch, self.usage)
+                    self.response_epoch = self.epoch
+                    self.telemetry["tts_generated"] = True
+                    self.telemetry["tts_request_started"] += 1
+                    if self.interruption_manager is not None:
+                        self.interruption_manager.register_playback(str(self.stream_id or "default"), s2s_item_id)
                 else:
                     self.response_epoch = None
                 self.pending_epoch = None
-            elif kind == "response.output_audio.delta":
+            elif kind in {"response.output_audio.delta", "response.audio.delta"}:
                 if self.response_epoch == self.epoch and self.response_id == getattr(event, "response_id", None):
                     delta = getattr(event, "delta", None)
                     try:
@@ -1990,19 +2232,12 @@ class TelnyxMediaBridge:
             elif kind == "response.interrupted":
                 resp_id = getattr(event, "response_id", None)
                 logger.info(
-                    "Voice provider response interrupted; call=%s resp_id=%s",
+                    "Voice provider response interrupted; call=%s resp_id=%s source=%s",
                     self.call_correlation,
                     resp_id,
+                    getattr(event, "interruption_source", "untagged"),
                 )
-                if resp_id and str(resp_id) in self._cancelled_responses:
-                    continue
-                if resp_id and resp_id in self._responses:
-                    r_item_id = str(self._responses[resp_id][0])
-                    if r_item_id in self._turn_metrics:
-                        self._turn_metrics[r_item_id]["interruption_reason"] = "provider_response_interrupted"
-                is_active = (self.response_id == resp_id and self.response_epoch == self.epoch)
-                if not (self.input_paused or self._pin_turn is not None) and is_active:
-                    await self.interrupt(originating_response_id=str(resp_id) if resp_id else None, reason="provider_response_interrupted")
+                await self._handle_provider_tts_interruption(event, source_event="response.interrupted")
             elif kind == "response.done":
                 self.telemetry["final_state"] = "LISTENING"
                 resp_obj = getattr(event, "response", None)
@@ -2012,19 +2247,15 @@ class TelnyxMediaBridge:
                     r_item_id = str(self._responses[completed_id][0])
                     if r_item_id in self._turn_metrics:
                         self._turn_metrics[r_item_id]["playback_completed_at"] = time.monotonic()
-                if resp_status == "cancelled":
-                    logger.info("Voice provider response cancelled; call=%s id=%s", self.call_correlation, completed_id)
-                    already_cancelled = completed_id and str(completed_id) in self._cancelled_responses
-                    completed = self._responses.pop(completed_id, None)
-                    if completed is not None and self.interruption_manager is not None:
-                        self.interruption_manager.cancel_turn(str(self.stream_id or "default"), str(completed[0]))
-                    if completed is not None and completed[2] is not None:
-                        completed[2].settle(completed[0])
-                    if not (self.input_paused or self._pin_turn is not None) and not already_cancelled:
-                        if completed is not None and completed[1] == self.epoch:
-                            await self.interrupt(originating_response_id=str(completed_id) if completed_id else None, reason="provider_response_cancelled")
-                    if completed_id:
-                        self._cancelled_responses.add(str(completed_id))
+                if resp_status in {"cancelled", "incomplete"}:
+                    logger.info(
+                        "Voice provider response aborted; call=%s id=%s status=%s source=%s",
+                        self.call_correlation,
+                        completed_id,
+                        resp_status,
+                        getattr(event, "interruption_source", "untagged"),
+                    )
+                    await self._handle_provider_tts_interruption(event, source_event="response.done")
                     continue
                 completed = self._responses.pop(completed_id, None)
                 if completed is not None and self.interruption_manager is not None:
@@ -2466,7 +2697,7 @@ class TelnyxMediaBridge:
                 self.telemetry.get("vad_interruptions_count"),
             )
             logger.info(
-                "Call %s audio pipeline: phase=%s central_ai_response_ready=%d tts_request_started=%d tts_first_audio_chunk_received=%d tts_audio_bytes_generated=%d audio_encoding_completed=%d outbound_audio_frames_sent=%d outbound_audio_bytes_sent=%d outbound_playback_acknowledged=%d tts_provider_error=%d voice_response_cancelled=%d voice_response_completed=%d speech_started=%d speech_stopped=%d stt_partial=%d stt_final=%d speech_without_transcript=%d stt_rescue_ok=%d barge_in=%d telnyx_clear=%d late_discarded=%d",
+                "Call %s audio pipeline: phase=%s central_ai_response_ready=%d tts_request_started=%d tts_first_audio_chunk_received=%d tts_audio_bytes_generated=%d audio_encoding_completed=%d outbound_audio_frames_sent=%d outbound_audio_bytes_sent=%d outbound_playback_acknowledged=%d tts_provider_error=%d voice_response_cancelled=%d voice_response_completed=%d speech_started=%d speech_stopped=%d stt_partial=%d stt_final=%d speech_without_transcript=%d stt_rescue_ok=%d barge_in=%d telnyx_clear=%d late_discarded=%d unconfirmed_suppressed=%d tts_auto_recoveries=%d turns_coalesced=%d turns_queued=%d",
                 self.call_correlation,
                 self.phase,
                 self.telemetry.get("central_ai_response_ready"),
@@ -2489,6 +2720,10 @@ class TelnyxMediaBridge:
                 self.telemetry.get("barge_in_triggered_count", 0),
                 self.telemetry.get("telnyx_clear_sent_count", 0),
                 self.telemetry.get("late_transcripts_discarded", 0),
+                self.telemetry.get("unconfirmed_provider_interrupts_suppressed", 0),
+                self.telemetry.get("tts_auto_recoveries", 0),
+                self.telemetry.get("turns_coalesced", 0),
+                self.telemetry.get("turns_queued_during_thinking", 0),
             )
             for task in self._background:
                 task.cancel()
@@ -2742,9 +2977,230 @@ async def telnyx_media_socket(
     auth_epoch: str | None = None
     public_conversation = PublicInboundConversation(db, settings, call_id)
     from backend.app.voice.audio_preferences import phone_audio_config
-    from backend.app.voice.realtime_provider import VoiceRealtimeRouter
+    from backend.app.voice.realtime_provider import (
+        VoiceArchitectureMode,
+        VoiceRealtimeRouter,
+        resolve_voice_architecture_mode,
+    )
     tenant_audio = phone_audio_config(db, settings, config)
     realtime_router = VoiceRealtimeRouter(settings)
+    arch_mode = resolve_voice_architecture_mode(config, settings)
+
+    def _s2s_tool_provider() -> list[dict[str, Any]]:
+        current_call: VoiceCall | None = db.get(VoiceCall, call_id)
+        if current_call is None:
+            return []
+        active_uid = principal_id
+        perms = PUBLIC_VOICE_CALLER_PERMISSIONS
+        if active_uid is not None:
+            m_obj = db.scalar(
+                select(CompanyMembership).where(
+                    CompanyMembership.company_id == current_call.company_id,
+                    CompanyMembership.user_id == active_uid,
+                    CompanyMembership.is_active.is_(True),
+                )
+            )
+            if m_obj is not None:
+                perms = permissions_for(m_obj.role)
+        tenant_ctx = TenantContext(current_call.company_id, active_uid if isinstance(active_uid, UUID) else None)
+        from backend.app.voice.tool_registry import VoiceToolRegistryService
+        allowed_names, _owners = VoiceToolRegistryService(db, service._registry).allowed_tools(tenant_ctx, perms)
+        tool_reg = getattr(service._chat, "_tool_registry", None)
+        if tool_reg is None:
+            return []
+        defs = []
+        for name in sorted(allowed_names):
+            if name == "reserve_product":
+                continue
+            t_obj = tool_reg.get(name)
+            if t_obj is not None:
+                d = t_obj.definition()
+                defs.append({
+                    "name": d.name,
+                    "description": d.description,
+                    "parameters": d.parameters_schema,
+                })
+        return defs
+
+    async def _s2s_tool_executor(turn_id: str, call_id_str: str, tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
+        if tool_name == "reserve_product":
+            return {"success": False, "error": "reserve_product_blocked_over_phone"}
+        current_call: VoiceCall | None = db.get(VoiceCall, call_id)
+        if current_call is None:
+            return {"success": False, "error": "call_not_found"}
+        active_uid = principal_id
+        perms = PUBLIC_VOICE_CALLER_PERMISSIONS
+        if active_uid is not None:
+            m_obj = db.scalar(
+                select(CompanyMembership).where(
+                    CompanyMembership.company_id == current_call.company_id,
+                    CompanyMembership.user_id == active_uid,
+                    CompanyMembership.is_active.is_(True),
+                )
+            )
+            if m_obj is not None:
+                perms = permissions_for(m_obj.role)
+        uid_val = active_uid if isinstance(active_uid, UUID) else None
+        tenant_ctx = TenantContext(current_call.company_id, uid_val)
+        from backend.app.voice.tool_guard import VoiceToolDenied, VoiceToolGuard
+        try:
+            VoiceToolGuard(db, service.usage_service).authorize(
+                tenant_ctx,
+                tool_name,
+                perms,
+                user_id=uid_val,
+                require_credits=True,
+            )
+        except VoiceToolDenied as exc:
+            return {"success": False, "error": str(exc)}
+        orchestrator = getattr(service._chat, "_orchestrator", None)
+        tool_exec = getattr(orchestrator, "_executor", None) if orchestrator is not None else None
+        if tool_exec is None:
+            return {"success": False, "error": "tool_executor_unavailable"}
+        from backend.app.ai.tools.contracts import ToolExecutionContext
+        exec_uid = uid_val or current_call.authenticated_user_id or current_call.company_id
+        tool_ctx = ToolExecutionContext(
+            tenant=TenantContext(company_id=current_call.company_id, user_id=exec_uid),
+            user_id=exec_uid,
+            permissions=perms,
+            request_id=f"s2s-{call_id}-{call_id_str}",
+            conversation_id=current_call.central_conversation_id or current_call.id,
+            capabilities=resolve_tenant_capabilities(db, tenant_ctx, prediction_service),
+            locale=resolve_locale(current_call.locale or locale),
+            company_timezone=getattr(config, "timezone_name", None) or getattr(company, "timezone", None) or "UTC",
+            voice_path=True,
+        )
+        res = await tool_exec.execute(tool_name, tool_ctx, args)
+        return {"success": res.success, "data": res.data, "error": res.error}
+
+    async def _s2s_security_hook(item_id: str, transcript: str) -> dict[str, Any] | None:
+        nonlocal principal_id, auth_epoch, public_mode
+        current_call: VoiceCall | None = db.get(VoiceCall, call_id)
+        if principal_id is None and current_call is not None and current_call.authenticated_user_id is not None:
+            valid_auth = VoiceCallerAuth(db, settings).valid_session(current_call)
+            if valid_auth is not None and valid_auth.caller_type in {"OWNER", "EMPLOYEE"}:
+                principal_id = valid_auth.principal_id
+                auth_epoch = utc(valid_auth.authenticated_at).isoformat()
+                if bridge is not None and hasattr(bridge.adapter, "update_staff_identity"):
+                    u_obj = db.get(User, principal_id)
+                    if u_obj is not None:
+                        v_role = resolve_verified_staff_role(
+                            db, current_call.company_id, principal_id, fallback_role=getattr(u_obj, "role", None)
+                        )
+                        bridge.adapter.update_staff_identity(True, u_obj.first_name, v_role or "employee")
+        if current_call is not None and current_call.central_conversation_id is not None:
+            ConversationService(db).add_message(
+                current_call.company_id,
+                current_call.central_conversation_id,
+                AIMessageRole.USER,
+                redact_voice_secrets(transcript),
+            )
+        norm_trans = "".join(
+            c for c in unicodedata.normalize("NFKD", transcript.casefold()) if not unicodedata.combining(c)
+        )
+        call_loc = resolve_locale(current_call.locale if current_call and current_call.locale else locale)
+        if principal_id is None:
+            is_handover_pending = bool(current_call and (current_call.source_context or {}).get("handover_revoked"))
+            if is_handover_pending and current_call is not None and (
+                is_pin_challenge_cancellation(norm_trans) or is_session_retention_intent(norm_trans)
+            ):
+                if bridge is not None:
+                    bridge._pin_turn = None
+                    bridge._pin_started = False
+                    bridge._pin_deadline = None
+                    bridge._pin_retry_count = 0
+                    bridge.input_paused = False
+                existing_ctx = dict(current_call.source_context or {})
+                existing_ctx.pop("handover_revoked", None)
+                existing_ctx["handover_cancelled"] = True
+                existing_ctx["public_fallback"] = True
+                existing_ctx["pin_gather_status"] = "cancelled"
+                current_call.pin_challenge_hash = None
+                current_call.pin_challenge_expires_at = None
+                current_call.source_context = existing_ctx
+                db.commit()
+                public_mode = True
+                msg = (
+                    "Demande de transfert annulée. Vous êtes en mode accueil public. Que puis-je faire pour vous ?"
+                    if call_loc.startswith("fr")
+                    else "Transfer request cancelled. You are in public reception mode. How can I help you?"
+                )
+                return {"handled": True, "status": "success", "answer": msg, "public": True}
+            if public_conversation is not None:
+                sec = public_conversation.security_gate(transcript)
+                if sec is not None:
+                    return {"handled": True, **sec}
+            if is_handover_pending:
+                msg = (
+                    "Veuillez saisir votre code NIP sur le clavier de votre téléphone pour vous identifier, ou dites annuler pour revenir à l'accueil."
+                    if call_loc.startswith("fr")
+                    else "Please enter your PIN on your phone keypad to authenticate, or say cancel to return to reception."
+                )
+                return {"handled": True, "status": "success", "answer": msg, "auth_required": True}
+        else:
+            if is_handover_positive_intent(norm_trans) and current_call is not None:
+                current_call.authenticated_user_id = None
+                current_call.caller_type = "UNKNOWN"
+                current_call.central_conversation_id = None
+                current_call.verification_attempts = 0
+                current_call.pin_challenge_hash = None
+                current_call.pin_challenge_expires_at = None
+                existing_ctx = dict(current_call.source_context or {})
+                existing_ctx.pop("previous_principal", None)
+                existing_ctx.pop("user_id", None)
+                existing_ctx.pop("user_name", None)
+                existing_ctx["authenticated"] = False
+                existing_ctx["handover_revoked"] = True
+                existing_ctx["handover_count"] = existing_ctx.get("handover_count", 0) + 1
+                existing_ctx["last_handover_at"] = datetime.now(timezone.utc).isoformat()
+                current_call.source_context = existing_ctx
+                db.commit()
+                principal_id = None
+                auth_epoch = None
+                if bridge is not None and hasattr(bridge.adapter, "update_staff_identity"):
+                    bridge.adapter.update_staff_identity(False, None, None)
+                if ledger is not None:
+                    ledger.attach_identity(None, None)
+                handover_ans = (
+                    "Session précédente clôturée. Pour des raisons de sécurité, le nouveau collaborateur doit s'authentifier. Veuillez saisir votre NIP sur le clavier de votre téléphone."
+                    if call_loc.startswith("fr")
+                    else "Previous session closed. For security reasons, the new employee must authenticate. Please enter your PIN on your phone keypad."
+                )
+                return {"handled": True, "status": "success", "answer": handover_ans, "auth_required": True}
+
+        from backend.app.voice.direct_answers import is_language_authorized_for_company, is_language_inquiry
+        lang_target = is_language_inquiry(transcript)
+        if lang_target and current_call is not None and not is_language_authorized_for_company(db, current_call.company_id, lang_target):
+            brand_clean = str(getattr(config, "effective_voice_name", None) or getattr(config, "business_name", None) or company.name).replace("_", " ").strip()
+            unauth_map = {
+                "es": f"Lo sentimos, la atención en español no está disponible para {brand_clean}.",
+                "en": f"Sorry, English assistance is not currently available for {brand_clean}.",
+                "ro": f"Ne pare rău, asistența în limba română nu este disponibilă pentru {brand_clean}.",
+                "fr": f"Désolé, l'assistance en français n'est pas disponible pour {brand_clean}.",
+            }
+            return {"handled": True, "status": "success", "answer": unauth_map.get(lang_target, unauth_map["fr"])}
+
+        if re.search(r"\b(au revoir|bonne journee|bonne soiree|you can hang up|hang up now|end the call|goodbye)\b", norm_trans):
+            farewell = getattr(config, "farewell_message", None) or (
+                "Merci de votre appel. Au revoir et bonne journée !"
+                if call_loc.startswith("fr")
+                else "Thank you for calling. Goodbye and have a great day!"
+            )
+            return {"handled": True, "status": "success", "answer": farewell, "hangup": True}
+        return None
+
+    async def _s2s_assistant_transcript_hook(turn_id: str, out_text: str) -> None:
+        current_call: VoiceCall | None = db.get(VoiceCall, call_id)
+        if current_call is not None and current_call.central_conversation_id is not None and out_text.strip():
+            ConversationService(db).add_message(
+                current_call.company_id,
+                current_call.central_conversation_id,
+                AIMessageRole.ASSISTANT,
+                redact_voice_secrets(out_text),
+                provider="openai_s2s",
+                model="gpt-realtime-2.1",
+            )
+
     adapter = realtime_router.build_realtime_adapter(
         config,
         tenant_audio,
@@ -2752,6 +3208,10 @@ async def telnyx_media_socket(
             settings,
             lambda: OpenAIRealtimeAudioAdapter(tenant_audio, model or settings.voice_realtime_model),
         ),
+        tool_provider=_s2s_tool_provider if arch_mode == VoiceArchitectureMode.ARCHITECTURE_A_S2S else None,
+        tool_executor=_s2s_tool_executor if arch_mode == VoiceArchitectureMode.ARCHITECTURE_A_S2S else None,
+        security_transcript_hook=_s2s_security_hook if arch_mode == VoiceArchitectureMode.ARCHITECTURE_A_S2S else None,
+        assistant_transcript_hook=_s2s_assistant_transcript_hook if arch_mode == VoiceArchitectureMode.ARCHITECTURE_A_S2S else None,
     )
     bridge: TelnyxMediaBridge
 
@@ -3425,6 +3885,10 @@ async def telnyx_media_socket(
                     settings,
                     lambda: OpenAIRealtimeAudioAdapter(tenant_audio, model or settings.voice_realtime_model),
                 ),
+                tool_provider=_s2s_tool_provider if arch_mode == VoiceArchitectureMode.ARCHITECTURE_A_S2S else None,
+                tool_executor=_s2s_tool_executor if arch_mode == VoiceArchitectureMode.ARCHITECTURE_A_S2S else None,
+                security_transcript_hook=_s2s_security_hook if arch_mode == VoiceArchitectureMode.ARCHITECTURE_A_S2S else None,
+                assistant_transcript_hook=_s2s_assistant_transcript_hook if arch_mode == VoiceArchitectureMode.ARCHITECTURE_A_S2S else None,
             ),
             authorize,
             rotation_seconds=settings.voice_realtime_rotation_seconds,
@@ -3440,10 +3904,16 @@ async def telnyx_media_socket(
         sandbox_duration = float(bounded_limit)
 
     use_gemini_live = bool(
-        (bool(getattr(config, "gemini_live_enabled", False)) or getattr(config, "realtime_provider", "") == "gemini_live")
+        arch_mode == VoiceArchitectureMode.HYBRID_REALTIME_CENTRAL
+        and (bool(getattr(config, "gemini_live_enabled", False)) or getattr(config, "realtime_provider", "") == "gemini_live")
         and settings.google_ai_api_key
     )
-    active_realtime_model = settings.gemini_live_model if use_gemini_live else settings.voice_realtime_model
+    if arch_mode == VoiceArchitectureMode.ARCHITECTURE_A_S2S:
+        active_realtime_model = getattr(adapter, "model_name", None) or "gpt-realtime-2.1"
+    elif arch_mode == VoiceArchitectureMode.ARCHITECTURE_B_MODULAR:
+        active_realtime_model = settings.voice_tts_model or "gpt-4o-mini-tts"
+    else:
+        active_realtime_model = settings.gemini_live_model if use_gemini_live else settings.voice_realtime_model
     bridge = TelnyxMediaBridge(BoundedMediaSocket(websocket), adapter, locale=locale,
         validate_start=validate_start, authorize=authorize, execute_turn=execute_turn,
         stt_model=settings.voice_stt_model, realtime_model=active_realtime_model,

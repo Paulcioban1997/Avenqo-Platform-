@@ -60,6 +60,14 @@ def voice_pricing_catalog(rate_card: dict[str, dict[str, object]] | None = None)
             "cached_audio_input_cost_per_million_usd": "0.4",
             "audio_output_cost_per_million_usd": "64",
         },
+        "gpt-realtime-2.1-mini": {
+            "input_cost_per_million_usd": "0.60",
+            "cached_input_cost_per_million_usd": "0.06",
+            "output_cost_per_million_usd": "2.40",
+            "audio_input_cost_per_million_usd": "10",
+            "cached_audio_input_cost_per_million_usd": "0.30",
+            "audio_output_cost_per_million_usd": "20",
+        },
         "gpt-realtime": {
             "input_cost_per_million_usd": "4",
             "cached_input_cost_per_million_usd": "0.4",

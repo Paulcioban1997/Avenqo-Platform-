@@ -104,6 +104,45 @@ class OpenAITextToSpeechAdapter:
         )
         return response.read()
 
+    async def synthesize_pcm(self, text: str, *, locale: str) -> bytes:
+        """Synthesize 24kHz 16-bit little-endian mono PCM audio for streaming telephony."""
+        if not self._config.api_key or not self._config.tts_model or not self._config.tts_voice:
+            raise ExternalVoiceConfigurationRequired(
+                "OPENAI_API_KEY, VOICE_TTS_MODEL and VOICE_TTS_VOICE are required"
+            )
+        client = self._client or AsyncOpenAI(api_key=self._config.api_key, base_url=self._config.base_url)
+        response = await client.audio.speech.create(
+            input=text,
+            model=self._config.tts_model,
+            voice=self._config.tts_voice,
+            response_format="pcm",
+            speed=self._config.speech_speed,
+            instructions=f"Speak naturally in {locale_info(locale).english_name}. Preserve the input language; do not translate.",
+        )
+        read_fn = getattr(response, "read", None)
+        raw_val: Any = read_fn() if callable(read_fn) else response
+        if hasattr(raw_val, "__await__"):
+            raw_val = await cast(Any, raw_val)
+        raw = bytes(raw_val)
+        if len(raw) % 2 != 0:
+            raw = raw[:-1]
+        return raw
+
+    async def synthesize_pcm_chunks(
+        self,
+        text: str,
+        *,
+        locale: str,
+        chunk_bytes: int = 1920,
+    ) -> AsyncIterator[bytes]:
+        """Yield 24kHz PCM16 frames (default 40ms = 1920 bytes) for smooth telephony pacing."""
+        pcm = await self.synthesize_pcm(text, locale=locale)
+        step = max(960, chunk_bytes - (chunk_bytes % 2))
+        for offset in range(0, len(pcm), step):
+            chunk = pcm[offset:offset + step]
+            if chunk:
+                yield chunk
+
 
 class UnconfiguredRealtimeAudioAdapter:
     provider_id = "none"

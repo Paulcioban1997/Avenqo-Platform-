@@ -20,21 +20,142 @@ from backend.app.ai.tools.contracts import ToolCall
 # Champs JSON Schema générés par Pydantic (`model_json_schema()`) mais non
 # supportés par le sous-ensemble OpenAPI attendu par l'API Gemini pour les
 # `FunctionDeclaration.parameters` (l'API renvoie 400 INVALID_ARGUMENT sinon).
-_GEMINI_UNSUPPORTED_SCHEMA_KEYS = frozenset({"additionalProperties", "title", "$schema", "default"})
+_GEMINI_UNSUPPORTED_SCHEMA_KEYS = frozenset({
+    "additionalProperties",
+    "title",
+    "$schema",
+    "$defs",
+    "definitions",
+    "default",
+    "examples",
+    "example",
+    "exclusiveMinimum",
+    "exclusiveMaximum",
+    "discriminator",
+    "prefixItems",
+    "minItems",
+    "maxItems",
+    "uniqueItems",
+    "patternProperties",
+    "propertyNames",
+    "unevaluatedProperties",
+    "const",
+})
+_GEMINI_SUPPORTED_FORMATS = frozenset({"enum", "date-time"})
+_GEMINI_TYPE_PRECEDENCE = ("object", "array", "string", "number", "integer", "boolean")
 
 
-def _sanitize_schema_for_gemini(schema: Any) -> Any:
-    """Retire récursivement les clés JSON Schema non supportées par Gemini."""
-
-    if isinstance(schema, dict):
-        return {
-            key: _sanitize_schema_for_gemini(value)
-            for key, value in schema.items()
-            if key not in _GEMINI_UNSUPPORTED_SCHEMA_KEYS
-        }
+def _sanitize_schema_for_gemini(
+    schema: Any,
+    *,
+    defs: dict[str, Any] | None = None,
+    seen_refs: frozenset[str] = frozenset(),
+) -> Any:
+    """Convertit un JSON Schema Pydantic v2 en sous-ensemble OpenAPI strict Gemini."""
     if isinstance(schema, list):
-        return [_sanitize_schema_for_gemini(item) for item in schema]
-    return schema
+        return [_sanitize_schema_for_gemini(item, defs=defs, seen_refs=seen_refs) for item in schema]
+    if not isinstance(schema, dict):
+        return schema
+
+    active_defs = defs
+    if active_defs is None:
+        raw_defs = schema.get("$defs") or schema.get("definitions")
+        active_defs = raw_defs if isinstance(raw_defs, dict) else {}
+
+    # Résolution des références $ref (#/$defs/... ou #/definitions/...)
+    if isinstance(schema.get("$ref"), str):
+        ref_str = schema["$ref"]
+        ref_name = ref_str.rsplit("/", 1)[-1]
+        if ref_name in active_defs and ref_name not in seen_refs:
+            resolved = dict(active_defs[ref_name])
+            if "description" in schema and "description" not in resolved:
+                resolved["description"] = schema["description"]
+            return _sanitize_schema_for_gemini(
+                resolved,
+                defs=active_defs,
+                seen_refs=seen_refs | {ref_name},
+            )
+        return {"type": "string", "description": str(schema.get("description") or "")}
+
+    # Gestion anyOf / oneOf (Pydantic v2 Optional[T] => anyOf: [{type: T}, {type: null}])
+    for union_key in ("anyOf", "oneOf"):
+        variants = schema.get(union_key)
+        if isinstance(variants, list) and variants:
+            sanitized_variants = [
+                _sanitize_schema_for_gemini(v, defs=active_defs, seen_refs=seen_refs)
+                for v in variants
+            ]
+            has_null = any(isinstance(v, dict) and v.get("type") == "null" for v in sanitized_variants)
+            non_null = [v for v in sanitized_variants if isinstance(v, dict) and v.get("type") != "null"]
+            if not non_null:
+                chosen: dict[str, Any] = {"type": "string"}
+            elif len(non_null) == 1:
+                chosen = dict(non_null[0])
+            else:
+                def _rank(branch: dict[str, Any]) -> int:
+                    btype = str(branch.get("type") or "")
+                    return _GEMINI_TYPE_PRECEDENCE.index(btype) if btype in _GEMINI_TYPE_PRECEDENCE else len(_GEMINI_TYPE_PRECEDENCE)
+                chosen = dict(min(non_null, key=_rank))
+            if has_null:
+                chosen["nullable"] = True
+            if "description" in schema and "description" not in chosen:
+                chosen["description"] = schema["description"]
+            return chosen
+
+    result: dict[str, Any] = {}
+    if "const" in schema:
+        const_val = schema["const"]
+        result["enum"] = [const_val]
+        if "type" not in schema:
+            if isinstance(const_val, bool):
+                result["type"] = "boolean"
+            elif isinstance(const_val, int):
+                result["type"] = "integer"
+            elif isinstance(const_val, float):
+                result["type"] = "number"
+            else:
+                result["type"] = "string"
+
+    for key, value in schema.items():
+        if key in _GEMINI_UNSUPPORTED_SCHEMA_KEYS or key in ("$ref", "anyOf", "oneOf"):
+            continue
+        if key == "format":
+            if isinstance(value, str) and value in _GEMINI_SUPPORTED_FORMATS:
+                result["format"] = value
+            continue
+        if key == "type":
+            if isinstance(value, list):
+                non_null_types = [t for t in value if t != "null"]
+                if "null" in value:
+                    result["nullable"] = True
+                result["type"] = non_null_types[0] if non_null_types else "string"
+            elif value == "null":
+                result["type"] = "string"
+                result["nullable"] = True
+            else:
+                result["type"] = value
+            continue
+        if key == "properties" and isinstance(value, dict):
+            result["properties"] = {
+                prop_name: _sanitize_schema_for_gemini(prop_schema, defs=active_defs, seen_refs=seen_refs)
+                for prop_name, prop_schema in value.items()
+            }
+            continue
+        result[key] = _sanitize_schema_for_gemini(value, defs=active_defs, seen_refs=seen_refs)
+
+    if isinstance(result.get("properties"), dict) and isinstance(result.get("required"), list):
+        valid_props = set(result["properties"].keys())
+        filtered_req = [item for item in result["required"] if item in valid_props]
+        if filtered_req:
+            result["required"] = filtered_req
+        else:
+            result.pop("required", None)
+
+    if defs is None and result.get("type") in (None, "object") and "properties" not in result:
+        result["type"] = "object"
+        result["properties"] = {}
+
+    return result
 
 
 def _normalize_gemini_usage(response, fallback_model: str, *, tool_calls: int = 0, provider: str = "gemini") -> LLMUsage:

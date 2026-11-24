@@ -45,6 +45,40 @@ def _openai_error_usage(exc: Exception, fallback_model: str) -> LLMUsage | None:
     return _normalize_openai_usage(source, fallback_model)
 
 
+def _is_reasoning_chat_model(model: str | None) -> bool:
+    """Return True for OpenAI reasoning models requiring max_completion_tokens + reasoning_effort."""
+    low = (model or "").strip().lower()
+    return any(tok in low for tok in ("gpt-6.2", "gpt-6-1-sol", "-sol", "-astra", "o1", "o3", "o4", "reasoning"))
+
+
+def _build_completion_params(
+    model: str | None,
+    *,
+    temperature: float,
+    max_tokens: int,
+    reasoning_effort: str | None = None,
+) -> dict[str, Any]:
+    """Build Chat Completions kwargs compatible with GPT-6.2 Sol/Astra and legacy GPT-4o models.
+
+    OpenAI GPT-6.2 Sol/Astra reject legacy `max_tokens`, reject custom `temperature` when
+    reasoning is enabled, and reject `reasoning_effort='none'` (minimum valid is `'low'`).
+    """
+    if _is_reasoning_chat_model(model):
+        low = (model or "").strip().lower()
+        default_effort = "low" if "sol" in low else "medium"
+        effort = (reasoning_effort or default_effort).strip().lower()
+        if effort not in {"low", "medium", "high", "xhigh", "max"}:
+            effort = default_effort
+        return {
+            "max_completion_tokens": max_tokens,
+            "reasoning_effort": effort,
+        }
+    return {
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+
+
 class OpenAIProvider(LLMProvider):
     name = "openai"
     supports_tool_calling = True
@@ -56,10 +90,13 @@ class OpenAIProvider(LLMProvider):
         temperature: float,
         max_tokens: int,
         request_timeout_seconds: float = 60.0,
+        *,
+        reasoning_effort: str | None = None,
     ) -> None:
         self._api_key, self._model = api_key, model
         self._temperature, self._max_tokens = temperature, max_tokens
         self._request_timeout_seconds = request_timeout_seconds
+        self._reasoning_effort = reasoning_effort
 
     def _client(self):
         if not self._api_key:
@@ -75,12 +112,13 @@ class OpenAIProvider(LLMProvider):
             req_kwargs: dict[str, Any] = {
                 "model": self._model,
                 "messages": [{"role": "system", "content": system_instruction}, {"role": "user", "content": prompt}],
+                **_build_completion_params(
+                    self._model,
+                    temperature=self._temperature,
+                    max_tokens=self._max_tokens,
+                    reasoning_effort=self._reasoning_effort,
+                ),
             }
-            if "astra" in (self._model or "").lower() or "reasoning" in (self._model or "").lower():
-                req_kwargs["reasoning_effort"] = "medium"
-            else:
-                req_kwargs["temperature"] = self._temperature
-                req_kwargs["max_tokens"] = self._max_tokens
 
             response = await self._client().chat.completions.create(**req_kwargs)
             usage = _normalize_openai_usage(response, self._model)
@@ -113,9 +151,16 @@ class OpenAIProvider(LLMProvider):
         final_usage = None
         try:
             stream = await self._client().chat.completions.create(
-                model=self._model, temperature=self._temperature, max_tokens=self._max_tokens, stream=True,
+                model=self._model,
+                stream=True,
                 stream_options={"include_usage": True},
                 messages=[{"role": "system", "content": system_instruction}, {"role": "user", "content": prompt}],
+                **_build_completion_params(
+                    self._model,
+                    temperature=self._temperature,
+                    max_tokens=self._max_tokens,
+                    reasoning_effort=self._reasoning_effort,
+                ),
             )
             async for event in stream:
                 content = event.choices[0].delta.content if event.choices else None
@@ -178,12 +223,13 @@ class OpenAIProvider(LLMProvider):
                 "model": self._model,
                 "messages": openai_messages,
                 "tools": openai_tools or None,
+                **_build_completion_params(
+                    self._model,
+                    temperature=self._temperature,
+                    max_tokens=self._max_tokens,
+                    reasoning_effort=self._reasoning_effort,
+                ),
             }
-            if "astra" in (self._model or "").lower() or "reasoning" in (self._model or "").lower():
-                req_kwargs["reasoning_effort"] = "medium"
-            else:
-                req_kwargs["temperature"] = self._temperature
-                req_kwargs["max_tokens"] = self._max_tokens
 
             response = await self._client().chat.completions.create(**req_kwargs)
             choice = response.choices[0].message

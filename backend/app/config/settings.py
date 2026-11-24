@@ -106,13 +106,13 @@ class Settings(BaseSettings):
         alias="COMMERCE_RECONCILIATION_SCHEDULER_URL",
     )
     llm_provider: str = Field(default="openai", alias="LLM_PROVIDER")
-    llm_model: str = Field(default="gpt-4o-mini", alias="LLM_MODEL")
+    llm_model: str = Field(default="gpt-6.2-sol", alias="LLM_MODEL")
     # Chaque fournisseur IA a son propre espace de noms de modèles (les modèles
     # OpenAI ne sont pas valides pour Anthropic ou Gemini, et inversement) —
     # `llm_model` reste le défaut/rétrocompatible pour le fournisseur unique
     # (Phase 28), mais le Resilient AI Gateway (Phase 32) utilise ces valeurs
     # spécifiques par fournisseur pour éviter les erreurs "modèle inconnu".
-    openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
+    openai_model: str = Field(default="gpt-6.2-sol", alias="OPENAI_MODEL")
     anthropic_model: str = Field(default="claude-sonnet-4-6", alias="ANTHROPIC_MODEL")
     gemini_model: str = Field(default="gemini-3.5-flash-lite", alias="GEMINI_MODEL")
     vertex_enabled: bool = Field(default=False, alias="VERTEX_ENABLED")
@@ -285,6 +285,8 @@ class Settings(BaseSettings):
     voice_reasoning_model: str = Field(default="gpt-6.2-astra", alias="VOICE_REASONING_MODEL")
     voice_reasoning_effort: str = Field(default="medium", alias="VOICE_REASONING_EFFORT")
     voice_standard_reasoning_model: str = Field(default="gpt-6.2-sol", alias="VOICE_STANDARD_REASONING_MODEL")
+    voice_architecture_mode: str = Field(default="hybrid_realtime_central", alias="VOICE_ARCHITECTURE_MODE")
+    voice_allow_astra_escalation: bool = Field(default=False, alias="VOICE_ALLOW_ASTRA_ESCALATION")
     voice_ai_coach_enabled: bool = Field(default=True, alias="VOICE_AI_COACH_ENABLED")
     gemini_live_model: str = Field(default="gemini-3.8-live", alias="GEMINI_LIVE_MODEL")
     gemini_live_voice: str = Field(default="Aoede", alias="GEMINI_LIVE_VOICE")

@@ -558,6 +558,7 @@ class ChatService:
             authorized_tool_agents=authorized_tool_agents or {},
             voice_path=voice_path or client_context.startswith("/voice"),
         )
+        is_voice_call = bool(voice_path or client_context == "/voice" or client_context.startswith("/voice"))
         routing_context = routing_context_for_chat(
             query=query,
             prompt=prompt,
@@ -565,6 +566,7 @@ class ChatService:
             plan_code=plan_code,
             remaining_credits=remaining_credits,
             avenqo_request_id=tool_context.request_id,
+            latency_sensitive=is_voice_call,
             tenant_id=str(tenant_id),
             user_id=str(user_id),
             conversation_id=str(conversation_id),
