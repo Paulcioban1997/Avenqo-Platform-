@@ -1183,7 +1183,7 @@ async def test_audit_pr133_all_copilot_threads_regression(tmp_path: Any) -> None
         input_schema = _BookingArgs
         required_permissions = ("ai:use",)
         module_code = "crm"
-        agent_ids = ("crm",)
+        agent_ids = frozenset({"crm"})
         read_only = False
         mutates = True
         mutation_capabilities = frozenset({"appointment.create"})
