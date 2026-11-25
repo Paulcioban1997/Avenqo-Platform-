@@ -10,7 +10,6 @@ import {
   FileType2,
   Plus,
   Trash2,
-  Download,
   Eye,
   AlertCircle,
   CheckCircle2,
@@ -21,10 +20,12 @@ import {
   RefreshCw,
   ArrowLeft,
   Save,
+  Printer,
 } from "lucide-react";
 import { getAuthHeaders } from "@/lib/api-headers";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { getAppTranslations } from "@/lib/i18n/app-dictionary";
+import { DatasetExportMenu } from "@/components/data/dataset-export-menu";
 
 // ---- Types ----
 interface Dataset {
@@ -119,6 +120,7 @@ const ACCEPTED_TYPES =
 export function DataHubView() {
   const { locale } = useLocale();
   const t = getAppTranslations(locale);
+  const isFr = locale.toLowerCase().startsWith("fr");
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -126,6 +128,7 @@ export function DataHubView() {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const [searchQuery, setSearchQuery] = useState("");
+  const [detailFilterQuery, setDetailFilterQuery] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Dataset detail state
@@ -285,23 +288,20 @@ export function DataHubView() {
     }
   };
 
-  const handleExport = async (dataset: Dataset) => {
-    try {
-      const resp = await fetch(`/api/v1/datasets/${dataset.id}/export`, {
-        headers: getAuthHeaders(),
-      });
-      if (!resp.ok) throw new Error("Export échoué");
-      const blob = await resp.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${dataset.name}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Erreur d'export.");
-    }
+  const handlePrintDataset = (dataset: Dataset) => {
+    if (columns.length === 0 || columns.length > 25) return;
+    window.print();
   };
+
+  const visibleDetailRows = detailFilterQuery.trim()
+    ? rows.filter((row) =>
+        columns.some((col) =>
+          String(row[col] ?? "")
+            .toLowerCase()
+            .includes(detailFilterQuery.trim().toLowerCase())
+        )
+      )
+    : rows;
 
   const filteredDatasets = datasets.filter((d) =>
     d.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -318,10 +318,28 @@ export function DataHubView() {
 
   // --- Render: Dataset Detail ---
   if (selectedDataset) {
+    const canPrint = columns.length > 0 && columns.length <= 25 && visibleDetailRows.length > 0;
     return (
-      <div className="data-hub-detail">
+      <div className="data-hub-detail print:p-0 print:bg-white print:text-black">
+        <style>{`
+          @media print {
+            body * { visibility: hidden; }
+            .data-hub-detail, .data-hub-detail * { visibility: visible; }
+            .data-hub-detail { position: absolute; left: 0; top: 0; width: 100%; padding: 16px !important; background: #fff !important; color: #0f172a !important; }
+            .data-hub-no-print { display: none !important; }
+            .data-hub-table-wrap { overflow: visible !important; max-height: none !important; }
+            .data-hub-table { width: 100% !important; border-collapse: collapse !important; font-size: 10px !important; }
+            .data-hub-table th, .data-hub-table td { border: 1px solid #cbd5e1 !important; padding: 4px 6px !important; color: #0f172a !important; }
+          }
+        `}</style>
         <div className="data-hub-detail-header">
-          <button className="data-hub-back-btn" onClick={() => setSelectedDataset(null)}>
+          <button
+            className="data-hub-back-btn data-hub-no-print"
+            onClick={() => {
+              setSelectedDataset(null);
+              setDetailFilterQuery("");
+            }}
+          >
             <ArrowLeft size={16} /> {t.crm.calendar.previous}
           </button>
           <div className="data-hub-detail-title">
@@ -334,9 +352,31 @@ export function DataHubView() {
               {STATUS_ICON[getStatusCategory(selectedDataset.status)]} {getStatusLabel(selectedDataset.status)}
             </span>
           </div>
-          <div className="data-hub-detail-actions">
-            <button className="data-hub-action-btn" onClick={() => handleExport(selectedDataset)}>
-              <Download size={15} /> {t.common.downloadCsv}
+          <div className="data-hub-detail-actions data-hub-no-print">
+            <DatasetExportMenu
+              datasetId={selectedDataset.id}
+              datasetName={selectedDataset.name}
+              isFr={isFr}
+              activeSearchQuery={detailFilterQuery}
+              onExportError={(msg) => setDetailError(msg)}
+            />
+            <button
+              type="button"
+              className="data-hub-action-btn inline-flex items-center gap-1.5 disabled:opacity-45"
+              disabled={!canPrint}
+              title={
+                canPrint
+                  ? isFr
+                    ? "Imprimer la vue tabulaire formatée"
+                    : "Print formatted table view"
+                  : isFr
+                    ? "Impression directe indisponible (aucune donnée ou trop de colonnes)"
+                    : "Direct print unavailable (no rows or too many columns)"
+              }
+              onClick={() => handlePrintDataset(selectedDataset)}
+            >
+              <Printer size={15} />
+              <span>{isFr ? "Imprimer" : "Print"}</span>
             </button>
             <button
               className="data-hub-action-btn danger"
@@ -346,6 +386,31 @@ export function DataHubView() {
             </button>
           </div>
         </div>
+
+        {/* Inline filter bar for preview & filtered exports */}
+        {columns.length > 0 && (
+          <div className="data-hub-search data-hub-no-print">
+            <Search size={15} />
+            <input
+              placeholder={
+                isFr
+                  ? "Filtrer les lignes affichées (pris en compte dans l'export « Aperçu filtré »)…"
+                  : "Filter displayed rows (applied to 'Filtered preview' export)…"
+              }
+              value={detailFilterQuery}
+              onChange={(e) => setDetailFilterQuery(e.target.value)}
+            />
+            {detailFilterQuery && (
+              <button
+                type="button"
+                onClick={() => setDetailFilterQuery("")}
+                className="text-xs text-slate-400 hover:text-slate-600"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        )}
 
         {detailError && (
           <div className="data-hub-error">
@@ -365,11 +430,11 @@ export function DataHubView() {
                   {columns.map((col) => (
                     <th key={col}>{col}</th>
                   ))}
-                  <th>{t.crm.actions.modify}</th>
+                  <th className="data-hub-no-print">{t.crm.actions.modify}</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, rowIdx) => (
+                {visibleDetailRows.map((row, rowIdx) => (
                   <tr key={rowIdx}>
                     {columns.map((col) => (
                       <td key={col} onDoubleClick={() => {
@@ -399,7 +464,7 @@ export function DataHubView() {
                         )}
                       </td>
                     ))}
-                    <td>
+                    <td className="data-hub-no-print">
                       <button
                         className="data-hub-row-delete"
                         onClick={() => handleDeleteRow(rowIdx)}
@@ -565,9 +630,13 @@ export function DataHubView() {
                       <Eye size={15} />
                     </button>
                   )}
-                  <button title={t.integrations.syncNow} onClick={() => handleExport(ds)}>
-                    <Download size={15} />
-                  </button>
+                  <DatasetExportMenu
+                    datasetId={ds.id}
+                    datasetName={ds.name}
+                    isFr={isFr}
+                    compact
+                    onExportError={(msg) => setError(msg)}
+                  />
                   <button
                     title={t.common.deletePermanently}
                     className="danger"

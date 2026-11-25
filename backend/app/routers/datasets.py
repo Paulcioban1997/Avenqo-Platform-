@@ -6,6 +6,7 @@ from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
@@ -58,6 +59,10 @@ from backend.app.services.dataset_cleaning_service import (
     DatasetNotReadyForExport,
     DatasetSourceUnavailable,
     UnsupportedDatasetExport,
+)
+from backend.app.services.dataset_export_service import (
+    DatasetExportPermissionError,
+    DatasetExportService,
 )
 from backend.app.services.dataset_import_service import (
     DatasetAccessDeniedError,
@@ -551,29 +556,98 @@ def get_dataset_cleaning_detail(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
+def get_dataset_export_service(
+    ingestion: CompanyDatasetIngestionService = Depends(get_company_dataset_ingestion_service),
+    cleaning: DatasetCleaningService = Depends(get_dataset_cleaning_service),
+) -> DatasetExportService:
+    return DatasetExportService(ingestion=ingestion, cleaning=cleaning)
+
+
+def _extract_identity_permissions(identity: CurrentIdentity | None) -> tuple[set[str] | None, bool]:
+    if identity is None or getattr(identity, "user", None) is None:
+        return None, False
+    from backend.app.core.permission_grants import effective_permissions
+
+    perms = set(effective_permissions(identity.user))
+    is_admin = bool(getattr(identity.user, "is_platform_admin", False))
+    return perms, is_admin
+
+
+@router.get("/{dataset_id}/export-options")
+def get_dataset_export_options(
+    dataset_id: UUID,
+    tenant: TenantContext = Depends(get_tenant_context),
+    identity: CurrentIdentity | None = Depends(require_dataset_read),
+    export_service: DatasetExportService = Depends(get_dataset_export_service),
+) -> dict[str, object]:
+    perms, is_admin = _extract_identity_permissions(identity)
+    try:
+        return export_service.get_export_options(
+            tenant,
+            dataset_id,
+            permissions=perms,
+            is_platform_admin=is_admin,
+        )
+    except CompanyDatasetNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except DatasetExportPermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+
 @router.get("/{dataset_id}/export")
 @router.get("/{dataset_id}/export/{export_format}")
 def export_cleaned_dataset(
     dataset_id: UUID,
     export_format: str = "csv",
+    scope: str = Query(default="cleaned"),
+    offset: int = Query(default=0, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=50000),
+    search: str | None = Query(default=None),
+    columns: str | None = Query(default=None, description="Comma-separated column names"),
+    envelope: bool = Query(default=True),
+    stream: bool = Query(default=False),
     tenant: TenantContext = Depends(get_tenant_context),
-    _: CurrentIdentity = Depends(require_dataset_read),
-    service: DatasetCleaningService = Depends(get_dataset_cleaning_service),
+    identity: CurrentIdentity | None = Depends(require_dataset_read),
+    export_service: DatasetExportService = Depends(get_dataset_export_service),
 ) -> Response:
+    perms, is_admin = _extract_identity_permissions(identity)
+    col_list = [c.strip() for c in columns.split(",") if c.strip()] if columns else None
     try:
-        content, media_type, filename = service.export(tenant, dataset_id, export_format)
+        payload = export_service.export(
+            tenant,
+            dataset_id,
+            export_format,
+            scope=scope,
+            offset=offset,
+            limit=limit,
+            search=search,
+            columns=col_list,
+            envelope=envelope,
+            stream=stream,
+            permissions=perms,
+            is_platform_admin=is_admin,
+        )
     except CompanyDatasetNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except DatasetExportPermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except DatasetSourceUnavailable as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except DatasetNotReadyForExport as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except UnsupportedDatasetExport as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    if payload.stream is not None:
+        return StreamingResponse(
+            payload.stream,
+            media_type=payload.media_type,
+            headers=payload.headers,
+        )
     return Response(
-        content=content,
-        media_type=media_type,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        content=payload.content or b"",
+        media_type=payload.media_type,
+        headers=payload.headers,
     )
 
 
