@@ -793,3 +793,292 @@ async def test_live_gemini_flash_latest_generate_with_tools() -> None:
         tools=[ToolDefinition(name="search_products", description="Search catalog", parameters_schema={"type": "object", "properties": {"query": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None}}})],
     )
     assert res.content or res.tool_calls
+
+
+# ==============================================================================
+# 9. PR #133 AUDIT FIXES: STRICT REALTIME CONTRACT, PRE-PIN BARRIER, *** SPEECH
+# ==============================================================================
+
+
+def test_s2s_session_update_conforms_strictly_to_openai_realtime_sdk_schema() -> None:
+    """Audit Blocker #1: Validate session.update against official OpenAI Realtime SDK schema."""
+    from openai.types.realtime.realtime_session_create_request import RealtimeSessionCreateRequest
+    from openai.types.realtime.session_update_event import SessionUpdateEvent
+
+    adapter = OpenAISpeechToSpeechRealtimeAdapter(
+        OpenAIAudioConfig(api_key="test", stt_model="gpt-4o-mini-transcribe", tts_voice="marin"),
+        model="gpt-realtime-2.1",
+        company_name="Produits Ero",
+        tool_provider=lambda: [
+            {
+                "name": "search_products",
+                "description": "Search catalog",
+                "parameters": {"type": "object", "properties": {"query": {"type": "string"}}},
+            }
+        ],
+    )
+    payload = adapter._session_update_payload("fr-CA")
+    session_dict = payload["session"]
+
+    # Must strictly be ["audio"], NEVER ["audio", "text"]
+    assert session_dict["output_modalities"] == ["audio"]
+    # Must NEVER auto-create a response before server PIN / RBAC / handover gate runs
+    assert session_dict["audio"]["input"]["turn_detection"]["create_response"] is False
+
+    validated_session = RealtimeSessionCreateRequest.model_validate(session_dict)
+    assert validated_session.output_modalities == ["audio"]
+    validated_event = SessionUpdateEvent.model_validate(payload)
+    assert validated_event.type == "session.update"
+
+
+@pytest.mark.asyncio
+async def test_s2s_zero_audio_or_tool_leakage_before_pin_and_during_delayed_stt_or_handover() -> None:
+    """Audit Blocker #2: Zero private audio or tool execution before PIN auth, on delayed STT, or during handover."""
+    sock = _MemTelnyxSocket()
+    ws_in: asyncio.Queue[Any] = asyncio.Queue()
+    ws_sent: list[dict[str, Any]] = []
+    executed_tools: list[str] = []
+
+    class _GateConn:
+        async def send(self, payload: dict[str, Any]) -> None:
+            ws_sent.append(payload)
+            # Only respond with audio when authorized system PIN/handover prompt (conversation='none') is requested
+            if payload.get("type") == "response.create" and payload.get("response", {}).get("conversation") == "none":
+                rid = f"sys-{len(ws_sent)}"
+                await ws_in.put({"type": "response.created", "response": {"id": rid}})
+                await ws_in.put({
+                    "type": "response.audio.delta",
+                    "response_id": rid,
+                    "delta": base64.b64encode(_pcm_24k(900, frames=2)).decode("ascii"),
+                })
+                await ws_in.put({"type": "response.done", "response": {"id": rid, "status": "completed"}})
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            it = await ws_in.get()
+            if it is None:
+                raise StopAsyncIteration
+            return it
+
+    class _GateMgr:
+        async def __aenter__(self):
+            return _GateConn()
+
+        async def __aexit__(self, *_a):
+            await ws_in.put(None)
+
+    is_staff = {"auth": False}
+
+    async def _sec_hook(_item_id: str, transcript: str) -> dict[str, Any] | None:
+        low = transcript.lower()
+        if not is_staff["auth"] and ("chiffre" in low or "marge" in low or "revenu" in low):
+            return {
+                "handled": True,
+                "auth_required": True,
+                "answer": "Veuillez composer votre NIP sur le clavier.",
+            }
+        if is_staff["auth"] and "collègue" in low:
+            is_staff["auth"] = False
+            adapter.update_staff_identity(False, None, None)
+            return {
+                "handled": True,
+                "auth_required": True,
+                "answer": "Session clôturée. Le nouveau collaborateur doit saisir son NIP.",
+            }
+        return None
+
+    async def _tool_exec(_turn_id: str, _cid: str, name: str, _args: dict[str, Any]) -> dict[str, Any]:
+        executed_tools.append(name)
+        return {"success": True, "secret_revenue": "999999 CAD"}
+
+    adapter = OpenAISpeechToSpeechRealtimeAdapter(
+        OpenAIAudioConfig(api_key="test", stt_model="gpt-4o-mini-transcribe", tts_voice="marin"),
+        model="gpt-realtime-2.1",
+        company_name="Produits Ero",
+        tool_provider=lambda: [
+            {"name": "get_sales_summary", "description": "Private KPI", "parameters": {"type": "object", "properties": {}}}
+        ],
+        tool_executor=_tool_exec,
+        security_transcript_hook=_sec_hook,
+        connection_factory=lambda _m: _GateMgr(),
+    )
+    bridge = TelnyxMediaBridge(
+        sock,
+        adapter,
+        locale="fr-CA",
+        validate_start=AsyncMock(),
+        authorize=AsyncMock(),
+        execute_turn=AsyncMock(),
+        begin_pin=AsyncMock(return_value={"success": True}),
+        poll_pin=AsyncMock(return_value="pending"),
+    )
+    await sock.inbound.put({
+        "event": "start",
+        "stream_id": "s2s-strict-gate",
+        "start": {"stream_id": "s2s-strict-gate", "media_format": {"encoding": "PCMU", "sample_rate": 8000, "channels": 1}},
+    })
+    run_task = asyncio.create_task(bridge.run())
+    await asyncio.sleep(0.04)
+
+    # 1) Simulate delayed STT: rogue/speculative response.created + audio.delta + tool call BEFORE transcript completes!
+    await ws_in.put({"type": "input_audio_buffer.speech_started", "item_id": "pre-auth-1"})
+    await ws_in.put({"type": "response.created", "response": {"id": "rogue-pre-auth"}})
+    await ws_in.put({
+        "type": "response.audio.delta",
+        "response_id": "rogue-pre-auth",
+        "delta": base64.b64encode(_pcm_24k(1800, frames=3)).decode("ascii"),
+    })
+    await ws_in.put({
+        "type": "response.function_call_arguments.done",
+        "call_id": "rogue-fc-1",
+        "name": "get_sales_summary",
+        "arguments": "{}",
+    })
+    await asyncio.sleep(0.05)
+
+    # ZERO outbound media frames and ZERO executed tools before transcription + security hook!
+    assert [m for m in sock.outbound if m.get("event") == "media"] == []
+    assert executed_tools == []
+    assert adapter.dropped_unauthorized_audio_chunks >= 1
+    assert adapter.blocked_unauthorized_tool_calls >= 1
+
+    # 2) Delayed STT arrives asking confidential revenue -> security hook intercepts & arms PIN, ZERO conversational response.create!
+    await ws_in.put({
+        "type": "conversation.item.input_audio_transcription.completed",
+        "item_id": "pre-auth-1",
+        "transcript": "Quel est notre chiffre d'affaires confidentiel ?",
+    })
+    await asyncio.sleep(0.08)
+    assert bridge._pin_turn == "pre-auth-1"
+    assert adapter._auth_gate_locked is True
+    conversational_creates = [
+        p for p in ws_sent
+        if p.get("type") == "response.create" and p.get("response", {}).get("conversation") != "none"
+    ]
+    assert conversational_creates == []
+    assert executed_tools == []
+
+    # 3) Authenticate staff, clear PIN state, verify authorized turn works, then trigger handover revocation!
+    bridge._pin_turn = None
+    is_staff["auth"] = True
+    adapter.update_staff_identity(True, "Francis", "owner")
+    await asyncio.sleep(0.02)
+
+    await ws_in.put({
+        "type": "conversation.item.input_audio_transcription.completed",
+        "item_id": "handover-1",
+        "transcript": "Je passe le téléphone à mon collègue.",
+    })
+    # Racing function call arriving during handover must be hard-blocked!
+    await ws_in.put({
+        "type": "response.function_call_arguments.done",
+        "call_id": "handover-fc-race",
+        "name": "get_sales_summary",
+        "arguments": "{}",
+    })
+    await asyncio.sleep(0.08)
+    assert adapter._auth_gate_locked is True
+    assert executed_tools == []
+    assert adapter.blocked_unauthorized_tool_calls >= 2
+
+    await sock.inbound.put({"event": "stop", "stream_id": "s2s-strict-gate"})
+    await asyncio.wait_for(run_task, timeout=5.0)
+
+
+def test_railway_sandbox_legacy_openai_model_env_upgrades_to_gpt62_sol() -> None:
+    """Audit Finding #4: Legacy OPENAI_MODEL=gpt-4o-mini on Sandbox upgrades to gpt-6.2-sol unless explicitly pinned in AI_PROVIDER_MODELS."""
+    from backend.app.ai.llm.factory import LLMProviderFactory
+
+    sandbox_legacy = Settings(**cast(dict[str, Any], {
+        "_env_file": None,
+        "ENVIRONMENT": "sandbox",
+        "AUTH_JWT_SECRET": "sandbox-test-only-jwt-secret-key-minimum-32-chars",
+        "AI_PRIMARY_PROVIDER": "openai",
+        "OPENAI_API_KEY": "test-key",
+        "OPENAI_MODEL": "gpt-4o-mini",
+        "GOOGLE_AI_API_KEY": "",
+        "ANTHROPIC_API_KEY": "",
+    }))
+    gw = LLMProviderFactory.create_gateway(sandbox_legacy)
+    assert isinstance(gw, AvenqoAIGateway)
+    assert [(p.name, getattr(p, "_model", None)) for p in gw._providers] == [("openai", "gpt-6.2-sol")]
+
+    # Explicit AI_PROVIDER_MODELS remains authoritative if operator intentionally specifies models
+    explicit_override = Settings(**cast(dict[str, Any], {
+        "_env_file": None,
+        "ENVIRONMENT": "sandbox",
+        "AUTH_JWT_SECRET": "sandbox-test-only-jwt-secret-key-minimum-32-chars",
+        "AI_PRIMARY_PROVIDER": "openai",
+        "OPENAI_API_KEY": "test-key",
+        "OPENAI_MODEL": "gpt-4o-mini",
+        "AI_PROVIDER_MODELS": {"openai": ["gpt-4o-mini", "gpt-6.2-sol"]},
+        "GOOGLE_AI_API_KEY": "",
+        "ANTHROPIC_API_KEY": "",
+    }))
+    gw_explicit = LLMProviderFactory.create_gateway(explicit_override)
+    assert isinstance(gw_explicit, AvenqoAIGateway)
+    assert [(p.name, getattr(p, "_model", None)) for p in gw_explicit._providers] == [
+        ("openai", "gpt-4o-mini"),
+        ("openai", "gpt-6.2-sol"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_zero_spoken_asterisks_across_voice_and_central_tts() -> None:
+    """Ensure '***' or '**' is NEVER pronounced as 'astérisque astérisque' in Voice or Central AI."""
+    from backend.app.ai.chat.chat_service import _sanitize_assistant_content
+    from backend.app.voice.messages import strip_markdown_for_speech
+    from backend.app.voice.realtime_rotation import RotatingRealtimeAdapter
+    from backend.app.voice.telnyx_media import clean_voice_text
+
+    raw_llm_output = (
+        "***\n"
+        "### Plan de croissance 2027\n"
+        "1. **Stratégie Alpha** : ***Expansion logistique*** avec `compare_at_price` optimisé.\n"
+        "* Deuxième axe : fidélisation VIP.\n"
+        "***\n"
+        "Voici le résumé **important**."
+    )
+    spoken_voice = clean_voice_text(raw_llm_output, locale="fr-CA")
+    spoken_generic = strip_markdown_for_speech(raw_llm_output)
+    central_voice = _sanitize_assistant_content(raw_llm_output, is_voice=True)
+    central_web = _sanitize_assistant_content(raw_llm_output, is_voice=False)
+
+    assert "*" not in spoken_voice
+    assert "#" not in spoken_voice
+    assert "`" not in spoken_voice
+    assert "compare_at_price" not in spoken_voice
+    assert "*" not in spoken_generic
+    assert "*" not in central_voice
+    assert "***" not in central_web
+
+    # Verify OpenAITextToSpeechAdapter strips markdown before sending input to OpenAI TTS
+    captured_tts_inputs: list[str] = []
+
+    class _FakeSpeechEndpoint:
+        async def create(self, **kwargs: Any):
+            captured_tts_inputs.append(str(kwargs.get("input") or ""))
+            return b"\x00\x01" * 100
+
+    fake_openai = SimpleNamespace(audio=SimpleNamespace(speech=_FakeSpeechEndpoint()))
+    tts = OpenAITextToSpeechAdapter(
+        OpenAIAudioConfig(api_key="test", tts_model="gpt-4o-mini-tts", tts_voice="marin"),
+        client=cast(Any, fake_openai),
+    )
+    await tts.synthesize_pcm(raw_llm_output, locale="fr-CA")
+    assert len(captured_tts_inputs) == 1
+    assert "*" not in captured_tts_inputs[0]
+
+    # Verify RotatingRealtimeAdapter delegates native_s2s_enabled & staff identity cleanly
+    s2s = OpenAISpeechToSpeechRealtimeAdapter(
+        OpenAIAudioConfig(api_key="test", stt_model="gpt-4o-mini-transcribe", tts_voice="marin"),
+    )
+    rot = RotatingRealtimeAdapter(lambda: s2s, AsyncMock(), rotation_seconds=3000)
+    rot.adapter = s2s
+    assert rot.native_s2s_enabled is True
+    assert rot.supports_concurrent_filler is False
+    rot.update_staff_identity(True, "Francis", "owner")
+    assert s2s._is_authenticated_staff is True
+

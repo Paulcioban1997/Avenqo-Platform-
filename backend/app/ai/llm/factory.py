@@ -61,10 +61,34 @@ class LLMProviderFactory:
         definition = DEFAULT_LLM_PROVIDER_REGISTRY.get(provider_code)
         return getattr(settings, definition.credential_setting, None) if definition else None
 
+    _LEGACY_ECONOMIC_OPENAI_MODELS = frozenset({"gpt-4o-mini", "gpt-3.5-turbo"})
+
     @staticmethod
     def _model_for(settings: Settings, provider_code: str) -> str:
         definition = DEFAULT_LLM_PROVIDER_REGISTRY.get(provider_code)
-        return getattr(settings, definition.model_setting, settings.llm_model) if definition else settings.llm_model
+        resolved = getattr(settings, definition.model_setting, settings.llm_model) if definition else settings.llm_model
+        if provider_code.casefold() == "openai" and resolved in LLMProviderFactory._LEGACY_ECONOMIC_OPENAI_MODELS:
+            explicit_openai_models = any(k.casefold() == "openai" for k in settings.ai_provider_models)
+            env_name = str(getattr(settings, "environment", "") or "").strip().lower()
+            if (
+                env_name == "sandbox"
+                and getattr(settings, "ai_upgrade_legacy_openai_model_in_sandbox", True)
+                and not explicit_openai_models
+            ):
+                target_model = getattr(settings, "voice_standard_reasoning_model", "gpt-6.2-sol") or "gpt-6.2-sol"
+                logger.warning(
+                    "ai_legacy_openai_model_upgraded_for_sandbox configured=%s effective=%s environment=%s",
+                    resolved,
+                    target_model,
+                    env_name,
+                )
+                return target_model
+            logger.warning(
+                "ai_legacy_openai_model_configured provider=openai model=%s environment=%s",
+                resolved,
+                env_name or "default",
+            )
+        return resolved
 
     @staticmethod
     def _build_model(settings: Settings, spec: LLMModelSpec) -> LLMProvider:

@@ -40,6 +40,7 @@ from backend.app.services.retail_source_service import RetailSourceService
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.dependencies.subscription import require_active_subscription
 from backend.app.voice.adapters import ExternalVoiceConfigurationRequired, OpenAIAudioConfig, OpenAIRealtimeAudioAdapter
+from backend.app.voice.messages import strip_markdown_for_speech
 from backend.app.voice.usage import VoiceUsageLedger, voice_pricing_catalog
 from backend.app.voice.service import resolve_voice_source_context
 from backend.app.schemas.voice_central import (
@@ -303,12 +304,14 @@ async def turn(
             company_timezone=identity.user.company.timezone or "UTC",
             locale_explicit=detection.locale is not None,
             spoken_language_input=True,
+            voice_path=True,
         )
+    cleaned_answer = strip_markdown_for_speech(result.answer) if result.answer else result.answer
     return VoiceTurnResponse(
         session_id=session.id,
         conversation_id=session.conversation_id,
         transcript=request.transcript,
-        answer=result.answer,
+        answer=cleaned_answer,
         status=result.status,
         tts_status="external_configuration_required",
         tts_provider=None,
@@ -517,6 +520,7 @@ async def _stream_session(
                     company_timezone=user.company.timezone or "UTC",
                     locale_explicit=detection.locale is not None,
                     spoken_language_input=True,
+                    voice_path=True,
                     allow_existing_reservation=usage_ledger is not None,
                     attempt_sink=central_attempts,
                 )
@@ -529,15 +533,16 @@ async def _stream_session(
                 return
             if usage_ledger is not None:
                 usage_ledger.attribute(item_id, result.selected_agent, result.selected_agent)
+            spoken_clean = strip_markdown_for_speech(result.answer) if result.answer else result.answer
             await send({
-                "type": "answer", "answer": result.answer, "status": result.status,
+                "type": "answer", "answer": spoken_clean, "status": result.status,
                 "conversation_id": str(session.conversation_id),
                 "remaining_ai_credits": result.remaining_ai_credits,
             })
-            if result.answer and adapter is not None:
+            if spoken_clean and adapter is not None:
                 speaking = True
                 pending_audio_item = item_id
-                await adapter.speak(result.answer)
+                await adapter.speak(spoken_clean)
             else:
                 if usage_ledger is not None:
                     usage_ledger.settle(item_id)

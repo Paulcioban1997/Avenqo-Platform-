@@ -50,7 +50,7 @@ from backend.app.services.company_intelligence_service import CompanyIntelligenc
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from backend.app.voice.adapters import OpenAIRealtimeAudioAdapter
 from backend.app.voice.direct_answers import sanitize_retail_voice_text
-from backend.app.voice.messages import apply_spoken_pronunciation
+from backend.app.voice.messages import apply_spoken_pronunciation, strip_markdown_for_speech
 from backend.app.voice.turn_control import (
     ConversationState,
     VoiceTurnOrchestrator,
@@ -277,25 +277,14 @@ def release_media_session(db: Session, call_id: UUID, claim: tuple) -> None:
 
 def clean_voice_text(text: str, *, locale: str = "fr-CA") -> str:
     """Nettoie le texte destiné à la synthèse vocale téléphonique (TTS).
-    Supprime la syntaxe markdown (listes à puces, numérotation, astérisques, dièses, crochets)
+    Supprime la syntaxe markdown (listes à puces, numérotation, astérisques ***, dièses, crochets)
     ainsi que les noms de champs techniques bruts (ex: compare_at_price, inventory_quantity),
-    pour garantir une lecture orale fluide et naturelle sans artefacts robotiques.
+    pour garantir une lecture orale fluide et naturelle sans jamais prononcer 'astérisque'.
     """
     if not text:
         return ""
     cleaned = sanitize_retail_voice_text(text, locale=locale)
-    cleaned = re.sub(r"\*\*([^*]+)\*\*", r"\1", cleaned)
-    cleaned = re.sub(r"\*([^*]+)\*", r"\1", cleaned)
-    cleaned = re.sub(r"__([^_]+)__", r"\1", cleaned)
-    cleaned = re.sub(r"_([^_]+)_", r"\1", cleaned)
-    cleaned = re.sub(r"^#{1,6}\s+", "", cleaned, flags=re.MULTILINE)
-    cleaned = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", cleaned)
-    cleaned = re.sub(r"^\s*\d+[\.\)]\s*", "", cleaned, flags=re.MULTILINE)
-    cleaned = re.sub(r"^\s*[\-\*•]\s*", "", cleaned, flags=re.MULTILINE)
-    # Do not hardcode any tenant brand here — spoken company names come from authorized config.
-    lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
-    cleaned = " ".join(lines)
-    return re.sub(r"\s+", " ", cleaned).strip()
+    return strip_markdown_for_speech(cleaned)
 
 
 _RE_PIN_MGMT = re.compile(
@@ -2986,13 +2975,18 @@ async def telnyx_media_socket(
     realtime_router = VoiceRealtimeRouter(settings)
     arch_mode = resolve_voice_architecture_mode(config, settings)
 
-    def _s2s_tool_provider() -> list[dict[str, Any]]:
-        current_call: VoiceCall | None = db.get(VoiceCall, call_id)
-        if current_call is None:
-            return []
-        active_uid = principal_id
-        perms = PUBLIC_VOICE_CALLER_PERMISSIONS
+    def _resolve_live_s2s_staff_scope(current_call: VoiceCall) -> tuple[UUID | None, frozenset[str]]:
+        """Re-verify live DB session & handover/PIN state on every S2S tool lookup or execution."""
+        if (
+            (current_call.source_context or {}).get("handover_revoked")
+            or current_call.pin_challenge_hash is not None
+        ):
+            return None, PUBLIC_VOICE_CALLER_PERMISSIONS
+        active_uid = principal_id if isinstance(principal_id, UUID) else None
         if active_uid is not None:
+            valid_auth = VoiceCallerAuth(db, settings).valid_session(current_call)
+            if valid_auth is None or valid_auth.principal_id != active_uid:
+                return None, PUBLIC_VOICE_CALLER_PERMISSIONS
             m_obj = db.scalar(
                 select(CompanyMembership).where(
                     CompanyMembership.company_id == current_call.company_id,
@@ -3001,8 +2995,15 @@ async def telnyx_media_socket(
                 )
             )
             if m_obj is not None:
-                perms = permissions_for(m_obj.role)
-        tenant_ctx = TenantContext(current_call.company_id, active_uid if isinstance(active_uid, UUID) else None)
+                return active_uid, frozenset(permissions_for(m_obj.role)).intersection(valid_auth.permissions)
+        return None, PUBLIC_VOICE_CALLER_PERMISSIONS
+
+    def _s2s_tool_provider() -> list[dict[str, Any]]:
+        current_call: VoiceCall | None = db.get(VoiceCall, call_id)
+        if current_call is None:
+            return []
+        active_uid, perms = _resolve_live_s2s_staff_scope(current_call)
+        tenant_ctx = TenantContext(current_call.company_id, active_uid)
         from backend.app.voice.tool_registry import VoiceToolRegistryService
         allowed_names, _owners = VoiceToolRegistryService(db, service._registry).allowed_tools(tenant_ctx, perms)
         tool_reg = getattr(service._chat, "_tool_registry", None)
@@ -3028,19 +3029,7 @@ async def telnyx_media_socket(
         current_call: VoiceCall | None = db.get(VoiceCall, call_id)
         if current_call is None:
             return {"success": False, "error": "call_not_found"}
-        active_uid = principal_id
-        perms = PUBLIC_VOICE_CALLER_PERMISSIONS
-        if active_uid is not None:
-            m_obj = db.scalar(
-                select(CompanyMembership).where(
-                    CompanyMembership.company_id == current_call.company_id,
-                    CompanyMembership.user_id == active_uid,
-                    CompanyMembership.is_active.is_(True),
-                )
-            )
-            if m_obj is not None:
-                perms = permissions_for(m_obj.role)
-        uid_val = active_uid if isinstance(active_uid, UUID) else None
+        uid_val, perms = _resolve_live_s2s_staff_scope(current_call)
         tenant_ctx = TenantContext(current_call.company_id, uid_val)
         from backend.app.voice.tool_guard import VoiceToolDenied, VoiceToolGuard
         try:

@@ -37,6 +37,28 @@ class RotatingRealtimeAdapter:
             return getattr(self.adapter, "_model", None)
         return None
 
+    @property
+    def model_name(self) -> str | None:
+        if self.adapter is not None:
+            return getattr(self.adapter, "model_name", None) or getattr(self.adapter, "_model", None)
+        return None
+
+    @property
+    def native_s2s_enabled(self) -> bool:
+        return bool(self.adapter is not None and getattr(self.adapter, "native_s2s_enabled", False))
+
+    @property
+    def supports_concurrent_filler(self) -> bool:
+        return bool(self.adapter is not None and getattr(self.adapter, "supports_concurrent_filler", False))
+
+    def set_playback_active(self, active: bool) -> None:
+        if self.adapter is not None and hasattr(self.adapter, "set_playback_active"):
+            self.adapter.set_playback_active(active)
+
+    def update_staff_identity(self, is_authenticated: bool, staff_name: str | None = None, staff_role: str | None = None) -> None:
+        if self.adapter is not None and hasattr(self.adapter, "update_staff_identity"):
+            self.adapter.update_staff_identity(is_authenticated, staff_name, staff_role)
+
     async def open(self, *, locale):
         self.locale = locale
         async with self.lock:

@@ -1,4 +1,10 @@
-"""Executable Sandbox A/B Benchmark & 20-Question + 10-Interruption Call Protocol (Issue #132).
+"""Executable Sandbox A/B State-Machine Protocol (Issue #132 / PR #133).
+
+IMPORTANT TRANSPARENCY NOTE:
+- `--mode deterministic` runs an IN-MEMORY SIMULATED protocol (in-memory WebSocket + local event queues,
+  0 network RTT, 0 live OpenAI/Gemini/Telnyx media servers). It validates state-machine turn completion,
+  causal interruption gating, and pre-PIN barriers — NOT real telephone network latency or acoustic quality.
+- `--mode live-api` probes live OpenAI/Gemini API model & tool-calling availability when keys are configured.
 
 Usage:
     python scripts/voice_sandbox_ab_protocol.py --mode deterministic
@@ -71,16 +77,22 @@ TEN_INTERRUPTIONS: tuple[str, ...] = (
 
 @dataclass
 class ProtocolResult:
+    execution_mode: str
     architecture: str
     model_stack: str
     questions_asked: int
+    barge_in_followups: int
     audible_answers: int
     lost_turns: int
     interruptions_sent: int
     interruptions_handled: int
     unconfirmed_suppressed: int
     estimated_cost_usd: str
-    avg_first_audio_ms: float
+    simulated_local_ms_per_turn: float
+
+    @property
+    def avg_first_audio_ms(self) -> float:
+        return self.simulated_local_ms_per_turn
 
 
 def _pcm_24k_sample(frames: int = 3) -> bytes:
@@ -126,7 +138,7 @@ async def _noop_exec(_i: str, _t: str) -> dict[str, Any]:
 
 
 async def run_deterministic_ab_benchmark(seed: int = 132) -> list[ProtocolResult]:
-    """Run all 20 shuffled questions + 10 verified interruptions in ONE continuous call per architecture."""
+    """Run all 20 shuffled questions + 10 verified interruptions in ONE simulated call per architecture."""
     rng = random.Random(seed)
     questions = list(SINGLE_CALL_20_QUESTIONS)
     rng.shuffle(questions)
@@ -152,46 +164,62 @@ async def run_deterministic_ab_benchmark(seed: int = 132) -> list[ProtocolResult
 
     results: list[ProtocolResult] = []
 
-    # 1) Architecture A: gpt-realtime-2.1 native S2S + secure tools
+    # 1) Architecture A: gpt-realtime-2.1 native S2S + create_response=False pre-response gate + secure tools
     class _FakeS2SConn:
         def __init__(self) -> None:
             self.sent: list[dict[str, Any]] = []
             self.q: asyncio.Queue[Any] = asyncio.Queue()
             self._idx = 0
+            self._fc_idx = 0
             self.slow_next = False
+            self._pending_query = ""
 
         async def send(self, payload: dict[str, Any]) -> None:
             self.sent.append(payload)
             ptype = payload.get("type")
-            if ptype == "conversation.item.create" and payload.get("item", {}).get("type") == "function_call_output":
-                self._idx += 1
-                rid = f"s2s-r-{self._idx}"
-                await self.q.put({"type": "response.created", "response": {"id": rid}})
-                await self.q.put({"type": "response.audio.delta", "response_id": rid, "delta": base64.b64encode(pcm_24k_sample).decode("ascii")})
-                await self.q.put({"type": "response.audio_transcript.done", "transcript": f"Réponse outil S2S #{self._idx}"})
-                if self.slow_next:
-                    self.slow_next = False
-                    # Leave response open long enough for verified caller barge-in
-                    await asyncio.sleep(0.06)
-                await self.q.put({
-                    "type": "response.done",
-                    "response": {
-                        "id": rid,
-                        "status": "completed",
-                        "usage": {
-                            "input_tokens": 180,
-                            "output_tokens": 60,
-                            "input_token_details": {"audio_tokens": 100, "text_tokens": 80, "cached_tokens": 20, "cached_tokens_details": {"audio_tokens": 20, "text_tokens": 0}},
-                            "output_token_details": {"audio_tokens": 45, "text_tokens": 15},
-                        },
-                    },
-                })
-            elif ptype == "response.create" and payload.get("response", {}).get("input"):
+            if ptype == "response.create" and payload.get("response", {}).get("input"):
                 self._idx += 1
                 rid = f"s2s-sec-{self._idx}"
                 await self.q.put({"type": "response.created", "response": {"id": rid}})
                 await self.q.put({"type": "response.audio.delta", "response_id": rid, "delta": base64.b64encode(pcm_24k_sample).decode("ascii")})
                 await self.q.put({"type": "response.done", "response": {"id": rid, "status": "completed"}})
+            elif ptype == "response.create":
+                # Triggered ONLY after adapter authorized the turn (`create_response=False`)
+                if self._pending_query:
+                    q_now = self._pending_query
+                    self._pending_query = ""
+                    self._fc_idx += 1
+                    await self.q.put({
+                        "type": "response.function_call_arguments.done",
+                        "call_id": f"fc-{self._fc_idx}",
+                        "name": "search_products",
+                        "arguments": json.dumps({"query": q_now[:24]}),
+                    })
+                else:
+                    self._idx += 1
+                    rid = f"s2s-r-{self._idx}"
+                    await self.q.put({"type": "response.created", "response": {"id": rid}})
+                    await self.q.put({"type": "response.audio.delta", "response_id": rid, "delta": base64.b64encode(pcm_24k_sample).decode("ascii")})
+                    await self.q.put({"type": "response.audio_transcript.done", "transcript": f"Réponse outil S2S #{self._idx}"})
+                    if self.slow_next:
+                        self.slow_next = False
+                        await asyncio.sleep(0.06)
+                        return
+                    await self.q.put({
+                        "type": "response.done",
+                        "response": {
+                            "id": rid,
+                            "status": "completed",
+                            "usage": {
+                                "input_tokens": 180,
+                                "output_tokens": 60,
+                                "input_token_details": {"audio_tokens": 100, "text_tokens": 80, "cached_tokens": 20, "cached_tokens_details": {"audio_tokens": 20, "text_tokens": 0}},
+                                "output_token_details": {"audio_tokens": 45, "text_tokens": 15},
+                            },
+                        },
+                    })
+            elif ptype == "response.cancel":
+                await self.q.put({"type": "response.done", "response": {"id": f"s2s-r-{self._idx}", "status": "cancelled"}})
 
         def __aiter__(self):
             return self
@@ -214,12 +242,16 @@ async def run_deterministic_ab_benchmark(seed: int = 132) -> list[ProtocolResult
     async def _s2s_tool_exec(turn_id: str, call_id: str, name: str, args: dict[str, Any]) -> dict[str, Any]:
         return {"success": True, "data": {"tool": name, "args": args, "verified": True}}
 
+    async def _s2s_sec_hook(_turn_id: str, _transcript: str) -> dict[str, Any] | None:
+        return None  # Authenticated owner benchmark session
+
     s2s_adapter = OpenAISpeechToSpeechRealtimeAdapter(
         OpenAIAudioConfig(api_key="test", stt_model="gpt-4o-mini-transcribe", tts_voice="marin"),
         model="gpt-realtime-2.1",
         company_name="Produits Ero",
         tool_provider=lambda: [{"name": "search_products", "description": "Catalog search", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}}}],
         tool_executor=_s2s_tool_exec,
+        security_transcript_hook=_s2s_sec_hook,
         interruption_manager=NaturalInterruptionManager(),
         connection_factory=lambda _m: _FakeS2SMgr(),
     )
@@ -237,31 +269,33 @@ async def run_deterministic_ab_benchmark(seed: int = 132) -> list[ProtocolResult
     int_cursor = 0
     for idx, (_tag, qtext) in enumerate(questions):
         is_int = idx in interrupt_indices and int_cursor < len(TEN_INTERRUPTIONS)
-        if is_int:
-            s2s_conn.slow_next = True
+        s2s_conn.slow_next = is_int
+        s2s_conn._pending_query = qtext
         await s2s_conn.q.put({"type": "conversation.item.input_audio_transcription.completed", "item_id": f"q-a-{idx}", "transcript": qtext})
-        await s2s_conn.q.put({"type": "response.function_call_arguments.done", "call_id": f"fc-{idx}", "name": "search_products", "arguments": json.dumps({"query": qtext[:24]})})
         if is_int:
             await _wait_playback_active(bridge_a)
             await bridge_a.interrupt(reason="caller_speech_barge_in")
             barge_text = TEN_INTERRUPTIONS[int_cursor]
             int_cursor += 1
+            s2s_conn.slow_next = False
+            s2s_conn._pending_query = barge_text
             await s2s_conn.q.put({"type": "conversation.item.input_audio_transcription.completed", "item_id": f"q-a-int-{idx}", "transcript": barge_text})
-            await s2s_conn.q.put({"type": "response.function_call_arguments.done", "call_id": f"fc-int-{idx}", "name": "search_products", "arguments": json.dumps({"query": barge_text[:24]})})
         await _wait_turn_settled(bridge_a, expected_completed=idx + 1)
     await sock_a.inbound.put({"event": "stop", "stream_id": "arch-a"})
     await asyncio.wait_for(t_a, timeout=5.0)
     results.append(ProtocolResult(
+        execution_mode="SIMULATED_DETERMINISTIC",
         architecture="Architecture A (Native S2S)",
-        model_stack="gpt-realtime-2.1 + Avenqo ToolGuard",
+        model_stack="gpt-realtime-2.1 + Pre-Auth Gate + ToolGuard",
         questions_asked=len(questions),
+        barge_in_followups=len(TEN_INTERRUPTIONS),
         audible_answers=bridge_a.telemetry["voice_response_completed"],
         lost_turns=bridge_a.central_ai_missing_answers,
         interruptions_sent=len(TEN_INTERRUPTIONS),
         interruptions_handled=bridge_a.telemetry["barge_in_triggered_count"],
         unconfirmed_suppressed=bridge_a.telemetry["unconfirmed_provider_interrupts_suppressed"],
-        estimated_cost_usd="~0.18 USD / 20 turns",
-        avg_first_audio_ms=round((time.monotonic() - t0) * 1000 / len(questions), 1),
+        estimated_cost_usd="~0.18 USD / 20 turns (catalog pricing)",
+        simulated_local_ms_per_turn=round((time.monotonic() - t0) * 1000 / len(questions), 1),
     ))
 
     # 2) Architecture B: Independent STT + gpt-6.2-sol + Independent PCM TTS
@@ -269,10 +303,12 @@ async def run_deterministic_ab_benchmark(seed: int = 132) -> list[ProtocolResult
         provider_id = "openai"
 
         async def transcribe(self, audio: bytes, *, locale: str, content_type: str) -> str:
+            _ = audio
             return ""
 
     class _FakeTTS:
         async def synthesize_pcm_chunks(self, text: str, *, locale: str):
+            _ = (text, locale)
             yield pcm_24k_sample
             await asyncio.sleep(0.04)
             yield pcm_24k_sample
@@ -312,19 +348,21 @@ async def run_deterministic_ab_benchmark(seed: int = 132) -> list[ProtocolResult
     await sock_b.inbound.put({"event": "stop", "stream_id": "arch-b"})
     await asyncio.wait_for(t_b, timeout=5.0)
     results.append(ProtocolResult(
+        execution_mode="SIMULATED_DETERMINISTIC",
         architecture="Architecture B (Modular)",
         model_stack="gpt-4o-mini-transcribe + gpt-6.2-sol + gpt-4o-mini-tts",
         questions_asked=len(questions),
+        barge_in_followups=len(TEN_INTERRUPTIONS),
         audible_answers=bridge_b.telemetry["voice_response_completed"],
         lost_turns=bridge_b.central_ai_missing_answers,
         interruptions_sent=len(TEN_INTERRUPTIONS),
         interruptions_handled=bridge_b.telemetry["barge_in_triggered_count"],
         unconfirmed_suppressed=bridge_b.telemetry["unconfirmed_provider_interrupts_suppressed"],
-        estimated_cost_usd="~0.07 USD / 20 turns",
-        avg_first_audio_ms=round((time.monotonic() - t1) * 1000 / len(questions), 1),
+        estimated_cost_usd="~0.07 USD / 20 turns (catalog pricing)",
+        simulated_local_ms_per_turn=round((time.monotonic() - t1) * 1000 / len(questions), 1),
     ))
 
-    # 3) Repaired Hybrid: Gemini Live + gpt-6.2-sol (20 questions + 20 unconfirmed interrupts suppressed + 10 verified barge-ins!)
+    # 3) Repaired Hybrid: Gemini Live + gpt-6.2-sol
     class _FakeGemSession:
         def __init__(self) -> None:
             self.q: asyncio.Queue[Any] = asyncio.Queue()
@@ -391,23 +429,29 @@ async def run_deterministic_ab_benchmark(seed: int = 132) -> list[ProtocolResult
     await sock_h.inbound.put({"event": "stop", "stream_id": "arch-h"})
     await asyncio.wait_for(t_h, timeout=5.0)
     results.append(ProtocolResult(
+        execution_mode="SIMULATED_DETERMINISTIC",
         architecture="Repaired Hybrid (Gemini + Sol)",
         model_stack="gemini-3.8-live audio + gpt-6.2-sol",
         questions_asked=len(questions),
+        barge_in_followups=len(TEN_INTERRUPTIONS),
         audible_answers=bridge_h.telemetry["voice_response_completed"],
         lost_turns=bridge_h.central_ai_missing_answers,
         interruptions_sent=len(TEN_INTERRUPTIONS),
         interruptions_handled=bridge_h.telemetry["barge_in_triggered_count"],
         unconfirmed_suppressed=bridge_h.telemetry["unconfirmed_provider_interrupts_suppressed"],
-        estimated_cost_usd="~0.06 USD / 20 turns",
-        avg_first_audio_ms=round((time.monotonic() - t2) * 1000 / len(questions), 1),
+        estimated_cost_usd="~0.06 USD / 20 turns (catalog pricing)",
+        simulated_local_ms_per_turn=round((time.monotonic() - t2) * 1000 / len(questions), 1),
     ))
     return results
 
 
 async def run_live_api_probe() -> dict[str, Any]:
     """Execute real API availability & tool-calling checks when keys exist in env."""
-    report: dict[str, Any] = {"openai_configured": bool(os.getenv("OPENAI_API_KEY")), "google_configured": bool(os.getenv("GOOGLE_AI_API_KEY"))}
+    report: dict[str, Any] = {
+        "execution_mode": "LIVE_API_PROBE",
+        "openai_configured": bool(os.getenv("OPENAI_API_KEY")),
+        "google_configured": bool(os.getenv("GOOGLE_AI_API_KEY")),
+    }
     if report["openai_configured"]:
         from openai import AsyncOpenAI
         client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -435,10 +479,16 @@ def main() -> int:
         print(json.dumps(out, indent=2))
         return 0
     res = asyncio.run(run_deterministic_ab_benchmark())
-    print("| Architecture | Models | Qs | Audible | Lost | Barge-Ins | Suppressed Unconfirmed | Cost | Avg ms/turn |")
-    print("|---|---|---:|---:|---:|---:|---:|---|---:|")
+    print("NOTE: Mode = SIMULATED_DETERMINISTIC (in-memory sockets/queues, 0 network RTT; NOT live phone call latency).")
+    print("| Mode | Architecture | Models | Initial Qs | Barge-In Follow-ups | Completed Audible | Lost | Barge-Ins | Suppressed Unconfirmed | Est. Cost | Sim Local ms/turn |")
+    print("|---|---|---|---:|---:|---:|---:|---:|---:|---|---:|")
     for r in res:
-        print(f"| {r.architecture} | {r.model_stack} | {r.questions_asked} | {r.audible_answers} | {r.lost_turns} | {r.interruptions_handled}/{r.interruptions_sent} | {r.unconfirmed_suppressed} | {r.estimated_cost_usd} | {r.avg_first_audio_ms} |")
+        print(
+            f"| {r.execution_mode} | {r.architecture} | {r.model_stack} | {r.questions_asked} | "
+            f"{r.barge_in_followups} | {r.audible_answers} | {r.lost_turns} | "
+            f"{r.interruptions_handled}/{r.interruptions_sent} | {r.unconfirmed_suppressed} | "
+            f"{r.estimated_cost_usd} | {r.simulated_local_ms_per_turn} |"
+        )
     return 0
 
 

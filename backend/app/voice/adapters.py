@@ -10,6 +10,7 @@ from typing import Any, AsyncIterator, Protocol, cast
 from openai import AsyncOpenAI
 
 from backend.app.core.locale_catalog import locale_info
+from backend.app.voice.messages import strip_markdown_for_speech
 
 logger = logging.getLogger("avenqo.voice.adapters")
 
@@ -93,9 +94,10 @@ class OpenAITextToSpeechAdapter:
             raise ExternalVoiceConfigurationRequired(
                 "OPENAI_API_KEY, VOICE_TTS_MODEL and VOICE_TTS_VOICE are required"
             )
+        cleaned_input = strip_markdown_for_speech(text) or text
         client = self._client or AsyncOpenAI(api_key=self._config.api_key, base_url=self._config.base_url)
         response = await client.audio.speech.create(
-            input=text,
+            input=cleaned_input,
             model=self._config.tts_model,
             voice=self._config.tts_voice,
             response_format="opus",
@@ -110,9 +112,10 @@ class OpenAITextToSpeechAdapter:
             raise ExternalVoiceConfigurationRequired(
                 "OPENAI_API_KEY, VOICE_TTS_MODEL and VOICE_TTS_VOICE are required"
             )
+        cleaned_input = strip_markdown_for_speech(text) or text
         client = self._client or AsyncOpenAI(api_key=self._config.api_key, base_url=self._config.base_url)
         response = await client.audio.speech.create(
-            input=text,
+            input=cleaned_input,
             model=self._config.tts_model,
             voice=self._config.tts_voice,
             response_format="pcm",
@@ -280,6 +283,7 @@ class OpenAIRealtimeAudioAdapter:
     async def speak(self, text: str) -> None:
         if self._connection is None:
             raise ExternalVoiceConfigurationRequired("Realtime session is not open")
+        cleaned_text = strip_markdown_for_speech(text) or text
         await self._connection.send({
             "type": "response.create",
             "response": {
@@ -290,7 +294,7 @@ class OpenAIRealtimeAudioAdapter:
                     f"Use a {self._config.delivery_style} delivery with smooth pacing and expressive warmth. "
                     "Avoid robotic, mechanical, or monotone reading. Do not translate or add information."
                 ),
-                "input": [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]}],
+                "input": [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": cleaned_text}]}],
             },
         })
 

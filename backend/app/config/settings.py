@@ -287,6 +287,10 @@ class Settings(BaseSettings):
     voice_standard_reasoning_model: str = Field(default="gpt-6.2-sol", alias="VOICE_STANDARD_REASONING_MODEL")
     voice_architecture_mode: str = Field(default="hybrid_realtime_central", alias="VOICE_ARCHITECTURE_MODE")
     voice_allow_astra_escalation: bool = Field(default=False, alias="VOICE_ALLOW_ASTRA_ESCALATION")
+    ai_upgrade_legacy_openai_model_in_sandbox: bool = Field(
+        default=True,
+        alias="AI_UPGRADE_LEGACY_OPENAI_MODEL_IN_SANDBOX",
+    )
     voice_ai_coach_enabled: bool = Field(default=True, alias="VOICE_AI_COACH_ENABLED")
     gemini_live_model: str = Field(default="gemini-3.8-live", alias="GEMINI_LIVE_MODEL")
     gemini_live_voice: str = Field(default="Aoede", alias="GEMINI_LIVE_VOICE")
