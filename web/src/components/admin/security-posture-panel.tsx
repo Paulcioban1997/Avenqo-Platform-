@@ -392,7 +392,13 @@ export function SecurityPosturePanel({ isFr }: SecurityPosturePanelProps) {
           </span>
         </div>
 
-        {!eventsData || eventsData.events.length === 0 ? (
+        {!eventsData ? (
+          <div className="rounded-xl border border-dashed border-amber-300/70 bg-amber-50/40 p-4 text-center text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-200">
+            {isFr
+              ? "Flux d'événements de sécurité indisponible (impossible de charger les alertes récentes)."
+              : "Security event feed unavailable (unable to load recent alerts)."}
+          </div>
+        ) : eventsData.events.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
             {isFr
               ? "Aucune alerte de sécurité récente détectée."

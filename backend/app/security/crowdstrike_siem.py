@@ -161,7 +161,7 @@ _JWT_PATTERN = re.compile(r"\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-
 _AUTH_SCHEME_PATTERN = re.compile(r"(?i)\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{6,}")
 _API_KEY_PATTERN = re.compile(
     r"\b(?:"
-    r"sk-(?:proj-|live-|test-)?[A-Za-z0-9_-]{8,}"
+    r"sk[-_](?:proj[-_]|live[-_]|test[-_])?[A-Za-z0-9_-]{8,}"
     r"|pk_(?:live|test)_[A-Za-z0-9_-]{8,}"
     r"|rk_(?:live|test)_[A-Za-z0-9_-]{8,}"
     r"|whsec_[A-Za-z0-9_-]{8,}"
@@ -172,6 +172,9 @@ _API_KEY_PATTERN = re.compile(
     r")\b"
 )
 _URL_CREDENTIAL_PATTERN = re.compile(r"([a-zA-Z][a-zA-Z0-9+.-]*://[^:/\s@]+:)[^@\s]+(@)")
+_LABELED_SECRET_VALUE_PATTERN = re.compile(
+    r"(?i)\b(password|passwd|pwd|secret|token|api[_-]?key|client[_-]?secret|hec[_-]?token|jwt|cookie)\s*([:=])\s*([^\s,;\"'}]+)"
+)
 _LABELED_PIN_PATTERN = re.compile(
     r"(?i)\b(?:pin|nip|otp|totp|passcode|code)\s*(?:[:=#]|\bis\b|\best\b)?\s*\d{4,8}\b"
 )
@@ -184,12 +187,13 @@ def _is_sensitive_key(key: str) -> bool:
     normalized = key.strip().lower()
     if not normalized:
         return False
-    if normalized in _SENSITIVE_KEY_TOKENS:
-        return True
-    if any(sub in normalized for sub in _SENSITIVE_KEY_SUBSTRINGS):
-        return True
-    # Split camelCase then non-alphanumerics so `callerPin`, `user_pin`, `routing-nip`, `sessionToken` match
-    camel_expanded = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", key).lower()
+    camel_expanded = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", key.strip()).lower()
+    snake_normalized = re.sub(r"[^a-z0-9]+", "_", camel_expanded).strip("_")
+    for candidate in (normalized, camel_expanded, snake_normalized):
+        if candidate in _SENSITIVE_KEY_TOKENS:
+            return True
+        if any(sub in candidate for sub in _SENSITIVE_KEY_SUBSTRINGS):
+            return True
     parts = [part for part in _KEY_SPLIT_PATTERN.split(camel_expanded) if part]
     if any(part in _SENSITIVE_KEY_TOKENS for part in parts):
         return True
@@ -204,6 +208,7 @@ def sanitize_text_value(value: str, *, max_chars: int = MAX_SANITIZED_STRING_CHA
     scrubbed = _JWT_PATTERN.sub("[REDACTED_JWT]", scrubbed)
     scrubbed = _AUTH_SCHEME_PATTERN.sub("[REDACTED_AUTH]", scrubbed)
     scrubbed = _API_KEY_PATTERN.sub("[REDACTED_KEY]", scrubbed)
+    scrubbed = _LABELED_SECRET_VALUE_PATTERN.sub(r"\1\2[REDACTED_SECRET]", scrubbed)
     scrubbed = _LABELED_PIN_PATTERN.sub("[REDACTED_PIN]", scrubbed)
     scrubbed = _STANDALONE_PIN_PATTERN.sub("[REDACTED_PIN]", scrubbed)
     if len(scrubbed) > max_chars:
@@ -526,9 +531,13 @@ class CrowdStrikeSIEMConnector:
         config: CrowdStrikeConfig | None = None,
         *,
         transport: httpx.BaseTransport | None = None,
+        async_delivery: bool = False,
     ) -> None:
         self._config = config or CrowdStrikeConfig.from_env()
         self._transport = transport
+        # When running with a live network transport (transport is None), background queue delivery
+        # can be enabled via CROWDSTRIKE_ASYNC_DELIVERY or async_delivery so request threads never block.
+        self._async_delivery = async_delivery
         self._lock = Lock()
         self._recent_events: deque[NormalizedSecurityEvent] = deque(maxlen=MAX_RECENT_BUFFER_EVENTS)
         self._window_epoch_minute: int = 0
@@ -536,6 +545,7 @@ class CrowdStrikeSIEMConnector:
         self._consecutive_failures: int = 0
         self._circuit_open_until: float = 0.0
         self._last_verification: CrowdStrikeConnectionResult | None = None
+        self._dropped_events_count: int = 0
 
     @property
     def config(self) -> CrowdStrikeConfig:
@@ -877,7 +887,12 @@ class CrowdStrikeSIEMConnector:
                 if response.status_code in {401, 403}
                 else CrowdStrikeConnectionStatus.UNREACHABLE.value
             )
-            self._record_delivery_failure(cfg, reason=f"http_{response.status_code}")
+            self._record_delivery_failure(
+                cfg,
+                reason=f"http_{response.status_code}",
+                failure_status=failure_status,
+                http_status=response.status_code,
+            )
             return SIEMDeliveryReceipt(
                 event_id=event.event_id,
                 event_type=event.event_type,
@@ -886,7 +901,12 @@ class CrowdStrikeSIEMConnector:
                 status=failure_status,
             )
         except Exception as exc:
-            self._record_delivery_failure(cfg, reason=type(exc).__name__)
+            self._record_delivery_failure(
+                cfg,
+                reason=type(exc).__name__,
+                failure_status=CrowdStrikeConnectionStatus.UNREACHABLE.value,
+                http_status=None,
+            )
             return SIEMDeliveryReceipt(
                 event_id=event.event_id,
                 event_type=event.event_type,
@@ -895,11 +915,30 @@ class CrowdStrikeSIEMConnector:
                 status=CrowdStrikeConnectionStatus.UNREACHABLE.value,
             )
 
-    def _record_delivery_failure(self, cfg: CrowdStrikeConfig, *, reason: str) -> None:
+    def _record_delivery_failure(
+        self,
+        cfg: CrowdStrikeConfig,
+        *,
+        reason: str,
+        failure_status: str = CrowdStrikeConnectionStatus.UNREACHABLE.value,
+        http_status: int | None = None,
+    ) -> None:
+        checked_at = datetime.now(timezone.utc).isoformat()
         with self._lock:
             self._consecutive_failures += 1
             if self._consecutive_failures >= cfg.circuit_failure_threshold:
                 self._circuit_open_until = time.monotonic() + cfg.circuit_cooldown_seconds
+            # Invalidate any staleCONNECTED_VERIFIED state so current_status_summary never claims active protection during an outage!
+            self._last_verification = CrowdStrikeConnectionResult(
+                status=failure_status,
+                siem_enabled=cfg.siem_enabled,
+                verified=False,
+                protected_by_crowdstrike=False,
+                message=f"Échec de livraison télémétrie HEC ({sanitize_text_value(reason, max_chars=48)}).",
+                checked_at_utc=checked_at,
+                endpoint_host=cfg.safe_hec_endpoint,
+                http_status=http_status,
+            )
         logger.warning(
             "crowdstrike_siem_delivery_failed host=%s reason=%s",
             cfg.safe_hec_endpoint,

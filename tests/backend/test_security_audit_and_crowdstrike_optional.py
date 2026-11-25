@@ -101,7 +101,7 @@ def test_crowdstrike_fcs_workflow_yaml_sbom_and_license_free_gating() -> None:
     for step in fcs_action_steps:
         assert step.get("if") == "steps.fcs_gate.outputs.configured == 'true'"
         with_cfg = step.get("with", {})
-        assert "FCS_FAIL_ON_SEVERITY" in str(with_cfg.get("fail-on", ""))
+        assert "FCS_FAIL_ON_SEVERITY" in str(with_cfg.get("fail_on", ""))
 
     # Severity gate policy is CRITICAL,HIGH + approved exceptions file documented
     env_cfg = workflow.get("env", {})
@@ -348,15 +348,21 @@ def test_strict_scrubbing_strips_pins_jwts_api_keys_documents_and_transcripts(
     connector = CrowdStrikeSIEMConnector(cfg, transport=httpx.MockTransport(_capture_raw))
 
     # Build synthetic sensitive markers at runtime so static secret scanners stay clean
+    import base64
+
     sensitive_pin = "123456"
     sensitive_nip = "847291"
     inline_pin = "4928"
-    synthetic_jwt = (
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
-        "eyJzdWIiOiIxMjM0NTY3ODkwIiwidGVuYW50IjoiYXZlbnFvIn0."
-        "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+    jwt_hdr = base64.urlsafe_b64encode(b'{"alg":"HS256","typ":"JWT"}').decode("ascii").rstrip("=")
+    jwt_pay = (
+        base64.urlsafe_b64encode(b'{"sub":"usr-synthetic","tenant":"avenqo"}')
+        .decode("ascii")
+        .rstrip("=")
     )
+    jwt_sig = secrets.token_urlsafe(24)
+    synthetic_jwt = f"{jwt_hdr}.{jwt_pay}.{jwt_sig}"
     synthetic_sk = "sk-" + "liveSecretKeyMaterial998877"
+    synthetic_sk_underscore = "sk_live_" + "underscoreSecretKey998877"
     synthetic_bearer = "Bearer " + "topSecretSessionBearerTokenXYZ987"
     private_doc_body = "CONFIDENTIAL ACQUISITION AGREEMENT — PRICE CAD 4,200,000 CLAUSE 14"
     private_voice_transcript = "Bonjour, voici ma transcription vocale confidentielle avec le client Tremblay."
@@ -521,3 +527,60 @@ def test_security_posture_service_direct_evaluation() -> None:
     assert posture["summary_counts"]["total_controls"] == 10
     assert posture["crowdstrike"]["kernel_sensor_assumed"] is False
     assert posture["crowdstrike"]["deployment_mode"] == "managed_paas_agentless"
+
+
+def test_audit_pr137_all_13_copilot_threads_regression() -> None:
+    # Threads 4, 5, 6: underscore sk_live_ keys, camelCase documentBody/spokenText, and labeled password=...
+    from backend.app.security.crowdstrike_siem import sanitize_security_payload, sanitize_text_value
+
+    underscore_key = "sk_live_" + "underscoreSecretKey99887766"
+    inline_pwd = "MySuperSecretPwd!99"
+    cleaned_txt = sanitize_text_value(f"Auth failed with key {underscore_key} and password={inline_pwd}")
+    assert underscore_key not in cleaned_txt
+    assert inline_pwd not in cleaned_txt
+    assert "[REDACTED_KEY]" in cleaned_txt
+    assert "[REDACTED_SECRET]" in cleaned_txt
+
+    cleaned_dict = sanitize_security_payload(
+        {
+            "documentBody": "CONFIDENTIAL CONTRACT BODY",
+            "rawContent": "RAW FINANCIAL TABLE",
+            "spokenText": "PRIVATE VOICE TRANSCRIPT",
+            "fileContent": "SECRET FILE PAYLOAD",
+            "safeField": "ok",
+        }
+    )
+    assert cleaned_dict["documentBody"] == "[REDACTED]"
+    assert cleaned_dict["rawContent"] == "[REDACTED]"
+    assert cleaned_dict["spokenText"] == "[REDACTED]"
+    assert cleaned_dict["fileContent"] == "[REDACTED]"
+    assert cleaned_dict["safeField"] == "ok"
+
+    # Thread 11: runtime delivery failure invalidates stale CONNECTED_VERIFIED state
+    should_fail = False
+
+    def _flaky_hec(request: httpx.Request) -> httpx.Response:
+        if should_fail:
+            return httpx.Response(503, json={"text": "Collector unavailable"})
+        return httpx.Response(200, json={"text": "Success"})
+
+    cfg = CrowdStrikeConfig.from_env(
+        {
+            "CROWDSTRIKE_SIEM_ENABLED": "true",
+            "CROWDSTRIKE_HEC_URL": "https://ingest.crowdstrike.example/services/collector",
+            "CROWDSTRIKE_HEC_TOKEN": "hec-" + secrets.token_urlsafe(18),
+        }
+    )
+    conn = CrowdStrikeSIEMConnector(cfg, transport=httpx.MockTransport(_flaky_hec))
+    res_ok = conn.test_connection()
+    assert res_ok.verified is True
+    assert conn.current_status_summary()["protected_by_crowdstrike"] is True
+
+    should_fail = True
+    receipt = conn.emit_event(SecurityEventType.REPEATED_API_ERROR_SPIKE, summary="HEC outage test")
+    assert receipt.delivered_to_siem is False
+    summary_after_fail = conn.current_status_summary()
+    assert summary_after_fail["verified"] is False
+    assert summary_after_fail["protected_by_crowdstrike"] is False
+    assert summary_after_fail["status"] == CrowdStrikeConnectionStatus.UNREACHABLE.value
+

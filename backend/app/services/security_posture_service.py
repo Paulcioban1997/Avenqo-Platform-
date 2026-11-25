@@ -260,8 +260,8 @@ class SecurityPostureService:
         is_prod_like = s.environment.lower() in {"production", "prod", "sandbox", "staging"}
         status = (
             "attention_required"
-            if (is_prod_like and not jwt_strong)
-            else ("enforced" if jwt_strong else "partial")
+            if (is_prod_like and (not jwt_strong or not s.is_secure_cookie))
+            else ("enforced" if (jwt_strong and (s.is_secure_cookie or not is_prod_like)) else "partial")
         )
         return {
             "id": "auth_mfa_sessions",
@@ -340,7 +340,36 @@ class SecurityPostureService:
     def _check_tenant_rls(self) -> dict[str, Any]:
         rls_active = supports_rls(self._db) if self._db is not None else False
         dialect = "postgresql" if rls_active else "sqlite_or_unbound"
-        status = "enforced" if rls_active else "partial"
+        verified_rls_tables = 0
+        nobypassrls_enforced = False
+        if rls_active and self._db is not None:
+            try:
+                from sqlalchemy import text as _sql_text
+
+                role_row = self._db.execute(
+                    _sql_text(
+                        "SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user"
+                    )
+                ).first()
+                if role_row is not None:
+                    nobypassrls_enforced = not bool(role_row[0]) and not bool(role_row[1])
+                rls_count_row = self._db.execute(
+                    _sql_text(
+                        "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+                        "WHERE n.nspname = 'public' AND c.relkind = 'r' "
+                        "AND c.relrowsecurity IS TRUE AND c.relforcerowsecurity IS TRUE"
+                    )
+                ).scalar()
+                verified_rls_tables = int(rls_count_row or 0)
+            except Exception:
+                verified_rls_tables = 0
+                nobypassrls_enforced = False
+        rls_fully_verified = (
+            rls_active
+            and nobypassrls_enforced
+            and verified_rls_tables >= len(TENANT_SCOPED_TABLES)
+        )
+        status = "enforced" if rls_fully_verified else "partial"
         return {
             "id": "postgres_tenant_rls",
             "title_fr": "Isolation Multi-Tenant & PostgreSQL FORCE RLS",
@@ -349,16 +378,27 @@ class SecurityPostureService:
             "details_fr": (
                 f"FORCE ROW LEVEL SECURITY sur {len(TENANT_SCOPED_TABLES)} tables métier + {len(DATASET_CHILD_TABLES)} tables enfants "
                 f"avec rôles dédiés ({APP_ROLE}/{MIGRATE_ROLE}/{OWNER_ROLE} NOBYPASSRLS). "
-                + ("Session PostgreSQL RLS active." if rls_active else "Dialecte courant SQLite/test : filtrage ORM actif, RLS PostgreSQL non applicable localement.")
+                + (
+                    f"Session PostgreSQL FORCE RLS vérifiée ({verified_rls_tables} tables, NOBYPASSRLS={nobypassrls_enforced})."
+                    if rls_active
+                    else "Dialecte courant SQLite/test : filtrage ORM actif, RLS PostgreSQL non applicable localement."
+                )
             ),
             "details_en": (
                 f"FORCE ROW LEVEL SECURITY across {len(TENANT_SCOPED_TABLES)} tenant tables + {len(DATASET_CHILD_TABLES)} child tables "
                 f"with constrained roles ({APP_ROLE}/{MIGRATE_ROLE}/{OWNER_ROLE} NOBYPASSRLS). "
-                + ("Active PostgreSQL RLS session." if rls_active else "Current dialect is SQLite/test: ORM tenant scoping active, PostgreSQL RLS not active locally.")
+                + (
+                    f"Active PostgreSQL FORCE RLS verified ({verified_rls_tables} tables, NOBYPASSRLS={nobypassrls_enforced})."
+                    if rls_active
+                    else "Current dialect is SQLite/test: ORM tenant scoping active, PostgreSQL RLS not active locally."
+                )
             ),
             "evidence": {
                 "session_dialect": dialect,
                 "postgresql_rls_active": rls_active,
+                "postgresql_rls_verified": rls_fully_verified,
+                "verified_force_rls_tables": verified_rls_tables,
+                "nobypassrls_enforced": nobypassrls_enforced,
                 "scoped_tables_count": len(TENANT_SCOPED_TABLES),
                 "dataset_child_tables_count": len(DATASET_CHILD_TABLES),
             },
@@ -486,7 +526,7 @@ class SecurityPostureService:
 
         workflow_present = (self._repo_root / ".github" / "workflows" / "backup-freshness.yml").is_file()
         is_fresh_local = latest_created_at is not None and (now - latest_created_at) <= timedelta(hours=26)
-        status = "enforced" if (is_fresh_local or s.backup_s3_enabled) else "partial"
+        status = "enforced" if is_fresh_local else "partial"
         return {
             "id": "backup_and_dr_freshness",
             "title_fr": "Sauvegardes Vérifiées SHA-256 & Fraîcheur DR",

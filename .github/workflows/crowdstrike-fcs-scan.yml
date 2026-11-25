@@ -57,7 +57,7 @@ jobs:
           mkdir -p artifacts/sbom
           python -m pip install --upgrade pip "cyclonedx-bom>=4.5.0"
           cyclonedx-py requirements backend/requirements.txt --of JSON -o artifacts/sbom/backend-python.cdx.json
-          npx --yes @cyclonedx/cyclonedx-npm --ignore-npm-errors --output-format JSON --output-file artifacts/sbom/web-node.cdx.json web/package.json
+          npx --yes @cyclonedx/cyclonedx-npm --package-lock-only --output-format JSON --output-file artifacts/sbom/web-node.cdx.json web/package.json
           echo "### Inventaire SBOM Natif Avenqo (CycloneDX)" >> "$GITHUB_STEP_SUMMARY"
           echo "- Backend Python SBOM : \`artifacts/sbom/backend-python.cdx.json\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Frontend Next.js SBOM : \`artifacts/sbom/web-node.cdx.json\`" >> "$GITHUB_STEP_SUMMARY"
@@ -108,16 +108,17 @@ jobs:
           fi
 
       - name: CrowdStrike FCS IaC & Dependency Scan
+        id: fcs_iac_scan
         if: steps.fcs_gate.outputs.configured == 'true'
         uses: CrowdStrike/fcs-action@v2
         with:
-          falcon-client-id: ${{ secrets.FALCON_CLIENT_ID }}
-          falcon-region: ${{ vars.FALCON_CLOUD_REGION || 'us-2' }}
-          scan-type: iac
+          falcon_client_id: ${{ secrets.FALCON_CLIENT_ID }}
+          falcon_region: ${{ vars.FALCON_CLOUD_REGION || 'us-2' }}
+          scan_type: iac
           path: .
-          fail-on: ${{ env.FCS_FAIL_ON_SEVERITY }}
-          output-format: sarif
-          output-path: fcs-iac-results.sarif
+          fail_on: ${{ env.FCS_FAIL_ON_SEVERITY }}
+          output_format: sarif
+          output_path: fcs-iac-results.sarif
         env:
           FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
           FALCON_CID: ${{ secrets.FALCON_CID }}
@@ -128,19 +129,31 @@ jobs:
           docker build -f backend/Dockerfile -t avenqo-backend:fcs-${{ github.sha }} .
 
       - name: CrowdStrike FCS Container Image Vulnerability Scan
+        id: fcs_image_scan
         if: steps.fcs_gate.outputs.configured == 'true'
         uses: CrowdStrike/fcs-action@v2
         with:
-          falcon-client-id: ${{ secrets.FALCON_CLIENT_ID }}
-          falcon-region: ${{ vars.FALCON_CLOUD_REGION || 'us-2' }}
-          scan-type: image
-          image-name: avenqo-backend:fcs-${{ github.sha }}
-          fail-on: ${{ env.FCS_FAIL_ON_SEVERITY }}
-          output-format: sarif
-          output-path: fcs-image-results.sarif
+          falcon_client_id: ${{ secrets.FALCON_CLIENT_ID }}
+          falcon_region: ${{ vars.FALCON_CLOUD_REGION || 'us-2' }}
+          scan_type: image
+          image: avenqo-backend:fcs-${{ github.sha }}
+          fail_on: ${{ env.FCS_FAIL_ON_SEVERITY }}
+          output_format: sarif
+          output_path: fcs-image-results.sarif
         env:
           FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
           FALCON_CID: ${{ secrets.FALCON_CID }}
+
+      - name: Enforce CrowdStrike FCS blocking exit-code policy
+        if: steps.fcs_gate.outputs.configured == 'true'
+        env:
+          IAC_EXIT_CODE: ${{ steps.fcs_iac_scan.outputs.exit-code || '0' }}
+          IMAGE_EXIT_CODE: ${{ steps.fcs_image_scan.outputs.exit-code || '0' }}
+        run: |
+          if [ "$IAC_EXIT_CODE" != "0" ] || [ "$IMAGE_EXIT_CODE" != "0" ]; then
+            echo "::error::CrowdStrike FCS policy violation detected (iac_exit=$IAC_EXIT_CODE, image_exit=$IMAGE_EXIT_CODE, threshold=$FCS_FAIL_ON_SEVERITY)."
+            exit 1
+          fi
 
       - name: Write verified CrowdStrike FCS summary
         if: steps.fcs_gate.outputs.configured == 'true'

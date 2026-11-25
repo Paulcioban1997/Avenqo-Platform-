@@ -64,7 +64,7 @@ def require_security_platform_admin(
         )
 
     explicit_role = getattr(identity.user, "platform_role", None)
-    if explicit_role is not None and explicit_role not in _ALLOWED_EXPLICIT_PLATFORM_ROLES:
+    if explicit_role not in _ALLOWED_EXPLICIT_PLATFORM_ROLES:
         connector.emit_event(
             SecurityEventType.RBAC_PERMISSION_DENIED,
             summary="Rôle plateforme insuffisant pour consulter la console sécurité.",
