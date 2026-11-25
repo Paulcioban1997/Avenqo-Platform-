@@ -2,9 +2,9 @@ name: CI
 
 'on':
   push:
-    branches: [main, promotion/sandbox]
+    branches: [main, promotion/sandbox, integration/avenqo-sandbox-latest-20261113]
   pull_request:
-    branches: [main, promotion/sandbox]
+    branches: [main, promotion/sandbox, integration/avenqo-sandbox-latest-20261113]
   workflow_dispatch:
 
 concurrency:
@@ -178,6 +178,23 @@ jobs:
           tests/backend/test_sandbox_password_reset_links.py
           -vv --durations=15 --timeout=120 --timeout-method=thread
           -o faulthandler_timeout=60
+        env:
+          PYTHONPATH: .
+          ENVIRONMENT: test
+          AUTH_JWT_SECRET: "ci-secret-test-key-32-chars-long-minimum"
+          DATABASE_URL: "sqlite:///:memory:"
+
+      - name: Run Enterprise Intelligence, Voice, OCR, Accounting, Exports & Security suite (PRs #133-#137)
+        timeout-minutes: 10
+        run: >-
+          python -m pytest
+          tests/backend/test_voice_p0_issue_132_architectures_and_reliability.py
+          tests/backend/test_voice_universal_architecture.py
+          tests/backend/test_ocr_excel_invoice_extraction_and_grounding.py
+          tests/backend/test_accounting_unified_classification_and_rbac.py
+          tests/backend/test_multi_format_dataset_exports.py
+          tests/backend/test_security_audit_and_crowdstrike_optional.py
+          -q
         env:
           PYTHONPATH: .
           ENVIRONMENT: test

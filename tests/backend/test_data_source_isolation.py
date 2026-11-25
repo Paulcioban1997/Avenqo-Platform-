@@ -152,6 +152,7 @@ def _prepared(company, dataset, prefix: str, amount: float):
 
 
 def _seed_normalized_product(session, company_id, connection_id, provider, product_name, stock, price):
+    now_utc = datetime.now(timezone.utc)
     record = NormalizedCommerceRecord(
         id=uuid4(),
         company_id=company_id,
@@ -159,6 +160,7 @@ def _seed_normalized_product(session, company_id, connection_id, provider, produ
         provider=provider,
         entity_type="product",
         source_record_id=str(uuid4()),
+        source_updated_at=now_utc,
         normalized_data={
             "product_name": product_name,
             "product_id": f"id-{product_name.lower().replace(' ', '-')}",
@@ -206,7 +208,7 @@ def isolation_env(tmp_path):
             status=CommerceConnectionStatus.READY.value,
             encrypted_credentials=cipher.encrypt({"access_token": "shpat_test", "refresh_token": "shprt_test"}),
             dataset_ids={"retail": str(shopify_dataset.id)},
-            last_successful_sync=datetime(2026, 9, 8, 12, 0, tzinfo=timezone.utc),
+            last_successful_sync=datetime.now(timezone.utc),
         )
         session.add(shopify_conn)
         session.commit()
@@ -225,7 +227,7 @@ def isolation_env(tmp_path):
             status=CommerceConnectionStatus.READY.value,
             encrypted_credentials=cipher.encrypt({"consumer_key": "ck_test", "consumer_secret": "cs_test"}),
             dataset_ids={"retail": str(woo_dataset.id)},
-            last_successful_sync=datetime(2026, 9, 8, 14, 0, tzinfo=timezone.utc),
+            last_successful_sync=datetime.now(timezone.utc),
         )
         session.add(woo_conn)
         session.commit()

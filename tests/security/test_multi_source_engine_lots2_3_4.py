@@ -396,6 +396,7 @@ async def test_lot4_central_ai_product_detail_provenance_and_scope(db_session: S
         external_account_id="shop-qc.myshopify.com",
         display_name="Shopify Québec",
         status=CommerceConnectionStatus.READY.value,
+        last_successful_sync=datetime.now(timezone.utc),
     )
     conn2 = CommerceConnection(
         id=uuid4(),
@@ -404,6 +405,7 @@ async def test_lot4_central_ai_product_detail_provenance_and_scope(db_session: S
         external_account_id="woo-france.com",
         display_name="WooCommerce France",
         status=CommerceConnectionStatus.READY.value,
+        last_successful_sync=datetime.now(timezone.utc),
     )
     db_session.add_all([conn1, conn2])
     db_session.flush()

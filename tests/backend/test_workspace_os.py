@@ -44,7 +44,7 @@ def _ready(client, factory, notifier, email, name, modules=(), plan=None):
 
 def test_registry_does_not_advertise_unbuilt_modules():
     assert BUSINESS_MODULES_BY_KEY["appointments"].availability == ModuleAvailability.COMING_SOON
-    assert BUSINESS_MODULES_BY_KEY["hr"].availability == ModuleAvailability.COMING_SOON
+    assert BUSINESS_MODULES_BY_KEY["hr"].availability == ModuleAvailability.AVAILABLE
     assert BUSINESS_MODULES_BY_KEY["ocr"].is_available
     assert BUSINESS_MODULES_BY_KEY["workflow"].is_available
 
