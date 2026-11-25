@@ -2,12 +2,15 @@ from uuid import UUID
 
 import json
 import logging
+import re
+from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from backend.app.ai.chat.chat_service import ChatService
+from backend.app.ai.chat.orchestrator import compute_grounding_assessment, strip_raw_triple_stars
 from backend.app.ai.request_identity import reconcile_idempotency_keys, resolve_ai_request_id
 from backend.app.ai.central.routing import CentralAIIntentRouter
 from backend.app.ai.chat.conversation_service import ConversationService
@@ -33,7 +36,15 @@ from backend.app.services.module_entitlement_service import ModuleEntitlementSer
 from backend.app.services.tenant_locale_service import get_company_locale
 from backend.app.services.tenant_customers_service import TenantCustomersService
 from backend.app.services.tenant_sales_service import TenantSalesService
-from backend.app.schemas.ai_chat import ChatMessageResponse, ConversationDetailResponse, ConversationResponse, CreateConversationRequest, MessageResponse, SendMessageRequest, SourceResponse
+from backend.app.schemas.ai_chat import (
+    ChatMessageResponse,
+    ConversationDetailResponse,
+    ConversationResponse,
+    CreateConversationRequest,
+    MessageResponse,
+    SendMessageRequest,
+    SourceResponse,
+)
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.prediction.service import PredictionService
 
@@ -43,6 +54,94 @@ router = APIRouter(
     dependencies=[Depends(get_active_ai_membership)],
 )
 logger = logging.getLogger("avenqo.ai.router")
+
+_DOCUMENT_INVOICE_QUERY_RE = re.compile(
+    r"\b(?:facture|factures|invoice|invoices|montant|total|totaux|amount|solde|balance|"
+    r"sous-total|subtotal|tps|tvq|gst|qst|hst|po|document|documents|ocr|scan|excel|xlsx|xlsm|"
+    r"onglet|sheet|cellule|cell|piece|justificatif|recu)\b",
+    re.IGNORECASE,
+)
+
+
+def _augment_structured_document_tools(
+    query: str,
+    *,
+    allowed_tools: frozenset[str],
+    authorized_tool_agents: dict[str, str],
+    active_modules: frozenset[str],
+    permissions: frozenset[str],
+) -> tuple[frozenset[str], dict[str, str]]:
+    """Garantit l'injection des outils structurés `extract_invoice_totals`, `get_document_source`
+    et `get_document_cell_evidence` lorsque le tenant possède `ocr` ou `accounting` actif
+    et que la question porte sur une facture, un montant, un onglet ou un document."""
+    if "data:read" not in permissions or "ai:use" not in permissions:
+        return allowed_tools, authorized_tool_agents
+    if not _DOCUMENT_INVOICE_QUERY_RE.search(query):
+        return allowed_tools, authorized_tool_agents
+
+    owner_agent = "ocr" if "ocr" in active_modules else ("accounting" if "accounting" in active_modules else None)
+    if owner_agent is None:
+        return allowed_tools, authorized_tool_agents
+
+    extra_tools: list[str] = [
+        "extract_invoice_totals",
+        "get_document_source",
+        "get_document_cell_evidence",
+    ]
+    if "ocr" in active_modules:
+        extra_tools.extend(["search_documents", "get_document_detail", "get_ocr_document"])
+
+    merged_names = list(allowed_tools)
+    merged_agents = dict(authorized_tool_agents)
+    for t_name in extra_tools:
+        if t_name not in merged_names:
+            merged_names.append(t_name)
+        merged_agents.setdefault(t_name, owner_agent)
+
+    # Conserver la priorité aux outils structurés documentaires dans la borne de sécurité (max 8)
+    if len(merged_names) > 8:
+        prioritized = [t for t in extra_tools if t in merged_names]
+        for existing in merged_names:
+            if existing not in prioritized and len(prioritized) < 8:
+                prioritized.append(existing)
+        merged_names = prioritized
+        merged_agents = {t: merged_agents[t] for t in merged_names if t in merged_agents}
+
+    return frozenset(merged_names), merged_agents
+
+
+def _enrich_source_metadata(
+    source_meta: dict[str, object],
+    assessment: dict[str, Any],
+) -> dict[str, object]:
+    """Enrichit les métadonnées d'une source avec le statut de grounding honnête :
+    ne marque JAMAIS `certified_grounding=True` lorsqu'un seul aperçu/métadonnée a été consulté."""
+    meta = dict(source_meta or {})
+    if "tool" in meta:
+        meta["grounding_status"] = assessment["grounding_status"]
+        meta["certified_grounding"] = assessment["certified_grounding"]
+        meta["grounding_badge"] = assessment["grounding_badge"]
+        meta["full_source_read"] = assessment["full_source_read"]
+        meta["math_verified"] = assessment["math_verified"]
+        if assessment.get("provenance"):
+            meta["provenance"] = assessment["provenance"]
+    else:
+        # Source issue de `RetrievalService` (métadonnées seules `Dataset: name; lignes; colonnes`) :
+        # ne constitue JAMAIS à elle seule un `certified_grounding` sans lecture complète par outil!
+        if assessment["certified_grounding"] and assessment["full_source_read"]:
+            meta["grounding_status"] = assessment["grounding_status"]
+            meta["certified_grounding"] = True
+            meta["grounding_badge"] = assessment["grounding_badge"]
+        else:
+            meta["grounding_status"] = (
+                assessment["grounding_status"]
+                if assessment["grounding_status"] in {"uncertain_candidates", "missing_after_full_read"}
+                else "preview_only"
+            )
+            meta["certified_grounding"] = False
+            meta["grounding_badge"] = "preview_only"
+            meta["is_metadata_preview"] = True
+    return meta
 
 
 def _retail_trusted_context(
@@ -99,10 +198,22 @@ def _retail_trusted_context(
 
 
 def response(item) -> ConversationResponse:
-    return ConversationResponse(id=item.id, title=item.title, created_at=item.created_at, updated_at=item.updated_at, locale=item.locale)
+    return ConversationResponse(
+        id=item.id,
+        title=item.title,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+        locale=item.locale,
+    )
 
 
-def _authorized_agent(query: str, page_context: str | None, tenant: TenantContext, db: Session, registry: AssistantRegistry):
+def _authorized_agent(
+    query: str,
+    page_context: str | None,
+    tenant: TenantContext,
+    db: Session,
+    registry: AssistantRegistry,
+):
     agent = CentralAIIntentRouter(registry).select(query, page_context=page_context)
     if agent is None:
         return None
@@ -113,7 +224,12 @@ def _authorized_agent(query: str, page_context: str | None, tenant: TenantContex
 
 
 @router.post("/conversations", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
-def create(request: CreateConversationRequest, tenant: TenantContext = Depends(get_tenant_context), identity: CurrentIdentity = Depends(get_current_identity), service: ConversationService = Depends(get_conversation_service)):
+def create(
+    request: CreateConversationRequest,
+    tenant: TenantContext = Depends(get_tenant_context),
+    identity: CurrentIdentity = Depends(get_current_identity),
+    service: ConversationService = Depends(get_conversation_service),
+):
     return response(service.create(tenant.company_id, identity.user.id, request.title, request.locale or "fr"))
 
 
@@ -133,12 +249,25 @@ def list_items(
 
 
 @router.get("/conversations/{conversation_id}", response_model=ConversationDetailResponse)
-def detail(conversation_id: UUID, tenant: TenantContext = Depends(get_tenant_context), identity: CurrentIdentity = Depends(get_current_identity), service: ConversationService = Depends(get_conversation_service)):
+def detail(
+    conversation_id: UUID,
+    tenant: TenantContext = Depends(get_tenant_context),
+    identity: CurrentIdentity = Depends(get_current_identity),
+    service: ConversationService = Depends(get_conversation_service),
+):
     try:
         item = service.get(tenant.company_id, identity.user.id, conversation_id)
     except ConversationNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Conversation introuvable") from exc
-    messages = [MessageResponse(id=message.id, role=message.role.value, content=message.content, created_at=message.created_at) for message in service.messages(tenant.company_id, item.id)]
+    messages = [
+        MessageResponse(
+            id=message.id,
+            role=message.role.value,
+            content=message.content,
+            created_at=message.created_at,
+        )
+        for message in service.messages(tenant.company_id, item.id)
+    ]
     return ConversationDetailResponse(**response(item).model_dump(), messages=messages)
 
 
@@ -188,12 +317,29 @@ async def message(
         permissions=permissions,
         detected_agent=agent,
     )
-    allowed_tools = planned.allowed_tool_names
-    authorized_tool_agents = planned.authorized_tool_agents
+    allowed_tools = (
+        planned.allowed_tool_names
+        if planned.allowed_tool_names
+        else (agent.allowed_tool_names if agent is not None else frozenset())
+    )
+    authorized_tool_agents = dict(planned.authorized_tool_agents)
+    if agent is not None:
+        for t_name in allowed_tools:
+            authorized_tool_agents.setdefault(t_name, agent.agent_id)
+    allowed_tools, authorized_tool_agents = _augment_structured_document_tools(
+        request.content,
+        allowed_tools=allowed_tools,
+        authorized_tool_agents=authorized_tool_agents,
+        active_modules=active_modules,
+        permissions=permissions,
+    )
 
     trusted_context = (
         _retail_trusted_context(tenant, db, sales_service, customers_service)
-        if ("retail" in active_modules and ((agent is not None and agent.module_code == "retail") or "retail" in planned.targeted_modules))
+        if (
+            "retail" in active_modules
+            and ((agent is not None and agent.module_code == "retail") or "retail" in planned.targeted_modules)
+        )
         else ""
     )
     company = identity.user.company
@@ -223,7 +369,7 @@ async def message(
             company_currency=getattr(company, "currency_code", None) or "USD",
             company_timezone=company.timezone or "UTC",
             selected_agent_id=agent.agent_id if agent is not None else None,
-            allowed_tool_names=allowed_tools if allowed_tools else (agent.allowed_tool_names if agent is not None else frozenset()),
+            allowed_tool_names=allowed_tools,
             authorized_tool_agents=authorized_tool_agents,
             retrieve_tenant_data=bool(allowed_tools) or agent is not None,
         )
@@ -235,7 +381,23 @@ async def message(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except AIServiceUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    return ChatMessageResponse(id=item.id, role=item.role.value, content=item.content, created_at=item.created_at, sources=[SourceResponse(type=source.source_type, identifier=source.identifier, name=source.name, metadata=source.metadata) for source in sources])
+
+    assessment = compute_grounding_assessment(getattr(service, "last_tool_call_results", ()))
+    return ChatMessageResponse(
+        id=item.id,
+        role=item.role.value,
+        content=strip_raw_triple_stars(item.content),
+        created_at=item.created_at,
+        sources=[
+            SourceResponse(
+                type=source.source_type,
+                identifier=source.identifier,
+                name=source.name,
+                metadata=_enrich_source_metadata(source.metadata, assessment),
+            )
+            for source in sources
+        ],
+    )
 
 
 @router.post(
@@ -285,12 +447,29 @@ async def stream(
         permissions=permissions,
         detected_agent=agent,
     )
-    allowed_tools = planned.allowed_tool_names
-    authorized_tool_agents = planned.authorized_tool_agents
+    allowed_tools = (
+        planned.allowed_tool_names
+        if planned.allowed_tool_names
+        else (agent.allowed_tool_names if agent is not None else frozenset())
+    )
+    authorized_tool_agents = dict(planned.authorized_tool_agents)
+    if agent is not None:
+        for t_name in allowed_tools:
+            authorized_tool_agents.setdefault(t_name, agent.agent_id)
+    allowed_tools, authorized_tool_agents = _augment_structured_document_tools(
+        request.content,
+        allowed_tools=allowed_tools,
+        authorized_tool_agents=authorized_tool_agents,
+        active_modules=active_modules,
+        permissions=permissions,
+    )
 
     trusted_context = (
         _retail_trusted_context(tenant, db, sales_service, customers_service)
-        if ("retail" in active_modules and ((agent is not None and agent.module_code == "retail") or "retail" in planned.targeted_modules))
+        if (
+            "retail" in active_modules
+            and ((agent is not None and agent.module_code == "retail") or "retail" in planned.targeted_modules)
+        )
         else ""
     )
     plan_code = ModuleEntitlementService(db).get_company_plan(tenant).code.value
@@ -318,36 +497,59 @@ async def stream(
                 plan_code=plan_code,
                 capabilities=capabilities,
                 request_id=request_id,
-                trusted_context=trusted_context,  # Injected into prompt as <trusted_server_context>
+                trusted_context=trusted_context,
                 is_cancelled=is_cancelled,
                 user_language=get_company_locale(db, company.id) or company.preferred_language,
                 company_country=company.country or "",
                 company_currency=getattr(company, "currency_code", None) or "USD",
                 company_timezone=company.timezone or "UTC",
                 selected_agent_id=agent.agent_id if agent is not None else None,
-                allowed_tool_names=allowed_tools if allowed_tools else (agent.allowed_tool_names if agent is not None else frozenset()),
+                allowed_tool_names=allowed_tools,
                 authorized_tool_agents=authorized_tool_agents,
                 retrieve_tenant_data=bool(allowed_tools) or agent is not None,
             ):
                 if event.kind == "delta":
                     yield f"data: {json.dumps(event.payload)}\n\n"
                 elif event.kind == "status":
-                    # Statut générique uniquement ("Analyzing your business data..."),
-                    # jamais de nom d'outil, d'arguments ou d'appel provider.
                     yield f"event: status\ndata: {json.dumps(event.payload)}\n\n"
                 elif event.kind == "sources":
-                    yield f"data: {json.dumps(event.payload)}\n\n"
+                    assessment = compute_grounding_assessment(getattr(service, "last_tool_call_results", ()))
+                    raw_sources = event.payload.get("sources")
+                    enriched_sources = (
+                        [
+                            {
+                                **src,
+                                "metadata": _enrich_source_metadata(
+                                    src.get("metadata") if isinstance(src.get("metadata"), dict) else {},
+                                    assessment,
+                                ),
+                            }
+                            for src in raw_sources
+                            if isinstance(src, dict)
+                        ]
+                        if isinstance(raw_sources, list)
+                        else []
+                    )
+                    yield f"data: {json.dumps({'sources': enriched_sources, 'grounding': assessment})}\n\n"
                 elif event.kind == "done":
-                    yield f"event: done\ndata: {json.dumps(event.payload)}\n\n"
+                    assessment = compute_grounding_assessment(getattr(service, "last_tool_call_results", ()))
+                    done_payload = {**event.payload, "grounding_status": assessment["grounding_status"], "certified_grounding": assessment["certified_grounding"]}
+                    yield f"event: done\ndata: {json.dumps(done_payload)}\n\n"
                 elif event.kind == "error":
                     yield f"event: error\ndata: {json.dumps(event.payload)}\n\n"
         except (ConversationNotFoundError, AIServiceUnavailableError, AIQuotaExceededError, AIRequestConflictError) as exc:
             yield f"event: error\ndata: {json.dumps({'detail': str(exc)})}\n\n"
+
     return StreamingResponse(events(), media_type="text/event-stream")
 
 
 @router.delete("/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete(conversation_id: UUID, tenant: TenantContext = Depends(get_tenant_context), identity: CurrentIdentity = Depends(get_current_identity), service: ConversationService = Depends(get_conversation_service)):
+def delete(
+    conversation_id: UUID,
+    tenant: TenantContext = Depends(get_tenant_context),
+    identity: CurrentIdentity = Depends(get_current_identity),
+    service: ConversationService = Depends(get_conversation_service),
+):
     try:
         service.delete(tenant.company_id, identity.user.id, conversation_id)
     except ConversationNotFoundError as exc:
