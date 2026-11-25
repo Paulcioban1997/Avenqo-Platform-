@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.core.cache import cached_for_tenant
 from backend.app.models.accounting import AccountingInvoice, AccountingTransaction
+from backend.app.services.accounting_source_scope import apply_dataset_scope
 from backend.app.models.audit_log import AuditLogEntry
 from backend.app.models.dataset import Dataset
 from backend.app.models.workspace import TenantDocument
@@ -54,21 +55,39 @@ class AccountingIntelligenceService:
     def __init__(self, session: Session) -> None:
         self._session = session
 
+    @staticmethod
+    def _scoped(rows: list, dataset_ids: frozenset[UUID] | None):
+        if dataset_ids is None:
+            return rows
+        if not dataset_ids:
+            return []
+        return [row for row in rows if getattr(row, "dataset_id", None) in dataset_ids]
+
     @cached_for_tenant("accounting_overview", ttl_seconds=30)
-    def get_financial_overview(self, company_id: UUID) -> dict[str, Any]:
+    def get_financial_overview(
+        self,
+        company_id: UUID,
+        dataset_ids: frozenset[UUID] | None = None,
+    ) -> dict[str, Any]:
         """Vue d'ensemble financière consolidée du tenant (données réelles confirmées vs propositions en attente)."""
-        all_txs = list(
-            self._session.scalars(
-                select(AccountingTransaction).where(AccountingTransaction.company_id == company_id)
-            ).all()
+        all_txs = self._scoped(
+            list(
+                self._session.scalars(
+                    select(AccountingTransaction).where(AccountingTransaction.company_id == company_id)
+                ).all()
+            ),
+            dataset_ids,
         )
         txs = [t for t in all_txs if t.is_confirmed]
         proposed_txs = [t for t in all_txs if not t.is_confirmed and t.status != "rejected"]
 
-        invoices = list(
-            self._session.scalars(
-                select(AccountingInvoice).where(AccountingInvoice.company_id == company_id)
-            ).all()
+        invoices = self._scoped(
+            list(
+                self._session.scalars(
+                    select(AccountingInvoice).where(AccountingInvoice.company_id == company_id)
+                ).all()
+            ),
+            dataset_ids,
         )
         confirmed_invoices = [inv for inv in invoices if inv.is_confirmed]
         pending_invoices = [
@@ -175,6 +194,7 @@ class AccountingIntelligenceService:
     def get_monthly_expenses(
         self,
         company_id: UUID,
+        dataset_ids: frozenset[UUID] | None = None,
         year: int | None = None,
         month: int | None = None,
         *,
@@ -198,45 +218,54 @@ class AccountingIntelligenceService:
             prev_start = datetime(target_year, target_month - 1, 1, tzinfo=timezone.utc)
             prev_end = start_date
 
-        current_txs = list(
-            self._session.scalars(
-                select(AccountingTransaction)
-                .where(
-                    AccountingTransaction.company_id == company_id,
-                    AccountingTransaction.transaction_type == "expense",
-                    AccountingTransaction.is_confirmed.is_(True),
-                    AccountingTransaction.transaction_date >= start_date,
-                    AccountingTransaction.transaction_date < end_date,
-                )
-                .order_by(desc(AccountingTransaction.transaction_date))
-            ).all()
+        current_txs = self._scoped(
+            list(
+                self._session.scalars(
+                    select(AccountingTransaction)
+                    .where(
+                        AccountingTransaction.company_id == company_id,
+                        AccountingTransaction.transaction_type == "expense",
+                        AccountingTransaction.is_confirmed.is_(True),
+                        AccountingTransaction.transaction_date >= start_date,
+                        AccountingTransaction.transaction_date < end_date,
+                    )
+                    .order_by(desc(AccountingTransaction.transaction_date))
+                ).all()
+            ),
+            dataset_ids,
         )
         if not include_payroll:
             current_txs = [t for t in current_txs if (t.category or "").lower() not in PAYROLL_CATEGORIES]
 
-        prev_txs = list(
-            self._session.scalars(
-                select(AccountingTransaction).where(
-                    AccountingTransaction.company_id == company_id,
-                    AccountingTransaction.transaction_type == "expense",
-                    AccountingTransaction.is_confirmed.is_(True),
-                    AccountingTransaction.transaction_date >= prev_start,
-                    AccountingTransaction.transaction_date < prev_end,
-                )
-            ).all()
+        prev_txs = self._scoped(
+            list(
+                self._session.scalars(
+                    select(AccountingTransaction).where(
+                        AccountingTransaction.company_id == company_id,
+                        AccountingTransaction.transaction_type == "expense",
+                        AccountingTransaction.is_confirmed.is_(True),
+                        AccountingTransaction.transaction_date >= prev_start,
+                        AccountingTransaction.transaction_date < prev_end,
+                    )
+                ).all()
+            ),
+            dataset_ids,
         )
         if not include_payroll:
             prev_txs = [t for t in prev_txs if (t.category or "").lower() not in PAYROLL_CATEGORIES]
 
-        pending_expense_proposals = list(
-            self._session.scalars(
-                select(AccountingInvoice).where(
-                    AccountingInvoice.company_id == company_id,
-                    AccountingInvoice.invoice_type == "payable",
-                    AccountingInvoice.verification_status == "to_verify",
-                    AccountingInvoice.status != "rejected",
-                )
-            ).all()
+        pending_expense_proposals = self._scoped(
+            list(
+                self._session.scalars(
+                    select(AccountingInvoice).where(
+                        AccountingInvoice.company_id == company_id,
+                        AccountingInvoice.invoice_type == "payable",
+                        AccountingInvoice.verification_status == "to_verify",
+                        AccountingInvoice.status != "rejected",
+                    )
+                ).all()
+            ),
+            dataset_ids,
         )
 
         categories: dict[str, float] = defaultdict(float)
@@ -289,15 +318,18 @@ class AccountingIntelligenceService:
         }
 
     @cached_for_tenant("accounting_margins", ttl_seconds=30)
-    def get_profit_margin(self, company_id: UUID) -> dict[str, Any]:
+    def get_profit_margin(self, company_id: UUID, dataset_ids: frozenset[UUID] | None = None) -> dict[str, Any]:
         """Calcul de marge brute et opérationnelle sur les écritures comptables confirmées."""
-        txs = list(
-            self._session.scalars(
-                select(AccountingTransaction).where(
-                    AccountingTransaction.company_id == company_id,
-                    AccountingTransaction.is_confirmed.is_(True),
-                )
-            ).all()
+        txs = self._scoped(
+            list(
+                self._session.scalars(
+                    select(AccountingTransaction).where(
+                        AccountingTransaction.company_id == company_id,
+                        AccountingTransaction.is_confirmed.is_(True),
+                    )
+                ).all()
+            ),
+            dataset_ids,
         )
 
         gross_revenue = sum(t.amount for t in txs if t.transaction_type == "revenue")
@@ -370,6 +402,7 @@ class AccountingIntelligenceService:
     def get_unpaid_invoices(
         self,
         company_id: UUID,
+        dataset_ids: frozenset[UUID] | None = None,
         invoice_type: str = "receivable",
         *,
         include_to_verify: bool = False,
@@ -388,7 +421,10 @@ class AccountingIntelligenceService:
         if not include_to_verify:
             stmt = stmt.where(AccountingInvoice.is_confirmed.is_(True))
 
-        invoices = list(self._session.scalars(stmt.order_by(AccountingInvoice.due_date.asc())).all())
+        invoices = self._scoped(
+            list(self._session.scalars(stmt.order_by(AccountingInvoice.due_date.asc())).all()),
+            dataset_ids,
+        )
 
         unpaid_list: list[dict[str, Any]] = []
         total_unpaid = 0.0
@@ -433,33 +469,40 @@ class AccountingIntelligenceService:
     def get_expense_anomalies(
         self,
         company_id: UUID,
+        dataset_ids: frozenset[UUID] | None = None,
         threshold_multiplier: float = 2.0,
         *,
         include_payroll: bool = True,
     ) -> dict[str, Any]:
         """Détecte les dépenses inhabituelles ainsi que les doublons et écarts arithmétiques de factures."""
-        txs = list(
-            self._session.scalars(
-                select(AccountingTransaction)
-                .where(
-                    AccountingTransaction.company_id == company_id,
-                    AccountingTransaction.transaction_type == "expense",
-                    AccountingTransaction.is_confirmed.is_(True),
-                )
-                .order_by(AccountingTransaction.transaction_date.desc())
-            ).all()
+        txs = self._scoped(
+            list(
+                self._session.scalars(
+                    select(AccountingTransaction)
+                    .where(
+                        AccountingTransaction.company_id == company_id,
+                        AccountingTransaction.transaction_type == "expense",
+                        AccountingTransaction.is_confirmed.is_(True),
+                    )
+                    .order_by(AccountingTransaction.transaction_date.desc())
+                ).all()
+            ),
+            dataset_ids,
         )
         if not include_payroll:
             txs = [t for t in txs if (t.category or "").lower() not in PAYROLL_CATEGORIES]
 
-        duplicate_invoices = list(
-            self._session.scalars(
-                select(AccountingInvoice).where(
-                    AccountingInvoice.company_id == company_id,
-                    AccountingInvoice.duplicate_warning.is_(True),
-                    AccountingInvoice.status != "rejected",
-                )
-            ).all()
+        duplicate_invoices = self._scoped(
+            list(
+                self._session.scalars(
+                    select(AccountingInvoice).where(
+                        AccountingInvoice.company_id == company_id,
+                        AccountingInvoice.duplicate_warning.is_(True),
+                        AccountingInvoice.status != "rejected",
+                    )
+                ).all()
+            ),
+            dataset_ids,
         )
         duplicate_alerts = [
             {
@@ -528,27 +571,34 @@ class AccountingIntelligenceService:
     def get_cash_flow_forecast(
         self,
         company_id: UUID,
+        dataset_ids: frozenset[UUID] | None = None,
         horizon_days: int = 30,
     ) -> dict[str, Any]:
         """Prévision de trésorerie (Cash Flow Forecast) strictement identifiée comme projection IA."""
         now = datetime.now(timezone.utc)
         horizon_date = now + timedelta(days=horizon_days)
 
-        txs = list(
-            self._session.scalars(
-                select(AccountingTransaction).where(
-                    AccountingTransaction.company_id == company_id,
-                    AccountingTransaction.is_confirmed.is_(True),
-                )
-            ).all()
+        txs = self._scoped(
+            list(
+                self._session.scalars(
+                    select(AccountingTransaction).where(
+                        AccountingTransaction.company_id == company_id,
+                        AccountingTransaction.is_confirmed.is_(True),
+                    )
+                ).all()
+            ),
+            dataset_ids,
         )
-        all_company_invoices = list(
-            self._session.scalars(
-                select(AccountingInvoice).where(
-                    AccountingInvoice.company_id == company_id,
-                    AccountingInvoice.is_confirmed.is_(True),
-                )
-            ).all()
+        all_company_invoices = self._scoped(
+            list(
+                self._session.scalars(
+                    select(AccountingInvoice).where(
+                        AccountingInvoice.company_id == company_id,
+                        AccountingInvoice.is_confirmed.is_(True),
+                    )
+                ).all()
+            ),
+            dataset_ids,
         )
         open_accrual_invoice_ids = {
             inv.id
@@ -585,29 +635,35 @@ class AccountingIntelligenceService:
             elif _is_expense_reversal(t):
                 current_balance += t.amount
 
-        incoming_invoices = list(
-            self._session.scalars(
-                select(AccountingInvoice).where(
-                    AccountingInvoice.company_id == company_id,
-                    AccountingInvoice.invoice_type == "receivable",
-                    AccountingInvoice.is_confirmed.is_(True),
-                    AccountingInvoice.status.in_(["unpaid", "overdue", "partial"]),
-                    AccountingInvoice.due_date <= horizon_date,
-                )
-            ).all()
+        incoming_invoices = self._scoped(
+            list(
+                self._session.scalars(
+                    select(AccountingInvoice).where(
+                        AccountingInvoice.company_id == company_id,
+                        AccountingInvoice.invoice_type == "receivable",
+                        AccountingInvoice.is_confirmed.is_(True),
+                        AccountingInvoice.status.in_(["unpaid", "overdue", "partial"]),
+                        AccountingInvoice.due_date <= horizon_date,
+                    )
+                ).all()
+            ),
+            dataset_ids,
         )
         expected_incoming = sum(inv.remaining_amount for inv in incoming_invoices)
 
-        outgoing_invoices = list(
-            self._session.scalars(
-                select(AccountingInvoice).where(
-                    AccountingInvoice.company_id == company_id,
-                    AccountingInvoice.invoice_type == "payable",
-                    AccountingInvoice.is_confirmed.is_(True),
-                    AccountingInvoice.status.in_(["unpaid", "overdue", "partial"]),
-                    AccountingInvoice.due_date <= horizon_date,
-                )
-            ).all()
+        outgoing_invoices = self._scoped(
+            list(
+                self._session.scalars(
+                    select(AccountingInvoice).where(
+                        AccountingInvoice.company_id == company_id,
+                        AccountingInvoice.invoice_type == "payable",
+                        AccountingInvoice.is_confirmed.is_(True),
+                        AccountingInvoice.status.in_(["unpaid", "overdue", "partial"]),
+                        AccountingInvoice.due_date <= horizon_date,
+                    )
+                ).all()
+            ),
+            dataset_ids,
         )
         expected_outgoing = sum(inv.remaining_amount for inv in outgoing_invoices)
 
@@ -654,7 +710,7 @@ class AccountingIntelligenceService:
             "risk_assessment": "low" if projected_balance > 0 else "high_deficit_risk",
         }
 
-    def reconcile_sales_with_accounting(self, company_id: UUID) -> dict[str, Any]:
+    def reconcile_sales_with_accounting(self, company_id: UUID, dataset_ids: frozenset[UUID] | None = None) -> dict[str, Any]:
         """Compare les ventes e-commerce, paiements, taxes et remboursements avec les écritures confirmées."""
         return FinancialIntegrationService(self._session).reconcile_ecommerce_and_accounting(company_id)
 

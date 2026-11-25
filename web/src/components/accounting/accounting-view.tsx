@@ -301,7 +301,7 @@ export function AccountingView() {
 
   useEffect(() => {
     void loadData();
-  }, [loadData]);
+  }, [loadData, session?.sourceRevision, session?.identity?.company?.id]);
 
   const handleRefresh = async () => {
     setRefreshing(true);

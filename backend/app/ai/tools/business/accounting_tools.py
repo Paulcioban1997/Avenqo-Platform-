@@ -22,6 +22,10 @@ from backend.app.ai.tools.contracts import ToolExecutionContext, ToolResult
 from backend.app.models.accounting import AccountingInvoice
 from backend.app.models.user import User
 from backend.app.services.accounting_intelligence_service import AccountingIntelligenceService
+from backend.app.services.accounting_source_scope import (
+    apply_dataset_scope,
+    resolve_accounting_dataset_scope,
+)
 from backend.app.services.financial_integration_service import (
     FinancialIntegrationService,
     can_access_hr_payroll_summary,
@@ -136,7 +140,9 @@ class GetFinancialOverviewTool(AccountingAITool):
         if denied is not None:
             return denied
 
-        data = dict(self._service.get_financial_overview(context.tenant.company_id))
+        dataset_ids, source_context = resolve_accounting_dataset_scope(self._session, context.tenant)
+        data = dict(self._service.get_financial_overview(context.tenant.company_id, dataset_ids=dataset_ids))
+        data["source_context"] = source_context
         if arguments.include_unified_sources and actor_user is not None:
             data["unified_sources"] = self._integration.get_unified_financial_context(
                 context.tenant.company_id,
@@ -172,12 +178,15 @@ class GetMonthlyExpensesTool(AccountingAITool):
             if actor_user is None
             else can_access_hr_payroll_summary(self._session, context.tenant.company_id, actor_user)[0]
         )
+        dataset_ids, source_context = resolve_accounting_dataset_scope(self._session, context.tenant)
         data = self._service.get_monthly_expenses(
             context.tenant.company_id,
+            dataset_ids=dataset_ids,
             year=arguments.year,
             month=arguments.month,
             include_payroll=can_payroll,
         )
+        data["source_context"] = source_context
         return ToolResult(
             success=True,
             data=data,
@@ -203,7 +212,9 @@ class GetProfitMarginTool(AccountingAITool):
         if denied is not None:
             return denied
 
-        data = self._service.get_profit_margin(context.tenant.company_id)
+        dataset_ids, source_context = resolve_accounting_dataset_scope(self._session, context.tenant)
+        data = self._service.get_profit_margin(context.tenant.company_id, dataset_ids=dataset_ids)
+        data["source_context"] = source_context
         return ToolResult(
             success=True,
             data=data,
@@ -229,11 +240,14 @@ class GetUnpaidInvoicesTool(AccountingAITool):
         if denied is not None:
             return denied
 
+        dataset_ids, source_context = resolve_accounting_dataset_scope(self._session, context.tenant)
         data = self._service.get_unpaid_invoices(
             context.tenant.company_id,
+            dataset_ids=dataset_ids,
             invoice_type=arguments.invoice_type,
             include_to_verify=arguments.include_to_verify,
         )
+        data["source_context"] = source_context
         return ToolResult(
             success=True,
             data=data,
@@ -264,11 +278,14 @@ class GetExpenseAnomaliesTool(AccountingAITool):
             if actor_user is None
             else can_access_hr_payroll_summary(self._session, context.tenant.company_id, actor_user)[0]
         )
+        dataset_ids, source_context = resolve_accounting_dataset_scope(self._session, context.tenant)
         data = self._service.get_expense_anomalies(
             context.tenant.company_id,
+            dataset_ids=dataset_ids,
             threshold_multiplier=arguments.threshold_multiplier,
             include_payroll=can_payroll,
         )
+        data["source_context"] = source_context
         return ToolResult(
             success=True,
             data=data,
@@ -295,10 +312,13 @@ class GetCashFlowForecastTool(AccountingAITool):
         if denied is not None:
             return denied
 
+        dataset_ids, source_context = resolve_accounting_dataset_scope(self._session, context.tenant)
         data = self._service.get_cash_flow_forecast(
             context.tenant.company_id,
+            dataset_ids=dataset_ids,
             horizon_days=arguments.horizon_days,
         )
+        data["source_context"] = source_context
         return ToolResult(
             success=True,
             data=data,
@@ -324,7 +344,11 @@ class ReconcileSalesAndAccountingTool(AccountingAITool):
         if denied is not None:
             return denied
 
-        data = self._service.reconcile_sales_with_accounting(context.tenant.company_id)
+        dataset_ids, source_context = resolve_accounting_dataset_scope(self._session, context.tenant)
+        data = self._service.reconcile_sales_with_accounting(
+            context.tenant.company_id, dataset_ids=dataset_ids
+        )
+        data["source_context"] = source_context
         return ToolResult(
             success=True,
             data=data,
@@ -349,7 +373,11 @@ class SearchInvoicesTool(AccountingAITool):
         if denied is not None:
             return denied
 
-        query = select(AccountingInvoice).where(AccountingInvoice.company_id == context.tenant.company_id)
+        dataset_ids, _source_context = resolve_accounting_dataset_scope(self._session, context.tenant)
+        query = select(AccountingInvoice).where(
+            AccountingInvoice.company_id == context.tenant.company_id,
+            apply_dataset_scope(AccountingInvoice.dataset_id, dataset_ids),
+        )
 
         if arguments.invoice_type:
             query = query.where(AccountingInvoice.invoice_type == arguments.invoice_type)

@@ -27,6 +27,10 @@ from backend.app.services.accounting_classification_service import (
     DuplicateConfirmationRequiredError,
 )
 from backend.app.services.accounting_intelligence_service import AccountingIntelligenceService
+from backend.app.services.accounting_source_scope import (
+    apply_dataset_scope,
+    resolve_accounting_dataset_scope,
+)
 from backend.app.services.financial_integration_service import (
     FinancialIntegrationService,
     HRPayrollAccessDeniedError,
@@ -193,23 +197,29 @@ def get_financial_overview(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Vue d'ensemble financière consolidée du tenant (données confirmées vs propositions `to_verify`)."""
+    dataset_ids, source_context = resolve_accounting_dataset_scope(db, tenant)
     service = AccountingIntelligenceService(db)
-    return service.get_financial_overview(tenant.company_id)
+    payload = service.get_financial_overview(tenant.company_id, dataset_ids=dataset_ids)
+    payload["source_context"] = source_context
+    return payload
 
 
 @router.get("/overview/unified")
 def get_unified_financial_overview(
     identity: CurrentIdentity = Depends(get_current_identity),
+    tenant: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Vue financière unifiée (Accounting + Retail + CRM + OCR + HR agrégé sous contrôle RBAC)."""
+    dataset_ids, source_context = resolve_accounting_dataset_scope(db, tenant)
     intel = AccountingIntelligenceService(db)
     integration = FinancialIntegrationService(db)
-    overview = intel.get_financial_overview(identity.company_id)
+    overview = intel.get_financial_overview(identity.company_id, dataset_ids=dataset_ids)
     unified = integration.get_unified_financial_context(identity.company_id, actor_user=identity.user)
     return {
         **overview,
         "unified_sources": unified,
+        "source_context": source_context,
     }
 
 
@@ -222,14 +232,18 @@ def get_monthly_expenses(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Dépenses mensuelles ventilées par catégorie et comparaison mois précédent."""
+    dataset_ids, source_context = resolve_accounting_dataset_scope(db, tenant)
     can_payroll, _ = can_access_hr_payroll_summary(db, tenant.company_id, identity.user)
     service = AccountingIntelligenceService(db)
-    return service.get_monthly_expenses(
+    payload = service.get_monthly_expenses(
         tenant.company_id,
+        dataset_ids=dataset_ids,
         year=year,
         month=month,
         include_payroll=can_payroll,
     )
+    payload["source_context"] = source_context
+    return payload
 
 
 @router.get("/margins")
@@ -238,8 +252,11 @@ def get_margins(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Marges brutes et opérationnelles calculées sur les données confirmées."""
+    dataset_ids, source_context = resolve_accounting_dataset_scope(db, tenant)
     service = AccountingIntelligenceService(db)
-    return service.get_profit_margin(tenant.company_id)
+    payload = service.get_profit_margin(tenant.company_id, dataset_ids=dataset_ids)
+    payload["source_context"] = source_context
+    return payload
 
 
 @router.get("/invoices/unpaid")
@@ -250,12 +267,16 @@ def get_unpaid_invoices(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Factures impayées ou en retard avec montants et ancienneté."""
+    dataset_ids, source_context = resolve_accounting_dataset_scope(db, tenant)
     service = AccountingIntelligenceService(db)
-    return service.get_unpaid_invoices(
+    payload = service.get_unpaid_invoices(
         tenant.company_id,
+        dataset_ids=dataset_ids,
         invoice_type=invoice_type,
         include_to_verify=include_to_verify,
     )
+    payload["source_context"] = source_context
+    return payload
 
 
 @router.get("/anomalies")
@@ -266,13 +287,17 @@ def get_expense_anomalies(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Détection IA d'anomalies de dépenses et alertes de doublons."""
+    dataset_ids, source_context = resolve_accounting_dataset_scope(db, tenant)
     can_payroll, _ = can_access_hr_payroll_summary(db, tenant.company_id, identity.user)
     service = AccountingIntelligenceService(db)
-    return service.get_expense_anomalies(
+    payload = service.get_expense_anomalies(
         tenant.company_id,
+        dataset_ids=dataset_ids,
         threshold_multiplier=threshold,
         include_payroll=can_payroll,
     )
+    payload["source_context"] = source_context
+    return payload
 
 
 @router.get("/forecast/cashflow")
@@ -282,8 +307,13 @@ def get_cash_flow_forecast(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Prévision prédictive de trésorerie (Cash Flow Forecast) IA."""
+    dataset_ids, source_context = resolve_accounting_dataset_scope(db, tenant)
     service = AccountingIntelligenceService(db)
-    return service.get_cash_flow_forecast(tenant.company_id, horizon_days=horizon_days)
+    payload = service.get_cash_flow_forecast(
+        tenant.company_id, dataset_ids=dataset_ids, horizon_days=horizon_days
+    )
+    payload["source_context"] = source_context
+    return payload
 
 
 @router.get("/reconciliation")
@@ -332,7 +362,11 @@ def list_transactions(
                 "Nécessite le module HR AI actif et un rôle exécutif/direction autorisé."
             ),
         )
-    stmt = select(AccountingTransaction).where(AccountingTransaction.company_id == tenant.company_id)
+    dataset_ids, _source_context = resolve_accounting_dataset_scope(db, tenant)
+    stmt = select(AccountingTransaction).where(
+        AccountingTransaction.company_id == tenant.company_id,
+        apply_dataset_scope(AccountingTransaction.dataset_id, dataset_ids),
+    )
     if transaction_type:
         stmt = stmt.where(AccountingTransaction.transaction_type == transaction_type)
     if entry_kind:
@@ -350,6 +384,7 @@ def list_transactions(
         {
             "id": str(t.id),
             "date": t.transaction_date.isoformat(),
+            "transaction_date": t.transaction_date.isoformat(),
             "transaction_type": t.transaction_type,
             "entry_kind": t.entry_kind,
             "category": t.category,
@@ -365,6 +400,7 @@ def list_transactions(
             "reference_id": t.reference_id,
             "source_module": t.source_module,
             "external_id": t.external_id,
+            "dataset_id": str(t.dataset_id) if t.dataset_id else None,
             "invoice_id": str(t.invoice_id) if t.invoice_id else None,
             "extra_data": t.extra_data,
         }
@@ -427,7 +463,11 @@ def list_invoices(
     db: Session = Depends(get_db),
 ) -> list[dict[str, Any]]:
     """Liste des factures et propositions documentaires du tenant."""
-    stmt = select(AccountingInvoice).where(AccountingInvoice.company_id == tenant.company_id)
+    dataset_ids, _source_context = resolve_accounting_dataset_scope(db, tenant)
+    stmt = select(AccountingInvoice).where(
+        AccountingInvoice.company_id == tenant.company_id,
+        apply_dataset_scope(AccountingInvoice.dataset_id, dataset_ids),
+    )
     if invoice_type:
         stmt = stmt.where(AccountingInvoice.invoice_type == invoice_type)
     if status_filter:
