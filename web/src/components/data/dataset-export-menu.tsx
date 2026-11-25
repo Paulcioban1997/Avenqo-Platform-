@@ -82,6 +82,7 @@ export interface DatasetExportMenuProps {
   isFr?: boolean;
   compact?: boolean;
   activeSearchQuery?: string;
+  previewLimit?: number;
   onExportError?: (msg: string) => void;
 }
 
@@ -252,6 +253,7 @@ export function DatasetExportMenu({
   isFr = true,
   compact = false,
   activeSearchQuery = "",
+  previewLimit = 50,
   onExportError,
 }: DatasetExportMenuProps) {
   const [open, setOpen] = useState(false);
@@ -260,11 +262,15 @@ export function DatasetExportMenu({
   const [selectedScope, setSelectedScope] = useState<ExportScopeCode>("cleaned");
   const [selectedFormat, setSelectedFormat] = useState<ExportFormatCode>("csv");
   const [includeEnvelope, setIncludeEnvelope] = useState(true);
+  const [exportOffset, setExportOffset] = useState(0);
   const [isDownloading, setIsDownloading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [lastExportMeta, setLastExportMeta] = useState<{
     filename: string;
     rows: string;
+    totalRows: number;
+    offset: number;
+    nextOffset: number | null;
     paginated: boolean;
   } | null>(null);
 
@@ -297,6 +303,7 @@ export function DatasetExportMenu({
 
   const handleSelectScope = (code: ExportScopeCode) => {
     setSelectedScope(code);
+    setExportOffset(0);
     setLastExportMeta(null);
     if (code !== "original" && selectedFormat === "original") {
       setSelectedFormat("csv");
@@ -305,6 +312,7 @@ export function DatasetExportMenu({
 
   const handleSelectFormat = (code: ExportFormatCode) => {
     setSelectedFormat(code);
+    setExportOffset(0);
     setLastExportMeta(null);
     if (code === "original") {
       setSelectedScope("original");
@@ -327,18 +335,23 @@ export function DatasetExportMenu({
     return isFr ? fmt.label_fr : fmt.label_en;
   };
 
-  const handleDownload = async () => {
+  const executeDownloadWithOffset = async (requestedOffset: number) => {
     setIsDownloading(true);
     setLocalError(null);
-    setLastExportMeta(null);
     try {
       const params = new URLSearchParams();
       params.set("scope", selectedFormat === "original" ? "original" : selectedScope);
+      if (requestedOffset > 0) {
+        params.set("offset", String(requestedOffset));
+      }
       if (selectedFormat === "json") {
         params.set("envelope", includeEnvelope ? "true" : "false");
       }
-      if (selectedScope === "filtered_preview" && activeSearchQuery.trim()) {
-        params.set("search", activeSearchQuery.trim());
+      if (selectedScope === "filtered_preview") {
+        if (activeSearchQuery.trim()) {
+          params.set("search", activeSearchQuery.trim());
+        }
+        params.set("limit", String(Math.max(1, previewLimit || 50)));
       }
 
       const resp = await fetch(
@@ -364,8 +377,15 @@ export function DatasetExportMenu({
         resp.headers.get("Content-Disposition"),
         `${safeBase}-${selectedScope}${ext}`
       );
-      const exportedRows = resp.headers.get("X-Export-Row-Count") ?? "—";
+      const exportedRowsStr = resp.headers.get("X-Export-Row-Count") ?? "0";
+      const totalRowsStr = resp.headers.get("X-Export-Total-Rows") ?? exportedRowsStr;
+      const exportedCount = Number(exportedRowsStr) || 0;
+      const totalCount = Number(totalRowsStr) || exportedCount;
       const isPaginated = resp.headers.get("X-Export-Paginated") === "true";
+      const nextOffset =
+        isPaginated && requestedOffset + exportedCount < totalCount
+          ? requestedOffset + exportedCount
+          : null;
 
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
@@ -376,9 +396,13 @@ export function DatasetExportMenu({
       anchor.remove();
       URL.revokeObjectURL(url);
 
+      setExportOffset(requestedOffset);
       setLastExportMeta({
         filename,
-        rows: exportedRows,
+        rows: exportedRowsStr,
+        totalRows: totalCount,
+        offset: requestedOffset,
+        nextOffset,
         paginated: isPaginated,
       });
     } catch (e) {
@@ -388,6 +412,10 @@ export function DatasetExportMenu({
     } finally {
       setIsDownloading(false);
     }
+  };
+
+  const handleDownload = async () => {
+    await executeDownloadWithOffset(exportOffset);
   };
 
   return (
@@ -607,20 +635,35 @@ export function DatasetExportMenu({
               )}
 
               {lastExportMeta && (
-                <div className="flex items-center justify-between gap-2 rounded-xl px-3.5 py-2.5 text-xs bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300">
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl px-3.5 py-2.5 text-xs bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300">
                   <div className="flex items-center gap-2">
                     <CheckCircle2 size={15} className="shrink-0" />
                     <span>
                       {isFr ? "Téléchargement prêt :" : "Download ready:"}{" "}
                       <strong className="font-mono">{lastExportMeta.filename}</strong> ({lastExportMeta.rows}{" "}
-                      {isFr ? "lignes" : "rows"})
+                      {isFr ? "lignes" : "rows"}
+                      {lastExportMeta.totalRows > 0
+                        ? ` / ${lastExportMeta.totalRows}`
+                        : ""})
                       {lastExportMeta.paginated
                         ? isFr
-                          ? " · Lot paginé"
-                          : " · Paginated slice"
+                          ? ` · Lot paginé (offset ${lastExportMeta.offset})`
+                          : ` · Paginated slice (offset ${lastExportMeta.offset})`
                         : ""}
                     </span>
                   </div>
+                  {lastExportMeta.nextOffset != null && (
+                    <button
+                      type="button"
+                      disabled={isDownloading}
+                      onClick={() => void executeDownloadWithOffset(lastExportMeta.nextOffset!)}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[11px] cursor-pointer"
+                    >
+                      {isFr
+                        ? `Télécharger le lot suivant (offset ${lastExportMeta.nextOffset})`
+                        : `Download next batch (offset ${lastExportMeta.nextOffset})`}
+                    </button>
+                  )}
                 </div>
               )}
             </div>

@@ -514,3 +514,69 @@ def test_large_volume_streaming_pagination_and_pdf_row_cap(export_env) -> None:
     assert capped_pdf.headers["X-Export-Row-Count"] == "1500"
     assert capped_pdf.headers["X-Export-Total-Rows"] == "1600"
     assert capped_pdf.headers["X-Export-Paginated"] == "true"
+
+
+def test_audit_pr136_copilot_threads_regression(export_env) -> None:
+    """Verify PR #136 review fixes: high-precision Parquet Decimal fallback (>18 scale / >38 digits), non-truncated DOCX/PDF, viewer quality_report redaction, and fail-closed cleaned recovery."""
+    from decimal import Decimal
+    import pyarrow.parquet as pq
+    from docx import Document as DocxDocument
+    from backend.app.services.dataset_export_service import DatasetExportService, DatasetSourceUnavailable
+
+    client, _, ctx, _ = export_env
+
+    # 1. Thread 3: High-precision & high-scale Decimals in Parquet never lose accuracy or raise InvalidOperation
+    arr_high_scale = DatasetExportService._column_to_arrow_array(
+        [Decimal("0.123456789012345678901234"), Decimal("1.500000000000000000000001"), None]
+    )
+    assert arr_high_scale.to_pylist() == [
+        "0.123456789012345678901234",
+        "1.500000000000000000000001",
+        None,
+    ]
+    arr_35_digits = DatasetExportService._column_to_arrow_array(
+        [Decimal("123456789012345678901234567890.1234")]
+    )
+    assert arr_35_digits.to_pylist() == [Decimal("123456789012345678901234567890.1234")]
+
+    # 2. Threads 8, 9, 10: Wide table (>10 columns) PDF and long text (>250 chars) in DOCX/PDF
+    long_note = "CLAUSE_FINANCIERE_INTEGRALE_" + ("X" * 310) + "_FIN_INTEGRALE"
+    wide_rows = [{f"col_{i}": f"val_{i}" for i in range(1, 15)}]
+    wide_rows[0]["col_1"] = long_note
+    wide_fields = [f"col_{i}" for i in range(1, 15)]
+
+    pdf_bytes = DatasetExportService._build_tabular_pdf_bytes(
+        dataset_name="WideAudit",
+        rows=wide_rows,
+        fieldnames=wide_fields,
+        scope="cleaned",
+        total_rows=1,
+        offset=0,
+        paginated=False,
+    )
+    assert pdf_bytes.startswith(b"%PDF")
+
+    docx_bytes = DatasetExportService._build_tabular_docx_bytes(
+        dataset_name="WideAudit",
+        rows=wide_rows,
+        fieldnames=wide_fields,
+        scope="cleaned",
+        total_rows=1,
+        offset=0,
+        paginated=False,
+    )
+    doc = DocxDocument(BytesIO(docx_bytes))
+    assert doc.tables[0].rows[1].cells[0].text == long_note
+
+    # 3. Thread 1: Viewer exporting quality_report has raw pre-cleaning values redacted from modifications
+    csv_bytes = b"sku,montant\nA1,100.50\nA2,200.75\n"
+    ds_id = _upload_csv_dataset(client, "audit_qualite.csv", csv_bytes)
+    ctx["state"]["identity"] = ctx["identities"]["viewer_a"]
+    qr_res = client.get(f"/api/v1/datasets/{ds_id}/export/json?scope=quality_report&envelope=true")
+    assert qr_res.status_code == 200
+    qr_json = qr_res.json()
+    for mod in qr_json.get("modifications", []):
+        assert "before" not in mod
+        assert "original_value" not in mod
+        assert "raw_value" not in mod
+

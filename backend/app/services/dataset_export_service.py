@@ -446,7 +446,14 @@ class DatasetExportService:
 
         # 2. Quality & Cleaning Summary Report scope (distinct from tabular data export!)
         if norm_scope == "quality_report":
-            return self._export_quality_report(tenant, dataset, safe_stem, fmt, envelope=envelope)
+            return self._export_quality_report(
+                tenant,
+                dataset,
+                safe_stem,
+                fmt,
+                envelope=envelope,
+                can_manage=can_manage,
+            )
 
         # 3. Resolve tabular rows for the requested scope
         all_rows = self._load_rows_for_scope(
@@ -639,9 +646,32 @@ class DatasetExportService:
         fmt: str,
         *,
         envelope: bool = True,
+        can_manage: bool = True,
     ) -> ExportPayload:
-        detail = self._cleaning.detail(tenant, dataset.id, limit=DatasetCleaningService._MAX_PREVIEW_ROWS)
+        detail = dict(self._cleaning.detail(tenant, dataset.id, limit=DatasetCleaningService._MAX_PREVIEW_ROWS))
+        raw_mods = list(detail.get("modifications") or [])
+        if not can_manage:
+            sanitized_mods: list[dict[str, Any]] = []
+            for mod in raw_mods:
+                if isinstance(mod, dict):
+                    sanitized_mods.append(
+                        {
+                            k: v
+                            for k, v in mod.items()
+                            if k
+                            not in {
+                                "before",
+                                "original_value",
+                                "raw_value",
+                                "value_before",
+                                "sample_before",
+                            }
+                        }
+                    )
+            detail["modifications"] = sanitized_mods
         preview_rows = list(detail.get("cleaned_preview") or [])[: DatasetCleaningService._REPORT_PREVIEW_ROWS]
+        if not can_manage:
+            preview_rows = [DatasetCleaningService._to_business_row(r) for r in preview_rows]
         col_rows = [
             {
                 "column": c.get("name"),
@@ -807,18 +837,12 @@ class DatasetExportService:
                 return [dict(row) for row in self._ingestion.get_cleaned_rows(tenant, dataset.id)]
             except DatasetArtifactMissingError as exc:
                 raise DatasetSourceUnavailable(str(exc)) from exc
-            except Exception:
-                # Fallback for legacy CSV datasets stored directly via DatasetImportService
-                raw_rows = [dict(r) for r in self._ingestion._reload_current_version_rows(dataset)]
-                if raw_rows:
-                    return raw_rows
-                if self._ingestion._expected_row_count(dataset) > 0:
-                    raise DatasetSourceUnavailable(
-                        "Le fichier source de ce dataset n'est plus disponible sur le stockage."
-                    )
+            except Exception as exc:
                 if dataset.status not in {DatasetStatus.READY, DatasetStatus.VALIDATED}:
-                    raise DatasetNotReadyForExport("Ce dataset n'est pas encore prêt pour l'export.")
-                return []
+                    raise DatasetNotReadyForExport("Ce dataset n'est pas encore prêt pour l'export.") from exc
+                raise DatasetSourceUnavailable(
+                    "Les données nettoyées de ce dataset sont indisponibles ; aucun repli sur les données brutes n'est autorisé."
+                ) from exc
 
     def _resolve_raw_artifact(
         self,
@@ -1165,12 +1189,13 @@ class DatasetExportService:
         if not non_null:
             return pa.array([None] * len(values), type=pa.null())
 
-        # Preserve exact Decimal columns via decimal128
+        # Preserve exact Decimal columns via decimal128 (or lossless string if scale > 18 or precision > 38)
         if any(isinstance(v, Decimal) for v in non_null) and all(
             isinstance(v, (Decimal, int)) and not isinstance(v, bool) for v in non_null
         ):
             decimals: list[Decimal | None] = []
             max_scale = 0
+            max_int_digits = 0
             for v in values:
                 if v is None:
                     decimals.append(None)
@@ -1179,15 +1204,26 @@ class DatasetExportService:
                     if not d.is_finite():
                         decimals.append(None)
                     else:
-                        exp = d.as_tuple().exponent
+                        dt = d.as_tuple()
+                        exp = dt.exponent
                         scale = -int(exp) if isinstance(exp, int) and exp < 0 else 0
+                        int_digits = max(1, len(dt.digits) + int(exp)) if isinstance(exp, int) else len(dt.digits)
                         if scale > max_scale:
                             max_scale = scale
+                        if int_digits > max_int_digits:
+                            max_int_digits = int_digits
                         decimals.append(d)
-            scale_bounded = min(max_scale, 18)
-            quantizer = Decimal(10) ** (-scale_bounded) if scale_bounded > 0 else Decimal(1)
-            quantized = [d.quantize(quantizer) if d is not None else None for d in decimals]
-            return pa.array(quantized, type=pa.decimal128(38, scale_bounded))
+            if max_scale > 18 or (max_int_digits + max_scale) > 38:
+                return pa.array(
+                    [format(d, "f") if d is not None else None for d in decimals],
+                    type=pa.string(),
+                )
+            from decimal import Context as _DecimalContext
+
+            ctx38 = _DecimalContext(prec=38)
+            quantizer = Decimal(10) ** (-max_scale) if max_scale > 0 else Decimal(1)
+            quantized = [ctx38.quantize(d, quantizer) if d is not None else None for d in decimals]
+            return pa.array(quantized, type=pa.decimal128(38, max_scale))
 
         if all(isinstance(v, bool) for v in non_null):
             return pa.array(values, type=pa.bool_())
@@ -1298,40 +1334,56 @@ class DatasetExportService:
 
         if fieldnames:
             usable_width = page_size[0] - (2 * margin)
-            col_width = max(36.0, usable_width / max(len(fieldnames), 1))
-            col_widths = [col_width] * len(fieldnames)
-
-            table_data: list[list[Any]] = [
-                [Paragraph(f"<b>{xml_escape(str(col))}</b>", header_cell_style) for col in fieldnames]
+            max_cols_per_table = 10
+            col_groups = [
+                fieldnames[i : i + max_cols_per_table]
+                for i in range(0, len(fieldnames), max_cols_per_table)
             ]
-            for row in rows:
-                table_data.append(
-                    [
+            for group_idx, group_cols in enumerate(col_groups):
+                if len(col_groups) > 1:
+                    story.append(
                         Paragraph(
-                            xml_escape(format_scalar_for_text(row.get(col), neutralize_formulas=False)[:160]),
-                            body_cell_style,
+                            f"<b>Bloc de colonnes {group_idx + 1} / {len(col_groups)}</b> "
+                            f"({xml_escape(str(group_cols[0]))} … {xml_escape(str(group_cols[-1]))})",
+                            meta_style,
                         )
-                        for col in fieldnames
-                    ]
-                )
+                    )
+                col_width = usable_width / max(len(group_cols), 1)
+                col_widths = [col_width] * len(group_cols)
 
-            table = Table(table_data, colWidths=col_widths, repeatRows=1)
-            table.setStyle(
-                TableStyle(
-                    [
-                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0B132B")),
-                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
-                        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#CBD5E1")),
-                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                        ("TOPPADDING", (0, 0), (-1, -1), 4),
-                        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-                        ("LEFTPADDING", (0, 0), (-1, -1), 4),
-                        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-                    ]
+                table_data: list[list[Any]] = [
+                    [Paragraph(f"<b>{xml_escape(str(col))}</b>", header_cell_style) for col in group_cols]
+                ]
+                for row in rows:
+                    table_data.append(
+                        [
+                            Paragraph(
+                                xml_escape(format_scalar_for_text(row.get(col), neutralize_formulas=False)),
+                                body_cell_style,
+                            )
+                            for col in group_cols
+                        ]
+                    )
+
+                table = Table(table_data, colWidths=col_widths, repeatRows=1)
+                table.setStyle(
+                    TableStyle(
+                        [
+                            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0B132B")),
+                            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
+                            ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#CBD5E1")),
+                            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                            ("TOPPADDING", (0, 0), (-1, -1), 4),
+                            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                        ]
+                    )
                 )
-            )
-            story.append(table)
+                story.append(table)
+                if group_idx + 1 < len(col_groups):
+                    story.append(Spacer(1, 10))
         else:
             story.append(Spacer(1, 8))
             story.append(Paragraph("Aucune ligne à afficher pour cette portée.", meta_style))
@@ -1385,7 +1437,7 @@ class DatasetExportService:
             for row in rows:
                 cells = table.add_row().cells
                 for idx, col in enumerate(fieldnames):
-                    cells[idx].text = format_scalar_for_text(row.get(col), neutralize_formulas=False)[:250]
+                    cells[idx].text = format_scalar_for_text(row.get(col), neutralize_formulas=False)
         else:
             document.add_paragraph("Aucune donnée tabulaire disponible.")
 

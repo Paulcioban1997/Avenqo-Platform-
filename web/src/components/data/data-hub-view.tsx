@@ -293,15 +293,16 @@ export function DataHubView() {
     window.print();
   };
 
+  const indexedRows = rows.map((row, originalIndex) => ({ row, originalIndex }));
   const visibleDetailRows = detailFilterQuery.trim()
-    ? rows.filter((row) =>
+    ? indexedRows.filter(({ row }) =>
         columns.some((col) =>
           String(row[col] ?? "")
             .toLowerCase()
             .includes(detailFilterQuery.trim().toLowerCase())
         )
       )
-    : rows;
+    : indexedRows;
 
   const filteredDatasets = datasets.filter((d) =>
     d.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -358,6 +359,7 @@ export function DataHubView() {
               datasetName={selectedDataset.name}
               isFr={isFr}
               activeSearchQuery={detailFilterQuery}
+              previewLimit={visibleDetailRows.length || 50}
               onExportError={(msg) => setDetailError(msg)}
             />
             <button
@@ -434,25 +436,25 @@ export function DataHubView() {
                 </tr>
               </thead>
               <tbody>
-                {visibleDetailRows.map((row, rowIdx) => (
-                  <tr key={rowIdx}>
+                {visibleDetailRows.map(({ row, originalIndex }) => (
+                  <tr key={originalIndex}>
                     {columns.map((col) => (
                       <td key={col} onDoubleClick={() => {
-                        setEditingCell({ rowIdx, col });
+                        setEditingCell({ rowIdx: originalIndex, col });
                         setEditValue(String(row[col] ?? ""));
                       }}>
-                        {editingCell?.rowIdx === rowIdx && editingCell?.col === col ? (
+                        {editingCell?.rowIdx === originalIndex && editingCell?.col === col ? (
                           <div className="data-hub-cell-edit">
                             <input
                               autoFocus
                               value={editValue}
                               onChange={(e) => setEditValue(e.target.value)}
                               onKeyDown={(e) => {
-                                if (e.key === "Enter") handleSaveCell(rowIdx, col);
+                                if (e.key === "Enter") handleSaveCell(originalIndex, col);
                                 if (e.key === "Escape") setEditingCell(null);
                               }}
                             />
-                            <button onClick={() => handleSaveCell(rowIdx, col)} title={t.crm.actions.save}>
+                            <button onClick={() => handleSaveCell(originalIndex, col)} title={t.crm.actions.save}>
                               <Save size={13} />
                             </button>
                             <button onClick={() => setEditingCell(null)} title={t.crm.actions.close}>
@@ -467,7 +469,7 @@ export function DataHubView() {
                     <td className="data-hub-no-print">
                       <button
                         className="data-hub-row-delete"
-                        onClick={() => handleDeleteRow(rowIdx)}
+                        onClick={() => handleDeleteRow(originalIndex)}
                         title={t.common.deletePermanently}
                       >
                         <Trash2 size={13} />

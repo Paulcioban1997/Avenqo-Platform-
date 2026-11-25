@@ -230,11 +230,29 @@ export function InvoiceDetailDrawer({
           },
         ];
 
+  const hasExplicitLineItems = Boolean(detail.line_items && detail.line_items.length > 0);
+  const hasExplicitSubtotalAndTax =
+    detail.subtotal_amount != null && detail.tax_amount != null;
+  const hasIndependentMathEvidence = hasExplicitLineItems || hasExplicitSubtotalAndTax;
+
   const computedTax =
     detail.tax_amount ??
-    lineItems.reduce((acc, item) => acc + Number(item.tax_amount ?? 0), 0);
+    (hasExplicitLineItems
+      ? lineItems.reduce((acc, item) => acc + Number(item.tax_amount ?? 0), 0)
+      : 0);
   const computedSubtotal =
-    detail.subtotal_amount ?? Number((detail.total_amount - computedTax).toFixed(2));
+    detail.subtotal_amount ??
+    (hasExplicitLineItems
+      ? Number(
+          lineItems
+            .reduce(
+              (acc, item) =>
+                acc + (Number(item.total_amount ?? 0) - Number(item.tax_amount ?? 0)),
+              0
+            )
+            .toFixed(2)
+        )
+      : Number((detail.total_amount - computedTax).toFixed(2)));
   const mathExpectedTotal = Number((computedSubtotal + computedTax).toFixed(2));
   const mathDelta = Math.abs(mathExpectedTotal - Number(detail.total_amount || 0));
   const balanceDelta = Math.abs(
@@ -242,7 +260,8 @@ export function InvoiceDetailDrawer({
       Number(detail.remaining_amount || 0) -
       Number(detail.total_amount || 0)
   );
-  const mathValid = mathDelta <= 0.02 && balanceDelta <= 0.02;
+  const mathValid =
+    hasIndependentMathEvidence && mathDelta <= 0.02 && balanceDelta <= 0.02;
 
   const isPaid =
     detail.status === "paid" ||
@@ -256,16 +275,22 @@ export function InvoiceDetailDrawer({
         cls: "bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30",
       };
     }
+    if (!isConfirmed) {
+      return {
+        label: isPaid
+          ? isFr
+            ? "Payé · À vérifier"
+            : "Paid · To Verify"
+          : isFr
+            ? "À vérifier (IA / Brouillon)"
+            : "To Verify (AI / Draft)",
+        cls: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30",
+      };
+    }
     if (isPaid) {
       return {
         label: isFr ? "Payé · Confirmé" : "Paid · Confirmed",
         cls: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
-      };
-    }
-    if (!isConfirmed) {
-      return {
-        label: isFr ? "À vérifier (IA / Brouillon)" : "To Verify (AI / Draft)",
-        cls: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30",
       };
     }
     if (detail.status === "overdue") {
@@ -286,38 +311,25 @@ export function InvoiceDetailDrawer({
     (isFr ? "Saisie comptable" : "Manual entry");
 
   const classification = detail.proposed_classification ?? {
-    category: editCategory || (isReceivable ? "sales" : "operating_expense"),
-    account_code: isReceivable ? "4100 — Ventes & Services" : "5200 — Charges d'exploitation",
-    confidence: detail.is_confirmed ? 1.0 : 0.86,
-    is_ai_suggestion: !detail.is_confirmed,
-    reasons: detail.is_confirmed
-      ? [
-          isFr
-            ? "Imputation validée dans le registre comptable de l'entreprise."
-            : "Classification confirmed in the company accounting register.",
-        ]
-      : [
-          isFr
-            ? "Catégorie déduite du tiers et de la nature de la pièce (validation humaine requise)."
-            : "Category inferred from counterparty and document type (human review required).",
-        ],
+    category: editCategory || (typeof detail.extra_data?.category === "string" ? detail.extra_data.category : isFr ? "Non spécifiée" : "Unspecified"),
+    account_code:
+      typeof detail.extra_data?.account_code === "string"
+        ? detail.extra_data.account_code
+        : undefined,
+    confidence:
+      typeof detail.extra_data?.confidence_score === "number"
+        ? detail.extra_data.confidence_score
+        : undefined,
+    is_ai_suggestion: !isConfirmed,
+    reasons:
+      typeof detail.extra_data?.classification_rationale === "string" &&
+      detail.extra_data.classification_rationale.trim()
+        ? [detail.extra_data.classification_rationale]
+        : [],
   };
 
   const paymentsList: InvoicePaymentRecord[] =
-    detail.payments && detail.payments.length > 0
-      ? detail.payments
-      : detail.paid_amount > 0
-        ? [
-            {
-              id: `pmt-${detail.id}`,
-              payment_date: detail.issue_date,
-              amount: detail.paid_amount,
-              currency: detail.currency,
-              method: isFr ? "Règlement enregistré" : "Recorded payment",
-              reference: detail.invoice_number,
-            },
-          ]
-        : [];
+    detail.payments && detail.payments.length > 0 ? detail.payments : [];
 
   const handleDownloadInvoice = (fmt: "csv" | "json" | "txt") => {
     if (!canReadAccounting) return;
@@ -412,10 +424,11 @@ export function InvoiceDetailDrawer({
       },
     };
     try {
-      const resp = await fetch(`/api/v1/accounting/invoices/${detail.id}`, {
-        method: "PATCH",
+      const resp = await fetch(`/api/v1/accounting/invoices/${detail.id}/review`, {
+        method: "POST",
         headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({
+          action: "correct",
           party_name: updated.party_name,
           invoice_number: updated.invoice_number,
           due_date: updated.due_date,
@@ -435,18 +448,23 @@ export function InvoiceDetailDrawer({
         });
         return;
       }
+      const errBody = await resp.json().catch(() => null);
+      setActionBanner({
+        tone: "error",
+        text:
+          (typeof errBody?.detail === "string" && errBody.detail) ||
+          (isFr
+            ? `Échec de l'enregistrement de la correction (HTTP ${resp.status}).`
+            : `Failed to save invoice correction (HTTP ${resp.status}).`),
+      });
     } catch {
-      // Fallback below when PATCH route is not yet mounted
+      setActionBanner({
+        tone: "error",
+        text: isFr
+          ? "Erreur réseau lors de l'enregistrement de la correction."
+          : "Network error while saving invoice correction.",
+      });
     }
-    setDetail(updated);
-    onInvoiceUpdated?.(updated);
-    setIsEditing(false);
-    setActionBanner({
-      tone: "warning",
-      text: isFr
-        ? "Correction appliquée dans la session de révision courante."
-        : "Correction applied in the current review session.",
-    });
   };
 
   const executeApprove = async () => {
@@ -462,30 +480,42 @@ export function InvoiceDetailDrawer({
       },
     };
     try {
-      const resp = await fetch(`/api/v1/accounting/invoices/${detail.id}/approve`, {
+      const resp = await fetch(`/api/v1/accounting/invoices/${detail.id}/review`, {
         method: "POST",
-        headers: getAuthHeaders(),
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "approve",
+          confirm_duplicate_override: Boolean(detail.duplicate_warning),
+        }),
       });
       if (resp.ok) {
-        setDetail(approved);
-        onInvoiceUpdated?.(approved);
+        const serverData = await resp.json().catch(() => null);
+        const merged = serverData && serverData.id ? { ...approved, ...serverData } : approved;
+        setDetail(merged);
+        onInvoiceUpdated?.(merged);
         setActionBanner({
           tone: "success",
           text: isFr ? "Facture et imputation comptable approuvées." : "Invoice and accounting classification approved.",
         });
         return;
       }
+      const errBody = await resp.json().catch(() => null);
+      setActionBanner({
+        tone: "error",
+        text:
+          (typeof errBody?.detail === "string" && errBody.detail) ||
+          (isFr
+            ? `Échec de l'approbation comptable (HTTP ${resp.status}).`
+            : `Failed to approve invoice (HTTP ${resp.status}).`),
+      });
     } catch {
-      // Standalone graceful fallback
+      setActionBanner({
+        tone: "error",
+        text: isFr
+          ? "Erreur réseau lors de l'approbation de la facture."
+          : "Network error while approving invoice.",
+      });
     }
-    setDetail(approved);
-    onInvoiceUpdated?.(approved);
-    setActionBanner({
-      tone: "success",
-      text: isFr
-        ? "Statut marqué « Confirmé » pour cette facture."
-        : "Status marked 'Confirmed' for this invoice.",
-    });
   };
 
   const handleApproveClick = () => {
@@ -505,21 +535,41 @@ export function InvoiceDetailDrawer({
       status: "rejected",
     };
     try {
-      await fetch(`/api/v1/accounting/invoices/${detail.id}/reject`, {
+      const resp = await fetch(`/api/v1/accounting/invoices/${detail.id}/review`, {
         method: "POST",
-        headers: getAuthHeaders(),
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reject" }),
+      });
+      if (resp.ok) {
+        const serverData = await resp.json().catch(() => null);
+        const merged = serverData && serverData.id ? { ...rejected, ...serverData } : rejected;
+        setDetail(merged);
+        onInvoiceUpdated?.(merged);
+        setActionBanner({
+          tone: "warning",
+          text: isFr
+            ? "Proposition IA rejetée — aucune écriture confirmée ne sera comptabilisée."
+            : "AI proposal rejected — no confirmed entry will be posted.",
+        });
+        return;
+      }
+      const errBody = await resp.json().catch(() => null);
+      setActionBanner({
+        tone: "error",
+        text:
+          (typeof errBody?.detail === "string" && errBody.detail) ||
+          (isFr
+            ? `Échec du rejet de la proposition (HTTP ${resp.status}).`
+            : `Failed to reject proposal (HTTP ${resp.status}).`),
       });
     } catch {
-      // Standalone graceful fallback
+      setActionBanner({
+        tone: "error",
+        text: isFr
+          ? "Erreur réseau lors du rejet de la proposition."
+          : "Network error while rejecting proposal.",
+      });
     }
-    setDetail(rejected);
-    onInvoiceUpdated?.(rejected);
-    setActionBanner({
-      tone: "warning",
-      text: isFr
-        ? "Proposition IA rejetée — aucune écriture confirmée ne sera comptabilisée."
-        : "AI proposal rejected — no confirmed entry will be posted.",
-    });
   };
 
   return (
@@ -858,20 +908,32 @@ export function InvoiceDetailDrawer({
               </h3>
               <span
                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold ${
-                  mathValid
-                    ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
-                    : "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                  !hasIndependentMathEvidence
+                    ? "bg-slate-200/70 dark:bg-white/[0.08] text-slate-600 dark:text-slate-300"
+                    : mathValid
+                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                      : "bg-amber-500/15 text-amber-700 dark:text-amber-400"
                 }`}
               >
-                {mathValid ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />}
+                {!hasIndependentMathEvidence ? (
+                  <AlertTriangle size={12} />
+                ) : mathValid ? (
+                  <CheckCircle2 size={12} />
+                ) : (
+                  <AlertTriangle size={12} />
+                )}
                 <span>
-                  {mathValid
+                  {!hasIndependentMathEvidence
                     ? isFr
-                      ? "Sous-total + Taxes = Total vérifié"
-                      : "Subtotal + Tax = Total verified"
-                    : isFr
-                      ? "Écart arithmétique à vérifier"
-                      : "Arithmetic discrepancy to verify"}
+                      ? "Ventilation taxes/lignes non fournie par la source"
+                      : "Subtotal/tax breakdown not provided by source"
+                    : mathValid
+                      ? isFr
+                        ? "Sous-total + Taxes = Total vérifié"
+                        : "Subtotal + Tax = Total verified"
+                      : isFr
+                        ? "Écart arithmétique à vérifier"
+                        : "Arithmetic discrepancy to verify"}
                 </span>
               </span>
             </div>
@@ -956,9 +1018,13 @@ export function InvoiceDetailDrawer({
                 }`}
               >
                 {classification.is_ai_suggestion
-                  ? isFr
-                    ? `Suggestion IA (${Math.round((classification.confidence ?? 0.85) * 100)} %) — À vérifier`
-                    : `AI Suggestion (${Math.round((classification.confidence ?? 0.85) * 100)}%) — To verify`
+                  ? classification.confidence != null
+                    ? isFr
+                      ? `Suggestion IA (${Math.round(classification.confidence * 100)} %) — À vérifier`
+                      : `AI Suggestion (${Math.round(classification.confidence * 100)}%) — To verify`
+                    : isFr
+                      ? "Proposition à vérifier (score non disponible)"
+                      : "Proposal to verify (score unavailable)"
                   : isFr
                     ? "Imputation confirmée"
                     : "Confirmed Classification"}

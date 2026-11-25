@@ -203,26 +203,23 @@ export function AccountingView() {
   const isFr = locale.toLowerCase().startsWith("fr");
   const session = useOptionalSession();
 
-  const userPerms = session?.identity?.user?.permissions ?? [];
-  const userRole = (session?.identity?.user?.role ?? "").toLowerCase();
+  const userPerms = Array.isArray(session?.identity?.user?.permissions)
+    ? session.identity.user.permissions
+    : [];
   const isPlatformAdmin = Boolean(session?.identity?.user?.is_platform_admin);
 
   const canReadAccounting =
     isPlatformAdmin ||
-    userPerms.length === 0 ||
     userPerms.includes("accounting:read") ||
-    userPerms.includes("accounting:write") ||
-    userRole === "owner" ||
-    userRole === "admin";
+    userPerms.includes("accounting:write");
 
   const canWriteAccounting =
     isPlatformAdmin ||
-    userPerms.includes("accounting:write") ||
-    userPerms.includes("company:manage") ||
-    userRole === "owner";
+    userPerms.includes("accounting:write");
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [invoiceLimit, setInvoiceLimit] = useState(150);
   const [overview, setOverview] = useState<FinancialOverview | null>(null);
   const [margins, setMargins] = useState<MarginsResponse | null>(null);
   const [invoices, setInvoices] = useState<EnrichedInvoiceItem[]>([]);
@@ -249,8 +246,8 @@ export function AccountingView() {
       const [ovRes, mgRes, invRes, txRes, anomRes, fcRes] = await Promise.all([
         fetch("/api/v1/accounting/overview", { headers }).catch(() => null),
         fetch("/api/v1/accounting/margins", { headers }).catch(() => null),
-        fetch("/api/v1/accounting/invoices?limit=150", { headers }).catch(() => null),
-        fetch("/api/v1/accounting/transactions?limit=150", { headers }).catch(() => null),
+        fetch(`/api/v1/accounting/invoices?limit=${invoiceLimit}`, { headers }).catch(() => null),
+        fetch(`/api/v1/accounting/transactions?limit=${invoiceLimit}`, { headers }).catch(() => null),
         fetch("/api/v1/accounting/anomalies", { headers }).catch(() => null),
         fetch("/api/v1/accounting/forecast/cashflow?horizon_days=30", { headers }).catch(() => null),
       ]);
@@ -300,7 +297,7 @@ export function AccountingView() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [invoiceLimit]);
 
   useEffect(() => {
     void loadData();
@@ -371,7 +368,9 @@ export function AccountingView() {
   }, [transactions, ledgerFilter, periodFilter, currencyFilter, sourceFilter, statusFilter]);
 
   // Financial Metrics (strictly distinguishing Confirmed Actuals vs AI Forecast / Pending)
-  const currency = currencyFilter !== "all" ? currencyFilter : overview?.currency || "CAD";
+  // Global KPIs always retain the authoritative backend overview currency to prevent currency relabeling without FX conversion.
+  const overviewCurrency = overview?.currency || "CAD";
+  const currency = overviewCurrency;
   const revenue = overview?.total_revenue ?? 0;
   const expenses = overview?.total_expenses ?? 0;
   const netProfit = overview?.net_income ?? overview?.net_profit ?? revenue - expenses;
@@ -385,23 +384,38 @@ export function AccountingView() {
     overview?.profit_margin ??
     (revenue > 0 ? Number(((netProfit / revenue) * 100).toFixed(1)) : null);
 
+  const confirmedReceivableInvoices = useMemo(
+    () =>
+      receivableInvoices.filter(
+        (i) => i.is_confirmed !== false && i.status !== "to_verify" && i.status !== "rejected"
+      ),
+    [receivableInvoices]
+  );
+  const confirmedPayableInvoices = useMemo(
+    () =>
+      payableInvoices.filter(
+        (i) => i.is_confirmed !== false && i.status !== "to_verify" && i.status !== "rejected"
+      ),
+    [payableInvoices]
+  );
+
   const arDue =
     overview?.receivables?.total_due ??
-    receivableInvoices
+    confirmedReceivableInvoices
       .filter((i) => i.status !== "paid")
       .reduce((acc, i) => acc + Number(i.remaining_amount || 0), 0);
   const arCount =
     overview?.receivables?.unpaid_count ??
-    receivableInvoices.filter((i) => i.status !== "paid" && i.remaining_amount > 0).length;
+    confirmedReceivableInvoices.filter((i) => i.status !== "paid" && i.remaining_amount > 0).length;
 
   const apDue =
     overview?.payables?.total_due ??
-    payableInvoices
+    confirmedPayableInvoices
       .filter((i) => i.status !== "paid")
       .reduce((acc, i) => acc + Number(i.remaining_amount || 0), 0);
   const apCount =
     overview?.payables?.unpaid_count ??
-    payableInvoices.filter((i) => i.status !== "paid" && i.remaining_amount > 0).length;
+    confirmedPayableInvoices.filter((i) => i.status !== "paid" && i.remaining_amount > 0).length;
 
   const unpaidInvoicesCount = overview?.unpaid_invoices_count ?? arCount + apCount;
   const unpaidInvoicesAmount = overview?.unpaid_invoices_amount ?? arDue + apDue;
@@ -487,9 +501,16 @@ export function AccountingView() {
                 >
                   <td className="py-3 px-4">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-slate-900 dark:text-[#F4F7FB] group-hover:text-[#0076FF] dark:group-hover:text-[#00D4FF] underline-offset-2 group-hover:underline">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedInvoice(inv);
+                        }}
+                        className="font-mono font-bold text-slate-900 dark:text-[#F4F7FB] group-hover:text-[#0076FF] dark:group-hover:text-[#00D4FF] underline-offset-2 group-hover:underline focus:outline-none focus:ring-2 focus:ring-[#0076FF] rounded px-1 -mx-1 cursor-pointer"
+                      >
                         #{inv.invoice_number}
-                      </span>
+                      </button>
                       {inv.duplicate_warning && (
                         <span
                           title={inv.duplicate_reason || ""}
@@ -552,30 +573,40 @@ export function AccountingView() {
                     <div className="inline-flex items-center gap-2">
                       <span
                         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                          isPaid
-                            ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
+                          inv.status === "rejected"
+                            ? "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400"
                             : isUnconfirmed
                               ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400"
-                              : inv.status === "overdue"
-                                ? "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400"
-                                : "bg-blue-50 text-[#0076FF] dark:bg-blue-950/40 dark:text-[#00D4FF]"
+                              : isPaid
+                                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
+                                : inv.status === "overdue"
+                                  ? "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400"
+                                  : "bg-blue-50 text-[#0076FF] dark:bg-blue-950/40 dark:text-[#00D4FF]"
                         }`}
                       >
-                        {isPaid
+                        {inv.status === "rejected"
                           ? isFr
-                            ? "Payé · Confirmé"
-                            : "Paid · Confirmed"
+                            ? "Rejetée"
+                            : "Rejected"
                           : isUnconfirmed
-                            ? isFr
-                              ? "À vérifier"
-                              : "To verify"
-                            : inv.status === "overdue"
+                            ? isPaid
                               ? isFr
-                                ? "Confirmé · En retard"
-                                : "Confirmed · Overdue"
+                                ? "Payé · À vérifier"
+                                : "Paid · To verify"
                               : isFr
-                                ? "Confirmé · Impayé"
-                                : "Confirmed · Unpaid"}
+                                ? "À vérifier"
+                                : "To verify"
+                            : isPaid
+                              ? isFr
+                                ? "Payé · Confirmé"
+                                : "Paid · Confirmed"
+                              : inv.status === "overdue"
+                                ? isFr
+                                  ? "Confirmé · En retard"
+                                  : "Confirmed · Overdue"
+                                : isFr
+                                  ? "Confirmé · Impayé"
+                                  : "Confirmed · Unpaid"}
                       </span>
                       <Eye size={13} className="text-slate-400 group-hover:text-[#0076FF]" />
                     </div>
@@ -741,6 +772,23 @@ export function AccountingView() {
             {isFr ? "Réinitialiser" : "Reset"}
           </button>
         )}
+
+        <div className="w-full pt-1 border-t border-slate-100 dark:border-white/[0.05] flex items-center justify-between text-[11px] text-slate-500 dark:text-[#94A3B8]">
+          <span>
+            {isFr
+              ? `${filteredInvoices.length} facture(s) affichée(s) sur ${invoices.length} chargée(s) (fenêtre max ${invoiceLimit}) · Les cartes KPI globales ci-dessous sont exprimées en ${overviewCurrency}.`
+              : `Showing ${filteredInvoices.length} of ${invoices.length} loaded invoice(s) (window max ${invoiceLimit}) · Global KPI cards below are reported in ${overviewCurrency}.`}
+          </span>
+          {invoices.length >= invoiceLimit && (
+            <button
+              type="button"
+              onClick={() => setInvoiceLimit((prev) => prev + 150)}
+              className="font-semibold text-[#0076FF] dark:text-[#00D4FF] hover:underline cursor-pointer"
+            >
+              {isFr ? "Charger plus de factures (+150)" : "Load more invoices (+150)"}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Primary KPI Grid — Confirmed Actuals */}
