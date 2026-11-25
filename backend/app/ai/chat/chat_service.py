@@ -68,8 +68,23 @@ SYSTEM_INSTRUCTION = (
     "When a signed-in user asks to book a specific date and time (even with typos), call check_availability then create_appointment. If they clearly request the booking now, set confirmed=true. If the client name is missing, use a walk-in name from the request (service + time). Surface tool errors (conflict, missing service, credits) instead of a generic failure. "
     "For demand or sales forecasts, call get_demand_forecast or get_sales_forecast on the active retail source. If the tool returns available=false, explain the specific reason (insufficient weekly history, no dated sales) — never say the data is unreliable when sales history exists. "
     "Enterprise memory provides remembered historical preferences and context; live business data in retrieved data or tool outcomes always takes precedence over stale remembered metrics or assumptions. "
+    "Never output '***' horizontal rules or triple-asterisk separators in your responses. "
     "Improvise and adapt every single conversation dynamically and organically to the user's specific questions and real company context. Never use rigid canned scripts, fixed dialogue trees, or robotic formulas for any module."
 )
+
+
+def _sanitize_assistant_content(content: str, *, is_voice: bool) -> str:
+    """Remove raw '***' dividers globally and strip all markdown symbols on voice turns."""
+    if not content:
+        return content
+    if is_voice:
+        from backend.app.voice.messages import strip_markdown_for_speech
+        return strip_markdown_for_speech(content)
+    import re
+    cleaned = re.sub(r"(?m)^\s*(?:\*\s*){3,}\s*$", "", content)
+    cleaned = re.sub(r"\*{3}([^*]+)\*{3}", r"**\1**", cleaned)
+    cleaned = cleaned.replace("***", "")
+    return re.sub(r"\n{3,}", "\n\n", cleaned).strip()
 
 def _localized_system_instruction(
     base: str,
@@ -158,7 +173,7 @@ def _localized_system_instruction(
         "When the caller asks a question requiring real company data, invoke the matching tool immediately in this exact turn. "
         "NEVER say 'Je vais vérifier, un instant' without executing the tool call in the same response!\n"
         "- Semantic Product Search & Zero False Substitutions: "
-        "When the caller asks about a specific product, category, or price, call `search_products` (or `get_product_detail`). "
+        "When the caller asks about a specific product, category, or price (e.g. 'Quel est votre produit le moins cher ?', 'Peux-tu comparer le produit A et le produit B ?'), call `search_products` (or `get_product_detail`). "
         "If `search_products` returns `status='not_found'`, tell the caller honestly and clearly that the product is not in the catalog — NEVER substitute an unrelated product (for example, if the caller asks for a snowboard protective helmet and the catalog only has snowboards and audio headphones, explicitly say you do not carry snowboard helmets; you may briefly note you only have audio headphones, NEVER recite snowboard prices as helmet prices!). "
         "If `search_products` returns `status='ambiguous'` (e.g. French 'casque' can mean audio headphones or a protective helmet), clarify naturally in 1–2 concise sentences.\n"
         "- CONCISE HONEST STOCK & PRICE PRESENTATION (NO ROBOTIC REPETITION): "
@@ -558,6 +573,7 @@ class ChatService:
             authorized_tool_agents=authorized_tool_agents or {},
             voice_path=voice_path or client_context.startswith("/voice"),
         )
+        is_voice_call = bool(voice_path or client_context == "/voice" or client_context.startswith("/voice"))
         routing_context = routing_context_for_chat(
             query=query,
             prompt=prompt,
@@ -565,6 +581,7 @@ class ChatService:
             plan_code=plan_code,
             remaining_credits=remaining_credits,
             avenqo_request_id=tool_context.request_id,
+            latency_sensitive=is_voice_call,
             tenant_id=str(tenant_id),
             user_id=str(user_id),
             conversation_id=str(conversation_id),
@@ -683,6 +700,7 @@ class ChatService:
                 attempts=attempts,
             )
 
+        content = _sanitize_assistant_content(content, is_voice=is_voice)
         sources = sources + _tool_sources(self.last_tool_call_results)
         message = self._conversations.add_message(tenant_id, conversation_id, AIMessageRole.ASSISTANT, content, provider_name, model_name, token_usage)
         self._conversations.add_sources(tenant_id, message.id, sources)
@@ -859,7 +877,7 @@ class ChatService:
                             continue
                         chunks.append(event.content)
                         yield ChatStreamEvent("delta", {"chunk": event.content})
-                    content = "".join(chunks)
+                    content = _sanitize_assistant_content("".join(chunks), is_voice=is_voice)
                 else:
                     tool_context = ToolExecutionContext(
                         tenant=TenantContext(company_id=tenant_id, user_id=user_id),
@@ -890,7 +908,7 @@ class ChatService:
                         if result.cancelled:
                             cancelled = True
                             break
-                        content = result.content
+                        content = _sanitize_assistant_content(result.content, is_voice=is_voice)
                         provider_name = result.provider or self._provider.name
                         model_name = result.model
                         token_usage = result.token_usage

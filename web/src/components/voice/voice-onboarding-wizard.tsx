@@ -396,7 +396,8 @@ export function VoiceOnboardingWizard({
 
     if ("speechSynthesis" in window) {
       window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
+      const spokenClean = String(text).replace(/[*_`~#|]+/g, " ").replace(/\s+/g, " ").trim();
+      const utterance = new SpeechSynthesisUtterance(spokenClean);
       utterance.lang = profile.primary_locale || "fr-CA";
       utterance.rate = customization.speech_speed;
       utterance.onend = () => setPlayingVoice(null);

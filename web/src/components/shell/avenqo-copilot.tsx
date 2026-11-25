@@ -298,9 +298,16 @@ export function AvenqoCopilot({
         };
         setMessages((prev) => [...prev, copilotMsg]);
 
-        // Voice reply in dictation or fallback voice mode if enabled
+        // Voice reply in dictation or fallback voice mode if enabled — strip markdown (*, **, ***, #) so TTS never says "astérisque"
         if ((mode === "mic" || fallbackVoiceRef.current) && voiceReplyEnabled && data.answer && "speechSynthesis" in window) {
-          const spoken = new SpeechSynthesisUtterance(data.answer);
+          const spokenClean = String(data.answer)
+            .replace(/```[\s\S]*?```/g, " ")
+            .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+            .replace(/[*_`~#|]+/g, " ")
+            .replace(/^\s*\d+[.)]\s+/gm, "")
+            .replace(/\s+/g, " ")
+            .trim();
+          const spoken = new SpeechSynthesisUtterance(spokenClean);
           spoken.lang = getBcp47ForLocale(locale);
           spoken.onend = () => {
             if (fallbackVoiceRef.current) startFallbackRecognition(voiceSession);

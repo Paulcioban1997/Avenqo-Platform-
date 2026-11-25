@@ -920,11 +920,11 @@ async def preview_voice(
     config = db.scalar(select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == identity.user.company_id))
     lang = resolve_locale(request.language or (company.preferred_language if company and company.preferred_language else None) or (config.preferred_language if config else None) or "fr")
     company_name = (config.effective_voice_name if config else (company.name if company else "Avenqo")).replace("_", " ")
+    from backend.app.voice.messages import strip_markdown_for_speech, voice_greeting
     if request.text and request.text.strip():
-        text_to_speak = request.text.strip()
+        text_to_speak = strip_markdown_for_speech(request.text.strip())
     else:
-        from backend.app.voice.messages import voice_greeting
-        text_to_speak = voice_greeting(lang, company_name)
+        text_to_speak = strip_markdown_for_speech(voice_greeting(lang, company_name))
 
     try:
         from openai import AsyncOpenAI

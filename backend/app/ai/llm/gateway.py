@@ -28,9 +28,10 @@ import asyncio
 import logging
 import random
 from collections.abc import AsyncIterator, Callable, Coroutine
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from dataclasses import replace
+from decimal import Decimal, InvalidOperation
 from time import perf_counter
 from typing import TypeVar
 
@@ -53,7 +54,53 @@ from backend.app.ai.llm.schemas import (
 
 logger = logging.getLogger("avenqo.ai.gateway")
 
-_T = TypeVar("_T")
+_ResultT = TypeVar("_ResultT", LLMGeneration, LLMToolResponse)
+
+
+def _to_decimal(value: object) -> Decimal:
+    """Coerce raw usage numeric values into Decimal safely."""
+    if value is None or isinstance(value, bool):
+        return Decimal("0")
+    if isinstance(value, Decimal):
+        return value
+    if isinstance(value, (int, float, str)):
+        try:
+            return Decimal(str(value))
+        except InvalidOperation:
+            return Decimal("0")
+    return Decimal("0")
+
+
+def _to_int(value: object) -> int:
+    """Coerce raw integer token/counter values safely."""
+    if value is None or isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return value
+    if isinstance(value, (float, Decimal)):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return 0
+    return 0
+
+
+def _to_optional_int(value: object) -> int | None:
+    """Coerce optional raw integer token fields while preserving None."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, (float, Decimal)):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None
 
 
 class AvenqoAIGateway(LLMProvider):
@@ -86,10 +133,9 @@ class AvenqoAIGateway(LLMProvider):
             f"avenqo_routing_context_{id(self)}",
             default=None,
         )
-
-    @property
-    def supports_tool_calling(self) -> bool:
-        return any(provider.supports_tool_calling for provider in self._providers)
+        self.supports_tool_calling: bool = any(
+            provider.supports_tool_calling for provider in providers
+        )
 
     @property
     def last_router_decision(self) -> LLMRouterDecision | None:
@@ -98,7 +144,10 @@ class AvenqoAIGateway(LLMProvider):
         return self._last_router_decision
 
     @contextmanager
-    def routing(self, context: LLMRoutingContext):
+    def routing(self, context: object):
+        if not isinstance(context, LLMRoutingContext):
+            yield
+            return
         token = self._routing_context.set(context)
         try:
             yield
@@ -166,27 +215,28 @@ class AvenqoAIGateway(LLMProvider):
             tool_calls=max(context.expected_tool_calls, 0),
         ))
 
-    def _usage_for_result(self, provider: LLMProvider, result) -> LLMUsage:
+    def _usage_for_result(self, provider: LLMProvider, result: LLMGeneration | LLMToolResponse) -> LLMUsage:
         usage = result.usage
         if usage is None:
             raw = result.token_usage
+            req_id = raw.get("provider_request_id")
             usage = LLMUsage(
                 provider=result.provider or provider.name,
                 model=result.model,
-                input_tokens=int(raw.get("input_tokens", 0) or 0),
-                cached_input_tokens=int(raw.get("cached_input_tokens", 0) or 0),
-                output_tokens=int(raw.get("output_tokens", 0) or 0),
-                cached_output_tokens=int(raw.get("cached_output_tokens", 0) or 0),
-                reasoning_tokens=int(raw.get("reasoning_tokens", 0) or 0),
-                text_input_tokens=raw.get("text_input_tokens"),
-                cached_text_input_tokens=raw.get("cached_text_input_tokens"),
-                text_output_tokens=raw.get("text_output_tokens"),
-                audio_input_units=raw.get("audio_input_units", 0) or 0,
-                cached_audio_input_units=raw.get("cached_audio_input_units", 0) or 0,
-                audio_output_units=raw.get("audio_output_units", 0) or 0,
-                audio_input_seconds=raw.get("audio_input_seconds", 0) or 0,
-                tool_calls=int(raw.get("tool_calls", 0) or 0),
-                provider_request_id=raw.get("provider_request_id"),
+                input_tokens=_to_int(raw.get("input_tokens")),
+                cached_input_tokens=_to_int(raw.get("cached_input_tokens")),
+                output_tokens=_to_int(raw.get("output_tokens")),
+                cached_output_tokens=_to_int(raw.get("cached_output_tokens")),
+                reasoning_tokens=_to_int(raw.get("reasoning_tokens")),
+                text_input_tokens=_to_optional_int(raw.get("text_input_tokens")),
+                cached_text_input_tokens=_to_optional_int(raw.get("cached_text_input_tokens")),
+                text_output_tokens=_to_optional_int(raw.get("text_output_tokens")),
+                audio_input_units=_to_decimal(raw.get("audio_input_units")),
+                cached_audio_input_units=_to_decimal(raw.get("cached_audio_input_units")),
+                audio_output_units=_to_decimal(raw.get("audio_output_units")),
+                audio_input_seconds=_to_decimal(raw.get("audio_input_seconds")),
+                tool_calls=_to_int(raw.get("tool_calls")),
+                provider_request_id=str(req_id) if req_id is not None else None,
             )
         usage = self._registered_usage(provider, usage)
         return self._attribute_usage(usage)
@@ -302,15 +352,16 @@ class AvenqoAIGateway(LLMProvider):
     async def _run(
         self,
         operation: str,
-        call: Callable[[LLMProvider], Coroutine[None, None, _T]],
-    ) -> _T:
+        call: Callable[[LLMProvider], Coroutine[None, None, _ResultT]],
+    ) -> _ResultT:
         last_error: Exception | None = None
         attempted_any = False
         attempts: list[LLMProviderAttempt] = []
         attempt_number = 0
 
         try:
-            for provider in self._ordered_providers(operation):
+            ordered_providers = self._ordered_providers(operation)
+            for provider_idx, provider in enumerate(ordered_providers):
                 candidate_id = self._candidate_id(provider)
                 model_id = candidate_id.partition(":")[2]
                 max_retries, base_delay, max_delay = self._retry_policy(provider)
@@ -353,9 +404,25 @@ class AvenqoAIGateway(LLMProvider):
                             "ai_gateway_failure provider=%s model=%s operation=%s attempt=%d category=%s",
                             provider.name, model_id, operation, retry_index + 1, category.value,
                         )
-                        if not is_fallback_eligible(category):
+                        has_remaining_provider = any(
+                            not self._breaker.is_open(self._candidate_id(candidate))
+                            for candidate in ordered_providers[provider_idx + 1:]
+                        )
+                        allow_tool_schema_fallback = (
+                            operation == "generate_with_tools"
+                            and category.value == "invalid_request"
+                            and has_remaining_provider
+                        )
+                        if not is_fallback_eligible(category) and not allow_tool_schema_fallback:
                             exc.attempts = tuple(attempts)
                             raise
+                        if allow_tool_schema_fallback:
+                            logger.warning(
+                                "ai_gateway_tool_schema_fallback provider=%s model=%s reason=provider_invalid_request_with_tools",
+                                provider.name,
+                                model_id,
+                            )
+                            break
                         if is_retryable(category) and retry_index < max_retries:
                             await self._retry_delay(
                                 retry_index,
@@ -402,7 +469,11 @@ class AvenqoAIGateway(LLMProvider):
             for attempt in getattr(exc, "attempts", ()):
                 if not any(attempt is recorded for recorded in known):
                     known.append(replace(attempt, attempt_number=len(known) + 1))
-            exc.attempts = tuple(known)
+            if isinstance(exc, LLMProviderError):
+                exc.attempts = tuple(known)
+            else:
+                with suppress(AttributeError, TypeError):
+                    setattr(exc, "attempts", tuple(known))
             raise
 
     async def generate(self, *, system_instruction: str, prompt: str) -> LLMGeneration:

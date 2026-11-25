@@ -251,3 +251,41 @@ def voice_ivr_greeting(config) -> str:
                 liaison_pat = r"\b" + first_stem + r"[stST]?[_\s,]+[Zz][eé]?" + second_stem + r"\b"
                 rendered = re.sub(liaison_pat, name, rendered, flags=re.IGNORECASE)
     return rendered.replace("_", " ").strip()
+
+
+def strip_markdown_for_speech(text: str) -> str:
+    """Strip all markdown tokens (including ***, **, *, #, backticks, pipes) before TTS.
+
+    Prevents any TTS engine (OpenAI Realtime, OpenAI Audio Speech, Gemini Live, or
+    browser SpeechSynthesisUtterance) from pronouncing '***' as 'astérisque astérisque'.
+    """
+    if not text:
+        return ""
+    cleaned = str(text)
+    # Remove fenced code block markers while keeping inner readable text
+    cleaned = re.sub(r"```[a-zA-Z0-9_-]*\s*", " ", cleaned)
+    cleaned = cleaned.replace("```", " ")
+    # Remove standalone horizontal rule lines (***, ---, ___, * * *)
+    cleaned = re.sub(r"(?m)^\s*(?:[\*\-_]\s*){3,}\s*$", " ", cleaned)
+    # Convert markdown links [label](url) -> label
+    cleaned = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", cleaned)
+    # Unwrap bold-italic, bold, italic, underline, strikethrough, inline code
+    cleaned = re.sub(r"\*{3}([^*]+)\*{3}", r"\1", cleaned)
+    cleaned = re.sub(r"\*{2}([^*]+)\*{2}", r"\1", cleaned)
+    cleaned = re.sub(r"\*([^*]+)\*", r"\1", cleaned)
+    cleaned = re.sub(r"_{3}([^_]+)_{3}", r"\1", cleaned)
+    cleaned = re.sub(r"_{2}([^_]+)_{2}", r"\1", cleaned)
+    cleaned = re.sub(r"(?<!\w)_([^_]+)_(?!\w)", r"\1", cleaned)
+    cleaned = re.sub(r"~~([^~]+)~~", r"\1", cleaned)
+    cleaned = re.sub(r"`([^`]+)`", r"\1", cleaned)
+    # Strip heading markers, list bullets, and numbered list prefixes
+    cleaned = re.sub(r"(?m)^\s*#{1,6}\s+", "", cleaned)
+    cleaned = re.sub(r"(?m)^\s*\d+[\.\)]\s*", "", cleaned)
+    cleaned = re.sub(r"(?m)^\s*[\-\*•\+]\s+", "", cleaned)
+    # Guarantee zero remaining asterisks, backticks, tildes, table pipes, or multi-hash markers
+    cleaned = re.sub(r"\*+", " ", cleaned)
+    cleaned = re.sub(r"#{2,}", " ", cleaned)
+    cleaned = re.sub(r"[`~|]+", " ", cleaned)
+    lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+    return re.sub(r"\s+", " ", " ".join(lines)).strip()
+

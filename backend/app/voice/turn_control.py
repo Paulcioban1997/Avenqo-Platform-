@@ -366,6 +366,18 @@ def is_explicit_interruption(text: str) -> bool:
     return any(re.search(p, normalized) for p in patterns)
 
 
+_DANGLING_CONTINUATION_TAILS = frozenset({
+    "et", "ou", "pour", "avec", "sans", "dans", "sur", "de", "du", "des",
+    "a", "au", "aux", "en", "par", "chez", "vers",
+    "and", "or", "for", "with", "in", "to", "of", "by",
+})
+_LEADING_CONTINUATION_WORDS = frozenset({
+    "et", "ou", "pour", "avec", "sans", "puis", "aussi", "en", "sur", "par",
+    "dans", "de", "du", "des", "a", "au", "aux",
+    "and", "or", "for", "with", "also", "to", "in", "on",
+})
+
+
 def adjudicate_transcript(
     transcript: str,
     *,
@@ -374,11 +386,13 @@ def adjudicate_transcript(
     last_spoken: str | None = None,
     allow_barge_in: bool = True,
     seconds_since_last_turn: float = 0.0,
+    in_flight_age_seconds: float | None = None,
 ) -> str:
-    """Return ignore, accept, or replace.
+    """Return ignore, accept, coalesce, queue, or replace.
 
-    replace supersedes an in-flight answer. accept queues the question without
-    cancelling audio. ignore drops noise, duplicates, and echoes.
+    replace supersedes an in-flight answer. coalesce merges a split continuation
+    into the active thinking turn. queue schedules a follow-up turn without
+    aborting current work or playback. ignore drops noise, duplicates, and echoes.
     """
     if not transcript or not transcript.strip():
         return "ignore"
@@ -410,16 +424,30 @@ def adjudicate_transcript(
         return "replace" if allow_barge_in else "accept"
 
     if phase in {"THINKING", "SYNTHESIZING"}:
-        # Protect in-flight Central AI computation from short noise, throat clears or hesitations.
-        # Only replace if caller spoke a substantive new question.
+        # Distinguishes a split continuation fragment from a distinct back-to-back question.
+        in_words = _words(in_flight_transcript) if in_flight_transcript else []
+        new_words = _words(transcript)
+        has_continuation_link = (
+            (bool(in_words) and in_words[-1] in _DANGLING_CONTINUATION_TAILS)
+            or (bool(new_words) and new_words[0] in _LEADING_CONTINUATION_WORDS)
+        )
+        if (
+            in_flight_transcript
+            and has_continuation_link
+            and (in_flight_age_seconds is None or in_flight_age_seconds <= 3.5)
+            and len(new_words) <= 6
+        ):
+            return "coalesce"
         if is_substantive_utterance(transcript):
+            if in_flight_transcript:
+                return "queue"
             return "replace"
         return "ignore"
 
     if phase in {"PLAYING", "SPEAKING"}:
         if not allow_barge_in:
             return "accept"
-        # During audio playback, only substantive speech or explicit interruption causes barge-in.
+        # During audio playback, substantive speech triggers barge-in; short non-query noise is ignored.
         if is_substantive_utterance(transcript):
             return "replace"
         return "ignore"

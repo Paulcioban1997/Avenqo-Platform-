@@ -41,6 +41,7 @@ class LLMRoutingContext:
     requires_structured_output: bool = False
     requires_reasoning: bool = False
     requires_streaming: bool = False
+    latency_sensitive: bool = False
     required_modalities: frozenset[str] = frozenset({"text"})
     required_model_capabilities: frozenset[LLMCapability] = frozenset()
     plan_code: str | None = None
@@ -173,6 +174,19 @@ class SmartModelRouter:
             return False
         if not context.required_capabilities.issubset(spec.capabilities):
             return False
+        # Strict tier-4 reasoning eligibility gate (e.g. gpt-6.2-astra):
+        # never select or fall back to tier-4 for latency-sensitive voice calls, demo/base plans,
+        # non-REASONING tasks, or unknown/insufficient credit balances (< 200 credits).
+        if spec.quality_tier >= 4 or spec.model_id == "gpt-6.2-astra":
+            plan = (context.plan_code or "").casefold()
+            if (
+                context.complexity != LLMTaskComplexity.REASONING
+                or context.latency_sensitive
+                or plan in {"demo", "base"}
+                or context.remaining_credits is None
+                or context.remaining_credits < 200
+            ):
+                return False
         return not context.requires_tool_calling or provider.supports_tool_calling
 
     def _score(
@@ -203,14 +217,38 @@ class SmartModelRouter:
         )
         expected_cost = spec.cost_for(estimated_usage)
 
-        if context.complexity in {LLMTaskComplexity.HIGH, LLMTaskComplexity.REASONING}:
-            task_penalty = (3 - spec.quality_tier) * 800
-            cost_weight = Decimal("10000")
-        elif context.complexity == LLMTaskComplexity.LOW:
+        plan = (context.plan_code or "").casefold()
+        if context.complexity == LLMTaskComplexity.LOW:
+            desired_tier = 1
             task_penalty = (spec.quality_tier - 1) * 20
             cost_weight = Decimal("1000000")
+        elif context.complexity == LLMTaskComplexity.REASONING and (
+            not context.latency_sensitive
+            and plan not in {"demo", "base"}
+            and context.remaining_credits is not None
+            and context.remaining_credits >= 200
+        ):
+            desired_tier = 4
+            task_penalty = max(0, 4 - spec.quality_tier) * 600
+            cost_weight = Decimal("10000")
+        elif context.complexity in {LLMTaskComplexity.HIGH, LLMTaskComplexity.REASONING} or (
+            context.latency_sensitive
+            and context.task_type in {
+                LLMTaskType.BUSINESS_QUESTION,
+                LLMTaskType.BUSINESS_REASONING,
+                LLMTaskType.TOOL_ORCHESTRATION,
+            }
+        ):
+            desired_tier = 3
+            under_tier = max(0, 3 - spec.quality_tier) * 800
+            # Cost-control overshoot guard: do not escalate to tier-4 Astra when Sol (tier 3) satisfies the turn.
+            over_tier = max(0, spec.quality_tier - 3) * 650
+            task_penalty = under_tier + over_tier
+            cost_weight = Decimal("10000")
         else:
-            task_penalty = abs(spec.quality_tier - 2) * 35
+            desired_tier = 2
+            over_tier = max(0, spec.quality_tier - 3) * 650
+            task_penalty = abs(spec.quality_tier - 2) * 35 + over_tier
             cost_weight = Decimal("50000")
 
         if spec.task_suitability and context.task_type.value not in spec.task_suitability:
@@ -218,16 +256,10 @@ class SmartModelRouter:
         if context.task_type in {LLMTaskType.EXTRACTION, LLMTaskType.CLASSIFICATION}:
             task_penalty += 0 if LLMCapability.LOW_COST in spec.capabilities else 100
         elif context.task_type == LLMTaskType.BUSINESS_REASONING:
-            task_penalty += (3 - spec.quality_tier) * 100
+            task_penalty += max(0, desired_tier - spec.quality_tier) * 100
 
-        plan = (context.plan_code or "").casefold()
         if plan == "demo":
             cost_weight *= Decimal("2")
-        elif plan == "professional" and context.complexity in {
-            LLMTaskComplexity.HIGH,
-            LLMTaskComplexity.REASONING,
-        }:
-            cost_weight *= Decimal("10")
         if context.remaining_credits is not None and context.remaining_credits <= 10:
             cost_weight *= Decimal("10")
 
@@ -260,6 +292,7 @@ def routing_context_for_chat(
     remaining_credits: int | None,
     avenqo_request_id: str,
     requires_streaming: bool = False,
+    latency_sensitive: bool = False,
     required_model_capabilities: frozenset[LLMCapability] = frozenset(),
     required_modalities: frozenset[str] = frozenset({"text"}),
     task_complexity: LLMTaskComplexity | None = None,
@@ -310,6 +343,7 @@ def routing_context_for_chat(
             or task_type == LLMTaskType.BUSINESS_REASONING
         ),
         requires_streaming=requires_streaming,
+        latency_sensitive=latency_sensitive,
         required_modalities=required_modalities,
         required_model_capabilities=required_model_capabilities,
         plan_code=plan_code,

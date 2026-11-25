@@ -1016,7 +1016,10 @@ def test_gemini_live_realtime_audio_adapter_telnyx_bridge_end_to_end_and_barge_i
         media_frames = [msg for msg in socket.outbound if msg.get("event") == "media"]
         assert len(media_frames) >= 1
 
-        # Simuler une interruption (barge-in) pendant la conversation
+        # Simuler une interruption réelle (barge-in vérifié : 4 trames vocales pendant la lecture avant interrupted=True)
+        for chunk_id in ("3", "4", "5", "6"):
+            await socket.inbound.put({"event": "media", "stream_id": "stream-ero-1", "media": {"chunk": chunk_id, "payload": b64_ulaw}})
+        await asyncio.sleep(0.05)
         await fake_session._server_queue.put(
             SimpleNamespace(
                 server_content=SimpleNamespace(

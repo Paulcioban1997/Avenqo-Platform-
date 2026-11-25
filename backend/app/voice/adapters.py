@@ -10,6 +10,7 @@ from typing import Any, AsyncIterator, Protocol, cast
 from openai import AsyncOpenAI
 
 from backend.app.core.locale_catalog import locale_info
+from backend.app.voice.messages import strip_markdown_for_speech
 
 logger = logging.getLogger("avenqo.voice.adapters")
 
@@ -69,6 +70,7 @@ class OpenAISpeechToTextAdapter:
     def __init__(self, config: OpenAIAudioConfig, client: AsyncOpenAI | None = None) -> None:
         self._config = config
         self._client = client
+        self.last_usage: dict[str, Any] | None = None
 
     async def transcribe(self, audio: bytes, *, locale: str, content_type: str) -> str:
         if not self._config.api_key or not self._config.stt_model:
@@ -78,6 +80,13 @@ class OpenAISpeechToTextAdapter:
             file=("voice-input", audio, content_type),
             model=self._config.stt_model,
         )
+        raw_usage = getattr(response, "usage", None)
+        if isinstance(raw_usage, dict):
+            self.last_usage = dict(raw_usage)
+        elif raw_usage is not None and hasattr(raw_usage, "model_dump"):
+            self.last_usage = raw_usage.model_dump()
+        else:
+            self.last_usage = None
         return str(getattr(response, "text", response) or "")
 
 
@@ -87,15 +96,17 @@ class OpenAITextToSpeechAdapter:
     def __init__(self, config: OpenAIAudioConfig, client: AsyncOpenAI | None = None) -> None:
         self._config = config
         self._client = client
+        self.last_usage: dict[str, Any] | None = None
 
     async def synthesize(self, text: str, *, locale: str) -> bytes:
         if not self._config.api_key or not self._config.tts_model or not self._config.tts_voice:
             raise ExternalVoiceConfigurationRequired(
                 "OPENAI_API_KEY, VOICE_TTS_MODEL and VOICE_TTS_VOICE are required"
             )
+        cleaned_input = strip_markdown_for_speech(text) or text
         client = self._client or AsyncOpenAI(api_key=self._config.api_key, base_url=self._config.base_url)
         response = await client.audio.speech.create(
-            input=text,
+            input=cleaned_input,
             model=self._config.tts_model,
             voice=self._config.tts_voice,
             response_format="opus",
@@ -103,6 +114,86 @@ class OpenAITextToSpeechAdapter:
             instructions=f"Speak naturally in {locale_info(locale).english_name}. Preserve the input language; do not translate.",
         )
         return response.read()
+
+    async def synthesize_pcm(self, text: str, *, locale: str) -> bytes:
+        """Synthesize 24kHz 16-bit little-endian mono PCM audio for streaming telephony."""
+        if not self._config.api_key or not self._config.tts_model or not self._config.tts_voice:
+            raise ExternalVoiceConfigurationRequired(
+                "OPENAI_API_KEY, VOICE_TTS_MODEL and VOICE_TTS_VOICE are required"
+            )
+        cleaned_input = strip_markdown_for_speech(text) or text
+        client = self._client or AsyncOpenAI(api_key=self._config.api_key, base_url=self._config.base_url)
+        response = await client.audio.speech.create(
+            input=cleaned_input,
+            model=self._config.tts_model,
+            voice=self._config.tts_voice,
+            response_format="pcm",
+            speed=self._config.speech_speed,
+            instructions=f"Speak naturally in {locale_info(locale).english_name}. Preserve the input language; do not translate.",
+        )
+        read_fn = getattr(response, "read", None)
+        raw_val: Any = read_fn() if callable(read_fn) else response
+        if hasattr(raw_val, "__await__"):
+            raw_val = await cast(Any, raw_val)
+        raw = bytes(raw_val)
+        if len(raw) % 2 != 0:
+            raw = raw[:-1]
+        return raw
+
+    async def synthesize_pcm_chunks(
+        self,
+        text: str,
+        *,
+        locale: str,
+        chunk_bytes: int = 1920,
+    ) -> AsyncIterator[bytes]:
+        """Stream 24kHz PCM16 frames (default 40ms = 1920 bytes) as bytes arrive from OpenAI TTS."""
+        if not self._config.api_key or not self._config.tts_model or not self._config.tts_voice:
+            raise ExternalVoiceConfigurationRequired(
+                "OPENAI_API_KEY, VOICE_TTS_MODEL and VOICE_TTS_VOICE are required"
+            )
+        cleaned_input = strip_markdown_for_speech(text) or text
+        step = max(960, chunk_bytes - (chunk_bytes % 2))
+        client = self._client or AsyncOpenAI(api_key=self._config.api_key, base_url=self._config.base_url)
+        speech_api = getattr(getattr(client, "audio", None), "speech", None)
+        streaming_factory = getattr(speech_api, "with_streaming_response", None)
+        instructions = f"Speak naturally in {locale_info(locale).english_name}. Preserve the input language; do not translate."
+
+        if streaming_factory is not None and hasattr(streaming_factory, "create"):
+            async with streaming_factory.create(
+                input=cleaned_input,
+                model=self._config.tts_model,
+                voice=self._config.tts_voice,
+                response_format="pcm",
+                speed=self._config.speech_speed,
+                instructions=instructions,
+            ) as stream_resp:
+                buffer = bytearray()
+                iter_bytes_fn: Any = getattr(stream_resp, "iter_bytes", None)
+                if callable(iter_bytes_fn):
+                    byte_stream: Any = iter_bytes_fn(chunk_size=step)
+                    async for incoming in byte_stream:
+                        if not incoming:
+                            continue
+                        buffer.extend(incoming)
+                        while len(buffer) >= step:
+                            frame = bytes(buffer[:step])
+                            del buffer[:step]
+                            yield frame
+                else:
+                    raw_body = await stream_resp.read()
+                    buffer.extend(raw_body)
+                if len(buffer) % 2 != 0:
+                    del buffer[-1:]
+                if buffer:
+                    yield bytes(buffer)
+            return
+
+        pcm = await self.synthesize_pcm(text, locale=locale)
+        for offset in range(0, len(pcm), step):
+            chunk = pcm[offset:offset + step]
+            if chunk:
+                yield chunk
 
 
 class UnconfiguredRealtimeAudioAdapter:
@@ -241,6 +332,7 @@ class OpenAIRealtimeAudioAdapter:
     async def speak(self, text: str) -> None:
         if self._connection is None:
             raise ExternalVoiceConfigurationRequired("Realtime session is not open")
+        cleaned_text = strip_markdown_for_speech(text) or text
         await self._connection.send({
             "type": "response.create",
             "response": {
@@ -251,7 +343,7 @@ class OpenAIRealtimeAudioAdapter:
                     f"Use a {self._config.delivery_style} delivery with smooth pacing and expressive warmth. "
                     "Avoid robotic, mechanical, or monotone reading. Do not translate or add information."
                 ),
-                "input": [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]}],
+                "input": [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": cleaned_text}]}],
             },
         })
 

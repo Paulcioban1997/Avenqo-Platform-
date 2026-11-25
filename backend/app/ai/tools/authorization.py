@@ -37,7 +37,7 @@ class ToolAuthorizationPolicy:
             allow_phone_reservations = bool(policy.get("allow_phone_reservations", False))
             if not allow_phone_reservations:
                 raise ToolAuthorizationError(
-                    "Product reservations ('reserve_product') are disabled for phone calls under this company's policy. "
+                    "Product reservations ('reserve_product') are strictly disallowed over telephone calls and disabled for phone calls under this company's policy. "
                     "Customers may inquire about availability and pricing, but reservations must be made online, in-store, or enabled in company voice policy."
                 )
 
