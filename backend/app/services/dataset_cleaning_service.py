@@ -829,25 +829,27 @@ class DatasetCleaningService:
 
     @classmethod
     def _csv(cls, rows: list[dict[str, Any]]) -> bytes:
+        from backend.app.services.dataset_export_service import (
+            format_scalar_for_text,
+            sanitize_spreadsheet_cell,
+        )
+
         output = StringIO(newline="")
         fields = cls._fieldnames(rows)
-        writer = csv.DictWriter(output, fieldnames=fields, extrasaction="ignore")
-        writer.writeheader()
-        writer.writerows(rows)
+        writer = csv.writer(output)
+        writer.writerow([sanitize_spreadsheet_cell(field) for field in fields])
+        for row in rows:
+            writer.writerow(
+                [format_scalar_for_text(row.get(field), neutralize_formulas=True) for field in fields]
+            )
         return output.getvalue().encode("utf-8-sig")
 
     @classmethod
     def _xlsx(cls, rows: list[dict[str, Any]]) -> bytes:
-        workbook = Workbook()
-        sheet = workbook.active
-        sheet.title = "Cleaned data"
+        from backend.app.services.dataset_export_service import DatasetExportService
+
         fields = cls._fieldnames(rows)
-        sheet.append(fields)
-        for row in rows:
-            sheet.append([row.get(field) for field in fields])
-        output = BytesIO()
-        workbook.save(output)
-        return output.getvalue()
+        return DatasetExportService._build_xlsx_bytes(rows, fields, sheet_title="Cleaned data")
 
     @staticmethod
     def _summary_lines(detail: dict[str, Any]) -> list[tuple[str, str]]:
