@@ -87,15 +87,25 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
       try {
         const response = await fetch('/api/v1/billing/plans', { signal: controller.signal, cache: 'no-store' });
         if (!response.ok) throw new Error('catalog_unavailable');
-        const data = await response.json();
-        if (!controller.signal.aborted) { setPlans(data); setChosenPlan(data[0]?.code ?? ''); }
+        const data: RegistrationPlan[] = await response.json();
+        if (!controller.signal.aborted) {
+          const requestedPlan = new URLSearchParams(window.location.search).get("plan");
+          setPlans(data);
+          setChosenPlan(current =>
+            data.find(plan => plan.code === current)?.code ??
+            data.find(plan => plan.code === requestedPlan)?.code ??
+            data[0]?.code ??
+            ""
+          );
+        }
       } catch { if (!controller.signal.aborted) { setIsError(true); setMessage(s.genericError); } }
     });
     return () => controller.abort();
   }, [isRegister, s.genericError]);
   const registrationPlan = plans.find(plan => plan.code === chosenPlan);
-  const currencyExample = (currency: string) =>
-    new Intl.NumberFormat(locale, { style: "currency", currency }).format(0);
+  const currencyNames = isRegister && typeof Intl.DisplayNames === "function"
+    ? new Intl.DisplayNames([localeDefaults?.bcp47 ?? locale], { type: "currency", fallback: "none" })
+    : undefined;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -387,7 +397,10 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
                     <label className="auth-field">
                       <span>{locale === "en" ? "Currency" : "Devise"}</span>
                       <select name="currency_code" defaultValue={localeDefaults?.currency} required>
-                        {[...new Set(CANONICAL_LOCALES.map(item => item.currency))].map(currency => <option key={currency} value={currency}>{currencyExample(currency)}</option>)}
+                        {[...new Set(CANONICAL_LOCALES.map(item => item.currency))].map(currency => {
+                          const name = currencyNames?.of(currency);
+                          return <option key={currency} value={currency}>{name ? `${currency} – ${name}` : currency}</option>;
+                        })}
                       </select>
                     </label>
                   </div>
