@@ -31,6 +31,15 @@ from backend.app.models import (
 )
 from backend.app.services.data_import_policy import DataImportPolicy
 from backend.app.services import retail_kpi_cache
+from .document_extraction import (
+    DocumentExtractionBundle,
+    EXCEL_SUFFIXES,
+    extract_document_bundle,
+)
+from .invoice_extraction_service import (
+    InvoiceExtractionReport,
+    InvoiceExtractionService,
+)
 from modules.catalog import MODULES_BY_CODE
 from shared.ai_engine.contracts import TenantContext
 from shared.ai_engine.dataset_ingestion.canonical_fields import CANONICAL_FIELDS
@@ -48,8 +57,9 @@ from shared.ai_engine.dataset_ingestion.column_mapper import (
 from shared.ai_engine.dataset_ingestion.exceptions import (
     DatasetArtifactMissingError,
     DatasetIngestionError,
+    EmptyDataset,
 )
-from shared.ai_engine.dataset_ingestion.loader import CompanyDatasetLoader
+from shared.ai_engine.dataset_ingestion.loader import CompanyDatasetLoader, LoadedDataset
 from shared.ai_engine.dataset_ingestion.prepared_dataset import PreparedCompanyDataset
 from shared.ai_engine.dataset_ingestion.profiling import CompanyDatasetProfile, DatasetProfiler
 from shared.ai_engine.dataset_ingestion.quality import DataQualityStatus, assess_quality
@@ -133,7 +143,7 @@ class CompanyDatasetIngestionService:
         if content_size == 0 or content_size > plan_max_bytes:
             raise DatasetIngestionError("Fichier vide ou taille maximale dépassée pour votre offre")
 
-        loaded = self._loader.load(filename, content)
+        loaded, workbook_meta = self._load_with_workbook_provenance(filename, content)
         rows = [dict(row) for row in loaded.rows]
 
         existing = self._find_existing_dataset(tenant, Path(filename).name)
@@ -204,22 +214,25 @@ class CompanyDatasetIngestionService:
         numerical = sum(
             field.inferred_type in {"integer", "number"} for field in schema_report.fields
         )
+        profile_schema_json: dict[str, Any] = {
+            "columns": [
+                {
+                    "name": field.name,
+                    "inferred_type": field.inferred_type,
+                    "nullable": field.nullable,
+                    "missing_count": field.missing_count,
+                    "distinct_count": field.distinct_count,
+                }
+                for field in schema_report.fields
+            ]
+        }
+        if workbook_meta is not None:
+            profile_schema_json["workbook_extraction"] = workbook_meta
         dataset.profile = DatasetProfile(
             module_code=module_code,
             numerical_columns=numerical,
             categorical_columns=len(schema_report.fields) - numerical,
-            schema_json={
-                "columns": [
-                    {
-                        "name": field.name,
-                        "inferred_type": field.inferred_type,
-                        "nullable": field.nullable,
-                        "missing_count": field.missing_count,
-                        "distinct_count": field.distinct_count,
-                    }
-                    for field in schema_report.fields
-                ]
-            },
+            schema_json=profile_schema_json,
             distribution_json={},
         )
 
@@ -836,10 +849,166 @@ class CompanyDatasetIngestionService:
             if not raw_path.is_file():
                 return []
         content = raw_path.read_bytes()
-        loaded = CompanyDatasetLoader(max_upload_bytes=len(content) + 1).load(
-            current_version.file_name or raw_path.name, content
+        loaded, _ = self._load_with_workbook_provenance(
+            current_version.file_name or raw_path.name,
+            content,
+            max_bytes_override=len(content) + 1,
         )
         return [dict(row) for row in loaded.rows]
+
+    def inspect_workbook_or_document(
+        self,
+        tenant: TenantContext,
+        dataset_id: UUID,
+    ) -> tuple[DocumentExtractionBundle, InvoiceExtractionReport]:
+        """Inspecte sans perte toutes les feuilles, cellules fusionnées et formules d'un dataset tenant."""
+        dataset = self.get(tenant, dataset_id)
+        raw_path = self._resolve_raw_artifact_path(dataset)
+        if raw_path is None:
+            raise DatasetArtifactMissingError(
+                "Le fichier original de ce dataset n'est plus disponible sur le stockage."
+            )
+        current_version = next((v for v in dataset.versions if v.is_current), None)
+        filename = (current_version.file_name if current_version and current_version.file_name else None) or dataset.name or raw_path.name
+        raw_bytes = raw_path.read_bytes()
+        bundle = extract_document_bundle(filename, raw_bytes)
+        report = InvoiceExtractionService().extract_from_bundle(bundle)
+        return bundle, report
+
+    def _resolve_raw_artifact_path(self, dataset: Dataset) -> Path | None:
+        current_version = next((v for v in dataset.versions if v.is_current), None)
+        if current_version is None or current_version.artifact_path is None:
+            return None
+        raw_path = Path(current_version.artifact_path)
+        if raw_path.is_file():
+            return raw_path
+        normalized_str = str(current_version.artifact_path).replace("\\", "/")
+        if "company_datasets/" in normalized_str:
+            rel = normalized_str.split("company_datasets/", 1)[1]
+            for c in (
+                self._storage._root / rel,
+                Path("var/artifacts/company_datasets") / rel,
+                Path("artifacts/company_datasets") / rel,
+            ):
+                if c.is_file():
+                    return c
+        if dataset.company_id and dataset.id:
+            fname = current_version.file_name or Path(current_version.artifact_path).name
+            v_rel = f"{dataset.company_id}/datasets/{dataset.id}/v{current_version.version_number}/raw/{fname}"
+            for base in (self._storage._root, Path("var/artifacts/company_datasets"), Path("artifacts/company_datasets")):
+                cand = base / v_rel
+                if cand.is_file():
+                    return cand
+        return None
+
+    def _load_with_workbook_provenance(
+        self,
+        filename: str,
+        content: bytes | Path,
+        *,
+        max_bytes_override: int | None = None,
+    ) -> tuple[LoadedDataset, dict[str, Any] | None]:
+        suffix = Path(filename).suffix.lower()
+        loader = (
+            CompanyDatasetLoader(max_upload_bytes=max_bytes_override)
+            if max_bytes_override is not None
+            else self._loader
+        )
+        if suffix not in EXCEL_SUFFIXES:
+            return loader.load(filename, content), None
+
+        raw_bytes = content.read_bytes() if isinstance(content, Path) else content
+        try:
+            bundle = extract_document_bundle(filename, raw_bytes)
+            inv_report = InvoiceExtractionService().extract_from_bundle(bundle)
+            workbook_meta: dict[str, Any] | None = {
+                **bundle.to_metadata_dict(),
+                "invoice_extraction": inv_report.to_dict(),
+            }
+        except Exception as exc:
+            if suffix == ".xlsm":
+                raise DatasetIngestionError(f"Classeur XLSM illisible : {exc}") from exc
+            return loader.load(filename, content), None
+
+        non_empty_sheets = [s for s in bundle.sheets if s.cells]
+        if not non_empty_sheets:
+            raise EmptyDataset("Le classeur Excel ne contient aucune cellule exploitable.")
+
+        # Cas standard mono-feuille sans formule non cachée : conserver le chargeur tabulaire historique
+        if (
+            suffix != ".xlsm"
+            and len(non_empty_sheets) == 1
+            and not non_empty_sheets[0].is_hidden
+            and not bundle.has_uncached_formulas
+        ):
+            try:
+                loaded_std = loader.load(filename, content)
+                return loaded_std, workbook_meta
+            except DatasetIngestionError:
+                pass
+
+        # Extraction multi-feuilles / XLSM / factures formatées en grille / formules inspectées
+        multi_rows: list[dict[str, Any]] = []
+        include_sheet_col = len(non_empty_sheets) > 1 or any(s.is_hidden for s in non_empty_sheets)
+
+        for sheet in non_empty_sheets:
+            rows_by_idx: dict[int, list] = {}
+            for cell in sheet.cells:
+                rows_by_idx.setdefault(cell.row, []).append(cell)
+            sorted_r = sorted(rows_by_idx.keys())
+            if not sorted_r:
+                continue
+
+            # Tester par feuille (indépendamment des autres onglets du classeur) si la 1re ligne non vide
+            # est un en-tête tabulaire propre (>=2 colonnes texte distinctes, 0 formule non cachée sur cette feuille)
+            first_cells = sorted(rows_by_idx[sorted_r[0]], key=lambda c: c.column)
+            sheet_inv = InvoiceExtractionService().extract_from_bundle(bundle, sheet_filter=sheet.sheet_name)
+            is_tabular_sheet = (
+                len(sorted_r) >= 2
+                and len(first_cells) >= 2
+                and not sheet.uncached_formula_cells
+                and all(not c.uncached_formula and c.merged_range is None for c in first_cells)
+                and len({str(c.normalized_value or c.raw_value or "").strip() for c in first_cells}) == len(first_cells)
+                and sheet_inv.verification_status == "no_amount_found"
+            )
+
+            if is_tabular_sheet:
+                headers = {
+                    c.column: str(c.normalized_value or c.raw_value or f"col_{c.column}").strip()
+                    for c in first_cells
+                }
+                for r_idx in sorted_r[1:]:
+                    row_dict: dict[str, Any] = {}
+                    if include_sheet_col:
+                        row_dict["_sheet_name"] = sheet.sheet_name
+                    for c in rows_by_idx[r_idx]:
+                        col_name = headers.get(c.column, f"col_{c.column}")
+                        # Ne JAMAIS injecter une formule brute "=SUM(...)" comme valeur confirmée!
+                        val = None if c.uncached_formula else (c.cached_value if c.cached_value is not None else c.raw_value)
+                        row_dict[col_name] = loader._coerce(val)
+                    if any(v is not None for k, v in row_dict.items() if k != "_sheet_name"):
+                        multi_rows.append(row_dict)
+            else:
+                # Feuille formatée en mise en page (facture, en-tête/pied de page, cellules fusionnées)
+                for r_idx in sorted_r:
+                    rcells = sorted(rows_by_idx[r_idx], key=lambda c: c.column)
+                    row_dict = {
+                        "_sheet_name": sheet.sheet_name,
+                        "_row": r_idx,
+                    }
+                    for c in rcells:
+                        col_key = f"col_{c.coordinate[:-len(str(c.row))]}"
+                        val = None if c.uncached_formula else (c.cached_value if c.cached_value is not None else c.raw_value)
+                        row_dict[col_key] = loader._coerce(val)
+                        if c.uncached_formula:
+                            row_dict[f"{col_key}_uncached_formula"] = c.formula
+                    multi_rows.append(row_dict)
+
+        if not multi_rows:
+            raise EmptyDataset("Le classeur Excel ne contient aucune ligne exploitable.")
+
+        columns = tuple(dict.fromkeys(key for row in multi_rows for key in row))
+        return LoadedDataset(rows=tuple(multi_rows), columns=columns, source_format=suffix.lstrip(".")), workbook_meta
 
     @staticmethod
     def _suggestion_to_dict(suggestion: ColumnMappingSuggestion) -> dict:

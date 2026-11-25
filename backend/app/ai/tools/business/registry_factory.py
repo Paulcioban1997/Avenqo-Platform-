@@ -29,10 +29,13 @@ from backend.app.ai.tools.business.cross_agent_tools import GetCrossAgentBusines
 from backend.app.ai.tools.business.capability_tools import GetSubscriptionOptionsTool
 from backend.app.ai.tools.business.document_tools import (
     AnalyzeLegalDocumentTool,
+    ExtractInvoiceTotalsTool,
     GetContractDetailTool,
     GetContractDownloadUrlTool,
+    GetDocumentCellEvidenceTool,
     GetDocumentDetailTool,
     GetDocumentDownloadUrlTool,
+    GetDocumentSourceTool,
     GetOCRDocumentTool,
     ProposeAccountingFromOCRTool,
     SearchContractsTool,
@@ -179,6 +182,9 @@ def build_business_tool_registry(
     registry.register(AnalyzeLegalDocumentTool(session))
     registry.register(SearchDocumentsTool(session))
     registry.register(GetDocumentDetailTool(session))
+    registry.register(GetDocumentSourceTool(session))
+    registry.register(ExtractInvoiceTotalsTool(session))
+    registry.register(GetDocumentCellEvidenceTool(session))
     registry.register(GetDocumentDownloadUrlTool(session))
     registry.register(SearchContractsTool(session))
     registry.register(GetContractDetailTool(session))
