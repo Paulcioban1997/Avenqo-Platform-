@@ -1,0 +1,150 @@
+name: CrowdStrike Falcon Cloud Security & SBOM
+
+# Architecture Managed PaaS (Railway / Vercel) :
+# Avenqo est déployé sur Railway (conteneurs managés) et Vercel (serverless/edge).
+# Aucun agent noyau (`falcon-sensor` / module eBPF kernel) n'est supposé ni installé sur l'hôte.
+# La couverture sécurité CI/CD repose sur :
+#  1. Génération systématique d'inventaires SBOM CycloneDX 1.5 (Python + Node.js), sans licence requise.
+#  2. Scan optionnel IaC / dépendances / image Docker via l'action officielle `CrowdStrike/fcs-action`
+#     uniquement lorsque les secrets `FALCON_CLIENT_ID` et `FALCON_CLIENT_SECRET` sont activés.
+
+'on':
+  push:
+    branches:
+      - main
+      - promotion/sandbox
+      - integration/avenqo-sandbox-latest-20261113
+  pull_request:
+    branches:
+      - main
+      - promotion/sandbox
+      - integration/avenqo-sandbox-latest-20261113
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+concurrency:
+  group: crowdstrike-fcs-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FCS_FAIL_ON_SEVERITY: "CRITICAL,HIGH"
+  FCS_EXCEPTIONS_FILE: ".crowdstrike-fcs-exceptions.yaml"
+
+jobs:
+  native-sbom:
+    name: Native CycloneDX SBOM (Python & Web)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Generate Python & Web CycloneDX SBOMs
+        run: |
+          mkdir -p artifacts/sbom
+          python -m pip install --upgrade pip "cyclonedx-bom>=4.5.0"
+          cyclonedx-py requirements backend/requirements.txt --of JSON -o artifacts/sbom/backend-python.cdx.json
+          npx --yes @cyclonedx/cyclonedx-npm --ignore-npm-errors --output-format JSON --output-file artifacts/sbom/web-node.cdx.json web/package.json
+          echo "### Inventaire SBOM Natif Avenqo (CycloneDX)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Backend Python SBOM : \`artifacts/sbom/backend-python.cdx.json\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Frontend Next.js SBOM : \`artifacts/sbom/web-node.cdx.json\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload CycloneDX SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: avenqo-sbom-cyclonedx
+          path: artifacts/sbom/*.cdx.json
+          retention-days: 30
+
+  crowdstrike-fcs-scan:
+    name: CrowdStrike Falcon Cloud Security Assessment (Optional)
+    runs-on: ubuntu-latest
+    needs: [native-sbom]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check CrowdStrike Falcon Cloud Security credentials
+        id: fcs_gate
+        env:
+          HAS_CLIENT_ID: ${{ secrets.FALCON_CLIENT_ID != '' }}
+          HAS_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET != '' }}
+          HAS_FALCON_CID: ${{ secrets.FALCON_CID != '' }}
+        run: |
+          if [ "$HAS_CLIENT_ID" = "true" ] && [ "$HAS_CLIENT_SECRET" = "true" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Report native fallback when CrowdStrike license is not configured
+        if: steps.fcs_gate.outputs.configured != 'true'
+        run: |
+          echo "### Statut CrowdStrike Falcon Cloud Security" >> "$GITHUB_STEP_SUMMARY"
+          echo "CrowdStrike FCS non configuré — SBOM natif généré, scan Falcon ignoré jusqu'à activation des secrets (\`FALCON_CLIENT_ID\`, \`FALCON_CLIENT_SECRET\`, \`FALCON_CID\`)." >> "$GITHUB_STEP_SUMMARY"
+          echo "- Mode d'hébergement : PaaS managé (Railway / Vercel) — aucun capteur noyau (\`falcon-sensor\`) requis." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Prepare approved exceptions policy file if present
+        id: fcs_policy
+        if: steps.fcs_gate.outputs.configured == 'true'
+        run: |
+          if [ -f "$FCS_EXCEPTIONS_FILE" ]; then
+            echo "has_exceptions=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_exceptions=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: CrowdStrike FCS IaC & Dependency Scan
+        if: steps.fcs_gate.outputs.configured == 'true'
+        uses: CrowdStrike/fcs-action@v2
+        with:
+          falcon-client-id: ${{ secrets.FALCON_CLIENT_ID }}
+          falcon-region: ${{ vars.FALCON_CLOUD_REGION || 'us-2' }}
+          scan-type: iac
+          path: .
+          fail-on: ${{ env.FCS_FAIL_ON_SEVERITY }}
+          output-format: sarif
+          output-path: fcs-iac-results.sarif
+        env:
+          FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
+          FALCON_CID: ${{ secrets.FALCON_CID }}
+
+      - name: Build backend container image for agentless assessment
+        if: steps.fcs_gate.outputs.configured == 'true'
+        run: |
+          docker build -f backend/Dockerfile -t avenqo-backend:fcs-${{ github.sha }} .
+
+      - name: CrowdStrike FCS Container Image Vulnerability Scan
+        if: steps.fcs_gate.outputs.configured == 'true'
+        uses: CrowdStrike/fcs-action@v2
+        with:
+          falcon-client-id: ${{ secrets.FALCON_CLIENT_ID }}
+          falcon-region: ${{ vars.FALCON_CLOUD_REGION || 'us-2' }}
+          scan-type: image
+          image-name: avenqo-backend:fcs-${{ github.sha }}
+          fail-on: ${{ env.FCS_FAIL_ON_SEVERITY }}
+          output-format: sarif
+          output-path: fcs-image-results.sarif
+        env:
+          FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
+          FALCON_CID: ${{ secrets.FALCON_CID }}
+
+      - name: Write verified CrowdStrike FCS summary
+        if: steps.fcs_gate.outputs.configured == 'true'
+        run: |
+          echo "### Statut CrowdStrike Falcon Cloud Security" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Scan IaC & image Docker exécuté via \`CrowdStrike/fcs-action@v2\`." >> "$GITHUB_STEP_SUMMARY"
+          echo "- Seuil bloquant : \`${FCS_FAIL_ON_SEVERITY}\` (exceptions documentées via \`${FCS_EXCEPTIONS_FILE}\` si présent)." >> "$GITHUB_STEP_SUMMARY"

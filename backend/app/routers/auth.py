@@ -87,6 +87,10 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
     access_max_age = int(settings.auth_access_minutes * 60)
     refresh_max_age = int(settings.auth_refresh_days * 86400)
 
+    # RFC 6749 §5.1 : interdire toute mise en cache intermédiaire ou navigateur des réponses contenant des jetons
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+
     # 1. Access token : HttpOnly, Secure en staging/prod HTTPS, SameSite=Lax, Path=/
     response.set_cookie(
         key="avenqo_access_token",
@@ -236,12 +240,13 @@ def login(
     http_request: Request,
     service: AuthService = Depends(get_auth_service),
 ) -> AuthResponse:
+    client_ip = http_request.client.host if http_request.client else None
     try:
         result = service.login(
             str(request.email),
             request.password,
             otp=request.otp,
-            ip_address=http_request.client.host if http_request.client else None,
+            ip_address=client_ip,
             user_agent=http_request.headers.get("user-agent"),
         )
     except AuthenticationError as exc:
@@ -250,6 +255,23 @@ def login(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"code": "mfa_required", "message": "Code d'authentification requis"},
             ) from exc
+        from backend.app.security.crowdstrike_siem import SecurityEventType, get_crowdstrike_connector
+
+        is_mfa_rejection = bool(request.otp) and "authentification" in str(exc).lower()
+        get_crowdstrike_connector().emit_event(
+            SecurityEventType.REPEATED_MFA_FAILURE
+            if is_mfa_rejection
+            else SecurityEventType.SUSPICIOUS_LOGIN_ATTEMPT,
+            summary=(
+                "Échec de validation MFA lors de la connexion."
+                if is_mfa_rejection
+                else "Tentative de connexion refusée ou compte temporairement verrouillé."
+            ),
+            severity="high" if is_mfa_rejection or "verrouillé" in str(exc).lower() else "medium",
+            outcome="denied",
+            ip_address=client_ip,
+            details={"auth_stage": "mfa" if is_mfa_rejection else "credentials"},
+        )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
     _set_auth_cookies(response, result.access_token, result.refresh_token)
     return AuthResponse(
@@ -413,6 +435,17 @@ def switch_tenant(
     ))
     # Membership first: a non-member must not learn the status of a foreign company.
     if target_company.id != identity.company_id and membership is None:
+        from backend.app.security.crowdstrike_siem import SecurityEventType, get_crowdstrike_connector
+
+        get_crowdstrike_connector().emit_event(
+            SecurityEventType.CROSS_TENANT_ACCESS_ATTEMPT,
+            summary="Tentative de bascule vers une organisation étrangère sans adhésion active.",
+            severity="critical",
+            outcome="blocked",
+            company_id=identity.company_id,
+            actor_id=identity.user.id,
+            details={"target_company_id": str(target_company.id)},
+        )
         raise HTTPException(403, "Accès non autorisé à cette organisation")
 
     if target_company.status != CompanyStatus.ACTIVE:

@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 import logging
 import os
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -102,7 +103,7 @@ def create_application() -> FastAPI:
     # doivent aussi pouvoir déclarer explicitement des origines distantes via
     # CORS_ORIGINS. En production, on conserve CORS_ORIGINS mais on ajoute
     # systématiquement les deux origines first-party Avenqo.
-    cors_kwargs: dict[str, object] = {
+    cors_kwargs: dict[str, Any] = {
         "allow_credentials": True,
         "allow_methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         "allow_headers": [
@@ -134,7 +135,9 @@ def create_application() -> FastAPI:
 
     register_exception_handlers(app)
     from backend.app.routers.health import router as health_router
+    from backend.app.routers.security_admin import router as security_admin_router
     app.include_router(health_router)
+    app.include_router(security_admin_router, prefix="/api/v1")
     app.include_router(api_router)
 
     @app.get("/", tags=["root"])
