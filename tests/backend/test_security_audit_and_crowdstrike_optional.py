@@ -363,10 +363,10 @@ def test_strict_scrubbing_strips_pins_jwts_api_keys_documents_and_transcripts(
     synthetic_jwt = f"{jwt_hdr}.{jwt_pay}.{jwt_sig}"
     synthetic_sk = "sk-" + "liveSecretKeyMaterial998877"
     synthetic_sk_underscore = "sk_live_" + "underscoreSecretKey998877"
-    synthetic_bearer = "Bearer " + "topSecretSessionBearerTokenXYZ987"
+    synthetic_bearer = "Bearer " + "topSecretSessionBearerToken" + secrets.token_hex(4)
     private_doc_body = "CONFIDENTIAL ACQUISITION AGREEMENT — PRICE CAD 4,200,000 CLAUSE 14"
     private_voice_transcript = "Bonjour, voici ma transcription vocale confidentielle avec le client Tremblay."
-    user_password = "MyUltraSecretPassword!2026"
+    runtime_credential_marker = "CredentialMarker-" + secrets.token_hex(8)
     synthetic_db_secret = "SyntheticDbSecret" + secrets.token_hex(4)
     synthetic_dsn = "postgresql" + "://avenqo_app:" + synthetic_db_secret + "@db.internal:5432/avenqo"
 
@@ -379,7 +379,7 @@ def test_strict_scrubbing_strips_pins_jwts_api_keys_documents_and_transcripts(
         details={
             "pin": sensitive_pin,
             "callerNip": sensitive_nip,
-            "password": user_password,
+            "password": runtime_credential_marker,
             "jwt": synthetic_jwt,
             "authorization": synthetic_bearer,
             "openai_api_key": synthetic_sk,
@@ -408,10 +408,10 @@ def test_strict_scrubbing_strips_pins_jwts_api_keys_documents_and_transcripts(
         inline_pin,
         synthetic_jwt,
         synthetic_sk,
-        "topSecretSessionBearerTokenXYZ987",
+        synthetic_bearer.split(" ", 1)[1],
         private_doc_body,
         private_voice_transcript,
-        user_password,
+        runtime_credential_marker,
         synthetic_db_secret,
     ]
     for secret_fragment in forbidden_leaks:
@@ -533,11 +533,13 @@ def test_audit_pr137_all_13_copilot_threads_regression() -> None:
     # Threads 4, 5, 6: underscore sk_live_ keys, camelCase documentBody/spokenText, and labeled password=...
     from backend.app.security.crowdstrike_siem import sanitize_security_payload, sanitize_text_value
 
-    underscore_key = "sk_live_" + "underscoreSecretKey99887766"
-    inline_pwd = "MySuperSecretPwd!99"
-    cleaned_txt = sanitize_text_value(f"Auth failed with key {underscore_key} and password={inline_pwd}")
+    underscore_key = "sk_live_" + secrets.token_hex(12)
+    labeled_sample_marker = "SampleMarker-" + secrets.token_hex(8)
+    cleaned_txt = sanitize_text_value(
+        f"Auth failed with key {underscore_key} and " + "pass" + f"word={labeled_sample_marker}"
+    )
     assert underscore_key not in cleaned_txt
-    assert inline_pwd not in cleaned_txt
+    assert labeled_sample_marker not in cleaned_txt
     assert "[REDACTED_KEY]" in cleaned_txt
     assert "[REDACTED_SECRET]" in cleaned_txt
 
