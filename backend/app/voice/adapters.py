@@ -171,7 +171,10 @@ class OpenAITextToSpeechAdapter:
                 buffer = bytearray()
                 iter_bytes_fn: Any = getattr(stream_resp, "iter_bytes", None)
                 if callable(iter_bytes_fn):
-                    byte_stream: Any = iter_bytes_fn(chunk_size=step)
+                    from collections.abc import AsyncIterator as _AsyncIterator
+                    from typing import cast as _cast
+
+                    byte_stream = _cast(_AsyncIterator[bytes], iter_bytes_fn(chunk_size=step))
                     async for incoming in byte_stream:
                         if not incoming:
                             continue
