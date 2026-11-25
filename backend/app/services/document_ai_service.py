@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.config.settings import get_settings
 from backend.app.models import AccountingInvoice, TenantDocument, User
-from backend.app.services.document_extraction import (
+from .document_extraction import (
     DocumentExtractionBundle,
     UnsupportedDocumentError,
     bundle_from_extracted_text,
@@ -24,7 +24,7 @@ from backend.app.services.document_extraction import (
     extract_text,
     sha256_bytes,
 )
-from backend.app.services.invoice_extraction_service import (
+from .invoice_extraction_service import (
     InvoiceExtractionReport,
     InvoiceExtractionService,
     parse_decimal_amount,
@@ -123,7 +123,7 @@ class DocumentAIService:
 
     def load_source_bundle(self, document: TenantDocument) -> DocumentExtractionBundle:
         """Recharge le fichier source intégral depuis le stockage tenant s'il est présent,
-        sinon reconstruit sans perte le bundle depuis `extracted_text`."""
+        sinon reconstruit le bundle depuis `extracted_text` en préservant honnêtement l'état de complétude."""
         if document.storage_path:
             settings = get_settings()
             candidates = [
@@ -142,7 +142,109 @@ class DocumentAIService:
                             )
                 except Exception:
                     continue
-        return bundle_from_extracted_text(document.filename, document.extracted_text or "")
+        is_confirmed_complete: bool | None = None
+        if document.analysis_json:
+            try:
+                parsed_analysis = json.loads(document.analysis_json)
+                ext_meta = parsed_analysis.get("extraction_metadata") if isinstance(parsed_analysis, dict) else None
+                if isinstance(ext_meta, dict):
+                    mode = str(ext_meta.get("extraction_mode") or "")
+                    incomplete_flag = bool(ext_meta.get("is_incomplete_source", False))
+                    if incomplete_flag or mode in {"pdf_scanned_unreadable", "pdf_mixed_partial_ocr", "legacy_partial_text"}:
+                        is_confirmed_complete = False
+                    elif mode in {"openpyxl_dual_pass", "rehydrated_multisheet_text", "docx_paragraphs_and_tables", "pdf_digital", "pdf_ocr_fallback", "pdf_mixed_digital_and_ocr", "tabular_text", "digital_text", "image_ocr"}:
+                        is_confirmed_complete = True
+            except Exception:
+                is_confirmed_complete = None
+        return bundle_from_extracted_text(
+            document.filename,
+            document.extracted_text or "",
+            is_confirmed_complete=is_confirmed_complete,
+        )
+
+    def reprocess_existing_document(
+        self,
+        actor: User,
+        document_id: UUID,
+        *,
+        raw_content_override: bytes | None = None,
+    ) -> dict[str, Any]:
+        """Retraite un document existant du tenant sans créer de doublon ni exiger un nouveau téléversement
+        lorsque le binaire source (`storage_path`) ou le texte extrait est disponible."""
+        doc = self.get_document(actor, document_id)
+        raw_bytes = raw_content_override
+        if raw_bytes is None and doc.storage_path:
+            settings = get_settings()
+            for candidate in (Path(settings.artifact_root) / doc.storage_path, Path(doc.storage_path)):
+                try:
+                    if candidate.is_file():
+                        loaded = candidate.read_bytes()
+                        if loaded:
+                            raw_bytes = loaded
+                            break
+                except Exception:
+                    continue
+
+        if raw_bytes is not None:
+            bundle = extract_document_bundle(doc.filename, raw_bytes, image_ocr=self._image_ocr)
+            doc.extracted_text = bundle.full_text
+            doc.sha256 = bundle.sha256 or sha256_bytes(raw_bytes)
+            doc.byte_size = len(raw_bytes)
+            reprocess_source = "binary_storage"
+        else:
+            bundle = self.load_source_bundle(doc)
+            reprocess_source = "stored_extracted_text"
+
+        doc.classification = classify_document(bundle.full_text or doc.extracted_text or "", doc.filename)
+        prior_analysis: dict[str, Any] = {}
+        if doc.analysis_json:
+            try:
+                prior_analysis = json.loads(doc.analysis_json)
+            except Exception:
+                prior_analysis = {}
+        prev_version = int(prior_analysis.get("extraction_version", 1) or 1)
+        new_analysis = self._analyze(
+            doc.kind,
+            bundle.full_text or doc.extracted_text or "",
+            doc.filename,
+            bundle=bundle,
+            classification=doc.classification,
+        )
+        new_analysis["extraction_version"] = prev_version + 1
+        new_analysis["reprocessed_at"] = datetime.now(timezone.utc).isoformat()
+        new_analysis["reprocess_source"] = reprocess_source
+        doc.analysis_json = json.dumps(new_analysis, ensure_ascii=False)
+        self._session.add(doc)
+        self._session.commit()
+        return {
+            "document_id": str(doc.id),
+            "filename": doc.filename,
+            "classification": doc.classification,
+            "extraction_version": new_analysis["extraction_version"],
+            "reprocess_source": reprocess_source,
+            "extraction_mode": bundle.extraction_mode,
+            "is_incomplete_source": bundle.is_incomplete_source,
+            "invoice_extraction": new_analysis.get("invoice_extraction"),
+        }
+
+    def reprocess_tenant_documents(
+        self,
+        actor: User,
+        *,
+        kind: str | None = None,
+        document_ids: list[UUID] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Retraite en lot les anciens documents du tenant avec traçabilité de version et sans doublons."""
+        stmt = select(TenantDocument).where(TenantDocument.company_id == actor.company_id)
+        if kind:
+            stmt = stmt.where(TenantDocument.kind == kind)
+        if document_ids:
+            stmt = stmt.where(TenantDocument.id.in_(document_ids))
+        docs = list(self._session.scalars(stmt.order_by(TenantDocument.created_at.asc())))
+        results: list[dict[str, Any]] = []
+        for doc in docs:
+            results.append(self.reprocess_existing_document(actor, doc.id))
+        return results
 
     def extract_structured_invoice(
         self,

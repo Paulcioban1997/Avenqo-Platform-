@@ -178,6 +178,7 @@ class DocumentExtractionBundle:
     has_uncached_formulas: bool
     uncached_formula_refs: tuple[str, ...]
     warnings: tuple[str, ...]
+    is_incomplete_source: bool = False
 
     def to_metadata_dict(self) -> dict[str, Any]:
         return {
@@ -186,6 +187,7 @@ class DocumentExtractionBundle:
             "sha256": self.sha256,
             "extracted_at": self.extracted_at,
             "extraction_mode": self.extraction_mode,
+            "is_incomplete_source": self.is_incomplete_source,
             "page_count": self.page_count,
             "sheet_count": len(self.sheets),
             "sheets": [s.to_summary_dict() for s in self.sheets],
@@ -327,6 +329,10 @@ def _extract_xlsx_bundle(filename: str, content: bytes, extracted_at: str, diges
     all_cells: list[CellProvenance] = []
     all_uncached_refs: list[str] = []
     warnings: list[str] = []
+    is_incomplete_workbook = False
+    max_cells_per_sheet = 50_000
+    max_cells_per_workbook = 150_000
+    max_expanded_merged_cells = 10_000
 
     try:
         for sheet_name in wb_formulas.sheetnames:
@@ -335,9 +341,10 @@ def _extract_xlsx_bundle(filename: str, content: bytes, extracted_at: str, diges
             sheet_state = str(getattr(ws_f, "sheet_state", "visible") or "visible")
             is_hidden = sheet_state != "visible"
 
-            # Cartographier toutes les plages fusionnées pour ne JAMAIS dupliquer les valeurs/sommes
+            # Cartographier toutes les plages fusionnées sans matérialiser des millions de tuples sur une plage géante
             merged_anchors: dict[tuple[int, int], tuple[str, int, int]] = {}
             merged_slaves: set[tuple[int, int]] = set()
+            large_merged_bboxes: list[tuple[int, int, int, int, tuple[int, int]]] = []
             merged_range_strs: list[str] = []
 
             for m_range in ws_f.merged_cells.ranges:
@@ -345,28 +352,76 @@ def _extract_xlsx_bundle(filename: str, content: bytes, extracted_at: str, diges
                 merged_range_strs.append(range_str)
                 anchor = (m_range.min_row, m_range.min_col)
                 merged_anchors[anchor] = (range_str, m_range.max_row, m_range.max_col)
-                for r_idx in range(m_range.min_row, m_range.max_row + 1):
-                    for c_idx in range(m_range.min_col, m_range.max_col + 1):
-                        if (r_idx, c_idx) != anchor:
-                            merged_slaves.add((r_idx, c_idx))
+                span_cells = (m_range.max_row - m_range.min_row + 1) * (m_range.max_col - m_range.min_col + 1)
+                if span_cells <= max_expanded_merged_cells:
+                    for r_idx in range(m_range.min_row, m_range.max_row + 1):
+                        for c_idx in range(m_range.min_col, m_range.max_col + 1):
+                            if (r_idx, c_idx) != anchor:
+                                merged_slaves.add((r_idx, c_idx))
+                else:
+                    large_merged_bboxes.append(
+                        (m_range.min_row, m_range.min_col, m_range.max_row, m_range.max_col, anchor)
+                    )
 
-            max_row = max(int(ws_f.max_row or 0), int(ws_v.max_row or 0))
-            max_col = max(int(ws_f.max_column or 0), int(ws_v.max_column or 0))
+            def _is_merged_slave(coord_rc: tuple[int, int]) -> bool:
+                if coord_rc in merged_slaves:
+                    return True
+                r_c, c_c = coord_rc
+                for min_r, min_c, max_r, max_c, anch in large_merged_bboxes:
+                    if min_r <= r_c <= max_r and min_c <= c_c <= max_c and coord_rc != anch:
+                        return True
+                return False
+
+            # Itération creuse (sparse) uniquement sur les cellules réellement présentes en mémoire openpyxl (`_cells`),
+            # pour qu'une feuille contenant une cellule formatée lointaine (ex: XFD1048576) n'épuise jamais le worker.
+            cells_dict_f = getattr(ws_f, "_cells", None)
+            cells_dict_v = getattr(ws_v, "_cells", None)
+            if isinstance(cells_dict_f, dict) or isinstance(cells_dict_v, dict):
+                populated_coords_set: set[tuple[int, int]] = set()
+                if isinstance(cells_dict_f, dict):
+                    populated_coords_set.update(cells_dict_f.keys())
+                if isinstance(cells_dict_v, dict):
+                    populated_coords_set.update(cells_dict_v.keys())
+                populated_coords_set.update(merged_anchors.keys())
+                sorted_coords = sorted(populated_coords_set)
+            else:
+                max_r_bound = min(max(int(ws_f.max_row or 0), int(ws_v.max_row or 0)), 2000)
+                max_c_bound = min(max(int(ws_f.max_column or 0), int(ws_v.max_column or 0)), 200)
+                sorted_coords = [
+                    (r_i, c_i)
+                    for r_i in range(1, max_r_bound + 1)
+                    for c_i in range(1, max_c_bound + 1)
+                ]
+
+            rows_to_cols: dict[int, list[int]] = {}
+            coord_count = 0
+            for r_idx, c_idx in sorted_coords:
+                if _is_merged_slave((r_idx, c_idx)):
+                    continue
+                if coord_count >= max_cells_per_sheet or (len(all_cells) + coord_count) >= max_cells_per_workbook:
+                    is_incomplete_workbook = True
+                    warnings.append(
+                        f"Limite de sécurité de cellules atteinte sur '{sheet_name}' ({max_cells_per_sheet} cellules) : extraction bornée."
+                    )
+                    break
+                rows_to_cols.setdefault(r_idx, []).append(c_idx)
+                coord_count += 1
+
+            max_row = max(rows_to_cols.keys(), default=0)
+            max_col = max((max(cols) for cols in rows_to_cols.values() if cols), default=0)
 
             sheet_cells: list[CellProvenance] = []
             sheet_uncached: list[str] = []
             rendered_lines: list[str] = []
 
-            for r_idx in range(1, max_row + 1):
+            for r_idx in sorted(rows_to_cols.keys()):
                 row_tokens: list[str] = []
-                for c_idx in range(1, max_col + 1):
-                    if (r_idx, c_idx) in merged_slaves:
-                        continue
-                    cell_f = ws_f.cell(row=r_idx, column=c_idx)
-                    cell_v = ws_v.cell(row=r_idx, column=c_idx)
+                for c_idx in rows_to_cols[r_idx]:
+                    cell_f = cells_dict_f.get((r_idx, c_idx)) if isinstance(cells_dict_f, dict) else ws_f.cell(row=r_idx, column=c_idx)
+                    cell_v = cells_dict_v.get((r_idx, c_idx)) if isinstance(cells_dict_v, dict) else ws_v.cell(row=r_idx, column=c_idx)
 
-                    raw_f = cell_f.value
-                    val_v = cell_v.value
+                    raw_f = getattr(cell_f, "value", None) if cell_f is not None else None
+                    val_v = getattr(cell_v, "value", None) if cell_v is not None else None
 
                     if raw_f is None and val_v is None:
                         continue
@@ -377,7 +432,8 @@ def _extract_xlsx_bundle(filename: str, content: bytes, extracted_at: str, diges
                     end_row = merged_info[1] if merged_info else r_idx
                     end_col = merged_info[2] if merged_info else c_idx
                     cell_ref = f"{sheet_name}!{coord}"
-                    number_format = str(cell_f.number_format) if cell_f.number_format else None
+                    raw_num_fmt = getattr(cell_f, "number_format", None) if cell_f is not None else (getattr(cell_v, "number_format", None) if cell_v is not None else None)
+                    number_format = str(raw_num_fmt) if raw_num_fmt else None
 
                     is_formula = (
                         getattr(cell_f, "data_type", None) == "f"
@@ -544,6 +600,7 @@ def _extract_xlsx_bundle(filename: str, content: bytes, extracted_at: str, diges
         has_uncached_formulas=bool(all_uncached_refs),
         uncached_formula_refs=tuple(all_uncached_refs),
         warnings=tuple(warnings),
+        is_incomplete_source=is_incomplete_workbook,
     )
 
 
@@ -798,12 +855,36 @@ def _extract_pdf_bundle(
     all_cells: list[CellProvenance] = []
     page_texts: list[str] = []
     warnings: list[str] = []
+    total_pages = len(reader.pages)
+    digital_pages = 0
+    ocr_pages = 0
+    unreadable_pages: list[int] = []
 
     for page_idx, page in enumerate(reader.pages, start=1):
         page_name = f"Page {page_idx}"
         raw_page_text = (page.extract_text() or "").strip()
+        is_page_ocr = False
+        if not raw_page_text and image_ocr is not None:
+            ocr_page_label = f"{filename}#page={page_idx}" if total_pages > 1 else filename
+            raw_page_text = str(image_ocr(ocr_page_label, content) or "").strip()
+            if not raw_page_text and total_pages == 1:
+                raw_page_text = str(image_ocr(filename, content) or "").strip()
+            if raw_page_text:
+                is_page_ocr = True
+                page_name = f"Page {page_idx} (OCR)"
+
         if not raw_page_text:
+            unreadable_pages.append(page_idx)
+            warnings.append(
+                f"Page {page_idx}/{total_pages} sans texte numérique exploitable et non résolue par OCR."
+            )
             continue
+
+        if is_page_ocr:
+            ocr_pages += 1
+        else:
+            digital_pages += 1
+
         page_cells: list[CellProvenance] = []
         lines = [ln.strip() for ln in raw_page_text.splitlines() if ln.strip()]
         for line_idx, line in enumerate(lines, start=1):
@@ -830,11 +911,11 @@ def _extract_pdf_bundle(
                     data_type="text",
                     currency_hint=ccy_hint,
                     extracted_at=extracted_at,
-                    confidence=1.0,
-                    verification_status="digital_text",
+                    confidence=0.85 if is_page_ocr else 1.0,
+                    verification_status="ocr_text" if is_page_ocr else "digital_text",
                 )
             )
-        rendered = f"=== {page_name} ===\n{raw_page_text}" if len(reader.pages) > 1 else raw_page_text
+        rendered = f"=== {page_name} ===\n{raw_page_text}" if total_pages > 1 else raw_page_text
         page_texts.append(rendered)
         sheets_out.append(
             ExtractedSheet(
@@ -853,62 +934,21 @@ def _extract_pdf_bundle(
         all_cells.extend(page_cells)
 
     full_text = "\n\n".join(page_texts).strip()
-    mode = "pdf_digital"
-
+    is_incomplete = bool(unreadable_pages) or (total_pages > 0 and not full_text)
     if not full_text:
-        if image_ocr is not None:
-            ocr_text = str(image_ocr(filename, content) or "").strip()
-            if ocr_text:
-                mode = "pdf_ocr_fallback"
-                ocr_cells: list[CellProvenance] = []
-                for idx, line in enumerate((ln.strip() for ln in ocr_text.splitlines() if ln.strip()), start=1):
-                    _, norm_val, ccy_hint = _classify_scalar_value(line)
-                    ocr_cells.append(
-                        CellProvenance(
-                            file_name=filename,
-                            sheet_name="Page 1 (OCR)",
-                            cell_ref=f"Page 1 (OCR)!L{idx}",
-                            coordinate=f"L{idx}",
-                            row=idx,
-                            column=1,
-                            end_row=idx,
-                            end_column=1,
-                            raw_value=line,
-                            cached_value=line,
-                            normalized_value=norm_val,
-                            number_format=None,
-                            formula=None,
-                            uncached_formula=False,
-                            merged_range=None,
-                            is_hidden_sheet=False,
-                            data_type="text",
-                            currency_hint=ccy_hint,
-                            extracted_at=extracted_at,
-                            confidence=0.85,
-                            verification_status="ocr_text",
-                        )
-                    )
-                sheets_out.append(
-                    ExtractedSheet(
-                        sheet_name="Page 1 (OCR)",
-                        sheet_state="visible",
-                        is_hidden=False,
-                        has_financial_data=_sheet_has_financial_signals(ocr_cells, "Page 1 (OCR)"),
-                        max_row=len(ocr_cells),
-                        max_column=1,
-                        merged_ranges=(),
-                        cells=tuple(ocr_cells),
-                        uncached_formula_cells=(),
-                        rendered_text=ocr_text,
-                    )
-                )
-                all_cells.extend(ocr_cells)
-                full_text = ocr_text
-        if not full_text:
-            mode = "pdf_scanned_unreadable"
+        mode = "pdf_scanned_unreadable"
+        if not warnings:
             warnings.append(
                 "PDF scanné sans couche de texte numérique exploitable et sans moteur OCR visuel configuré."
             )
+    elif unreadable_pages:
+        mode = "pdf_mixed_partial_ocr"
+    elif ocr_pages > 0 and digital_pages > 0:
+        mode = "pdf_mixed_digital_and_ocr"
+    elif ocr_pages > 0:
+        mode = "pdf_ocr_fallback"
+    else:
+        mode = "pdf_digital"
 
     return DocumentExtractionBundle(
         file_name=filename,
@@ -917,12 +957,13 @@ def _extract_pdf_bundle(
         extracted_at=extracted_at,
         extraction_mode=mode,
         full_text=full_text,
-        page_count=len(reader.pages),
+        page_count=total_pages,
         sheets=tuple(sheets_out),
         cells=tuple(all_cells),
         has_uncached_formulas=False,
         uncached_formula_refs=(),
         warnings=tuple(warnings),
+        is_incomplete_source=is_incomplete,
     )
 
 
@@ -1161,7 +1202,12 @@ def extract_document_bundle(
     return _extract_delimited_or_text_bundle(filename, decoded, suffix, extracted_at, digest)
 
 
-def bundle_from_extracted_text(filename: str, extracted_text: str) -> DocumentExtractionBundle:
+def bundle_from_extracted_text(
+    filename: str,
+    extracted_text: str,
+    *,
+    is_confirmed_complete: bool | None = None,
+) -> DocumentExtractionBundle:
     """Reconstruit un `DocumentExtractionBundle` à partir d'un texte déjà persisté en base
     (y compris les rendus multi-onglets `=== ONGLET: ... === [Coord] ...`)."""
     extracted_at = _utc_now_iso()
@@ -1295,9 +1341,37 @@ def bundle_from_extracted_text(filename: str, extracted_text: str) -> DocumentEx
                 has_uncached_formulas=bool(all_uncached),
                 uncached_formula_refs=tuple(all_uncached),
                 warnings=(),
+                is_incomplete_source=False if is_confirmed_complete is None else not is_confirmed_complete,
             )
 
-    return _extract_delimited_or_text_bundle(filename, text, suffix or ".txt", extracted_at, digest)
+    # Si un classeur Excel/multi-feuilles (ou PDF multi-pages) n'a pas le marqueur complet "=== ONGLET:"
+    # et n'a pas été explicitement confirmé complet par ses métadonnées d'extraction, il peut s'agir
+    # d'un ancien texte partiel (ex: 1re feuille CSV `pandas.read_excel`). Ne jamais certifier sur cette base.
+    is_legacy_incomplete = (
+        (not is_confirmed_complete)
+        and (suffix in EXCEL_SUFFIXES or (is_confirmed_complete is False))
+    )
+    fallback_bundle = _extract_delimited_or_text_bundle(filename, text, suffix or ".txt", extracted_at, digest)
+    if is_legacy_incomplete:
+        return DocumentExtractionBundle(
+            file_name=fallback_bundle.file_name,
+            file_format=fallback_bundle.file_format,
+            sha256=fallback_bundle.sha256,
+            extracted_at=fallback_bundle.extracted_at,
+            extraction_mode="legacy_partial_text",
+            full_text=fallback_bundle.full_text,
+            page_count=fallback_bundle.page_count,
+            sheets=fallback_bundle.sheets,
+            cells=fallback_bundle.cells,
+            has_uncached_formulas=fallback_bundle.has_uncached_formulas,
+            uncached_formula_refs=fallback_bundle.uncached_formula_refs,
+            warnings=(
+                *fallback_bundle.warnings,
+                "Source textuelle héritée potentiellement partielle (binaire original absent ou non retraité) : certification bloquée.",
+            ),
+            is_incomplete_source=True,
+        )
+    return fallback_bundle
 
 
 def extract_text(filename: str, content: bytes, *, image_ocr=None) -> str:
@@ -1310,28 +1384,49 @@ def classify_document(text: str, filename: str) -> str:
     haystack = f"{filename}\n{text}".lower()
     rules = (
         (
+            "purchase_order",
+            (
+                "purchase order",
+                "bon de commande",
+                "commande fournisseur",
+                "orden de compra",
+                "po number",
+                "n° de commande",
+            ),
+        ),
+        (
             "invoice",
             (
                 "invoice",
                 "facture",
+                "factura",
+                "rechnung",
+                "fattura",
                 "tax",
                 "tps",
                 "tvq",
                 "gst",
                 "qst",
                 "hst",
+                "tva",
+                "vat",
+                "mwst",
                 "sous-total",
                 "subtotal",
                 "net à payer",
                 "net a payer",
+                "amount due",
+                "montant dû",
                 "po nr",
-                "bon de commande",
             ),
         ),
-        ("contract", ("agreement", "contrat", "whereas", "clause", "party")),
-        ("receipt", ("receipt", "reçu", "merci de votre achat")),
+        ("contract", ("agreement", "contrat", "whereas", "clause", "party", "signataire", "bail", "nda")),
+        ("receipt", ("receipt", "reçu", "recu", "merci de votre achat", "ticket de caisse", "pos receipt")),
+        ("statement", ("bank statement", "relevé bancaire", "releve de compte", "statement", "relevé", "opening balance", "closing balance", "solde d'ouverture", "solde de clôture")),
+        ("inventory", ("inventory", "inventaire", "stock count", "sku", "quantité en stock", "warehouse stock", "entrepôt")),
+        ("hr_document", ("payroll", "fiche de paie", "bulletin de salaire", "timesheet", "feuille de temps", "contrat de travail", "salaire brut", "heures travaillées")),
+        ("financial_report", ("income statement", "état des résultats", "bilan comptable", "balance sheet", "profit and loss", "p&l", "ebitda", "cash flow statement")),
         ("identity", ("passport", "permis", "driver licence", "date of birth")),
-        ("statement", ("statement", "relevé", "balance")),
     )
     for label, needles in rules:
         if any(needle in haystack for needle in needles):

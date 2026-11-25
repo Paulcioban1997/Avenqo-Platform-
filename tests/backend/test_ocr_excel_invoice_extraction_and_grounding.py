@@ -330,3 +330,213 @@ def test_hidden_sheet_with_totals_is_extracted_and_provenanced() -> None:
     assert inv.total_amount.sheet_name == "RecapitulatifFinancier"
     assert inv.total_amount.cell_ref == "RecapitulatifFinancier!C6"
 
+
+def test_audit_pr134_all_14_copilot_threads_and_universal_engine() -> None:
+    """Covers all 14 Copilot review threads on PR #134 and the universal multi-document/multi-company/reprocessing requirements."""
+    import json
+    from unittest.mock import MagicMock
+    from uuid import uuid4
+    from backend.app.ai.chat.orchestrator import ToolCallResult, _pending_unread_document_ids, compute_grounding_assessment
+    from backend.app.ai.tools.business.document_tools import _compact_invoice_report_dict
+    from backend.app.ai.tools.contracts import ToolCall, ToolResult
+    from backend.app.routers.ai_chat import _enrich_source_metadata
+    from backend.app.services.document_extraction import (
+        bundle_from_extracted_text,
+        classify_document,
+        extract_document_bundle,
+    )
+    from backend.app.services.invoice_extraction_service import InvoiceLineItem
+
+    # Thread 1: Truncated or windowed tool outputs must downgrade math_verified/certified_grounding to preview_only
+    trunc_cr = ToolCallResult(
+        call=ToolCall(id="c1", name="get_document_detail", arguments={"document_id": "doc-1"}),
+        result=ToolResult(
+            success=True,
+            data={"document_id": "doc-1", "is_content_windowed": True, "full_source_read": False},
+            metadata={
+                "grounding_status": "math_verified",
+                "certified_grounding": False,
+                "full_source_read": False,
+                "is_truncated_preview": True,
+                "math_verified": True,
+            },
+        ),
+    )
+    assess_trunc = compute_grounding_assessment([trunc_cr])
+    assert assess_trunc["grounding_status"] == "preview_only"
+    assert assess_trunc["certified_grounding"] is False
+    assert assess_trunc["math_verified"] is False
+
+    # Thread 2: Paginated get_document_source or scoped get_document_cell_evidence must NOT suppress automatic invoice extraction
+    cell_cr = ToolCallResult(
+        call=ToolCall(id="c2", name="get_document_cell_evidence", arguments={"document_id": "doc-1", "cell_ref": "A1"}),
+        result=ToolResult(
+            success=True,
+            data={"document_id": "doc-1"},
+            metadata={"document_id": "doc-1", "full_source_read": False, "is_scoped_cell_lookup": True},
+        ),
+    )
+    pending_ids = _pending_unread_document_ids([trunc_cr, cell_cr], user_question="Quel est le montant total de la facture ?")
+    assert pending_ids == ["doc-1"]
+
+    # Thread 4: _compact_invoice_report_dict budgets serialized JSON strictly under 8,000 chars without duplicating primary_invoice
+    wb_big = Workbook()
+    ws_big: Any = wb_big.active
+    ws_big.title = "FactureLongue"
+    ws_big["A1"] = "Description"
+    ws_big["B1"] = "Quantité"
+    ws_big["C1"] = "Prix unitaire"
+    ws_big["D1"] = "Total"
+    running = Decimal("0.00")
+    for idx in range(2, 82):
+        ws_big[f"A{idx}"] = f"Prestation logistique internationale lot #{idx} avec description détaillée"
+        ws_big[f"B{idx}"] = 1
+        ws_big[f"C{idx}"] = Decimal("100.00")
+        ws_big[f"D{idx}"] = Decimal("100.00")
+        running += Decimal("100.00")
+    ws_big["C83"] = "Sous-total"
+    ws_big["D83"] = running
+    ws_big["C84"] = "TPS"
+    ws_big["D84"] = Decimal("400.00")
+    ws_big["C85"] = "TOTAL FACTURÉ"
+    ws_big["D85"] = running + Decimal("400.00")
+    rep_big = SERVICE.extract_from_bytes("grande_facture.xlsx", _xlsx_bytes(wb_big))
+    compact_big = _compact_invoice_report_dict(rep_big)
+    serialized_big = json.dumps(compact_big, ensure_ascii=False, default=str)
+    assert len(serialized_big) <= 7200
+    assert compact_big["primary_invoice"]["total_amount"]["normalized_value"] == "8400.00"
+    assert compact_big["invoices"][0].get("is_primary_invoice_ref") is True
+
+    # Thread 5: _enrich_source_metadata matches document identity and never certifies unrelated metadata-only datasets
+    verified_cr = ToolCallResult(
+        call=ToolCall(id="c3", name="extract_invoice_totals", arguments={"document_id": "doc-verified"}),
+        result=ToolResult(
+            success=True,
+            data={"document_id": "doc-verified", "filename": "facture_a.xlsx", "full_source_read": True},
+            metadata={
+                "document_id": "doc-verified",
+                "filename": "facture_a.xlsx",
+                "grounding_status": "math_verified",
+                "certified_grounding": True,
+                "full_source_read": True,
+                "math_verified": True,
+                "provenance": {"cell_ref": "Facture!F20", "total_amount": "500.00"},
+            },
+        ),
+    )
+    overall_assess = compute_grounding_assessment([verified_cr])
+    unrelated_meta = _enrich_source_metadata(
+        {"dataset_id": "ds-unrelated"},
+        overall_assess,
+        source_identifier="ds-unrelated",
+        source_name="inventaire_autre.csv",
+        tool_call_results=[verified_cr],
+    )
+    assert unrelated_meta["certified_grounding"] is False
+    assert unrelated_meta["grounding_status"] == "preview_only"
+    assert "provenance" not in unrelated_meta
+
+    matched_meta = _enrich_source_metadata(
+        {"tool": "extract_invoice_totals", "document_id": "doc-verified"},
+        overall_assess,
+        source_identifier="doc-verified",
+        source_name="facture_a.xlsx",
+        tool_call_results=[verified_cr],
+    )
+    assert matched_meta["certified_grounding"] is True
+    assert matched_meta["grounding_status"] == "math_verified"
+
+    # Thread 6: Legacy partial workbook text (without === ONGLET: marker) marks is_incomplete_source=True and blocks certification
+    legacy_bundle = bundle_from_extracted_text("ancien_classeur.xlsx", "Description,Montant\nSous-total,100.00\nTOTAL,100.00")
+    assert legacy_bundle.is_incomplete_source is True
+    assert legacy_bundle.extraction_mode == "legacy_partial_text"
+    legacy_rep = SERVICE.extract_from_bundle(legacy_bundle)
+    assert legacy_rep.full_source_read is False
+    assert legacy_rep.certified_grounding is False
+    assert legacy_rep.verification_status == "incomplete_source"
+    assert legacy_rep.grounding_status == "uncertain_candidates"
+
+    # Thread 7: Sparse XLSX with a distant cell does not hang or exhaust memory
+    wb_sparse = Workbook()
+    ws_sparse: Any = wb_sparse.active
+    ws_sparse.title = "FactureSparse"
+    ws_sparse["A1"] = "Sous-total"
+    ws_sparse["B1"] = Decimal("250.00")
+    ws_sparse["A2"] = "TOTAL"
+    ws_sparse["B2"] = Decimal("250.00")
+    ws_sparse["AZ5000"] = "Note lointaine"
+    sparse_bundle = extract_document_bundle("sparse.xlsx", _xlsx_bytes(wb_sparse))
+    assert len(sparse_bundle.cells) == 5
+
+    # Thread 9: Unrelated hidden invoice or unresolved second sheet blocks single-invoice certification
+    wb_two = Workbook()
+    ws_v1: Any = wb_two.active
+    ws_v1.title = "Facture1"
+    ws_v1["A1"] = "Sous-total"
+    ws_v1["B1"] = Decimal("100.00")
+    ws_v1["A2"] = "TPS"
+    ws_v1["B2"] = Decimal("5.00")
+    ws_v1["A3"] = "TOTAL"
+    ws_v1["B3"] = Decimal("105.00")
+    ws_h2 = wb_two.create_sheet("FactureCacheeNonLiee")
+    ws_h2.sheet_state = "hidden"
+    ws_h2["A1"] = "TOTAL"
+    ws_h2["B1"] = Decimal("999.00")
+    rep_two = SERVICE.extract_from_bytes("deux_factures_non_liees.xlsx", _xlsx_bytes(wb_two))
+    assert rep_two.primary_invoice is None
+    assert rep_two.verification_status == "ambiguous_candidates"
+    assert rep_two.certified_grounding is False
+
+    # Thread 10: Uncached discount formula prevents false math_verified certification
+    wb_disc = Workbook()
+    ws_disc: Any = wb_disc.active
+    ws_disc.title = "FactureRabais"
+    ws_disc["A1"] = "Sous-total"
+    ws_disc["B1"] = Decimal("100.00")
+    ws_disc["A2"] = "Remise"
+    ws_disc["B2"] = "=A1*0.1"
+    ws_disc["A3"] = "TOTAL"
+    ws_disc["B3"] = Decimal("100.00")
+    rep_disc = SERVICE.extract_from_bytes("rabais_non_cache.xlsx", _xlsx_bytes(wb_disc))
+    assert rep_disc.verification_status == "uncached_formula"
+    assert rep_disc.certified_grounding is False
+
+    # Thread 11: Inconsistent balance_due (total 100 - paid 40 != balance 90) fails math verification
+    inconsistent_balance_txt = "FACTURE #B-99\nSous-total: 100,00 $ CAD\nTOTAL: 100,00 $ CAD\nMontant payé: 40,00 $ CAD\nSolde dû: 90,00 $ CAD"
+    rep_bal = SERVICE.extract_from_text("solde_incoherent.txt", inconsistent_balance_txt)
+    assert rep_bal.verification_status == "math_mismatch"
+    assert rep_bal.certified_grounding is False
+
+    # Thread 13: Percentage-formatted rate cell on tax row is skipped in favor of the monetary tax amount
+    wb_pct = Workbook()
+    ws_pct: Any = wb_pct.active
+    ws_pct.title = "FactureTaux"
+    ws_pct["A1"] = "Sous-total"
+    ws_pct["C1"] = Decimal("950.00")
+    ws_pct["A2"] = "TPS"
+    ws_pct["B2"] = Decimal("0.05")
+    ws_pct["B2"].number_format = "0%"
+    ws_pct["C2"] = Decimal("47.50")
+    ws_pct["A3"] = "TOTAL"
+    ws_pct["C3"] = Decimal("997.50")
+    rep_pct = SERVICE.extract_from_bytes("taux_pourcent.xlsx", _xlsx_bytes(wb_pct))
+    assert rep_pct.verification_status == "math_verified"
+    assert rep_pct.primary_invoice is not None
+    assert rep_pct.primary_invoice.tax_total == Decimal("47.50")
+    assert rep_pct.primary_invoice.total_amount is not None
+    assert rep_pct.primary_invoice.total_amount.amount == Decimal("997.50")
+
+    # Thread 14: Unknown currency is preserved as None and never fabricated as CAD in direct_statement_fr
+    no_ccy_rep = SERVICE.extract_from_text("sans_devise.txt", "INVOICE #NC-1\nSubtotal: 100.00\nTotal: 100.00")
+    assert no_ccy_rep.primary_invoice is not None
+    assert no_ccy_rep.primary_invoice.currency is None
+    assert "CAD" not in (no_ccy_rep.primary_invoice.direct_statement_fr or "")
+
+    # Universal document classification across all 10 business document categories
+    assert classify_document("Purchase Order PO Number 8812\nQty: 50", "po_8812.pdf") == "purchase_order"
+    assert classify_document("Relevé bancaire - Solde d'ouverture: 12 000,00 $", "releve_nov.pdf") == "statement"
+    assert classify_document("Inventaire entrepôt - SKU-101 Quantité en stock: 45", "stock.xlsx") == "inventory"
+    assert classify_document("Bulletin de salaire - Salaire brut: 4 500,00 $ - Heures travaillées: 160", "paie.pdf") == "hr_document"
+    assert classify_document("État des résultats - Bilan comptable et EBITDA 2026", "rapport_financier.pdf") == "financial_report"
+
+

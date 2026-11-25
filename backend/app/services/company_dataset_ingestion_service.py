@@ -31,12 +31,12 @@ from backend.app.models import (
 )
 from backend.app.services.data_import_policy import DataImportPolicy
 from backend.app.services import retail_kpi_cache
-from backend.app.services.document_extraction import (
+from .document_extraction import (
     DocumentExtractionBundle,
     EXCEL_SUFFIXES,
     extract_document_bundle,
 )
-from backend.app.services.invoice_extraction_service import (
+from .invoice_extraction_service import (
     InvoiceExtractionReport,
     InvoiceExtractionService,
 )
@@ -959,14 +959,17 @@ class CompanyDatasetIngestionService:
             if not sorted_r:
                 continue
 
-            # Tester si la 1re ligne non vide de l'onglet est un en-tête tabulaire propre (>=2 colonnes texte distinctes, 0 formule)
+            # Tester par feuille (indépendamment des autres onglets du classeur) si la 1re ligne non vide
+            # est un en-tête tabulaire propre (>=2 colonnes texte distinctes, 0 formule non cachée sur cette feuille)
             first_cells = sorted(rows_by_idx[sorted_r[0]], key=lambda c: c.column)
+            sheet_inv = InvoiceExtractionService().extract_from_bundle(bundle, sheet_filter=sheet.sheet_name)
             is_tabular_sheet = (
                 len(sorted_r) >= 2
                 and len(first_cells) >= 2
+                and not sheet.uncached_formula_cells
                 and all(not c.uncached_formula and c.merged_range is None for c in first_cells)
                 and len({str(c.normalized_value or c.raw_value or "").strip() for c in first_cells}) == len(first_cells)
-                and inv_report.verification_status == "no_amount_found"
+                and sheet_inv.verification_status == "no_amount_found"
             )
 
             if is_tabular_sheet:

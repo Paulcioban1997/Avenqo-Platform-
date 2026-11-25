@@ -3,6 +3,7 @@ from uuid import UUID
 import json
 import logging
 import re
+from collections.abc import Sequence
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
@@ -113,33 +114,81 @@ def _augment_structured_document_tools(
 def _enrich_source_metadata(
     source_meta: dict[str, object],
     assessment: dict[str, Any],
+    *,
+    source_identifier: str | None = None,
+    source_name: str | None = None,
+    tool_call_results: Sequence[Any] = (),
 ) -> dict[str, object]:
-    """Enrichit les métadonnées d'une source avec le statut de grounding honnête :
-    ne marque JAMAIS `certified_grounding=True` lorsqu'un seul aperçu/métadonnée a été consulté."""
+    """Enrichit les métadonnées d'une source uniquement avec les preuves propres à cette source :
+    ne marque JAMAIS `certified_grounding=True` sur un dataset/document non inspecté ou metadata-only."""
     meta = dict(source_meta or {})
+    source_doc_id = str(meta.get("document_id") or source_identifier or "").strip()
+    source_filename = str(meta.get("filename") or source_name or "").strip().casefold()
+    source_tool = str(meta.get("tool") or "").strip()
+
+    matched_results: list[Any] = []
+    for cr in tool_call_results:
+        res = getattr(cr, "result", None)
+        if res is None or not getattr(res, "success", False):
+            continue
+        raw_cr_meta = getattr(res, "metadata", None)
+        cr_meta: dict[str, Any] = raw_cr_meta if isinstance(raw_cr_meta, dict) else {}
+        raw_cr_data = getattr(res, "data", None)
+        cr_data: dict[str, Any] = raw_cr_data if isinstance(raw_cr_data, dict) else {}
+        cr_doc_id = str(cr_meta.get("document_id") or cr_data.get("document_id") or "").strip()
+        cr_fname = str(cr_meta.get("filename") or cr_data.get("filename") or "").strip().casefold()
+        call_name = str(getattr(getattr(cr, "call", None), "name", "") or "")
+
+        if source_doc_id and cr_doc_id and source_doc_id == cr_doc_id:
+            matched_results.append(cr)
+        elif source_filename and cr_fname and source_filename == cr_fname:
+            matched_results.append(cr)
+        elif source_tool and not cr_doc_id and not cr_fname and source_tool == call_name:
+            matched_results.append(cr)
+
+    if matched_results:
+        scoped_assessment = compute_grounding_assessment(matched_results)
+    elif source_tool and not tool_call_results:
+        scoped_assessment = assessment
+    else:
+        scoped_assessment = {
+            "grounding_status": "preview_only",
+            "certified_grounding": False,
+            "grounding_badge": "preview_only",
+            "full_source_read": False,
+            "math_verified": False,
+            "provenance": [],
+        }
+
     if "tool" in meta:
-        meta["grounding_status"] = assessment["grounding_status"]
-        meta["certified_grounding"] = assessment["certified_grounding"]
-        meta["grounding_badge"] = assessment["grounding_badge"]
-        meta["full_source_read"] = assessment["full_source_read"]
-        meta["math_verified"] = assessment["math_verified"]
-        if assessment.get("provenance"):
-            meta["provenance"] = assessment["provenance"]
+        meta["grounding_status"] = scoped_assessment["grounding_status"]
+        meta["certified_grounding"] = scoped_assessment["certified_grounding"]
+        meta["grounding_badge"] = scoped_assessment["grounding_badge"]
+        meta["full_source_read"] = scoped_assessment["full_source_read"]
+        meta["math_verified"] = scoped_assessment["math_verified"]
+        if scoped_assessment.get("provenance"):
+            meta["provenance"] = scoped_assessment["provenance"]
     else:
         # Source issue de `RetrievalService` (métadonnées seules `Dataset: name; lignes; colonnes`) :
-        # ne constitue JAMAIS à elle seule un `certified_grounding` sans lecture complète par outil!
-        if assessment["certified_grounding"] and assessment["full_source_read"]:
-            meta["grounding_status"] = assessment["grounding_status"]
+        # ne reçoit un badge certifié QUE si un outil de lecture complète a vérifié CETTE source précise.
+        if matched_results and scoped_assessment["certified_grounding"] and scoped_assessment["full_source_read"]:
+            meta["grounding_status"] = scoped_assessment["grounding_status"]
             meta["certified_grounding"] = True
-            meta["grounding_badge"] = assessment["grounding_badge"]
+            meta["grounding_badge"] = scoped_assessment["grounding_badge"]
+            meta["full_source_read"] = True
+            meta["math_verified"] = scoped_assessment["math_verified"]
+            if scoped_assessment.get("provenance"):
+                meta["provenance"] = scoped_assessment["provenance"]
         else:
             meta["grounding_status"] = (
-                assessment["grounding_status"]
-                if assessment["grounding_status"] in {"uncertain_candidates", "missing_after_full_read"}
+                scoped_assessment["grounding_status"]
+                if matched_results and scoped_assessment["grounding_status"] in {"uncertain_candidates", "missing_after_full_read"}
                 else "preview_only"
             )
             meta["certified_grounding"] = False
-            meta["grounding_badge"] = "preview_only"
+            meta["grounding_badge"] = str(meta["grounding_status"])
+            meta["full_source_read"] = False
+            meta["math_verified"] = False
             meta["is_metadata_preview"] = True
     return meta
 
@@ -382,7 +431,8 @@ async def message(
     except AIServiceUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    assessment = compute_grounding_assessment(getattr(service, "last_tool_call_results", ()))
+    tool_results = getattr(service, "last_tool_call_results", ())
+    assessment = compute_grounding_assessment(tool_results)
     return ChatMessageResponse(
         id=item.id,
         role=item.role.value,
@@ -393,7 +443,13 @@ async def message(
                 type=source.source_type,
                 identifier=source.identifier,
                 name=source.name,
-                metadata=_enrich_source_metadata(source.metadata, assessment),
+                metadata=_enrich_source_metadata(
+                    source.metadata,
+                    assessment,
+                    source_identifier=source.identifier,
+                    source_name=source.name,
+                    tool_call_results=tool_results,
+                ),
             )
             for source in sources
         ],
@@ -513,15 +569,19 @@ async def stream(
                 elif event.kind == "status":
                     yield f"event: status\ndata: {json.dumps(event.payload)}\n\n"
                 elif event.kind == "sources":
-                    assessment = compute_grounding_assessment(getattr(service, "last_tool_call_results", ()))
+                    tool_results_seq = getattr(service, "last_tool_call_results", ())
+                    assessment = compute_grounding_assessment(tool_results_seq)
                     raw_sources = event.payload.get("sources")
                     enriched_sources = (
                         [
                             {
                                 **src,
                                 "metadata": _enrich_source_metadata(
-                                    src.get("metadata") if isinstance(src.get("metadata"), dict) else {},
+                                    dict(src.get("metadata") or {}) if isinstance(src.get("metadata"), dict) else {},
                                     assessment,
+                                    source_identifier=str(src.get("identifier") or "") or None,
+                                    source_name=str(src.get("name") or "") or None,
+                                    tool_call_results=tool_results_seq,
                                 ),
                             }
                             for src in raw_sources

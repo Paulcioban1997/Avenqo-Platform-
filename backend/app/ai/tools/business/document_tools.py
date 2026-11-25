@@ -486,17 +486,19 @@ class GetDocumentDetailTool(OCRAITool):
         )
 
         inv_summary: dict[str, Any] | None = None
-        grounding_status = "source_accessible"
-        certified = not is_windowed
+        is_incomplete = bool(getattr(bundle, "is_incomplete_source", False))
+        full_read = not is_windowed and not is_incomplete
+        grounding_status = "preview_only" if is_windowed else ("uncertain_candidates" if is_incomplete else "source_accessible")
+        certified = full_read and grounding_status == "source_accessible"
         math_verified = False
 
         if doc.kind == "ocr" or (doc.classification in {"invoice", "receipt", "statement"}):
             inv_report = InvoiceExtractionService().extract_from_bundle(bundle)
             inv_summary = _compact_invoice_report_dict(inv_report)
             if inv_report.verification_status != "no_amount_found" or doc.classification == "invoice":
-                grounding_status = inv_report.grounding_status
-                certified = inv_report.certified_grounding
-                math_verified = bool(inv_report.primary_invoice and inv_report.primary_invoice.math_verified)
+                grounding_status = "preview_only" if is_windowed else inv_report.grounding_status
+                certified = inv_report.certified_grounding and full_read
+                math_verified = bool(inv_report.primary_invoice and inv_report.primary_invoice.math_verified and full_read)
 
         return ToolResult(
             success=True,
@@ -511,8 +513,9 @@ class GetDocumentDetailTool(OCRAITool):
                 "invoice_extraction": inv_summary,
                 "sheets": [s.to_summary_dict() for s in bundle.sheets],
                 "extracted_content": wrapped_text,
-                "full_source_read": True,
+                "full_source_read": full_read,
                 "is_content_windowed": is_windowed,
+                "is_truncated_preview": not full_read,
                 "grounding_status": grounding_status,
                 "has_download": bool(doc.storage_path or doc.extracted_text),
             },
@@ -520,7 +523,8 @@ class GetDocumentDetailTool(OCRAITool):
             metadata={
                 "grounding_status": grounding_status,
                 "certified_grounding": certified,
-                "full_source_read": True,
+                "full_source_read": full_read,
+                "is_truncated_preview": not full_read,
                 "math_verified": math_verified,
                 "document_id": str(doc.id),
                 "filename": doc.filename,
@@ -581,12 +585,24 @@ class GetDocumentSourceTool(StructuredDocumentAITool):
             f"</untrusted_document_data>"
         )
 
-        grounding_status = (
-            "uncertain_candidates"
-            if bundle.extraction_mode == "pdf_scanned_unreadable" or bundle.has_uncached_formulas
-            else "source_accessible"
+        is_incomplete_bundle = bool(
+            getattr(bundle, "is_incomplete_source", False)
+            or bundle.extraction_mode in {"pdf_scanned_unreadable", "pdf_mixed_partial_ocr", "legacy_partial_text"}
         )
-        certified = grounding_status == "source_accessible" and not has_more
+        is_complete_from_start = (
+            arguments.offset == 0
+            and not has_more
+            and len(window) > 0
+            and selected_sheet is None
+            and not is_incomplete_bundle
+        )
+        if is_incomplete_bundle or bundle.has_uncached_formulas:
+            grounding_status = "uncertain_candidates"
+        elif not is_complete_from_start:
+            grounding_status = "preview_only"
+        else:
+            grounding_status = "source_accessible"
+        certified = grounding_status == "source_accessible" and is_complete_from_start
 
         return ToolResult(
             success=True,
@@ -602,7 +618,8 @@ class GetDocumentSourceTool(StructuredDocumentAITool):
                 "offset": arguments.offset,
                 "has_more": has_more,
                 "next_offset": (arguments.offset + arguments.max_chars) if has_more else None,
-                "full_source_read": not has_more,
+                "full_source_read": is_complete_from_start,
+                "is_truncated_preview": not is_complete_from_start,
                 "grounding_status": grounding_status,
                 "source_content": wrapped,
             },
@@ -610,8 +627,8 @@ class GetDocumentSourceTool(StructuredDocumentAITool):
             metadata={
                 "grounding_status": grounding_status,
                 "certified_grounding": certified,
-                "full_source_read": not has_more,
-                "is_truncated_preview": has_more,
+                "full_source_read": is_complete_from_start,
+                "is_truncated_preview": not is_complete_from_start,
                 "document_id": meta["document_id"],
                 "filename": meta["filename"],
             },
@@ -756,6 +773,7 @@ class GetDocumentCellEvidenceTool(StructuredDocumentAITool):
             data={
                 "document_id": meta["document_id"],
                 "filename": meta["filename"],
+                " sheet_names": [s.sheet_name for s in bundle.sheets],
                 "sheet_names": [s.sheet_name for s in bundle.sheets],
                 "matched_count": len(cells),
                 "returned_count": len(selected),
@@ -776,32 +794,82 @@ class GetDocumentCellEvidenceTool(StructuredDocumentAITool):
             source_refs=(str(meta["source_ref"]),),
             metadata={
                 "grounding_status": grounding_status,
-                "certified_grounding": not has_uncached and bool(selected),
-                "full_source_read": True,
-                "is_truncated_preview": False,
+                "certified_grounding": not has_uncached and bool(selected) and not getattr(bundle, "is_incomplete_source", False),
+                "full_source_read": False,
+                "is_scoped_cell_lookup": True,
+                "is_truncated_preview": len(selected) < len(cells),
                 "document_id": meta["document_id"],
                 "filename": meta["filename"],
             },
         )
 
 
-def _compact_invoice_report_dict(report: InvoiceExtractionReport) -> dict[str, Any]:
-    """Sérialise un `InvoiceExtractionReport` sous les 8 000 caractères de `ToolExecutor`
-    sans jamais tronquer les totaux, taxes, candidats ambigus ou références de cellules."""
+def _compact_invoice_report_dict(
+    report: InvoiceExtractionReport,
+    *,
+    max_json_chars: int = 6800,
+) -> dict[str, Any]:
+    """Sérialise un `InvoiceExtractionReport` strictement sous le budget de 8 000 caractères de `ToolExecutor`
+    sans jamais amputer les totaux, taxes, soldes, candidats ambigus ou références de cellules."""
     data = report.to_dict()
-    if data.get("primary_invoice") and isinstance(data["primary_invoice"].get("line_items"), list):
-        items = data["primary_invoice"]["line_items"]
-        if len(items) > 25:
-            data["primary_invoice"]["line_items_total_count"] = len(items)
-            data["primary_invoice"]["line_items"] = items[:25]
-    if isinstance(data.get("invoices"), list):
-        if len(data["invoices"]) > 6:
-            data["invoices_total_count"] = len(data["invoices"])
-            data["invoices"] = data["invoices"][:6]
-        for inv in data["invoices"]:
-            if isinstance(inv.get("line_items"), list) and len(inv["line_items"]) > 15:
-                inv["line_items_total_count"] = len(inv["line_items"])
-                inv["line_items"] = inv["line_items"][:15]
+    primary = data.get("primary_invoice")
+    invoices = data.get("invoices")
+
+    # Éviter la duplication intégrale de `primary_invoice` dans `invoices`
+    if isinstance(primary, dict) and isinstance(invoices, list):
+        p_sheet = primary.get("sheet_name")
+        p_num = primary.get("invoice_number")
+        compact_invoices: list[dict[str, Any]] = []
+        for inv in invoices:
+            if (
+                isinstance(inv, dict)
+                and inv.get("sheet_name") == p_sheet
+                and inv.get("invoice_number") == p_num
+                and len(invoices) == 1
+            ):
+                compact_invoices.append(
+                    {
+                        "sheet_name": inv.get("sheet_name"),
+                        "invoice_number": inv.get("invoice_number"),
+                        "is_primary_invoice_ref": True,
+                        "verification_status": inv.get("verification_status"),
+                        "total_amount": inv.get("total_amount"),
+                    }
+                )
+            else:
+                compact_invoices.append(dict(inv))
+        data["invoices"] = compact_invoices
+
+    def _serialized_len(payload: dict[str, Any]) -> int:
+        return len(json.dumps(payload, ensure_ascii=False, default=str))
+
+    # Réduction progressive des détails optionnels (`line_items`, `warnings`) tout en préservant 100 % des preuves financières
+    for line_limit, inv_limit in ((20, 6), (10, 4), (5, 3), (2, 2), (0, 2), (0, 1)):
+        if _serialized_len(data) <= max_json_chars:
+            break
+        if isinstance(data.get("primary_invoice"), dict):
+            p_items = data["primary_invoice"].get("line_items")
+            if isinstance(p_items, list) and len(p_items) > line_limit:
+                data["primary_invoice"].setdefault("line_items_total_count", len(p_items))
+                data["primary_invoice"]["line_items"] = p_items[:line_limit]
+                data["primary_invoice"]["line_items_paginated"] = True
+        if isinstance(data.get("invoices"), list):
+            invs = data["invoices"]
+            if len(invs) > inv_limit:
+                data.setdefault("invoices_total_count", len(invs))
+                data["invoices"] = invs[:inv_limit]
+                data["invoices_paginated"] = True
+            for inv in data["invoices"]:
+                if isinstance(inv, dict):
+                    i_items = inv.get("line_items")
+                    sec_limit = max(0, line_limit // 2)
+                    if isinstance(i_items, list) and len(i_items) > sec_limit:
+                        inv.setdefault("line_items_total_count", len(i_items))
+                        inv["line_items"] = i_items[:sec_limit]
+                        inv["line_items_paginated"] = True
+        if line_limit == 0 and isinstance(data.get("warnings"), list) and len(data["warnings"]) > 3:
+            data["warnings"] = data["warnings"][:3]
+
     return data
 
 

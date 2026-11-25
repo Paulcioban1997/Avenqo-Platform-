@@ -100,22 +100,33 @@ def compute_grounding_assessment(tool_call_results: Sequence[ToolCallResult]) ->
             or meta.get("is_truncated_preview")
             or data.get("truncated")
             or data.get("is_truncated_preview")
+            or data.get("is_content_windowed")
+        )
+        explicit_certified = meta.get("certified_grounding")
+        is_full = bool(
+            (meta.get("full_source_read") or data.get("full_source_read"))
+            and not is_trunc
+            and explicit_certified is not False
         )
         g_status = str(meta.get("grounding_status") or data.get("grounding_status") or "")
         if not g_status:
-            g_status = "preview_only" if is_trunc else "source_accessible"
-        elif is_trunc and g_status == "source_accessible":
+            g_status = "preview_only" if (is_trunc or not is_full) else "source_accessible"
+        elif (is_trunc or explicit_certified is False or not is_full) and g_status in {
+            "math_verified",
+            "extracted_structured",
+            "source_accessible",
+        }:
             g_status = "preview_only"
 
         statuses.append(g_status)
-        if g_status != "preview_only" and not is_trunc:
+        if g_status != "preview_only" and not is_trunc and is_full:
             only_preview = False
-        if bool(meta.get("full_source_read") or data.get("full_source_read")):
+        if is_full:
             any_full_read = True
-        if bool(meta.get("math_verified")):
+        if bool(meta.get("math_verified")) and is_full and g_status == "math_verified":
             any_math_verified = True
         prov = meta.get("provenance")
-        if isinstance(prov, dict):
+        if isinstance(prov, dict) and is_full:
             provenance_items.append(prov)
 
     if "uncertain_candidates" in statuses:
@@ -191,11 +202,32 @@ def _pending_unread_document_ids(
             continue
         data = cr.result.data if isinstance(cr.result.data, dict) else {}
         meta = cr.result.metadata or {}
-        if cr.call.name in _FULL_DOCUMENT_READ_TOOLS and not meta.get("truncated"):
+        is_trunc = bool(
+            meta.get("truncated")
+            or meta.get("is_truncated_preview")
+            or data.get("truncated")
+            or data.get("is_truncated_preview")
+            or data.get("is_content_windowed")
+        )
+        is_full_coverage = bool(
+            (meta.get("full_source_read") or data.get("full_source_read"))
+            and not is_trunc
+            and not cr.call.arguments.get("sheet_name")
+        )
+        if (
+            cr.call.name in _FULL_DOCUMENT_READ_TOOLS
+            and cr.call.name != "get_document_cell_evidence"
+            and is_full_coverage
+        ):
             doc_id = str(data.get("document_id") or cr.call.arguments.get("document_id") or "")
             if doc_id:
                 fully_read_doc_ids.add(doc_id)
-        elif cr.call.name == "search_documents":
+        elif cr.call.name == "search_documents" or (
+            cr.call.name in _FULL_DOCUMENT_READ_TOOLS and not is_full_coverage
+        ):
+            direct_doc_id = str(data.get("document_id") or cr.call.arguments.get("document_id") or "")
+            if direct_doc_id:
+                preview_doc_ids.append(direct_doc_id)
             for item in data.get("documents") or ():
                 if isinstance(item, dict) and item.get("document_id"):
                     preview_doc_ids.append(str(item["document_id"]))

@@ -27,7 +27,7 @@ import re
 import unicodedata
 from typing import Any
 
-from backend.app.services.document_extraction import (
+from .document_extraction import (
     CellProvenance,
     DocumentExtractionBundle,
     ExtractedSheet,
@@ -844,17 +844,36 @@ class InvoiceExtractionService:
                 if cell_match is not None:
                     all_uncached.append(cell_match.to_dict())
 
+        is_incomplete_source = bool(
+            getattr(bundle, "is_incomplete_source", False)
+            or bundle.extraction_mode in {"pdf_scanned_unreadable", "pdf_mixed_partial_ocr", "legacy_partial_text"}
+        )
+
         if not extracted_invoices:
             if all_uncached:
                 return InvoiceExtractionReport(
                     file_name=bundle.file_name,
-                    full_source_read=True,
+                    full_source_read=not is_incomplete_source,
                     sheet_names=sheet_names,
                     primary_invoice=None,
                     invoices=(),
                     ambiguous_candidates=(),
                     uncached_formulas=tuple(all_uncached),
                     verification_status="uncached_formula",
+                    grounding_status="uncertain_candidates",
+                    certified_grounding=False,
+                    warnings=tuple(warnings),
+                )
+            if is_incomplete_source:
+                return InvoiceExtractionReport(
+                    file_name=bundle.file_name,
+                    full_source_read=False,
+                    sheet_names=sheet_names,
+                    primary_invoice=None,
+                    invoices=(),
+                    ambiguous_candidates=(),
+                    uncached_formulas=(),
+                    verification_status="incomplete_source",
                     grounding_status="uncertain_candidates",
                     certified_grounding=False,
                     warnings=tuple(warnings),
@@ -877,11 +896,16 @@ class InvoiceExtractionService:
         primary, top_ambiguous, overall_status, overall_grounding = self._select_primary_or_flag_ambiguity(
             extracted_invoices
         )
-        certified = overall_grounding in {"math_verified", "extracted_structured"} and not bool(top_ambiguous)
+        if is_incomplete_source:
+            overall_status = "incomplete_source"
+            overall_grounding = "uncertain_candidates"
+            certified = False
+        else:
+            certified = overall_grounding in {"math_verified", "extracted_structured"} and not bool(top_ambiguous)
 
         return InvoiceExtractionReport(
             file_name=bundle.file_name,
-            full_source_read=True,
+            full_source_read=not is_incomplete_source,
             sheet_names=sheet_names,
             primary_invoice=primary,
             invoices=tuple(extracted_invoices),
@@ -922,25 +946,35 @@ class InvoiceExtractionService:
             inv = invoices[0]
             return inv, inv.ambiguous_candidates, inv.verification_status, inv.grounding_status
 
-        # S'il y a un onglet visible de facture/sommaire vérifié mathématiquement et un onglet annexe/sous-détail
-        # dont le total partiel alimente le sous-total de la facture principale, la facture principale gagne sans ambiguïté!
+        # S'il y a un onglet visible de facture/sommaire vérifié mathématiquement et que TOUS les autres onglets
+        # sont des sous-composantes réconciliées positivement avec la facture principale (ex: annexe égale à une ligne ou au sous-total),
+        # alors la facture principale gagne sans ambiguïté. Un onglet caché non réconcilié ou un onglet ambigu bloque cette certification.
         verified = [inv for inv in with_totals if inv.verification_status == "math_verified" and inv.total_amount is not None]
         if len(verified) == 1:
             winner = verified[0]
             others = [o for o in with_totals if o is not winner]
-            # Vérifier si les autres onglets sont des sous-composantes (ex: annexe carburant égale à une ligne ou < sous-total) ou cachés
             line_amounts = {li.line_total for li in winner.line_items}
-            if all(
+            all_others_resolved = all(
                 o.total_amount is not None
-                and (
-                    o.total_amount.is_hidden_sheet
-                    or o.total_amount.amount in line_amounts
-                    or (winner.subtotal is not None and o.total_amount.amount == winner.subtotal.amount)
-                )
+                and not o.uncached_formulas
+                and not o.ambiguous_candidates
+                and o.verification_status in {"math_verified", "extracted_unverified_math"}
                 for o in others
-                if o.total_amount is not None and not o.uncached_formulas
-            ) and not any(o.uncached_formulas for o in others):
-                return winner, (), winner.verification_status, winner.grounding_status
+            )
+            if all_others_resolved and others:
+                individually_reconciled = all(
+                    o.total_amount is not None
+                    and (
+                        o.total_amount.amount in line_amounts
+                        or (winner.subtotal is not None and abs(o.total_amount.amount - winner.subtotal.amount) <= self._tolerance)
+                    )
+                    for o in others
+                )
+                sum_others = sum((o.total_amount.amount for o in others if o.total_amount is not None), Decimal("0.00"))
+                target_sub = winner.subtotal.amount if winner.subtotal is not None else (winner.total_amount.amount if winner.total_amount is not None else Decimal("-1"))
+                collectively_reconciled = abs(sum_others - target_sub) <= self._tolerance
+                if individually_reconciled or collectively_reconciled:
+                    return winner, (), winner.verification_status, winner.grounding_status
 
         # Vérifier si un onglet "Sommaire" / "Récapitulatif" consolide exactement la somme des factures individuelles
         for cand in with_totals:
@@ -1534,6 +1568,15 @@ class InvoiceExtractionService:
                 return None, right_cell
             if right_cell.data_type == "date":
                 continue
+            raw_right_str = str(right_cell.raw_value or "").strip()
+            norm_right_str = str(right_cell.normalized_value or "").strip()
+            is_pct_cell = (
+                bool(right_cell.number_format and "%" in right_cell.number_format)
+                or raw_right_str.endswith("%")
+                or norm_right_str.endswith("%")
+            )
+            if is_pct_cell:
+                continue
             parsed = parse_decimal_amount(
                 right_cell.cached_value if right_cell.cached_value is not None else right_cell.raw_value,
                 currency_hint=explicit_ccy_on_row or right_cell.currency_hint or default_currency,
@@ -1735,9 +1778,23 @@ class InvoiceExtractionService:
         tax_included: bool,
         is_credit_note: bool,
     ) -> tuple[ProvenancedAmount | None, tuple[ProvenancedAmount, ...], bool, str, str, str]:
-        # Si une formule de total n'a aucune valeur mise en cache et qu'aucun total confirmé n'existe
+        # Si une formule de champ financier n'a aucune valeur mise en cache
         total_uncached = [
-            u for u in uncached_formulas if u.get("associated_role") in {"grand_total", "balance_due", "subtotal", "tax"}
+            u
+            for u in uncached_formulas
+            if u.get("associated_role")
+            in {
+                "grand_total",
+                "balance_due",
+                "subtotal",
+                "tax",
+                "tax_aggregate",
+                "discount",
+                "amount_paid",
+                "prior_balance",
+                "line_total",
+            }
+            or bool(u.get("cell_ref"))
         ]
         if not grand_total_candidates:
             if total_uncached or uncached_formulas:
@@ -1835,16 +1892,40 @@ class InvoiceExtractionService:
                     matching_candidates.append((cand, formula_desc))
                     break
 
+        def _check_balance_reconciliation(total_val: Decimal) -> tuple[bool, str | None]:
+            if balance_due is None or (amount_paid is None and prior_balance is None):
+                return True, None
+            prior_val = prior_balance.amount if prior_balance is not None else Decimal("0.00")
+            paid_val = abs(amount_paid.amount) if amount_paid is not None else Decimal("0.00")
+            expected_bal = (total_val + prior_val - paid_val).quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+            diff_bal = abs(balance_due.amount - expected_bal)
+            if diff_bal <= self._tolerance:
+                return True, None
+            return (
+                False,
+                f"Écart de solde détecté : total ({format(total_val, 'f')}) + solde antérieur ({format(prior_val, 'f')}) - payé ({format(paid_val, 'f')}) = {format(expected_bal, 'f')} vs solde dû indiqué {format(balance_due.amount, 'f')} (écart {format(diff_bal, 'f')}).",
+            )
+
         if len(matching_candidates) == 1:
             winner, formula_desc = matching_candidates[0]
-            # S'il existe une formule non cachée sur une taxe ou un sous-total alors qu'on prétendait vérifier, refuser!
+            # S'il existe une formule non cachée sur une remise, taxe ou sous-total alors qu'on prétendait vérifier, refuser!
             if total_uncached:
                 return (
                     None,
                     tuple(unique_by_amount.values()),
                     False,
-                    "Une formule de sous-total/taxe/total n'a pas de valeur mise en cache.",
+                    "Une formule de sous-total/remise/taxe/total n'a pas de valeur mise en cache.",
                     "uncached_formula",
+                    "uncertain_candidates",
+                )
+            bal_ok, bal_err = _check_balance_reconciliation(winner.amount)
+            if not bal_ok:
+                return (
+                    winner,
+                    (winner,),
+                    False,
+                    bal_err or "Écart de réconciliation du solde restant dû.",
+                    "math_mismatch",
                     "uncertain_candidates",
                 )
             return (
@@ -1892,6 +1973,17 @@ class InvoiceExtractionService:
                 "uncertain_candidates",
             )
 
+        bal_ok, bal_err = _check_balance_reconciliation(sole.amount)
+        if not bal_ok:
+            return (
+                sole,
+                (sole,),
+                False,
+                bal_err or "Écart de réconciliation du solde restant dû.",
+                "math_mismatch",
+                "uncertain_candidates",
+            )
+
         # Facture simple / reçu ne comportant qu'un total unique sans détail de lignes ni sous-total contradictoire
         return (
             sole,
@@ -1913,15 +2005,20 @@ class InvoiceExtractionService:
     ) -> str | None:
         if total is None or verification_status not in {"math_verified", "extracted_unverified_math"}:
             return None
-        ccy_label = currency if currency and currency in KNOWN_CURRENCIES else (total.currency or "CAD")
+        resolved_ccy = (
+            currency
+            if currency and currency in KNOWN_CURRENCIES
+            else (total.currency if total.currency and total.currency in KNOWN_CURRENCIES else None)
+        )
+        ccy_suffix = f" {resolved_ccy}" if resolved_ccy else " (devise non spécifiée)"
         formatted_total = format_decimal_fr(total.amount)
         if total.sheet_name and re.match(r"^[A-Z]+\d+$", total.coordinate):
             stmt = (
-                f"Le montant total facturé est {formatted_total} {ccy_label}, "
+                f"Le montant total facturé est {formatted_total}{ccy_suffix}, "
                 f"indiqué dans l'onglet {total.sheet_name}, cellule {total.coordinate}."
             )
         else:
-            stmt = f"Le montant total facturé est {formatted_total} {ccy_label}, indiqué à la référence {total.cell_ref}."
+            stmt = f"Le montant total facturé est {formatted_total}{ccy_suffix}, indiqué à la référence {total.cell_ref}."
 
         if (
             balance_due is not None
@@ -1930,8 +2027,8 @@ class InvoiceExtractionService:
             and balance_due.amount != total.amount
         ):
             stmt += (
-                f" Après déduction du montant payé ({format_decimal_fr(abs(amount_paid.amount))} {ccy_label}), "
-                f"le solde restant dû est {format_decimal_fr(balance_due.amount)} {ccy_label}."
+                f" Après déduction du montant payé ({format_decimal_fr(abs(amount_paid.amount))}{ccy_suffix}), "
+                f"le solde restant dû est {format_decimal_fr(balance_due.amount)}{ccy_suffix}."
             )
         return stmt
 
