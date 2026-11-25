@@ -22,7 +22,10 @@ from backend.app.ai.tools.contracts import ToolExecutionContext, ToolResult
 from backend.app.models.accounting import AccountingInvoice
 from backend.app.models.user import User
 from backend.app.services.accounting_intelligence_service import AccountingIntelligenceService
-from backend.app.services.financial_integration_service import FinancialIntegrationService
+from backend.app.services.financial_integration_service import (
+    FinancialIntegrationService,
+    can_access_hr_payroll_summary,
+)
 from backend.app.services.secure_document_token_service import SecureDocumentTokenService
 from backend.app.voice.caller_scope import is_public_voice_caller
 
@@ -160,14 +163,20 @@ class GetMonthlyExpensesTool(AccountingAITool):
         self._service = AccountingIntelligenceService(session)
 
     async def run(self, context: ToolExecutionContext, arguments: MonthlyExpensesArgs) -> ToolResult:
-        _, denied = _guard_accounting_context(self._session, context)
+        actor_user, denied = _guard_accounting_context(self._session, context)
         if denied is not None:
             return denied
 
+        can_payroll = (
+            True
+            if actor_user is None
+            else can_access_hr_payroll_summary(self._session, context.tenant.company_id, actor_user)[0]
+        )
         data = self._service.get_monthly_expenses(
             context.tenant.company_id,
             year=arguments.year,
             month=arguments.month,
+            include_payroll=can_payroll,
         )
         return ToolResult(
             success=True,
@@ -246,13 +255,19 @@ class GetExpenseAnomaliesTool(AccountingAITool):
         self._service = AccountingIntelligenceService(session)
 
     async def run(self, context: ToolExecutionContext, arguments: ExpenseAnomaliesArgs) -> ToolResult:
-        _, denied = _guard_accounting_context(self._session, context)
+        actor_user, denied = _guard_accounting_context(self._session, context)
         if denied is not None:
             return denied
 
+        can_payroll = (
+            True
+            if actor_user is None
+            else can_access_hr_payroll_summary(self._session, context.tenant.company_id, actor_user)[0]
+        )
         data = self._service.get_expense_anomalies(
             context.tenant.company_id,
             threshold_multiplier=arguments.threshold_multiplier,
+            include_payroll=can_payroll,
         )
         return ToolResult(
             success=True,

@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.core.permission_grants import effective_permissions
 from backend.app.core.permissions import is_executive_role, resolve_verified_staff_role
-from backend.app.models.accounting import (
+from ..models.accounting import (
     AccountingInvoice,
     AccountingTenantPolicy,
     AccountingTransaction,
@@ -35,7 +35,7 @@ from backend.app.models.company_contract import CompanyContract
 from backend.app.models.crm import CRMAppointment, CRMClient
 from backend.app.models.user import User
 from backend.app.models.workspace import TenantDocument
-from backend.app.services.accounting_classification_service import (
+from .accounting_classification_service import (
      TWOPLACES,
     _parse_datetime,
     _to_decimal,
@@ -46,6 +46,67 @@ from shared.ai_engine.contracts import TenantContext
 
 class HRPayrollAccessDeniedError(PermissionError):
     """Accès refusé aux données agrégées de masse salariale RH."""
+
+
+PAYROLL_CATEGORIES: frozenset[str] = frozenset({
+    "payroll",
+    "salaries",
+    "salaires",
+    "employer_taxes",
+    "paie",
+    "masse_salariale",
+})
+
+
+def _extract_canonical_refund_fields(
+    refund_data: dict[str, Any],
+    *,
+    default_date: Any = None,
+) -> tuple[Decimal, Decimal, Decimal, datetime, str]:
+    """Extrait les montants et identifiants canoniques d'un remboursement (supporte `refund_amount`, `amount`, `total_refund`, `source_order_id`, `shopify_order_gid`, `refund_timestamp`)."""
+    raw_gross = (
+        refund_data.get("amount")
+        if refund_data.get("amount") is not None
+        else (
+            refund_data.get("refund_amount")
+            if refund_data.get("refund_amount") is not None
+            else (
+                refund_data.get("total_refund")
+                if refund_data.get("total_refund") is not None
+                else refund_data.get("total_amount")
+            )
+        )
+    )
+    ref_gross = _to_decimal(raw_gross, default=Decimal("0.00")) or Decimal("0.00")
+    ref_tax = (
+        _to_decimal(
+            refund_data.get("tax_amount")
+            if refund_data.get("tax_amount") is not None
+            else refund_data.get("total_tax"),
+            default=Decimal("0.00"),
+        )
+        or Decimal("0.00")
+    )
+    ref_sub = _to_decimal(refund_data.get("subtotal"), default=None)
+    if ref_sub is None:
+        ref_sub = max(Decimal("0.00"), (ref_gross - ref_tax).quantize(TWOPLACES, rounding=ROUND_HALF_UP))
+    ref_date = _parse_datetime(
+        refund_data.get("refund_timestamp")
+        or refund_data.get("created_at")
+        or refund_data.get("processed_at")
+        or default_date
+    )
+    raw_ord = (
+        refund_data.get("order_id")
+        or refund_data.get("source_order_id")
+        or refund_data.get("shopify_order_gid")
+        or refund_data.get("order_external_id")
+        or ""
+    )
+    order_ext_id = str(raw_ord).strip()
+    if "/" in order_ext_id and order_ext_id.startswith("gid://"):
+        order_ext_id = order_ext_id.rsplit("/", 1)[-1]
+    return ref_gross, ref_tax, ref_sub, ref_date, order_ext_id
 
 
 def can_access_hr_payroll_summary(
@@ -108,10 +169,23 @@ class FinancialIntegrationService:
             raw_cost = pdata.get("unit_cost") or pdata.get("cost") or pdata.get("cost_per_item")
             dec_cost = _to_decimal(raw_cost, default=None)
             if dec_cost is not None and dec_cost >= Decimal("0.00"):
-                costs[str(prod.source_record_id)] = dec_cost
+                ext_pid = str(prod.source_record_id)
+                conn_id_val = getattr(prod, "connection_id", None)
+                costs[ext_pid] = dec_cost
+                if conn_id_val:
+                    costs[f"{conn_id_val}:{ext_pid}"] = dec_cost
                 if pdata.get("sku"):
                     costs[f"sku:{pdata['sku']}"] = dec_cost
+                    if conn_id_val:
+                        costs[f"{conn_id_val}:sku:{pdata['sku']}"] = dec_cost
         return costs
+
+    @staticmethod
+    def _connection_namespace(provider: str, record: Any) -> str:
+        conn_id = getattr(record, "connection_id", None)
+        if conn_id is not None and str(conn_id).strip():
+            return f"{provider}:{str(conn_id).strip()}"
+        return provider
 
     def sync_retail_commerce_to_accounting(
         self,
@@ -123,9 +197,23 @@ class FinancialIntegrationService:
     ) -> dict[str, Any]:
         """Synchronise commandes, ventes, paiements, taxes, COGS connus, frais et remboursements Retail AI.
 
-        Utilise des `idempotency_key` déterministes (`{provider}:{company_id}:{ext_id}:{event_type}`)
-        garantissant ZÉRO double comptage lors d'appels multiples de synchronisation Shopify/WooCommerce.
+        Utilise des `idempotency_key` déterministes incluant la connexion (`{provider}[:{connection_id}]:{company_id}:{ext_id}:{event_type}`)
+        garantissant ZÉRO double comptage et ZÉRO collision multi-boutiques.
         """
+        tenant = TenantContext(company_id=company_id, user_id=actor_user_id)
+        if not ModuleEntitlementService(self._session).can_use_module(tenant, "retail"):
+            return {
+                "available": False,
+                "source_module": "retail",
+                "reason": "retail_module_inactive",
+                "orders_processed": 0,
+                "refunds_synced": 0,
+                "created_invoices": 0,
+                "created_transactions": 0,
+                "skipped_idempotent": 0,
+                "governance_mode": "module_inactive",
+            }
+
         policy = self._get_policy(company_id)
         auto_confirm = (
             bool(confirm_verified_settlements)
@@ -152,13 +240,29 @@ class FinancialIntegrationService:
         refunds_synced = 0
 
         invoice_by_order_ext: dict[str, AccountingInvoice] = {}
+        processed_refund_identities: set[str] = set()
 
         for ord_rec in order_records:
             data = ord_rec.normalized_data or {}
             provider = (ord_rec.provider or "shopify").lower().strip()
+            conn_ns = self._connection_namespace(provider, ord_rec)
+            conn_id_str = str(getattr(ord_rec, "connection_id", "") or "").strip() or None
             ext_order_id = str(ord_rec.source_record_id).strip()
-            fin_status = str(data.get("financial_status") or data.get("status") or "paid").lower().strip()
-            if fin_status in {"voided", "cancelled", "canceled"} and not data.get("total_price"):
+            if "/" in ext_order_id and ext_order_id.startswith("gid://"):
+                ext_order_id = ext_order_id.rsplit("/", 1)[-1]
+            scoped_order_ext = f"{conn_id_str}:{ext_order_id}" if conn_id_str else ext_order_id
+
+            raw_fin = (
+                data.get("financial_status")
+                if data.get("financial_status") is not None
+                else (
+                    data.get("payment_status")
+                    if data.get("payment_status") is not None
+                    else data.get("status")
+                )
+            )
+            fin_status = str(raw_fin).lower().strip() if raw_fin is not None and str(raw_fin).strip() else "unverified"
+            if fin_status in {"voided", "cancelled", "canceled"}:
                 continue
 
             gross_total = _to_decimal(
@@ -184,7 +288,11 @@ class FinancialIntegrationService:
 
             currency = str(data.get("currency") or "CAD").upper()[:10]
             order_date = _parse_datetime(
-                data.get("created_at") or data.get("processed_at") or ord_rec.source_updated_at,
+                data.get("order_timestamp")
+                or data.get("created_at")
+                or data.get("processed_at")
+                or data.get("date_created")
+                or ord_rec.source_updated_at,
             )
             order_number = str(data.get("order_number") or data.get("name") or f"ORD-{ext_order_id}")[:100]
             customer_name = str(
@@ -194,19 +302,29 @@ class FinancialIntegrationService:
                 or f"Client {provider.title()} #{order_number}"
             )[:255]
 
+            explicit_paid = _to_decimal(data.get("paid_amount"), default=None)
             is_verified_settlement = fin_status in {"paid", "partially_paid", "refunded", "partially_refunded", "completed"}
             should_confirm = bool(auto_confirm and is_verified_settlement)
             verif_status = "verified_connector" if should_confirm else "to_verify"
             acct_status = "posted" if should_confirm else "proposed"
 
-            paid_dec = gross_total if fin_status in {"paid", "refunded", "partially_refunded", "completed"} else (
-                _to_decimal(data.get("paid_amount"), default=Decimal("0.00")) or Decimal("0.00")
-            )
+            if fin_status in {"paid", "refunded", "partially_refunded", "completed"}:
+                paid_dec = explicit_paid if explicit_paid is not None else gross_total
+            elif fin_status == "partially_paid":
+                paid_dec = explicit_paid if explicit_paid is not None else Decimal("0.00")
+            else:
+                # L'absence de preuve explicite de paiement ne vaut JAMAIS `paid`
+                paid_dec = explicit_paid if (explicit_paid is not None and is_verified_settlement) else Decimal("0.00")
 
             # 1. Facture commerciale liée à la commande (`invoice`)
-            inv_idem = f"{provider}:{company_id}:{ext_order_id}:invoice"
+            inv_idem = f"{conn_ns}:{company_id}:{ext_order_id}:invoice"
             inv = self._get_invoice_by_idempotency(company_id, inv_idem)
             raw_line_items = data.get("line_items") if isinstance(data.get("line_items"), list) else []
+            target_inv_status = (
+                "paid"
+                if (should_confirm and paid_dec >= gross_total)
+                else ("partial" if (should_confirm and paid_dec > Decimal("0.00")) else ("unpaid" if should_confirm else "to_verify"))
+            )
             if inv is None:
                 inv = AccountingInvoice(
                     company_id=company_id,
@@ -225,21 +343,23 @@ class FinancialIntegrationService:
                     total_amount=float(gross_total),
                     paid_amount=float(paid_dec),
                     currency=currency,
-                    status="paid" if (should_confirm and paid_dec >= gross_total) else ("unpaid" if should_confirm else "to_verify"),
+                    status=target_inv_status,
                     is_confirmed=should_confirm,
                     line_items=raw_line_items,
                     source_module="retail",
-                    external_id=ext_order_id,
+                    external_id=scoped_order_ext,
                     idempotency_key=inv_idem,
                     verification_status=verif_status,
                     accounting_status=acct_status,
-                    confidence_score=1.0,
-                    classification_rationale=f" Synchronisation {provider} commande #{order_number} ({fin_status}).".strip(),
+                    confidence_score=1.0 if is_verified_settlement else 0.75,
+                    classification_rationale=f"Synchronisation {provider} commande #{order_number} ({fin_status}).",
                     extra_data={
                         "provider": provider,
+                        "connection_id": conn_id_str,
                         "commerce_record_id": str(ord_rec.id),
                         "financial_status": fin_status,
                         "order_number": order_number,
+                        "order_external_id": ext_order_id,
                     },
                 )
                 self._session.add(inv)
@@ -247,10 +367,26 @@ class FinancialIntegrationService:
                 created_invoices += 1
             else:
                 skipped_idempotent += 1
-            invoice_by_order_ext[ext_order_id] = inv
+                if inv.status != "rejected":
+                    inv.issue_date = order_date
+                    inv.due_date = order_date
+                    inv.subtotal_amount = float(net_subtotal)
+                    inv.tax_amount = float(documented_tax)
+                    inv.total_amount = float(gross_total)
+                    inv.paid_amount = float(paid_dec)
+                    inv.currency = currency
+                    if should_confirm and not inv.is_confirmed:
+                        inv.is_confirmed = True
+                        inv.verification_status = verif_status
+                        inv.accounting_status = acct_status
+                        inv.status = target_inv_status
+                    elif inv.is_confirmed:
+                        inv.status = "paid" if paid_dec >= gross_total else ("partial" if paid_dec > Decimal("0.00") else "unpaid")
+            invoice_by_order_ext[scoped_order_ext] = inv
+            invoice_by_order_ext.setdefault(ext_order_id, inv)
 
             # 2. Trace distincte de commande (`order`, non-P&L pour ne jamais doubler le CA)
-            order_idem = f"{provider}:{company_id}:{ext_order_id}:order"
+            order_idem = f"{conn_ns}:{company_id}:{ext_order_id}:order"
             if self._upsert_tx_if_absent(
                 company_id=company_id,
                 idempotency_key=order_idem,
@@ -268,16 +404,16 @@ class FinancialIntegrationService:
                 verification_status=verif_status,
                 accounting_status=acct_status,
                 reference_id=order_number,
-                external_id=ext_order_id,
+                external_id=scoped_order_ext,
                 invoice_id=inv.id,
-                extra_data={"provider": provider, "financial_status": fin_status, "non_pnl_memo": True},
+                extra_data={"provider": provider, "connection_id": conn_id_str, "financial_status": fin_status, "non_pnl_memo": True},
             ):
                 created_transactions += 1
             else:
                 skipped_idempotent += 1
 
             # 3. Écriture comptable de vente (`journal_entry` / `revenue`)
-            sale_idem = f"{provider}:{company_id}:{ext_order_id}:sale_revenue"
+            sale_idem = f"{conn_ns}:{company_id}:{ext_order_id}:sale_revenue"
             if self._upsert_tx_if_absent(
                 company_id=company_id,
                 idempotency_key=sale_idem,
@@ -295,9 +431,9 @@ class FinancialIntegrationService:
                 verification_status=verif_status,
                 accounting_status=acct_status,
                 reference_id=order_number,
-                external_id=ext_order_id,
+                external_id=scoped_order_ext,
                 invoice_id=inv.id,
-                extra_data={"provider": provider, "gross_total": float(gross_total)},
+                extra_data={"provider": provider, "connection_id": conn_id_str, "gross_total": float(gross_total)},
             ):
                 created_transactions += 1
             else:
@@ -306,7 +442,7 @@ class FinancialIntegrationService:
             # 4. Encaissement client distinct (`payment_collected`, type `payment` — ne double jamais `revenue`)
             if paid_dec > Decimal("0.00"):
                 pay_ext_id = str(data.get("payment_id") or data.get("gateway_reference") or ext_order_id)
-                pay_idem = f"{provider}:{company_id}:{ext_order_id}:{pay_ext_id}:payment_collected"
+                pay_idem = f"{conn_ns}:{company_id}:{ext_order_id}:{pay_ext_id}:payment_collected"
                 if self._upsert_tx_if_absent(
                     company_id=company_id,
                     idempotency_key=pay_idem,
@@ -324,18 +460,23 @@ class FinancialIntegrationService:
                     verification_status=verif_status,
                     accounting_status="reconciled" if should_confirm else "proposed",
                     reference_id=order_number,
-                    external_id=pay_ext_id,
+                    external_id=f"{conn_id_str}:{pay_ext_id}" if conn_id_str else pay_ext_id,
                     invoice_id=inv.id,
-                    extra_data={"provider": provider, "order_external_id": ext_order_id},
+                    extra_data={"provider": provider, "connection_id": conn_id_str, "order_external_id": scoped_order_ext},
                 ):
                     created_transactions += 1
                 else:
                     skipped_idempotent += 1
 
             # 5. COGS vérifiables uniquement (jamais inventés si absents)
-            known_cogs, cogs_complete = self._compute_verifiable_cogs(data, list(raw_line_items or []), product_costs)
+            known_cogs, cogs_complete = self._compute_verifiable_cogs(
+                data,
+                list(raw_line_items or []),
+                product_costs,
+                connection_id=conn_id_str,
+            )
             if known_cogs is not None and known_cogs > Decimal("0.00"):
-                cogs_idem = f"{provider}:{company_id}:{ext_order_id}:cogs"
+                cogs_idem = f"{conn_ns}:{company_id}:{ext_order_id}:cogs"
                 if self._upsert_tx_if_absent(
                     company_id=company_id,
                     idempotency_key=cogs_idem,
@@ -353,9 +494,9 @@ class FinancialIntegrationService:
                     verification_status=verif_status,
                     accounting_status=acct_status,
                     reference_id=order_number,
-                    external_id=ext_order_id,
+                    external_id=scoped_order_ext,
                     invoice_id=inv.id,
-                    extra_data={"cogs_complete": cogs_complete, "provider": provider},
+                    extra_data={"cogs_complete": cogs_complete, "provider": provider, "connection_id": conn_id_str},
                 ):
                     created_transactions += 1
                 else:
@@ -367,7 +508,7 @@ class FinancialIntegrationService:
                 default=None,
             )
             if proc_fee is not None and proc_fee > Decimal("0.00"):
-                fee_idem = f"{provider}:{company_id}:{ext_order_id}:processing_fee"
+                fee_idem = f"{conn_ns}:{company_id}:{ext_order_id}:processing_fee"
                 if self._upsert_tx_if_absent(
                     company_id=company_id,
                     idempotency_key=fee_idem,
@@ -385,9 +526,9 @@ class FinancialIntegrationService:
                     verification_status=verif_status,
                     accounting_status=acct_status,
                     reference_id=order_number,
-                    external_id=ext_order_id,
+                    external_id=scoped_order_ext,
                     invoice_id=inv.id,
-                    extra_data={"provider": provider},
+                    extra_data={"provider": provider, "connection_id": conn_id_str},
                 ):
                     created_transactions += 1
                 else:
@@ -399,12 +540,15 @@ class FinancialIntegrationService:
             for idx_ref, ref_item in enumerate(embedded_refunds):
                 if not isinstance(ref_item, dict):
                     continue
-                ref_id = str(ref_item.get("id") or ref_item.get("refund_id") or f"{ext_order_id}-ref-{idx_ref + 1}")
+                ref_id = str(ref_item.get("id") or ref_item.get("refund_id") or f"{ext_order_id}-ref-{idx_ref + 1}").strip()
+                processed_refund_identities.add(f"{conn_ns}:{ref_id}")
                 c_inv, c_tx, s_id = self._sync_single_refund(
                     company_id=company_id,
                     provider=provider,
+                    conn_ns=conn_ns,
+                    connection_id=conn_id_str,
                     refund_ext_id=ref_id,
-                    order_ext_id=ext_order_id,
+                    order_ext_id=scoped_order_ext,
                     order_number=order_number,
                     customer_name=customer_name,
                     currency=currency,
@@ -424,24 +568,32 @@ class FinancialIntegrationService:
         for ref_rec in standalone_refunds:
             rdata = ref_rec.normalized_data or {}
             provider = (ref_rec.provider or "shopify").lower().strip()
+            conn_ns = self._connection_namespace(provider, ref_rec)
+            conn_id_str = str(getattr(ref_rec, "connection_id", "") or "").strip() or None
             ref_ext_id = str(ref_rec.source_record_id).strip()
-            ord_ext_id = str(rdata.get("order_id") or "").strip()
-            linked_inv = invoice_by_order_ext.get(ord_ext_id)
+            if "/" in ref_ext_id and ref_ext_id.startswith("gid://"):
+                ref_ext_id = ref_ext_id.rsplit("/", 1)[-1]
+            _, _, _, _, ord_ext_id = _extract_canonical_refund_fields(rdata, default_date=ref_rec.source_updated_at)
+            scoped_ord_ext = (f"{conn_id_str}:{ord_ext_id}" if conn_id_str else ord_ext_id) if ord_ext_id else ""
+            linked_inv = invoice_by_order_ext.get(scoped_ord_ext) or invoice_by_order_ext.get(ord_ext_id)
             if linked_inv is None and ord_ext_id:
                 linked_inv = self._get_invoice_by_idempotency(
-                    company_id, f"{provider}:{company_id}:{ord_ext_id}:invoice"
+                    company_id, f"{conn_ns}:{company_id}:{ord_ext_id}:invoice"
                 )
             c_inv, c_tx, s_id = self._sync_single_refund(
                 company_id=company_id,
                 provider=provider,
+                conn_ns=conn_ns,
+                connection_id=conn_id_str,
                 refund_ext_id=ref_ext_id,
-                order_ext_id=ord_ext_id or ref_ext_id,
-                order_number=str(rdata.get("order_number") or ord_ext_id or ref_ext_id),
-                customer_name=str(rdata.get("customer_name") or "Client e-commerce"),
-                currency=str(rdata.get("currency") or "CAD").upper()[:10],
+                order_ext_id=scoped_ord_ext or (f"{conn_id_str}:{ref_ext_id}" if conn_id_str else ref_ext_id),
+                order_number=str(rdata.get("order_number") or (linked_inv.invoice_number if linked_inv else None) or ord_ext_id or ref_ext_id),
+                customer_name=str(rdata.get("customer_name") or (linked_inv.party_name if linked_inv else None) or "Client e-commerce"),
+                currency=str(rdata.get("currency") or (linked_inv.currency if linked_inv else None) or "CAD").upper()[:10],
                 refund_data=rdata,
                 linked_invoice=linked_inv,
                 should_confirm=auto_confirm,
+                default_date=ref_rec.source_updated_at,
             )
             created_invoices += c_inv
             created_transactions += c_tx
@@ -483,6 +635,8 @@ class FinancialIntegrationService:
         *,
         company_id: UUID,
         provider: str,
+        conn_ns: str | None = None,
+        connection_id: str | None = None,
         refund_ext_id: str,
         order_ext_id: str,
         order_number: str,
@@ -491,22 +645,16 @@ class FinancialIntegrationService:
         refund_data: dict[str, Any],
         linked_invoice: AccountingInvoice | None,
         should_confirm: bool,
+        default_date: Any = None,
     ) -> tuple[int, int, int]:
-        ref_gross = _to_decimal(
-            refund_data.get("amount")
-            if refund_data.get("amount") is not None
-            else refund_data.get("total_refund") or refund_data.get("total_amount"),
-            default=Decimal("0.00"),
-        ) or Decimal("0.00")
+        ref_gross, ref_tax, ref_sub, ref_date, _ = _extract_canonical_refund_fields(
+            refund_data,
+            default_date=default_date,
+        )
         if ref_gross <= Decimal("0.00"):
             return 0, 0, 0
 
-        ref_tax = _to_decimal(refund_data.get("tax_amount") or refund_data.get("total_tax"), default=Decimal("0.00")) or Decimal("0.00")
-        ref_sub = _to_decimal(refund_data.get("subtotal"), default=None)
-        if ref_sub is None:
-            ref_sub = max(Decimal("0.00"), (ref_gross - ref_tax).quantize(TWOPLACES, rounding=ROUND_HALF_UP))
-        ref_date = _parse_datetime(refund_data.get("created_at"))
-
+        eff_ns = conn_ns or provider
         verif_status = "verified_connector" if should_confirm else "to_verify"
         acct_status = "posted" if should_confirm else "proposed"
 
@@ -514,7 +662,7 @@ class FinancialIntegrationService:
         c_tx = 0
         skipped = 0
 
-        cn_idem = f"{provider}:{company_id}:{refund_ext_id}:credit_note"
+        cn_idem = f"{eff_ns}:{company_id}:{refund_ext_id}:credit_note"
         cn_inv = self._get_invoice_by_idempotency(company_id, cn_idem)
         if cn_inv is None:
             cn_inv = AccountingInvoice(
@@ -536,7 +684,7 @@ class FinancialIntegrationService:
                 status="posted" if should_confirm else "to_verify",
                 is_confirmed=should_confirm,
                 source_module="retail",
-                external_id=refund_ext_id,
+                external_id=f"{connection_id}:{refund_ext_id}" if connection_id else refund_ext_id,
                 idempotency_key=cn_idem,
                 verification_status=verif_status,
                 accounting_status=acct_status,
@@ -544,6 +692,7 @@ class FinancialIntegrationService:
                 classification_rationale=f"Avoir / remboursement {provider} #{refund_ext_id} sur commande {order_number} (jamais une vente).",
                 extra_data={
                     "provider": provider,
+                    "connection_id": connection_id,
                     "order_external_id": order_ext_id,
                     "original_invoice_id": str(linked_invoice.id) if linked_invoice else None,
                 },
@@ -553,8 +702,22 @@ class FinancialIntegrationService:
             c_inv += 1
         else:
             skipped += 1
+            if cn_inv.status != "rejected":
+                cn_inv.issue_date = ref_date
+                cn_inv.due_date = ref_date
+                cn_inv.subtotal_amount = float(ref_sub)
+                cn_inv.tax_amount = float(ref_tax)
+                cn_inv.total_amount = float(ref_gross)
+                cn_inv.paid_amount = float(ref_gross)
+                if should_confirm and not cn_inv.is_confirmed:
+                    cn_inv.is_confirmed = True
+                    cn_inv.verification_status = verif_status
+                    cn_inv.accounting_status = acct_status
+                    cn_inv.status = "posted"
 
-        ref_idem = f"{provider}:{company_id}:{refund_ext_id}:refund"
+        # Lier l'écriture de remboursement directement à la note de crédit `cn_inv.id` (et conserver la facture d'origine dans extra_data)
+        # afin que la révision ultérieure de `cn_inv` ne crée jamais un second remboursement en double.
+        ref_idem = f"{eff_ns}:{company_id}:{refund_ext_id}:refund"
         if self._upsert_tx_if_absent(
             company_id=company_id,
             idempotency_key=ref_idem,
@@ -572,13 +735,16 @@ class FinancialIntegrationService:
             verification_status=verif_status,
             accounting_status=acct_status,
             reference_id=order_number,
-            external_id=refund_ext_id,
-            invoice_id=linked_invoice.id if linked_invoice else cn_inv.id,
+            external_id=f"{connection_id}:{refund_ext_id}" if connection_id else refund_ext_id,
+            invoice_id=cn_inv.id,
             extra_data={
                 "provider": provider,
+                "connection_id": connection_id,
+                "order_external_id": order_ext_id,
                 "gross_refund_amount": float(ref_gross),
                 "direction": "revenue_reversal",
                 "credit_note_id": str(cn_inv.id),
+                "original_invoice_id": str(linked_invoice.id) if linked_invoice else None,
             },
         ):
             c_tx += 1
@@ -592,6 +758,8 @@ class FinancialIntegrationService:
         order_data: dict[str, Any],
         line_items: list[Any],
         product_costs: dict[str, Decimal],
+        *,
+        connection_id: str | None = None,
     ) -> tuple[Decimal | None, bool]:
         explicit_cogs = _to_decimal(order_data.get("total_cogs") or order_data.get("cogs"), default=None)
         if explicit_cogs is not None and explicit_cogs >= Decimal("0.00"):
@@ -610,7 +778,13 @@ class FinancialIntegrationService:
             if unit_cost is None:
                 pid = str(item.get("product_id") or "")
                 sku = str(item.get("sku") or "")
-                unit_cost = product_costs.get(pid) or (product_costs.get(f"sku:{sku}") if sku else None)
+                if connection_id:
+                    unit_cost = (
+                        product_costs.get(f"{connection_id}:{pid}")
+                        or (product_costs.get(f"{connection_id}:sku:{sku}") if sku else None)
+                    )
+                if unit_cost is None:
+                    unit_cost = product_costs.get(pid) or (product_costs.get(f"sku:{sku}") if sku else None)
             if unit_cost is not None:
                 any_found = True
                 accumulated += (qty * unit_cost).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
@@ -656,6 +830,19 @@ class FinancialIntegrationService:
             )
         )
         if existing is not None:
+            if existing.status != "rejected":
+                existing.transaction_date = transaction_date
+                existing.amount = round(amount, 2)
+                existing.subtotal_amount = round(subtotal_amount, 2) if subtotal_amount is not None else None
+                existing.tax_amount = round(tax_amount, 2)
+                existing.currency = currency
+                if invoice_id is not None and existing.invoice_id is None:
+                    existing.invoice_id = invoice_id
+                if is_confirmed and not existing.is_confirmed:
+                    existing.is_confirmed = True
+                    existing.status = status
+                    existing.verification_status = verification_status
+                    existing.accounting_status = accounting_status
             return False
         tx = AccountingTransaction(
             company_id=company_id,
@@ -928,7 +1115,7 @@ class FinancialIntegrationService:
         }
 
     def reconcile_ecommerce_and_accounting(self, company_id: UUID) -> dict[str, Any]:
-        """Réconciliation granulaire entre ventes e-commerce, paiements encaissés, factures et remboursements."""
+        """Réconciliation granulaire entre ventes e-commerce, paiements encaissés, factures et remboursements Retail AI."""
         orders = list(
             self._session.scalars(
                 select(NormalizedCommerceRecord).where(
@@ -950,14 +1137,22 @@ class FinancialIntegrationService:
             ).all()
         )
 
+        # Limiter strictement les transactions et factures à la provenance Retail (`source_module == 'retail'`)
+        # pour qu'une facture CRM, manuelle ou OCR ne crée jamais un faux écart e-commerce.
         txs = list(
             self._session.scalars(
-                select(AccountingTransaction).where(AccountingTransaction.company_id == company_id)
+                select(AccountingTransaction).where(
+                    AccountingTransaction.company_id == company_id,
+                    AccountingTransaction.source_module == "retail",
+                )
             ).all()
         )
         invoices = list(
             self._session.scalars(
-                select(AccountingInvoice).where(AccountingInvoice.company_id == company_id)
+                select(AccountingInvoice).where(
+                    AccountingInvoice.company_id == company_id,
+                    AccountingInvoice.source_module == "retail",
+                )
             ).all()
         )
 
@@ -966,12 +1161,16 @@ class FinancialIntegrationService:
         commerce_net_sales = Decimal("0.00")
         commerce_refunds_gross = Decimal("0.00")
         commerce_refunds_net = Decimal("0.00")
+        expected_payments_total = Decimal("0.00")
 
-        inv_by_ext: dict[str, AccountingInvoice] = {
-            inv.external_id: inv
-            for inv in invoices
-            if inv.source_module == "retail" and inv.external_id and inv.invoice_type == "receivable"
-        }
+        inv_by_ext: dict[str, AccountingInvoice] = {}
+        for inv in invoices:
+            if inv.invoice_type == "receivable" and inv.external_id:
+                inv_by_ext[inv.external_id] = inv
+                raw_ord_ext = (inv.extra_data or {}).get("order_external_id")
+                if raw_ord_ext:
+                    inv_by_ext.setdefault(str(raw_ord_ext), inv)
+
         txs_by_ext: dict[str, list[AccountingTransaction]] = defaultdict(list)
         for tx in txs:
             if tx.external_id:
@@ -983,16 +1182,43 @@ class FinancialIntegrationService:
         matched_orders: list[dict[str, Any]] = []
         pending_approval_orders: list[dict[str, Any]] = []
         unlinked_orders: list[dict[str, Any]] = []
+        seen_refund_keys: set[str] = set()
 
         for ord_rec in orders:
             data = ord_rec.normalized_data or {}
-            ext_id = str(ord_rec.source_record_id)
+            provider = (ord_rec.provider or "shopify").lower().strip()
+            conn_ns = self._connection_namespace(provider, ord_rec)
+            conn_id_str = str(getattr(ord_rec, "connection_id", "") or "").strip() or None
+            ext_id = str(ord_rec.source_record_id).strip()
+            if "/" in ext_id and ext_id.startswith("gid://"):
+                ext_id = ext_id.rsplit("/", 1)[-1]
+            scoped_ext = f"{conn_id_str}:{ext_id}" if conn_id_str else ext_id
+
+            raw_fin = (
+                data.get("financial_status")
+                if data.get("financial_status") is not None
+                else (
+                    data.get("payment_status")
+                    if data.get("payment_status") is not None
+                    else data.get("status")
+                )
+            )
+            fin_status = str(raw_fin).lower().strip() if raw_fin is not None and str(raw_fin).strip() else "unverified"
+            if fin_status in {"voided", "cancelled", "canceled"}:
+                continue
+
             gross = _to_decimal(
                 data.get("total_price") if data.get("total_price") is not None else data.get("total_amount") or data.get("total"),
                 default=Decimal("0.00"),
             ) or Decimal("0.00")
-            tax = _to_decimal(data.get("total_tax") or data.get("tax_amount"), default=Decimal("0.00")) or Decimal("0.00")
-            sub = _to_decimal(data.get("subtotal_price") or data.get("subtotal"), default=None)
+            tax = _to_decimal(
+                data.get("total_tax") if data.get("total_tax") is not None else data.get("tax_amount"),
+                default=Decimal("0.00"),
+            ) or Decimal("0.00")
+            sub = _to_decimal(
+                data.get("subtotal_price") if data.get("subtotal_price") is not None else data.get("subtotal"),
+                default=None,
+            )
             if sub is None:
                 sub = max(Decimal("0.00"), gross - tax)
 
@@ -1000,40 +1226,82 @@ class FinancialIntegrationService:
             commerce_taxes += tax
             commerce_net_sales += sub
 
-            for ref in data.get("refunds") or []:
+            explicit_paid = _to_decimal(data.get("paid_amount"), default=None)
+            if fin_status in {"paid", "refunded", "partially_refunded", "completed"}:
+                expected_order_paid = explicit_paid if explicit_paid is not None else gross
+            elif fin_status == "partially_paid":
+                expected_order_paid = explicit_paid if explicit_paid is not None else Decimal("0.00")
+            else:
+                expected_order_paid = Decimal("0.00")
+            expected_payments_total += expected_order_paid
+
+            for idx_ref, ref in enumerate(data.get("refunds") or []):
                 if isinstance(ref, dict):
-                    rg = _to_decimal(ref.get("amount") or ref.get("total_refund"), default=Decimal("0.00")) or Decimal("0.00")
-                    rt = _to_decimal(ref.get("tax_amount") or ref.get("total_tax"), default=Decimal("0.00")) or Decimal("0.00")
-                    rs = _to_decimal(ref.get("subtotal"), default=None) or max(Decimal("0.00"), rg - rt)
+                    ref_id = str(ref.get("id") or ref.get("refund_id") or f"{ext_id}-ref-{idx_ref + 1}").strip()
+                    dedup_key = f"{conn_ns}:{ref_id}"
+                    if dedup_key in seen_refund_keys:
+                        continue
+                    seen_refund_keys.add(dedup_key)
+                    rg, _, rs, _, _ = _extract_canonical_refund_fields(ref)
                     commerce_refunds_gross += rg
                     commerce_refunds_net += rs
 
-            linked_inv = inv_by_ext.get(ext_id)
-            order_txs = txs_by_ext.get(ext_id, [])
-            rev_txs = [t for t in order_txs if t.transaction_type == "revenue"]
-            pay_txs = [t for t in order_txs if t.entry_kind == "payment_collected"]
+            linked_inv = inv_by_ext.get(scoped_ext) or inv_by_ext.get(ext_id)
+            order_txs = list(txs_by_ext.get(scoped_ext, []))
+            if scoped_ext != ext_id:
+                for extra_tx in txs_by_ext.get(ext_id, []):
+                    if extra_tx not in order_txs:
+                        order_txs.append(extra_tx)
+            if linked_inv is not None:
+                for tx_cand in txs:
+                    if tx_cand.invoice_id == linked_inv.id and tx_cand not in order_txs:
+                        order_txs.append(tx_cand)
+
+            rev_txs = [t for t in order_txs if t.transaction_type == "revenue" and t.status != "rejected"]
+            pay_txs = [t for t in order_txs if t.entry_kind == "payment_collected" and t.status != "rejected"]
+            confirmed_order_rev = sum((Decimal(str(t.amount)) for t in rev_txs if t.is_confirmed), Decimal("0.00"))
+            confirmed_order_pay = sum((Decimal(str(t.amount)) for t in pay_txs if t.is_confirmed), Decimal("0.00"))
 
             item_summary = {
-                "order_external_id": ext_id,
+                "order_external_id": scoped_ext,
+                "financial_status": fin_status,
                 "gross_amount": float(gross),
                 "net_amount": float(sub),
                 "tax_amount": float(tax),
+                "expected_paid_amount": float(expected_order_paid),
                 "invoice_id": str(linked_inv.id) if linked_inv else None,
                 "revenue_transaction_ids": [str(t.id) for t in rev_txs],
                 "payment_transaction_ids": [str(t.id) for t in pay_txs],
             }
-            if linked_inv is None and not rev_txs:
+            if linked_inv is None or not rev_txs or (expected_order_paid > Decimal("0.00") and not pay_txs):
                 unlinked_orders.append(item_summary)
-            elif any(not t.is_confirmed for t in rev_txs) or (linked_inv is not None and not linked_inv.is_confirmed):
+            elif (
+                not linked_inv.is_confirmed
+                or any(not t.is_confirmed for t in rev_txs)
+                or (expected_order_paid > Decimal("0.00") and any(not t.is_confirmed for t in pay_txs))
+            ):
                 pending_approval_orders.append(item_summary)
+            elif (
+                abs(confirmed_order_rev - sub) > Decimal("0.02")
+                or abs(Decimal(str(linked_inv.total_amount)) - gross) > Decimal("0.02")
+                or (expected_order_paid > Decimal("0.00") and abs(confirmed_order_pay - expected_order_paid) > Decimal("0.02"))
+            ):
+                unlinked_orders.append(item_summary)
             else:
                 matched_orders.append(item_summary)
 
         for ref_rec in standalone_refunds:
             rdata = ref_rec.normalized_data or {}
-            rg = _to_decimal(rdata.get("amount") or rdata.get("total_refund") or rdata.get("total_amount"), default=Decimal("0.00")) or Decimal("0.00")
-            rt = _to_decimal(rdata.get("tax_amount") or rdata.get("total_tax"), default=Decimal("0.00")) or Decimal("0.00")
-            rs = _to_decimal(rdata.get("subtotal"), default=None) or max(Decimal("0.00"), rg - rt)
+            provider = (ref_rec.provider or "shopify").lower().strip()
+            conn_ns = self._connection_namespace(provider, ref_rec)
+            ref_id = str(ref_rec.source_record_id).strip()
+            if "/" in ref_id and ref_id.startswith("gid://"):
+                ref_id = ref_id.rsplit("/", 1)[-1]
+            dedup_key = f"{conn_ns}:{ref_id}"
+            if dedup_key in seen_refund_keys:
+                continue
+            seen_refund_keys.add(dedup_key)
+            rg, _, rs, _, _ = _extract_canonical_refund_fields(rdata, default_date=ref_rec.source_updated_at)
             commerce_refunds_gross += rg
             commerce_refunds_net += rs
 
@@ -1051,6 +1319,7 @@ class FinancialIntegrationService:
         acct_sales_tax = sum((Decimal(str(t.tax_amount or 0.0)) for t in confirmed_rev_txs), Decimal("0.00"))
         acct_refunds_net = sum((Decimal(str(t.amount)) for t in confirmed_refund_txs), Decimal("0.00"))
         acct_refunds_tax = sum((Decimal(str(t.tax_amount or 0.0)) for t in confirmed_refund_txs), Decimal("0.00"))
+        acct_payments_total = sum((Decimal(str(t.amount)) for t in confirmed_payments), Decimal("0.00"))
 
         acct_net_revenue = (acct_gross_revenue - acct_refunds_net).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
         acct_net_tax = (acct_sales_tax - acct_refunds_tax).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
@@ -1061,7 +1330,14 @@ class FinancialIntegrationService:
 
         discrepancy_gross = float((expected_commerce_gross_after_refunds - acct_gross_with_tax).quantize(TWOPLACES, rounding=ROUND_HALF_UP))
         discrepancy_net = float((expected_commerce_net_after_refunds - acct_net_revenue).quantize(TWOPLACES, rounding=ROUND_HALF_UP))
-        is_reconciled = abs(discrepancy_gross) < 0.01 and abs(discrepancy_net) < 0.01
+        payment_discrepancy = float((expected_payments_total - acct_payments_total).quantize(TWOPLACES, rounding=ROUND_HALF_UP))
+        is_reconciled = (
+            abs(discrepancy_gross) < 0.01
+            and abs(discrepancy_net) < 0.01
+            and abs(payment_discrepancy) < 0.01
+            and not unlinked_orders
+            and not pending_approval_orders
+        )
 
         return {
             "data_type": "reconciliation_audit",

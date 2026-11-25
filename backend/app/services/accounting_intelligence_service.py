@@ -21,7 +21,11 @@ from backend.app.models.accounting import AccountingInvoice, AccountingTransacti
 from backend.app.models.audit_log import AuditLogEntry
 from backend.app.models.dataset import Dataset
 from backend.app.models.workspace import TenantDocument
-from backend.app.services.financial_integration_service import FinancialIntegrationService
+from backend.app.services.financial_integration_service import (
+    FinancialIntegrationService,
+    PAYROLL_CATEGORIES,
+    can_access_hr_payroll_summary,
+)
 
 
 def _is_revenue_reversal(tx: AccountingTransaction) -> bool:
@@ -173,6 +177,8 @@ class AccountingIntelligenceService:
         company_id: UUID,
         year: int | None = None,
         month: int | None = None,
+        *,
+        include_payroll: bool = True,
     ) -> dict[str, Any]:
         """Dépenses ventilées par catégorie pour un mois donné (par défaut le mois en cours)."""
         now = datetime.now(timezone.utc)
@@ -205,6 +211,8 @@ class AccountingIntelligenceService:
                 .order_by(desc(AccountingTransaction.transaction_date))
             ).all()
         )
+        if not include_payroll:
+            current_txs = [t for t in current_txs if (t.category or "").lower() not in PAYROLL_CATEGORIES]
 
         prev_txs = list(
             self._session.scalars(
@@ -217,6 +225,8 @@ class AccountingIntelligenceService:
                 )
             ).all()
         )
+        if not include_payroll:
+            prev_txs = [t for t in prev_txs if (t.category or "").lower() not in PAYROLL_CATEGORIES]
 
         pending_expense_proposals = list(
             self._session.scalars(
@@ -293,20 +303,47 @@ class AccountingIntelligenceService:
         gross_revenue = sum(t.amount for t in txs if t.transaction_type == "revenue")
         refunds = sum(t.amount for t in txs if _is_revenue_reversal(t))
         revenue = max(0.0, gross_revenue - refunds)
-        cogs = sum(
+        cogs_categories = {"cogs", "cost of goods", "cout des marchandises", "inventory", "cogs_credits", "cogs_refunds"}
+        gross_cogs = sum(
             t.amount
             for t in txs
             if t.transaction_type == "expense"
-            and t.category.lower() in {"cogs", "cost of goods", "cout des marchandises", "inventory"}
+            and t.category.lower() in cogs_categories
         )
-        operating_expenses = sum(
+        gross_operating_expenses = sum(
             t.amount
             for t in txs
             if t.transaction_type == "expense"
-            and t.category.lower() not in {"cogs", "cost of goods", "cout des marchandises", "inventory"}
+            and t.category.lower() not in cogs_categories
         )
-        expense_credits = sum(t.amount for t in txs if _is_expense_reversal(t))
-        operating_expenses = max(0.0, operating_expenses - expense_credits)
+        cogs_credits = 0.0
+        op_credits = 0.0
+        for t in txs:
+            if not _is_expense_reversal(t):
+                continue
+            orig_cat = str((t.extra_data or {}).get("original_category") or t.category or "").lower()
+            if orig_cat in cogs_categories:
+                cogs_credits += t.amount
+            else:
+                op_credits += t.amount
+
+        # Appliquer chaque avoir fournisseur à son compartiment d'origine (COGS vs charges d'exploitation)
+        # et reporter tout excédent éventuel pour que `total_expenses` concorde toujours avec `get_financial_overview`
+        if op_credits <= gross_operating_expenses:
+            operating_expenses = gross_operating_expenses - op_credits
+            rem_op_credit = 0.0
+        else:
+            operating_expenses = 0.0
+            rem_op_credit = op_credits - gross_operating_expenses
+
+        effective_cogs_credit = cogs_credits + rem_op_credit
+        if effective_cogs_credit <= gross_cogs:
+            cogs = gross_cogs - effective_cogs_credit
+        else:
+            overflow_cogs = effective_cogs_credit - gross_cogs
+            cogs = 0.0
+            operating_expenses = max(0.0, operating_expenses - overflow_cogs)
+
         total_expenses = cogs + operating_expenses
 
         gross_profit = revenue - cogs
@@ -397,6 +434,8 @@ class AccountingIntelligenceService:
         self,
         company_id: UUID,
         threshold_multiplier: float = 2.0,
+        *,
+        include_payroll: bool = True,
     ) -> dict[str, Any]:
         """Détecte les dépenses inhabituelles ainsi que les doublons et écarts arithmétiques de factures."""
         txs = list(
@@ -410,6 +449,8 @@ class AccountingIntelligenceService:
                 .order_by(AccountingTransaction.transaction_date.desc())
             ).all()
         )
+        if not include_payroll:
+            txs = [t for t in txs if (t.category or "").lower() not in PAYROLL_CATEGORIES]
 
         duplicate_invoices = list(
             self._session.scalars(
@@ -501,11 +542,43 @@ class AccountingIntelligenceService:
                 )
             ).all()
         )
+        all_company_invoices = list(
+            self._session.scalars(
+                select(AccountingInvoice).where(
+                    AccountingInvoice.company_id == company_id,
+                    AccountingInvoice.is_confirmed.is_(True),
+                )
+            ).all()
+        )
+        open_accrual_invoice_ids = {
+            inv.id
+            for inv in all_company_invoices
+            if inv.status in {"unpaid", "overdue", "partial"}
+        }
+        explicit_settlement_invoice_ids = {
+            t.invoice_id
+            for t in txs
+            if t.entry_kind in {"payment_collected", "payment_disbursed"} and t.invoice_id is not None
+        }
+
         current_balance = 0.0
         for t in txs:
-            if t.transaction_type == "revenue":
+            if t.entry_kind == "payment_collected":
+                current_balance += t.amount
+            elif t.entry_kind == "payment_disbursed":
+                current_balance -= t.amount
+            elif t.transaction_type == "revenue":
+                # Exclure les écritures d'engagement (accrual) des factures encore ouvertes ou déjà comptées via `payment_collected`
+                if t.invoice_id is not None and (
+                    t.invoice_id in open_accrual_invoice_ids or t.invoice_id in explicit_settlement_invoice_ids
+                ):
+                    continue
                 current_balance += t.amount
             elif t.transaction_type == "expense":
+                if t.invoice_id is not None and (
+                    t.invoice_id in open_accrual_invoice_ids or t.invoice_id in explicit_settlement_invoice_ids
+                ):
+                    continue
                 current_balance -= t.amount
             elif _is_revenue_reversal(t):
                 current_balance -= t.amount

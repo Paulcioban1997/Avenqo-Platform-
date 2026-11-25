@@ -132,6 +132,30 @@ def _to_decimal(value: Any, *, default: Decimal | None = Decimal("0.00")) -> Dec
         return default
 
 
+def _to_rate_decimal(value: Any) -> Decimal | None:
+    """Parse un taux fiscal (ex: 0.09975 pour la TVQ 9,975 %) en Decimal fini SANS arrondir le taux à 2 décimales."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, Decimal):
+        return value if value.is_finite() else None
+    if isinstance(value, (int, float)):
+        try:
+            d = Decimal(str(value))
+            return d if d.is_finite() else None
+        except InvalidOperation:
+            return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    is_pct = "%" in raw
+    cleaned = re.sub(r"[^\d,.\-]", "", raw).replace(",", ".")
+    try:
+        d = Decimal(cleaned)
+        if not d.is_finite():
+            return None
+        return (d / Decimal("100")) if is_pct and d > Decimal("1") else d
+    except InvalidOperation:
+        return None
 def _strip_accents(text: str) -> str:
     normalized = unicodedata.normalize("NFKD", text)
     return "".join(ch for ch in normalized if not unicodedata.combining(ch))
@@ -567,16 +591,17 @@ class AccountingClassificationService:
         elif tax_breakdown:
             tax_amount = breakdown_sum
         elif bool(payload.get("apply_configured_tax_rules")) and policy.configured_tax_rules and subtotal is not None:
-            # Règle fiscale explicitement configurée par le tenant et demandée — jamais devinée
+            # Règle fiscale explicitement configurée par le tenant et demandée — conserver la précision exacte du taux (ex: TVQ 0.09975)
             tax_source = "configured_tenant_rule"
             computed_tax = Decimal("0.00")
             for tax_name, rate_raw in policy.configured_tax_rules.items():
-                rate = _to_decimal(rate_raw, default=None)
-                if rate is not None and rate > Decimal("0.00"):
+                rate = _to_rate_decimal(rate_raw)
+                if rate is not None and rate > Decimal("0"):
                     leg = (subtotal * rate).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
                     tax_breakdown[str(tax_name)] = str(leg)
                     computed_tax += leg
             tax_amount = computed_tax
+            breakdown_sum = sum((Decimal(v) for v in tax_breakdown.values()), Decimal("0.00"))
         else:
             tax_amount = Decimal("0.00")
             tax_source = "none_documented"
@@ -687,16 +712,19 @@ class AccountingClassificationService:
         counterparty: str
         category: str
 
-        # 1. Comparaison du rôle de l'entreprise (émetteur vs client/acheteur)
-        if issuer_is_company and recipient_is_company:
+        # 1. Comparaison du rôle de l'entreprise (transfert explicite traité en priorité avant émetteur vs client)
+        if (issuer_is_company and recipient_is_company) or nature_signal == "transfer":
             company_role = "internal_transfer"
             classification = "transfer"
             invoice_type = "transfer"
             direction = "neutral"
-            counterparty = profile.canonical_name
+            counterparty = issuer_name or recipient_name or profile.canonical_name
             category = "transfer"
-            confidence = min(issuer_conf, recipient_conf)
-            reasons.append("L'émetteur et le destinataire correspondent tous deux à l'entreprise vérifiée (transfert interne).")
+            confidence = min(issuer_conf, recipient_conf) if (issuer_is_company and recipient_is_company) else 0.78
+            if issuer_is_company and recipient_is_company:
+                reasons.append("L'émetteur et le destinataire correspondent tous deux à l'entreprise vérifiée (transfert interne).")
+            else:
+                reasons.append("Document identifié comme transfert interne/inter-comptes neutre — soumis à validation humaine.")
         elif recipient_is_company and not issuer_is_company:
             company_role = "customer_buyer"
             counterparty = issuer_name or "Fournisseur à confirmer"
@@ -1273,12 +1301,6 @@ class AccountingClassificationService:
         if invoice is None:
             raise LookupError("Facture introuvable pour cette entreprise.")
 
-        if action in {"approve", "correct_and_approve"} and invoice.duplicate_warning and not confirm_duplicate:
-            raise DuplicateConfirmationRequiredError(
-                "Cette facture présente un avertissement de doublon potentiel. "
-                "Veuillez confirmer explicitement (confirm_duplicate=True) après vérification."
-            )
-
         overrides_dict = dict(overrides or {})
         tracked_fields = (
             "document_nature",
@@ -1318,25 +1340,114 @@ class AccountingClassificationService:
             invoice.direction = str(overrides_dict["direction"])
         if "party_name" in overrides_dict and overrides_dict["party_name"] is not None:
             invoice.party_name = str(overrides_dict["party_name"]).strip()[:255]
-        if "subtotal_amount" in overrides_dict and overrides_dict["subtotal_amount"] is not None:
+
+        has_sub_override = "subtotal_amount" in overrides_dict and overrides_dict["subtotal_amount"] is not None
+        has_tax_override = "tax_amount" in overrides_dict and overrides_dict["tax_amount"] is not None
+        has_tot_override = "total_amount" in overrides_dict and overrides_dict["total_amount"] is not None
+
+        if has_sub_override:
             dec_sub = _to_decimal(overrides_dict["subtotal_amount"], default=None)
-            if dec_sub is not None:
-                invoice.subtotal_amount = float(dec_sub)
-        if "tax_amount" in overrides_dict and overrides_dict["tax_amount"] is not None:
+            if dec_sub is None or dec_sub < Decimal("0.00"):
+                raise AccountingClassificationError("Sous-total corrigé invalide.")
+            invoice.subtotal_amount = float(dec_sub)
+        if has_tax_override:
             dec_tax = _to_decimal(overrides_dict["tax_amount"], default=None)
-            if dec_tax is not None:
-                invoice.tax_amount = float(dec_tax)
-        if "total_amount" in overrides_dict and overrides_dict["total_amount"] is not None:
+            if dec_tax is None or dec_tax < Decimal("0.00"):
+                raise AccountingClassificationError("Montant de taxe corrigé invalide.")
+            invoice.tax_amount = float(dec_tax)
+        if has_tot_override:
             dec_tot = _to_decimal(overrides_dict["total_amount"], default=None)
             if dec_tot is None or dec_tot < Decimal("0.00"):
                 raise AccountingClassificationError("Montant total corrigé invalide.")
             invoice.total_amount = float(dec_tot)
+
+        # Réconciliation cohérente des montants corrigés (sous-total + taxes == total)
+        if has_sub_override or has_tax_override or has_tot_override:
+            curr_tax = Decimal(str(invoice.tax_amount or 0.0)).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
+            curr_tot = Decimal(str(invoice.total_amount or 0.0)).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
+            if has_tot_override and not has_sub_override:
+                if curr_tot < curr_tax:
+                    raise AccountingClassificationError(
+                        f"Montant total corrigé ({curr_tot}) inférieur aux taxes ({curr_tax})."
+                    )
+                recomputed_sub = (curr_tot - curr_tax).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
+                invoice.subtotal_amount = float(recomputed_sub)
+            elif has_sub_override and not has_tot_override:
+                curr_sub = Decimal(str(invoice.subtotal_amount or 0.0)).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
+                if abs((curr_sub + curr_tax) - curr_tot) > MATH_TOLERANCE:
+                    raise AccountingClassificationError(
+                        f"Incohérence arithmétique dans les montants corrigés : sous-total ({curr_sub}) + taxes ({curr_tax}) != total ({curr_tot})."
+                    )
+            else:
+                curr_sub = (
+                    Decimal(str(invoice.subtotal_amount)).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
+                    if invoice.subtotal_amount is not None
+                    else (curr_tot - curr_tax).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
+                )
+                if abs((curr_sub + curr_tax) - curr_tot) > MATH_TOLERANCE:
+                    raise AccountingClassificationError(
+                        f"Incohérence arithmétique dans les montants corrigés : sous-total ({curr_sub}) + taxes ({curr_tax}) != total ({curr_tot})."
+                    )
+                invoice.subtotal_amount = float(curr_sub)
+            final_sub_dec = Decimal(str(invoice.subtotal_amount or 0.0)).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
+            prev_math_val = extra.get("math_validation")
+            prev_math_dict: dict[str, Any] = dict(prev_math_val) if isinstance(prev_math_val, dict) else {}
+            extra["math_validation"] = {
+                **prev_math_dict,
+                "math_valid": True,
+                "subtotal_amount": str(final_sub_dec),
+                "tax_amount": str(curr_tax),
+                "total_amount": str(curr_tot),
+                "header_discrepancy": str(abs(curr_tot - (final_sub_dec + curr_tax))),
+            }
+
         if "currency" in overrides_dict and overrides_dict["currency"] is not None:
             invoice.currency = str(overrides_dict["currency"]).upper()[:10]
         if "notes" in overrides_dict and overrides_dict["notes"] is not None:
             invoice.notes = str(overrides_dict["notes"])
         if "category" in overrides_dict and overrides_dict["category"] is not None:
             extra["category"] = str(overrides_dict["category"])
+
+        # Recalculer l'empreinte et les candidats de doublons après application des corrections
+        eff_total_dec = Decimal(str(invoice.total_amount or 0.0)).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
+        new_fp = self.compute_duplicate_fingerprint(
+            company_id=company_id,
+            party_name=invoice.party_name or "",
+            invoice_number=invoice.invoice_number or "",
+            issue_date=invoice.issue_date or datetime.now(timezone.utc),
+            total_amount=eff_total_dec,
+            currency=invoice.currency or "CAD",
+        )
+        new_dup_candidates = self.find_duplicate_candidates(
+            company_id,
+            file_sha256=invoice.file_sha256,
+            duplicate_fingerprint=new_fp,
+            invoice_number=invoice.invoice_number or "",
+            party_name=invoice.party_name or "",
+            issue_date=invoice.issue_date or datetime.now(timezone.utc),
+            total_amount=eff_total_dec,
+            currency=invoice.currency or "CAD",
+            external_id=invoice.external_id,
+            exclude_invoice_id=invoice.id,
+        )
+        invoice.duplicate_fingerprint = new_fp
+        invoice.duplicate_candidates = new_dup_candidates
+        invoice.duplicate_warning = bool(new_dup_candidates)
+
+        if action in {"approve", "correct_and_approve"} and invoice.duplicate_warning and not confirm_duplicate:
+            raise DuplicateConfirmationRequiredError(
+                "Cette facture présente un avertissement de doublon potentiel. "
+                "Veuillez confirmer explicitement (confirm_duplicate=True) après vérification."
+            )
+
+        all_linked_txs = list(
+            self._session.scalars(
+                select(AccountingTransaction).where(
+                    AccountingTransaction.company_id == company_id,
+                    AccountingTransaction.invoice_id == invoice.id,
+                )
+            ).all()
+        )
 
         linked_tx: AccountingTransaction | None = None
         if action in {"approve", "correct_and_approve"}:
@@ -1345,6 +1456,11 @@ class AccountingClassificationService:
                 invoice.accounting_status = "non_posting"
                 invoice.is_confirmed = False
                 invoice.status = "void"
+                for ltx in all_linked_txs:
+                    ltx.is_confirmed = False
+                    ltx.verification_status = "non_posting"
+                    ltx.accounting_status = "non_posting"
+                    ltx.status = "void"
             else:
                 invoice.accounting_status = "posted"
                 invoice.is_confirmed = True
@@ -1367,22 +1483,21 @@ class AccountingClassificationService:
             invoice.accounting_status = "rejected"
             invoice.is_confirmed = False
             invoice.status = "rejected"
-            existing_tx = self._session.scalar(
-                select(AccountingTransaction).where(
-                    AccountingTransaction.company_id == company_id,
-                    AccountingTransaction.invoice_id == invoice.id,
-                )
-            )
-            if existing_tx is not None:
-                existing_tx.is_confirmed = False
-                existing_tx.verification_status = "rejected"
-                existing_tx.accounting_status = "rejected"
-                existing_tx.status = "rejected"
+            for ltx in all_linked_txs:
+                ltx.is_confirmed = False
+                ltx.verification_status = "rejected"
+                ltx.accounting_status = "rejected"
+                ltx.status = "rejected"
         elif action == "correct":
             invoice.verification_status = "to_verify"
             invoice.accounting_status = "proposed"
             invoice.is_confirmed = False
             invoice.status = "to_verify"
+            for ltx in all_linked_txs:
+                ltx.is_confirmed = False
+                ltx.verification_status = "to_verify"
+                ltx.accounting_status = "proposed"
+                ltx.status = "proposed"
 
         invoice.extra_data = extra
         new_values: dict[str, Any] = {f: getattr(invoice, f) for f in tracked_fields}
@@ -1454,17 +1569,32 @@ class AccountingClassificationService:
         actor_user_id: UUID,
     ) -> AccountingTransaction:
         idem_key = f"invoice:{invoice.company_id}:{invoice.id}:ledger"
-        tx = self._session.scalar(
-            select(AccountingTransaction).where(
-                AccountingTransaction.company_id == invoice.company_id,
-                or_(
-                    AccountingTransaction.idempotency_key == idem_key,
-                    AccountingTransaction.invoice_id == invoice.id,
-                ),
-            )
+        linked_txs = list(
+            self._session.scalars(
+                select(AccountingTransaction).where(
+                    AccountingTransaction.company_id == invoice.company_id,
+                    or_(
+                        AccountingTransaction.idempotency_key == idem_key,
+                        AccountingTransaction.invoice_id == invoice.id,
+                    ),
+                )
+            ).all()
         )
 
         nature = invoice.document_nature
+        if nature in {"invoice", "", None}:
+            if invoice.invoice_type == "receivable" or invoice.direction == "revenue":
+                nature = "customer_invoice"
+            elif invoice.invoice_type == "credit_note":
+                nature = "credit_note"
+            elif invoice.invoice_type == "refund":
+                nature = "refund"
+            elif invoice.invoice_type == "transfer":
+                nature = "transfer"
+            else:
+                nature = "supplier_invoice"
+            invoice.document_nature = nature
+
         if nature in {"supplier_invoice", "receipt"}:
             tx_type = "expense"
             entry_kind = "journal_entry"
@@ -1489,6 +1619,35 @@ class AccountingClassificationService:
             tx_type = "payment"
             entry_kind = "payment_collected" if invoice.direction == "revenue" else "payment_disbursed"
             tx_cat = "settlement"
+
+        # Transitionner explicitement les écritures secondaires du connecteur (order, payment_collected, cogs, processing_fees)
+        # sans jamais écraser un paiement ou un COGS en écriture de chiffre d'affaires!
+        tx: AccountingTransaction | None = None
+        for candidate in linked_txs:
+            if candidate.idempotency_key == idem_key:
+                tx = candidate
+                break
+        if tx is None:
+            for candidate in linked_txs:
+                if (
+                    candidate.entry_kind == entry_kind
+                    and candidate.transaction_type == tx_type
+                    and candidate.category not in {"cogs", "processing_fees", "ecommerce_order"}
+                ):
+                    tx = candidate
+                    break
+
+        for secondary in linked_txs:
+            if secondary is tx:
+                continue
+            secondary.is_confirmed = True
+            secondary.verification_status = "approved"
+            if secondary.entry_kind == "payment_collected":
+                secondary.accounting_status = "reconciled"
+                secondary.status = "reconciled"
+            else:
+                secondary.accounting_status = "posted"
+                secondary.status = "confirmed"
 
         net_amount = (
             invoice.subtotal_amount

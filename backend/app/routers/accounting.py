@@ -30,6 +30,8 @@ from backend.app.services.accounting_intelligence_service import AccountingIntel
 from backend.app.services.financial_integration_service import (
     FinancialIntegrationService,
     HRPayrollAccessDeniedError,
+    PAYROLL_CATEGORIES,
+    can_access_hr_payroll_summary,
 )
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
 from shared.ai_engine.contracts import TenantContext
@@ -216,11 +218,18 @@ def get_monthly_expenses(
     year: int | None = Query(default=None),
     month: int | None = Query(default=None),
     tenant: TenantContext = Depends(get_tenant_context),
+    identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Dépenses mensuelles ventilées par catégorie et comparaison mois précédent."""
+    can_payroll, _ = can_access_hr_payroll_summary(db, tenant.company_id, identity.user)
     service = AccountingIntelligenceService(db)
-    return service.get_monthly_expenses(tenant.company_id, year=year, month=month)
+    return service.get_monthly_expenses(
+        tenant.company_id,
+        year=year,
+        month=month,
+        include_payroll=can_payroll,
+    )
 
 
 @router.get("/margins")
@@ -253,11 +262,17 @@ def get_unpaid_invoices(
 def get_expense_anomalies(
     threshold: float = Query(default=2.0, ge=1.0),
     tenant: TenantContext = Depends(get_tenant_context),
+    identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Détection IA d'anomalies de dépenses et alertes de doublons."""
+    can_payroll, _ = can_access_hr_payroll_summary(db, tenant.company_id, identity.user)
     service = AccountingIntelligenceService(db)
-    return service.get_expense_anomalies(tenant.company_id, threshold_multiplier=threshold)
+    return service.get_expense_anomalies(
+        tenant.company_id,
+        threshold_multiplier=threshold,
+        include_payroll=can_payroll,
+    )
 
 
 @router.get("/forecast/cashflow")
@@ -304,9 +319,19 @@ def list_transactions(
     verification_status: str | None = Query(default=None),
     limit: int = Query(default=50, le=200),
     tenant: TenantContext = Depends(get_tenant_context),
+    identity: CurrentIdentity = Depends(get_current_identity),
     db: Session = Depends(get_db),
 ) -> list[dict[str, Any]]:
-    """Liste des écritures et transactions financières du tenant."""
+    """Liste des écritures et transactions financières du tenant (avec protection RBAC des salaires RH)."""
+    can_payroll, payroll_reason = can_access_hr_payroll_summary(db, tenant.company_id, identity.user)
+    if category and category.strip().lower() in PAYROLL_CATEGORIES and not can_payroll:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                f"Accès refusé aux coûts salariaux RH ({payroll_reason}). "
+                "Nécessite le module HR AI actif et un rôle exécutif/direction autorisé."
+            ),
+        )
     stmt = select(AccountingTransaction).where(AccountingTransaction.company_id == tenant.company_id)
     if transaction_type:
         stmt = stmt.where(AccountingTransaction.transaction_type == transaction_type)
@@ -319,6 +344,8 @@ def list_transactions(
     stmt = stmt.order_by(desc(AccountingTransaction.transaction_date)).limit(limit)
 
     txs = list(db.scalars(stmt).all())
+    if not can_payroll:
+        txs = [t for t in txs if (t.category or "").strip().lower() not in PAYROLL_CATEGORIES]
     return [
         {
             "id": str(t.id),

@@ -56,6 +56,25 @@ def upgrade() -> None:
             if col_name not in tx_cols:
                 op.add_column("accounting_transactions", col_def)
 
+        # Backfill governance fields from actual confirmation/status values (never mark unconfirmed rows as confirmed/posted)
+        op.execute(
+            sa.text(
+                """
+                UPDATE accounting_transactions
+                SET verification_status = CASE
+                        WHEN status = 'rejected' THEN 'rejected'
+                        WHEN is_confirmed THEN 'confirmed'
+                        ELSE 'to_verify'
+                    END,
+                    accounting_status = CASE
+                        WHEN status = 'rejected' THEN 'rejected'
+                        WHEN is_confirmed THEN 'posted'
+                        ELSE 'proposed'
+                    END
+                """
+            )
+        )
+
         for idx_name, cols in [
             ("ix_accounting_transactions_entry_kind", ["entry_kind"]),
             ("ix_accounting_transactions_source_module", ["source_module"]),
@@ -129,6 +148,25 @@ def upgrade() -> None:
         for col_name, col_def in new_inv_cols:
             if col_name not in inv_cols:
                 op.add_column("accounting_invoices", col_def)
+
+        # Backfill governance fields from actual confirmation/status values so unconfirmed proposals stay in 'to_verify'/'proposed'
+        op.execute(
+            sa.text(
+                """
+                UPDATE accounting_invoices
+                SET verification_status = CASE
+                        WHEN status = 'rejected' THEN 'rejected'
+                        WHEN is_confirmed THEN 'confirmed'
+                        ELSE 'to_verify'
+                    END,
+                    accounting_status = CASE
+                        WHEN status = 'rejected' THEN 'rejected'
+                        WHEN is_confirmed THEN 'posted'
+                        ELSE 'proposed'
+                    END
+                """
+            )
+        )
 
         for idx_name, cols in [
             ("ix_accounting_invoices_document_nature", ["document_nature"]),

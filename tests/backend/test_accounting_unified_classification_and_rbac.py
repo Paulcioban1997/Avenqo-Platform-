@@ -1044,11 +1044,33 @@ def test_11_alembic_migration_0089_is_idempotent_and_sqlite_compatible(tmp_path:
             )
         )
 
+        conn.execute(
+            sa.text(
+                "INSERT INTO companies (id) VALUES ('c1')"
+            )
+        )
+        conn.execute(
+            sa.text(
+                "INSERT INTO accounting_invoices (id, company_id, invoice_number, invoice_type, party_name, "
+                "issue_date, due_date, total_amount, paid_amount, currency, status, is_confirmed) "
+                "VALUES ('inv-unconf', 'c1', 'OCR-1', 'payable', 'Vendor', '2026-11-01', '2026-12-01', 150.0, 0.0, 'CAD', 'unpaid', 0), "
+                "('inv-conf', 'c1', 'MAN-1', 'receivable', 'Client', '2026-11-01', '2026-12-01', 300.0, 300.0, 'CAD', 'paid', 1)"
+            )
+        )
+
         mc = MigrationContext.configure(conn)
         with Operations.context(mc):
             # Exécution #1 et #2 consécutives pour prouver l'idempotence stricte
             mig_0089.upgrade()
             mig_0089.upgrade()
+
+        rows = conn.execute(
+            sa.text("SELECT id, verification_status, accounting_status FROM accounting_invoices ORDER BY id")
+        ).fetchall()
+        assert dict((r[0], (r[1], r[2])) for r in rows) == {
+            "inv-conf": ("confirmed", "posted"),
+            "inv-unconf": ("to_verify", "proposed"),
+        }
 
         insp = sa.inspect(conn)
         tables = set(insp.get_table_names())
@@ -1059,3 +1081,253 @@ def test_11_alembic_migration_0089_is_idempotent_and_sqlite_compatible(tmp_path:
         tx_cols = {c["name"] for c in insp.get_columns("accounting_transactions")}
         assert {"entry_kind", "idempotency_key", "invoice_id", "verification_status", "accounting_status"}.issubset(tx_cols)
     legacy_engine.dispose()
+
+
+def test_12_audit_pr135_all_23_copilot_threads_and_universal_accounting(accounting_env) -> None:
+    """Verifies all 23 Copilot review threads on PR #135 and universal cross-module accounting requirements."""
+    session, client, _ = accounting_env
+    tenant = _seed_tenant_with_users(
+        session,
+        slug="industrie-nord",
+        legal_name="Industrie Nord Inc.",
+        trade_name="Industrie Nord",
+        gst_number="444555666RT0001",
+        qst_number="4445556660TQ0001",
+        domain="industrienord.ca",
+        active_modules=("accounting", "retail", "crm", "ocr", "hr", "voice"),
+    )
+    company = tenant["company"]
+    owner = tenant["owner"]
+    clerk = tenant["billing_clerk"]
+
+    # Thread 2: Clerk with accounting:read cannot bypass payroll restriction via /transactions?category=payroll or /expenses/monthly
+    session.add(
+        AccountingTransaction(
+            company_id=company.id,
+            transaction_date=datetime.now(timezone.utc),
+            transaction_type="expense",
+            entry_kind="payroll_summary",
+            category="payroll",
+            description="Paie confidentielle direction",
+            amount=25000.0,
+            currency="CAD",
+            status="confirmed",
+            is_confirmed=True,
+            source_module="hr",
+        )
+    )
+    session.commit()
+    clerk_payroll_tx = client.get("/api/v1/accounting/transactions?category=payroll", headers=_headers(clerk))
+    assert clerk_payroll_tx.status_code == 403
+    clerk_all_tx = client.get("/api/v1/accounting/transactions", headers=_headers(clerk)).json()
+    assert all(t["category"] != "payroll" for t in clerk_all_tx)
+    clerk_monthly = client.get("/api/v1/accounting/expenses/monthly", headers=_headers(clerk)).json()
+    assert all(c["category"] != "payroll" for c in clerk_monthly["categories_breakdown"])
+
+    # Threads 3 & 4: Configured QST rate 0.09975 is NOT rounded to 0.10, and breakdown_sum is refreshed so math_valid=True
+    client.put(
+        "/api/v1/accounting/policy",
+        headers=_headers(owner),
+        json={"configured_tax_rules": {"gst_tps": "0.05", "qst_tvq": "0.09975"}},
+    )
+    qst_prop = client.post(
+        "/api/v1/accounting/documents/classify",
+        headers=_headers(owner),
+        json={
+            "invoice_number": "QST-1000",
+            "issuer": "Industrie Nord Inc.",
+            "recipient": "Client Québec Inc.",
+            "subtotal_amount": "1000.00",
+            "apply_configured_tax_rules": True,
+        },
+    ).json()
+    assert qst_prop["tax_amount"] == 149.75
+    assert qst_prop["total_amount"] == 1149.75
+    assert qst_prop["math_validation"]["math_valid"] is True
+
+    # Thread 5: Explicit transfer signal with tenant on one side stays neutral transfer (to_verify)
+    tr_prop = client.post(
+        "/api/v1/accounting/documents/classify",
+        headers=_headers(owner),
+        json={
+            "invoice_number": "VIR-001",
+            "document_type": "transfer",
+            "issuer": "Industrie Nord Inc.",
+            "recipient": "Banque Nationale Compte Épargne",
+            "total_amount": "5000.00",
+        },
+    ).json()
+    assert tr_prop["classification"] == "transfer"
+    assert tr_prop["direction"] == "neutral"
+    assert tr_prop["verification_status"] == "to_verify"
+
+    # Threads 6, 7, 9, 11: Post-correction duplicate check, amount revalidation, and unconfirming on 'correct'
+    p1 = client.post(
+        "/api/v1/accounting/documents/classify",
+        headers=_headers(owner),
+        json={
+            "invoice_number": "DUP-EDIT-1",
+            "issuer": "Fournisseur Unique",
+            "recipient": "Industrie Nord Inc.",
+            "issue_date": "2026-11-15",
+            "subtotal_amount": "500.00",
+            "tax_amount": "0.00",
+            "total_amount": "500.00",
+        },
+    ).json()
+    p2 = client.post(
+        "/api/v1/accounting/documents/classify",
+        headers=_headers(owner),
+        json={
+            "invoice_number": "DUP-EDIT-1",
+            "issuer": "Autre Fournisseur Initial",
+            "recipient": "Industrie Nord Inc.",
+            "issue_date": "2026-11-15",
+            "subtotal_amount": "300.00",
+            "tax_amount": "0.00",
+            "total_amount": "300.00",
+        },
+    ).json()
+    # Correcting p2 to match p1's party and total must trigger DuplicateConfirmationRequiredError (409) without confirm_duplicate!
+    dup_conflict = client.post(
+        f"/api/v1/accounting/invoices/{p2['invoice_id']}/review",
+        headers=_headers(owner),
+        json={
+            "action": "correct_and_approve",
+            "party_name": "Fournisseur Unique",
+            "total_amount": "500.00",
+        },
+    )
+    assert dup_conflict.status_code == 409
+
+    # Approving p1 with only total_amount=1000 updates subtotal_amount to 1000 and posts 1000 to ledger
+    app_p1 = client.post(
+        f"/api/v1/accounting/invoices/{p1['invoice_id']}/review",
+        headers=_headers(owner),
+        json={"action": "correct_and_approve", "total_amount": "1000.00", "confirm_duplicate": True},
+    ).json()
+    assert app_p1["subtotal_amount"] == 1000.0
+    assert app_p1["total_amount"] == 1000.0
+    # Calling 'correct' on an approved invoice unconfirms its linked ledger transaction
+    unconf_p1 = client.post(
+        f"/api/v1/accounting/invoices/{p1['invoice_id']}/review",
+        headers=_headers(owner),
+        json={"action": "correct", "reason": "Retour en brouillon pour vérification"},
+    ).json()
+    assert unconf_p1["is_confirmed"] is False
+    tx_p1 = session.get(AccountingTransaction, UUID(app_p1["linked_transaction_id"]))
+    assert tx_p1 is not None and tx_p1.is_confirmed is False
+
+    # Threads 15, 16, 17, 18, 19, 20, 21, 22, 23: Multi-store connection_id namespace, order_timestamp, unverified settlement not paid, refund_amount & retry state promotion
+    store_1 = CommerceConnection(
+        company_id=company.id,
+        provider="woocommerce",
+        external_account_id="store-1.example.com",
+        status="READY",
+        is_demo=False,
+    )
+    store_2 = CommerceConnection(
+        company_id=company.id,
+        provider="woocommerce",
+        external_account_id="store-2.example.com",
+        status="READY",
+        is_demo=False,
+    )
+    session.add_all([store_1, store_2])
+    session.flush()
+
+    hist_ts = "2026-09-10T14:30:00+00:00"
+    now_ts = datetime.now(timezone.utc)
+    # Both stores have order "1001"! Store 1 has no financial_status (must NOT default to paid!); Store 2 is paid with refund_amount
+    ord_s1 = NormalizedCommerceRecord(
+        company_id=company.id,
+        connection_id=store_1.id,
+        provider="woocommerce",
+        entity_type="orders",
+        source_record_id="1001",
+        source_updated_at=now_ts,
+        normalized_data={
+            "order_number": "1001",
+            "order_timestamp": hist_ts,
+            "subtotal_price": "100.00",
+            "total_tax": "15.00",
+            "total_price": "115.00",
+            "currency": "CAD",
+        },
+        deleted=False,
+        is_demo=False,
+    )
+    ord_s2 = NormalizedCommerceRecord(
+        company_id=company.id,
+        connection_id=store_2.id,
+        provider="woocommerce",
+        entity_type="orders",
+        source_record_id="1001",
+        source_updated_at=now_ts,
+        normalized_data={
+            "order_number": "1001",
+            "order_timestamp": hist_ts,
+            "financial_status": "paid",
+            "subtotal_price": "200.00",
+            "total_tax": "30.00",
+            "total_price": "230.00",
+            "currency": "CAD",
+            "refunds": [
+                {"id": "ref-s2-1", "refund_amount": "57.50", "tax_amount": "7.50", "refund_timestamp": hist_ts}
+            ],
+        },
+        deleted=False,
+        is_demo=False,
+    )
+    # Duplicate standalone representation of the same refund ref-s2-1 -> must be deduplicated in reconciliation
+    standalone_ref_s2 = NormalizedCommerceRecord(
+        company_id=company.id,
+        connection_id=store_2.id,
+        provider="woocommerce",
+        entity_type="refunds",
+        source_record_id="ref-s2-1",
+        source_updated_at=now_ts,
+        normalized_data={
+            "source_order_id": "1001",
+            "refund_amount": "57.50",
+            "tax_amount": "7.50",
+            "refund_timestamp": hist_ts,
+        },
+        deleted=False,
+        is_demo=False,
+    )
+    session.add_all([ord_s1, ord_s2, standalone_ref_s2])
+    session.commit()
+
+    # First sync with confirm_verified_settlements=False -> all proposals
+    s_first = client.post(
+        "/api/v1/accounting/integrations/retail/sync",
+        headers=_headers(owner),
+        json={"confirm_verified_settlements": False},
+    ).json()
+    assert s_first["orders_processed"] == 2
+    assert s_first["created_invoices"] == 3  # Store 1 order 1001 + Store 2 order 1001 + Store 2 credit note
+
+    # Retry with confirm_verified_settlements=True -> promotes Store 2 (paid), keeps Store 1 (unverified) as to_verify!
+    s_retry = client.post(
+        "/api/v1/accounting/integrations/retail/sync",
+        headers=_headers(owner),
+        json={"confirm_verified_settlements": True},
+    ).json()
+    assert s_retry["created_invoices"] == 0
+
+    invs_all = client.get("/api/v1/accounting/invoices?source_module=retail", headers=_headers(owner)).json()
+    s1_inv = next(i for i in invs_all if i["total_amount"] == 115.0)
+    s2_inv = next(i for i in invs_all if i["total_amount"] == 230.0)
+    assert s1_inv["is_confirmed"] is False
+    assert s1_inv["verification_status"] == "to_verify"
+    assert s1_inv["paid_amount"] == 0.0
+    assert s1_inv["issue_date"].startswith("2026-09-10")
+    assert s2_inv["is_confirmed"] is True
+    assert s2_inv["paid_amount"] == 230.0
+    assert s2_inv["issue_date"].startswith("2026-09-10")
+
+    # Thread 13: Cash flow forecast excludes unpaid accrual invoices from current_balance
+    cf = client.get("/api/v1/accounting/forecast/cashflow", headers=_headers(owner)).json()
+    assert cf["is_projection"] is True
+

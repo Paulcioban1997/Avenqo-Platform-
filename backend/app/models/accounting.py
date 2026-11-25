@@ -98,6 +98,25 @@ class AccountingTransaction(TimestampMixin, Base):
     revision_history: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
     extra_data: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
 
+    def __init__(self, **kwargs: Any) -> None:
+        is_conf = kwargs.get("is_confirmed", True)
+        status_val = str(kwargs.get("status") or "")
+        if "verification_status" not in kwargs:
+            if status_val == "rejected":
+                kwargs["verification_status"] = "rejected"
+            elif is_conf is False:
+                kwargs["verification_status"] = "to_verify"
+            else:
+                kwargs["verification_status"] = "confirmed"
+        if "accounting_status" not in kwargs:
+            if status_val == "rejected":
+                kwargs["accounting_status"] = "rejected"
+            elif is_conf is False:
+                kwargs["accounting_status"] = "proposed"
+            else:
+                kwargs["accounting_status"] = "posted"
+        super().__init__(**kwargs)
+
 
 class AccountingInvoice(TimestampMixin, Base):
     """Facture client (créance), facture fournisseur (dette), reçu, avoir ou proposition documentaire."""
@@ -176,6 +195,25 @@ class AccountingInvoice(TimestampMixin, Base):
     classification_rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
     revision_history: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
     extra_data: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+
+    def __init__(self, **kwargs: Any) -> None:
+        is_conf = kwargs.get("is_confirmed", True)
+        status_val = str(kwargs.get("status") or "")
+        if "verification_status" not in kwargs:
+            if status_val == "rejected":
+                kwargs["verification_status"] = "rejected"
+            elif is_conf is False:
+                kwargs["verification_status"] = "to_verify"
+            else:
+                kwargs["verification_status"] = "confirmed"
+        if "accounting_status" not in kwargs:
+            if status_val == "rejected":
+                kwargs["accounting_status"] = "rejected"
+            elif is_conf is False:
+                kwargs["accounting_status"] = "proposed"
+            else:
+                kwargs["accounting_status"] = "posted"
+        super().__init__(**kwargs)
 
     @property
     def remaining_amount(self) -> float:
