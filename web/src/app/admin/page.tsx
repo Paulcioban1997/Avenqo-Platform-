@@ -21,6 +21,7 @@ import { VOICE_HEALTH_COPY } from "@/lib/i18n/voice-health-copy";
 import { AdminCreditPacks } from "@/components/billing/admin-credit-packs";
 import { AdminVoiceTariffs } from "@/components/voice/admin-voice-tariffs";
 import { CEOCommandCenter } from "@/components/admin/ceo-command-center";
+import { SecurityPosturePanel } from "@/components/admin/security-posture-panel";
 
 interface AdminUserRecord {
   role?: string;
@@ -115,6 +116,7 @@ export default function AdminPage() {
         ) : (
           <div className="space-y-6">
             <CEOCommandCenter isFr={isFr} />
+            <SecurityPosturePanel isFr={isFr} />
             <AdminCreditPacks isFr={isFr} />
             <AdminVoiceTariffs isFr={isFr} />
             {/* Header */}
