@@ -1260,6 +1260,8 @@ class TelnyxMediaBridge:
             if resp_ledger is not None:
                 resp_ledger.settle(item_id)
         self._responses.clear()
+        if hasattr(self, "_s2s_pending_audible_turns") and isinstance(self._s2s_pending_audible_turns, set):
+            self._s2s_pending_audible_turns.clear()
         async with self._send_lock:
             await self.socket.send_json({"event": "clear"})
         self.telemetry["telnyx_clear_sent_count"] += 1
@@ -1310,12 +1312,16 @@ class TelnyxMediaBridge:
 
         interruption_source = str(getattr(event, "interruption_source", "") or "")
         explicit_flag = getattr(event, "verified_caller_barge_in", None)
+        resp_status = str(getattr(resp_obj, "status", "") or "")
         if interruption_source == "provider_unconfirmed" or explicit_flag is False:
             verified_caller = False
         elif interruption_source == "verified_caller_speech" or explicit_flag is True:
             verified_caller = True
+        elif source_event == "response.done" or resp_status == "incomplete":
+            # Missing provenance on response.done (or status="incomplete") is NEVER evidence of caller speech.
+            verified_caller = False
         else:
-            # Untagged legacy/mock events: allow playback cancel ONLY if NOT currently in THINKING
+            # Legacy untagged response.interrupted mock events outside THINKING
             verified_caller = not self._executing_turn
 
         completed = self._responses.pop(resp_id, None) if resp_id else None
@@ -1362,8 +1368,6 @@ class TelnyxMediaBridge:
             self.response_epoch = None
         if self.pending_epoch == self.epoch:
             self.pending_epoch = None
-        if completed is not None and completed[2] is not None:
-            completed[2].settle(completed[0])
 
         chunks_emitted = int(getattr(event, "audio_chunks_emitted", 0) or 0)
         is_filler_or_greeting = item_id_str.startswith(("filler:", "inbound-greeting", "pin-"))
@@ -1376,16 +1380,18 @@ class TelnyxMediaBridge:
             self._executing_turn,
             chunks_emitted,
         )
+        recovered_ok = False
         if (
             not is_filler_or_greeting
             and payload_entry is not None
             and not (self.input_paused or self._pin_turn is not None)
         ):
             spoken_text, payload_epoch, retry_count = payload_entry
-            if payload_epoch == self.epoch and chunks_emitted <= 2 and retry_count < 1:
+            if payload_epoch == self.epoch and retry_count < 1:
                 self._last_turn_tts_payload[item_id_str] = (spoken_text, payload_epoch, retry_count + 1)
                 self.telemetry["tts_auto_recoveries"] += 1
                 try:
+                    # Keep reservation open across recovery retry so successful retry usage is metered!
                     await self._speak_turn_answer(
                         item_id_str,
                         spoken_text,
@@ -1393,11 +1399,26 @@ class TelnyxMediaBridge:
                         turn_ledger=completed[2] if completed is not None else self.usage,
                         is_retry=True,
                     )
+                    recovered_ok = True
                 except Exception as rec_exc:
                     self.central_ai_missing_answers += 1
                     logger.warning("TTS auto-recovery failed; item_id=%s error=%s", item_id_str[:64], type(rec_exc).__name__)
-            elif payload_epoch == self.epoch and chunks_emitted == 0 and retry_count >= 1:
+            elif payload_epoch == self.epoch:
                 self.central_ai_missing_answers += 1
+        elif not is_filler_or_greeting and completed is not None:
+            self.central_ai_missing_answers += 1
+
+        if not recovered_ok:
+            if completed is not None and completed[2] is not None:
+                completed[2].settle(completed[0])
+            if completed_id := (resp_key or item_id_str):
+                play_mark = f"play-{completed_id}"
+                if self._enqueue_control_marker(self.epoch, play_mark):
+                    self._active_play_mark = play_mark
+            if self._output.empty() and self._active_play_mark is None:
+                self._set_playback_active(False)
+                if not self._executing_turn:
+                    self._set_phase("LISTENING")
 
     async def _speak_system(self, item_id: str, answer: str) -> None:
         if self.usage is not None and not self.usage.reserve(item_id):
@@ -1675,6 +1696,23 @@ class TelnyxMediaBridge:
                 logger.info("Voice turn %s task cancelled (stale calculation halted)", item_id)
             finally:
                 self._current_turn_task = None
+            # Serialize non-interrupting follow-up turns queued during THINKING:
+            # wait for active synthesis/playback of the completed turn to finish before starting
+            # the next queued turn so its speak() does not overwrite or cancel the previous answer.
+            if not self._turns.empty() and epoch == self.epoch:
+                wait_deadline = time.monotonic() + min(float(self.tts_timeout or 15.0), 15.0)
+                while (
+                    epoch == self.epoch
+                    and not self._stop_event.is_set()
+                    and time.monotonic() < wait_deadline
+                    and (
+                        self.response_id is not None
+                        or self.pending_epoch == epoch
+                        or not self._output.empty()
+                        or self._playback_active
+                    )
+                ):
+                    await asyncio.sleep(0.015)
             # A completed wait_for child can race with cancellation during
             # shutdown. Do not re-enter the queue with a pending cancellation.
             task = asyncio.current_task()
@@ -2098,11 +2136,19 @@ class TelnyxMediaBridge:
                     # In Architecture A (gpt-realtime-2.1 S2S), conversational reasoning + tools
                     # run natively inside the S2S realtime session; deterministic security/PIN/hangup
                     # still intercepts on the bridge before or during synthesis.
+                    if not hasattr(self, "_s2s_pending_audible_turns"):
+                        self._s2s_pending_audible_turns: set[str] = set()
+                    if decision == "replace" and self._s2s_pending_audible_turns:
+                        # Caller barge-in legitimately superseded in-flight turn(s)
+                        self._s2s_pending_audible_turns.clear()
                     intercept_result = getattr(event, "security_intercept", None)
                     if intercept_result is None:
-                        on_s2s_transcript = getattr(self.adapter, "on_caller_transcript", None)
+                        on_s2s_transcript: Any = getattr(self.adapter, "on_caller_transcript", None)
                         if callable(on_s2s_transcript):
-                            intercept_result = await on_s2s_transcript(str(item_id), transcript)
+                            import inspect as _inspect
+
+                            maybe_coro: Any = on_s2s_transcript(str(item_id), transcript)
+                            intercept_result = await maybe_coro if _inspect.isawaitable(maybe_coro) else maybe_coro
                     if isinstance(intercept_result, dict) and intercept_result.get("handled"):
                         ans_text = str(intercept_result.get("answer") or "").strip()
                         if intercept_result.get("auth_required"):
@@ -2133,6 +2179,13 @@ class TelnyxMediaBridge:
                                 with suppress(Exception):
                                     await self.hangup_call()
                             self._stop_event.set()
+                        continue
+                    if not (self.input_paused or self._pin_turn is not None):
+                        if self._s2s_pending_audible_turns:
+                            # Prior S2S turn never produced an audible response before a non-barge-in turn arrived
+                            self.central_ai_missing_answers += len(self._s2s_pending_audible_turns)
+                            self._s2s_pending_audible_turns.clear()
+                        self._s2s_pending_audible_turns.add(str(item_id))
                     continue
                 self.orchestrator.begin_turn(str(item_id), self.epoch)
                 try:
@@ -2247,14 +2300,32 @@ class TelnyxMediaBridge:
                     await self._handle_provider_tts_interruption(event, source_event="response.done")
                     continue
                 completed = self._responses.pop(completed_id, None)
-                if completed is not None and self.interruption_manager is not None:
+                is_function_call_only = bool(getattr(event, "function_call_only", False))
+                has_emitted_audio = bool(completed_id and str(completed_id) in self._responses_with_first_audio)
+                if completed is not None and self.interruption_manager is not None and not is_function_call_only:
                     self.interruption_manager.complete_turn(str(self.stream_id or "default"), str(completed[0]))
                 if completed is not None and completed[2] is not None:
                     completed[2].record_realtime_response(completed[0], event, model=self.realtime_model)
-                    completed[2].settle(completed[0])
+                    if not is_function_call_only:
+                        completed[2].settle(completed[0])
+                if is_function_call_only:
+                    if self.response_id == completed_id:
+                        self.response_id = None
+                        self.response_epoch = None
+                    continue
+                if getattr(self.adapter, "native_s2s_enabled", False):
+                    pending_s2s = getattr(self, "_s2s_pending_audible_turns", None)
+                    if isinstance(pending_s2s, set):
+                        if has_emitted_audio:
+                            pending_s2s.clear()
+                        elif pending_s2s:
+                            self.central_ai_missing_answers += len(pending_s2s)
+                            pending_s2s.clear()
                 if self.response_epoch == self.epoch and self.response_id == getattr(getattr(event, "response", None), "id", None):
                     self._enqueue(b"", final=True)
                     self.telemetry["voice_response_completed"] += 1
+                    if has_emitted_audio:
+                        self.telemetry["audible_responses_with_pcm"] = int(self.telemetry.get("audible_responses_with_pcm", 0)) + 1
                     is_pin_turn = completed is not None and (
                         completed[0] == self._pin_turn
                         or str(completed[0]).startswith("pin-reprompt:")
@@ -3023,6 +3094,8 @@ async def telnyx_media_socket(
                 })
         return defs
 
+    s2s_turn_transcripts: dict[str, str] = {}
+
     async def _s2s_tool_executor(turn_id: str, call_id_str: str, tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
         if tool_name == "reserve_product":
             return {"success": False, "error": "reserve_product_blocked_over_phone"}
@@ -3032,6 +3105,7 @@ async def telnyx_media_socket(
         uid_val, perms = _resolve_live_s2s_staff_scope(current_call)
         tenant_ctx = TenantContext(current_call.company_id, uid_val)
         from backend.app.voice.tool_guard import VoiceToolDenied, VoiceToolGuard
+        from backend.app.voice.tool_registry import VoiceToolRegistryService
         try:
             VoiceToolGuard(db, service.usage_service).authorize(
                 tenant_ctx,
@@ -3042,18 +3116,25 @@ async def telnyx_media_socket(
             )
         except VoiceToolDenied as exc:
             return {"success": False, "error": str(exc)}
+        _allowed_names, authorized_owners = VoiceToolRegistryService(db, service._registry).allowed_tools(tenant_ctx, perms)
+        tool_owner_agents = authorized_owners.get(tool_name) or ()
+        selected_agent = sorted(tool_owner_agents)[0] if tool_owner_agents else "central_ai"
         orchestrator = getattr(service._chat, "_orchestrator", None)
         tool_exec = getattr(orchestrator, "_executor", None) if orchestrator is not None else None
         if tool_exec is None:
             return {"success": False, "error": "tool_executor_unavailable"}
         from backend.app.ai.tools.contracts import ToolExecutionContext
         exec_uid = uid_val or current_call.authenticated_user_id or current_call.company_id
+        observed_utterance = s2s_turn_transcripts.get(str(turn_id), "")
         tool_ctx = ToolExecutionContext(
             tenant=TenantContext(company_id=current_call.company_id, user_id=exec_uid),
             user_id=exec_uid,
             permissions=perms,
             request_id=f"s2s-{call_id}-{call_id_str}",
             conversation_id=current_call.central_conversation_id or current_call.id,
+            selected_agent_id=selected_agent,
+            authorized_tool_agents=authorized_owners,
+            user_message=observed_utterance,
             capabilities=resolve_tenant_capabilities(db, tenant_ctx, prediction_service),
             locale=resolve_locale(current_call.locale or locale),
             company_timezone=getattr(config, "timezone_name", None) or getattr(company, "timezone", None) or "UTC",
@@ -3064,6 +3145,10 @@ async def telnyx_media_socket(
 
     async def _s2s_security_hook(item_id: str, transcript: str) -> dict[str, Any] | None:
         nonlocal principal_id, auth_epoch, public_mode
+        if item_id:
+            if len(s2s_turn_transcripts) >= 200:
+                s2s_turn_transcripts.pop(next(iter(s2s_turn_transcripts)), None)
+            s2s_turn_transcripts[str(item_id)] = transcript
         current_call: VoiceCall | None = db.get(VoiceCall, call_id)
         if principal_id is None and current_call is not None and current_call.authenticated_user_id is not None:
             valid_auth = VoiceCallerAuth(db, settings).valid_session(current_call)

@@ -173,7 +173,7 @@ def _localized_system_instruction(
         "When the caller asks a question requiring real company data, invoke the matching tool immediately in this exact turn. "
         "NEVER say 'Je vais vérifier, un instant' without executing the tool call in the same response!\n"
         "- Semantic Product Search & Zero False Substitutions: "
-        "When the caller asks about a specific product, category, or price, call `search_products` (or `get_product_detail`). "
+        "When the caller asks about a specific product, category, or price (e.g. 'Quel est votre produit le moins cher ?', 'Peux-tu comparer le produit A et le produit B ?'), call `search_products` (or `get_product_detail`). "
         "If `search_products` returns `status='not_found'`, tell the caller honestly and clearly that the product is not in the catalog — NEVER substitute an unrelated product (for example, if the caller asks for a snowboard protective helmet and the catalog only has snowboards and audio headphones, explicitly say you do not carry snowboard helmets; you may briefly note you only have audio headphones, NEVER recite snowboard prices as helmet prices!). "
         "If `search_products` returns `status='ambiguous'` (e.g. French 'casque' can mean audio headphones or a protective helmet), clarify naturally in 1–2 concise sentences.\n"
         "- CONCISE HONEST STOCK & PRICE PRESENTATION (NO ROBOTIC REPETITION): "

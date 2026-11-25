@@ -21,6 +21,13 @@ class RotatingRealtimeAdapter:
         self.factory, self.authorize = factory, authorize
         self.rotation_seconds, self.clock = rotation_seconds, clock
         self.adapter: Any = None
+        self._prototype: Any = None
+        self._pending_playback_active: bool | None = None
+        self._pending_staff_identity: tuple[bool, str | None, str | None] | None = None
+        try:
+            self._prototype = self.factory()
+        except Exception:
+            self._prototype = None
         self.generation = 0
         self.opened_at = 0.0
         self.locale: str | None = None
@@ -31,33 +38,49 @@ class RotatingRealtimeAdapter:
         self.pump: asyncio.Task[Any] | None = None
         self.timer: asyncio.Task[Any] | None = None
 
+    def _active_or_proto(self) -> Any:
+        return self.adapter if self.adapter is not None else self._prototype
+
     @property
     def _model(self) -> str | None:
-        if self.adapter is not None:
-            return getattr(self.adapter, "_model", None)
+        target = self._active_or_proto()
+        if target is not None:
+            return getattr(target, "_model", None)
         return None
 
     @property
     def model_name(self) -> str | None:
-        if self.adapter is not None:
-            return getattr(self.adapter, "model_name", None) or getattr(self.adapter, "_model", None)
+        target = self._active_or_proto()
+        if target is not None:
+            return getattr(target, "model_name", None) or getattr(target, "_model", None)
         return None
 
     @property
     def native_s2s_enabled(self) -> bool:
-        return bool(self.adapter is not None and getattr(self.adapter, "native_s2s_enabled", False))
+        target = self._active_or_proto()
+        return bool(target is not None and getattr(target, "native_s2s_enabled", False))
 
     @property
     def supports_concurrent_filler(self) -> bool:
-        return bool(self.adapter is not None and getattr(self.adapter, "supports_concurrent_filler", False))
+        target = self._active_or_proto()
+        return bool(target is not None and getattr(target, "supports_concurrent_filler", False))
 
     def set_playback_active(self, active: bool) -> None:
-        if self.adapter is not None and hasattr(self.adapter, "set_playback_active"):
-            self.adapter.set_playback_active(active)
+        self._pending_playback_active = bool(active)
+        target = self._active_or_proto()
+        if target is not None and hasattr(target, "set_playback_active"):
+            target.set_playback_active(active)
 
     def update_staff_identity(self, is_authenticated: bool, staff_name: str | None = None, staff_role: str | None = None) -> None:
-        if self.adapter is not None and hasattr(self.adapter, "update_staff_identity"):
-            self.adapter.update_staff_identity(is_authenticated, staff_name, staff_role)
+        self._pending_staff_identity = (bool(is_authenticated), staff_name, staff_role)
+        target = self._active_or_proto()
+        if target is not None and hasattr(target, "update_staff_identity"):
+            target.update_staff_identity(is_authenticated, staff_name, staff_role)
+
+    async def reset_conversation_session(self) -> None:
+        target = self._active_or_proto()
+        if target is not None and hasattr(target, "reset_conversation_session"):
+            await target.reset_conversation_session()
 
     async def open(self, *, locale):
         self.locale = locale
@@ -67,7 +90,15 @@ class RotatingRealtimeAdapter:
 
     async def _connect(self):
         await self.authorize()
-        candidate = self.factory()
+        if self._prototype is not None:
+            candidate = self._prototype
+            self._prototype = None
+        else:
+            candidate = self.factory()
+        if self._pending_staff_identity is not None and hasattr(candidate, "update_staff_identity"):
+            candidate.update_staff_identity(*self._pending_staff_identity)
+        if self._pending_playback_active is not None and hasattr(candidate, "set_playback_active"):
+            candidate.set_playback_active(self._pending_playback_active)
         try:
             await asyncio.wait_for(candidate.open(locale=self.locale), 10)
         except BaseException:

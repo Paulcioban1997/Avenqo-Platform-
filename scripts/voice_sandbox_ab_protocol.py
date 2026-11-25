@@ -120,7 +120,7 @@ async def _wait_turn_settled(bridge: TelnyxMediaBridge, expected_completed: int 
 async def _wait_playback_active(bridge: TelnyxMediaBridge, timeout: float = 1.0) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        if bridge.response_id is not None or not bridge._output.empty():
+        if not bridge._output.empty() or bridge._playback_active:
             return
         await asyncio.sleep(0.005)
 
@@ -149,6 +149,8 @@ async def run_deterministic_ab_benchmark(seed: int = 132) -> list[ProtocolResult
         def __init__(self) -> None:
             self.inbound: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
             self.outbound: list[dict[str, Any]] = []
+            self.media_frames_sent: int = 0
+            self.play_marks_acked: list[str] = []
             self.stream_id: str | None = None
 
         async def receive_json(self) -> dict[str, Any]:
@@ -159,7 +161,13 @@ async def run_deterministic_ab_benchmark(seed: int = 132) -> list[ProtocolResult
 
         async def send_json(self, payload: dict[str, Any]) -> None:
             self.outbound.append(payload)
+            if isinstance(payload, dict) and payload.get("event") == "media":
+                self.media_frames_sent += 1
             if isinstance(payload, dict) and payload.get("event") == "mark" and self.stream_id:
+                mark_obj = payload.get("mark") or {}
+                mark_name = str(mark_obj.get("name") if isinstance(mark_obj, dict) else mark_obj)
+                if mark_name.startswith("play-"):
+                    self.play_marks_acked.append(mark_name)
                 await self.inbound.put({"event": "mark", "stream_id": self.stream_id, "mark": payload.get("mark")})
 
     results: list[ProtocolResult] = []
@@ -271,7 +279,13 @@ async def run_deterministic_ab_benchmark(seed: int = 132) -> list[ProtocolResult
         is_int = idx in interrupt_indices and int_cursor < len(TEN_INTERRUPTIONS)
         s2s_conn.slow_next = is_int
         s2s_conn._pending_query = qtext
-        await s2s_conn.q.put({"type": "conversation.item.input_audio_transcription.completed", "item_id": f"q-a-{idx}", "transcript": qtext})
+        await s2s_conn.q.put(
+            SimpleNamespace(
+                type="conversation.item.input_audio_transcription.completed",
+                item_id=f"q-a-{idx}",
+                transcript=qtext,
+            )
+        )
         if is_int:
             await _wait_playback_active(bridge_a)
             await bridge_a.interrupt(reason="caller_speech_barge_in")
@@ -279,18 +293,30 @@ async def run_deterministic_ab_benchmark(seed: int = 132) -> list[ProtocolResult
             int_cursor += 1
             s2s_conn.slow_next = False
             s2s_conn._pending_query = barge_text
-            await s2s_conn.q.put({"type": "conversation.item.input_audio_transcription.completed", "item_id": f"q-a-int-{idx}", "transcript": barge_text})
+            await s2s_conn.q.put(
+                SimpleNamespace(
+                    type="conversation.item.input_audio_transcription.completed",
+                    item_id=f"q-a-int-{idx}",
+                    transcript=barge_text,
+                )
+            )
         await _wait_turn_settled(bridge_a, expected_completed=idx + 1)
     await sock_a.inbound.put({"event": "stop", "stream_id": "arch-a"})
     await asyncio.wait_for(t_a, timeout=5.0)
+    pending_unanswered_a = len(getattr(bridge_a, "_s2s_pending_audible_turns", set()))
+    audible_a = min(
+        int(bridge_a.telemetry.get("audible_responses_with_pcm", 0)),
+        len(sock_a.play_marks_acked),
+    )
+    lost_a = bridge_a.central_ai_missing_answers + pending_unanswered_a + max(0, len(questions) - audible_a)
     results.append(ProtocolResult(
         execution_mode="SIMULATED_DETERMINISTIC",
         architecture="Architecture A (Native S2S)",
         model_stack="gpt-realtime-2.1 + Pre-Auth Gate + ToolGuard",
         questions_asked=len(questions),
         barge_in_followups=len(TEN_INTERRUPTIONS),
-        audible_answers=bridge_a.telemetry["voice_response_completed"],
-        lost_turns=bridge_a.central_ai_missing_answers,
+        audible_answers=audible_a,
+        lost_turns=lost_a,
         interruptions_sent=len(TEN_INTERRUPTIONS),
         interruptions_handled=bridge_a.telemetry["barge_in_triggered_count"],
         unconfirmed_suppressed=bridge_a.telemetry["unconfirmed_provider_interrupts_suppressed"],
@@ -347,14 +373,19 @@ async def run_deterministic_ab_benchmark(seed: int = 132) -> list[ProtocolResult
         await _wait_turn_settled(bridge_b, expected_completed=idx + 1)
     await sock_b.inbound.put({"event": "stop", "stream_id": "arch-b"})
     await asyncio.wait_for(t_b, timeout=5.0)
+    audible_b = min(
+        int(bridge_b.telemetry.get("audible_responses_with_pcm", 0)),
+        len(sock_b.play_marks_acked),
+    )
+    lost_b = bridge_b.central_ai_missing_answers + max(0, len(questions) - audible_b)
     results.append(ProtocolResult(
         execution_mode="SIMULATED_DETERMINISTIC",
         architecture="Architecture B (Modular)",
         model_stack="gpt-4o-mini-transcribe + gpt-6.2-sol + gpt-4o-mini-tts",
         questions_asked=len(questions),
         barge_in_followups=len(TEN_INTERRUPTIONS),
-        audible_answers=bridge_b.telemetry["voice_response_completed"],
-        lost_turns=bridge_b.central_ai_missing_answers,
+        audible_answers=audible_b,
+        lost_turns=lost_b,
         interruptions_sent=len(TEN_INTERRUPTIONS),
         interruptions_handled=bridge_b.telemetry["barge_in_triggered_count"],
         unconfirmed_suppressed=bridge_b.telemetry["unconfirmed_provider_interrupts_suppressed"],
@@ -367,6 +398,7 @@ async def run_deterministic_ab_benchmark(seed: int = 132) -> list[ProtocolResult
         def __init__(self) -> None:
             self.q: asyncio.Queue[Any] = asyncio.Queue()
             self._attempts: dict[str, int] = {}
+            self.slow_next: bool = False
 
         async def send_realtime_input(self, **_kw):
             return None
@@ -379,7 +411,10 @@ async def run_deterministic_ab_benchmark(seed: int = 132) -> list[ProtocolResult
                 await self.q.put(SimpleNamespace(server_content=SimpleNamespace(interrupted=True, input_transcription=None, output_transcription=None, model_turn=None, turn_complete=False)))
             else:
                 await self.q.put(SimpleNamespace(server_content=SimpleNamespace(interrupted=False, input_transcription=None, output_transcription=None, model_turn=SimpleNamespace(parts=[SimpleNamespace(inline_data=SimpleNamespace(data=pcm_24k_sample, mime_type="audio/pcm;rate=24000"))]), turn_complete=False)))
-                await asyncio.sleep(0.03)
+                if self.slow_next:
+                    self.slow_next = False
+                    await asyncio.sleep(0.06)
+                    return
                 await self.q.put(SimpleNamespace(server_content=SimpleNamespace(interrupted=False, input_transcription=None, output_transcription=None, model_turn=None, turn_complete=True)))
 
         async def receive(self):
@@ -418,24 +453,31 @@ async def run_deterministic_ab_benchmark(seed: int = 132) -> list[ProtocolResult
     int_cursor_h = 0
     for idx, (_tag, qtext) in enumerate(questions):
         is_int = idx in interrupt_indices and int_cursor_h < len(TEN_INTERRUPTIONS)
+        gem_sess.slow_next = is_int
         await gem_sess.q.put(SimpleNamespace(server_content=SimpleNamespace(interrupted=False, input_transcription=SimpleNamespace(text=qtext, finished=True), output_transcription=None, model_turn=None, turn_complete=True)))
         if is_int:
             await _wait_playback_active(bridge_h)
             await bridge_h.interrupt(reason="caller_speech_barge_in")
             barge_text = TEN_INTERRUPTIONS[int_cursor_h]
             int_cursor_h += 1
+            gem_sess.slow_next = False
             await gem_sess.q.put(SimpleNamespace(server_content=SimpleNamespace(interrupted=False, input_transcription=SimpleNamespace(text=barge_text, finished=True), output_transcription=None, model_turn=None, turn_complete=True)))
         await _wait_turn_settled(bridge_h, expected_completed=idx + 1)
     await sock_h.inbound.put({"event": "stop", "stream_id": "arch-h"})
     await asyncio.wait_for(t_h, timeout=5.0)
+    audible_h = min(
+        int(bridge_h.telemetry.get("audible_responses_with_pcm", 0)),
+        len(sock_h.play_marks_acked),
+    )
+    lost_h = bridge_h.central_ai_missing_answers + max(0, len(questions) - audible_h)
     results.append(ProtocolResult(
         execution_mode="SIMULATED_DETERMINISTIC",
         architecture="Repaired Hybrid (Gemini + Sol)",
         model_stack="gemini-3.8-live audio + gpt-6.2-sol",
         questions_asked=len(questions),
         barge_in_followups=len(TEN_INTERRUPTIONS),
-        audible_answers=bridge_h.telemetry["voice_response_completed"],
-        lost_turns=bridge_h.central_ai_missing_answers,
+        audible_answers=audible_h,
+        lost_turns=lost_h,
         interruptions_sent=len(TEN_INTERRUPTIONS),
         interruptions_handled=bridge_h.telemetry["barge_in_triggered_count"],
         unconfirmed_suppressed=bridge_h.telemetry["unconfirmed_provider_interrupts_suppressed"],

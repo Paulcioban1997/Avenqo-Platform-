@@ -81,12 +81,19 @@ def _sanitize_schema_for_gemini(
     for union_key in ("anyOf", "oneOf"):
         variants = schema.get(union_key)
         if isinstance(variants, list) and variants:
+            def _is_null_branch(branch: Any) -> bool:
+                if not isinstance(branch, dict):
+                    return False
+                b_type = branch.get("type")
+                return b_type == "null" or (isinstance(b_type, list) and b_type == ["null"])
+
+            has_null = any(_is_null_branch(v) for v in variants)
+            raw_non_null = [v for v in variants if not _is_null_branch(v)]
             sanitized_variants = [
                 _sanitize_schema_for_gemini(v, defs=active_defs, seen_refs=seen_refs)
-                for v in variants
+                for v in raw_non_null
             ]
-            has_null = any(isinstance(v, dict) and v.get("type") == "null" for v in sanitized_variants)
-            non_null = [v for v in sanitized_variants if isinstance(v, dict) and v.get("type") != "null"]
+            non_null = [v for v in sanitized_variants if isinstance(v, dict)]
             if not non_null:
                 chosen: dict[str, Any] = {"type": "string"}
             elif len(non_null) == 1:
@@ -308,8 +315,13 @@ class GeminiProvider(LLMProvider):
                     )
                     # GenAI strictly requires all consecutive function responses following a model turn
                     # to be grouped into a single types.Content(role="user", parts=[...])
-                    if contents and contents[-1].role == "user" and any(
-                        getattr(p, "function_response", None) is not None for p in contents[-1].parts
+                    if (
+                        contents
+                        and contents[-1].role == "user"
+                        and contents[-1].parts is not None
+                        and any(
+                            getattr(p, "function_response", None) is not None for p in contents[-1].parts
+                        )
                     ):
                         contents[-1].parts.append(part)
                     else:
@@ -343,21 +355,34 @@ class GeminiProvider(LLMProvider):
                 automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
                 tools=[types.Tool(function_declarations=declarations)] if declarations else None,
             )
+            from typing import cast as _cast
+
             client = await self._async_client()
-            response = await client.aio.models.generate_content(model=self._model, contents=contents, config=config)
+            response = await client.aio.models.generate_content(
+                model=self._model,
+                contents=_cast(Any, contents),
+                config=config,
+            )
 
             tool_calls: list[ToolCall] = []
             text_parts: list[str] = []
             candidate = response.candidates[0] if response.candidates else None
-            for part in (candidate.content.parts if candidate else []):
-                if getattr(part, "function_call", None) is not None:
-                    call = part.function_call
+            candidate_parts = (
+                candidate.content.parts
+                if (candidate is not None and candidate.content is not None and candidate.content.parts is not None)
+                else []
+            )
+            for part in candidate_parts:
+                call = getattr(part, "function_call", None)
+                if call is not None:
+                    call_name = str(getattr(call, "name", None) or "")
+                    call_args = getattr(call, "args", None)
                     tool_calls.append(ToolCall(
-                        id=call.name, name=call.name, arguments=dict(call.args or {}),
+                        id=call_name, name=call_name, arguments=dict(call_args or {}),
                         provider_metadata=getattr(part, "thought_signature", None),
                     ))
                 elif getattr(part, "text", None):
-                    text_parts.append(part.text)
+                    text_parts.append(str(part.text))
 
             usage = _normalize_gemini_usage(response, self._model, tool_calls=len(tool_calls), provider=self.name)
             return LLMToolResponse(

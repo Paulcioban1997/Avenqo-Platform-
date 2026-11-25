@@ -174,6 +174,19 @@ class SmartModelRouter:
             return False
         if not context.required_capabilities.issubset(spec.capabilities):
             return False
+        # Strict tier-4 reasoning eligibility gate (e.g. gpt-6.2-astra):
+        # never select or fall back to tier-4 for latency-sensitive voice calls, demo/base plans,
+        # non-REASONING tasks, or unknown/insufficient credit balances (< 200 credits).
+        if spec.quality_tier >= 4 or spec.model_id == "gpt-6.2-astra":
+            plan = (context.plan_code or "").casefold()
+            if (
+                context.complexity != LLMTaskComplexity.REASONING
+                or context.latency_sensitive
+                or plan in {"demo", "base"}
+                or context.remaining_credits is None
+                or context.remaining_credits < 200
+            ):
+                return False
         return not context.requires_tool_calling or provider.supports_tool_calling
 
     def _score(
@@ -212,7 +225,8 @@ class SmartModelRouter:
         elif context.complexity == LLMTaskComplexity.REASONING and (
             not context.latency_sensitive
             and plan not in {"demo", "base"}
-            and (context.remaining_credits is None or context.remaining_credits >= 200)
+            and context.remaining_credits is not None
+            and context.remaining_credits >= 200
         ):
             desired_tier = 4
             task_penalty = max(0, 4 - spec.quality_tier) * 600

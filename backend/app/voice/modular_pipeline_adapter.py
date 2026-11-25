@@ -82,9 +82,11 @@ class ModularVoicePipelineAdapter:
         self._speech_peak_rms: int = 0
         self._current_item_id: str | None = None
         self._speech_pcm: bytearray = bytearray()
+        self._utterance_barge_in_emitted: bool = False
+        self._segment_tasks_by_item: dict[str, list[asyncio.Task[tuple[str, int, dict[str, Any] | None]]]] = {}
 
         self._tts_task: asyncio.Task[None] | None = None
-        self._stt_tasks: set[asyncio.Task[None]] = set()
+        self._stt_tasks: set[asyncio.Task[Any]] = set()
         self._current_response_id: str | None = None
 
         self._is_authenticated_staff: bool = False
@@ -119,18 +121,51 @@ class ModularVoicePipelineAdapter:
             locale,
         )
 
+    def _spawn_stt_segment_task(
+        self,
+        item_id: str,
+        pcm_bytes: bytes,
+    ) -> asyncio.Task[tuple[str, int, dict[str, Any] | None]]:
+        async def _transcribe_segment() -> tuple[str, int, dict[str, Any] | None]:
+            if len(pcm_bytes) < 960 or self._closed:
+                return "", len(pcm_bytes), None
+            wav_data = _pcm16_to_wav_bytes(pcm_bytes, sample_rate=24000)
+            transcript = (
+                await asyncio.wait_for(
+                    self._stt.transcribe(wav_data, locale=self._locale, content_type="audio/wav"),
+                    timeout=6.0,
+                )
+            ).strip()
+            raw_usage = getattr(self._stt, "last_usage", None)
+            provider_usage = dict(raw_usage) if isinstance(raw_usage, dict) else None
+            return transcript, len(pcm_bytes), provider_usage
+
+        seg_task = asyncio.create_task(_transcribe_segment())
+        self._stt_tasks.add(seg_task)
+        seg_task.add_done_callback(self._stt_tasks.discard)
+        self._segment_tasks_by_item.setdefault(item_id, []).append(seg_task)
+        return seg_task
+
     def _spawn_stt_job(self, item_id: str, pcm_bytes: bytes, duration_ms: int) -> None:
+        if pcm_bytes:
+            self._spawn_stt_segment_task(item_id, pcm_bytes)
+        segment_tasks = self._segment_tasks_by_item.pop(item_id, [])
+
         async def _run_stt() -> None:
             try:
-                if len(pcm_bytes) < 960 or self._closed:
+                if not segment_tasks or self._closed:
                     return
-                wav_data = _pcm16_to_wav_bytes(pcm_bytes, sample_rate=24000)
-                transcript = (
-                    await asyncio.wait_for(
-                        self._stt.transcribe(wav_data, locale=self._locale, content_type="audio/wav"),
-                        timeout=6.0,
-                    )
-                ).strip()
+                parts: list[str] = []
+                total_pcm_bytes = 0
+                provider_usages: list[dict[str, Any]] = []
+                for seg_task in segment_tasks:
+                    seg_text, seg_bytes, seg_usage = await seg_task
+                    total_pcm_bytes += seg_bytes
+                    if seg_text:
+                        parts.append(seg_text)
+                    if seg_usage:
+                        provider_usages.append(seg_usage)
+                transcript = " ".join(parts).strip()
                 if not transcript or self._closed:
                     await self._event_queue.put(
                         SimpleNamespace(
@@ -142,7 +177,16 @@ class ModularVoicePipelineAdapter:
                         )
                     )
                     return
-                est_tokens = max(1, len(transcript) // 4)
+                # Use actual provider usage when reported by STT; otherwise bill strictly by
+                # uploaded 24 kHz PCM16 duration (48,000 bytes/sec), never by transcript character count.
+                if len(provider_usages) == 1:
+                    stt_usage: dict[str, Any] = provider_usages[0]
+                else:
+                    audio_seconds = round(max(total_pcm_bytes, 0) / 48000.0, 3)
+                    stt_usage = {
+                        "type": "duration",
+                        "seconds": audio_seconds,
+                    }
                 await self._event_queue.put(
                     SimpleNamespace(
                         type="conversation.item.input_audio_transcription.completed",
@@ -150,15 +194,7 @@ class ModularVoicePipelineAdapter:
                         transcript=transcript,
                         event_id=f"mod-stt-{item_id}",
                         source="openai_modular_stt",
-                        usage={
-                            "type": "tokens",
-                            "input_tokens": est_tokens,
-                            "output_tokens": 1,
-                            "input_token_details": {
-                                "audio_tokens": est_tokens,
-                                "text_tokens": 0,
-                            },
-                        },
+                        usage=stt_usage,
                     )
                 )
             except asyncio.CancelledError:
@@ -191,6 +227,7 @@ class ModularVoicePipelineAdapter:
                 self._speech_frames = 0
                 self._speech_peak_rms = rms
                 self._speech_pcm.clear()
+                self._utterance_barge_in_emitted = False
                 self._current_item_id = f"mod-item-{uuid4().hex[:12]}"
                 await self._event_queue.put(
                     SimpleNamespace(
@@ -203,15 +240,38 @@ class ModularVoicePipelineAdapter:
                 )
             self._speech_frames += 1
             self._speech_peak_rms = max(self._speech_peak_rms, rms)
-            if len(self._speech_pcm) < 720_000:
-                self._speech_pcm.extend(audio)
+            # Immediate barge-in after >= 3 consecutive echo-rejected speech frames (~60ms) during active playback
+            if playback_on and self._speech_frames >= 3 and not self._utterance_barge_in_emitted:
+                self._utterance_barge_in_emitted = True
+                active_resp = self._current_response_id
+                self._current_response_id = None
+                if self._tts_task is not None and not self._tts_task.done():
+                    self._tts_task.cancel()
+                await self._event_queue.put(
+                    SimpleNamespace(
+                        type="response.interrupted",
+                        response_id=active_resp,
+                        verified_caller_barge_in=True,
+                        interruption_source="verified_caller_speech",
+                    )
+                )
+            self._speech_pcm.extend(audio)
+            # Long utterances > 15s (720,000 bytes at 24kHz PCM16): segment & transcribe without dropping tail
+            if len(self._speech_pcm) >= 720_000 and self._current_item_id:
+                seg_bytes = bytes(self._speech_pcm)
+                self._speech_pcm.clear()
+                self._spawn_stt_segment_task(self._current_item_id, seg_bytes)
         elif self._speech_active:
             self._silence_frames += 1
-            if len(self._speech_pcm) < 720_000:
-                self._speech_pcm.extend(audio)
+            self._speech_pcm.extend(audio)
+            if len(self._speech_pcm) >= 720_000 and self._current_item_id:
+                seg_bytes = bytes(self._speech_pcm)
+                self._speech_pcm.clear()
+                self._spawn_stt_segment_task(self._current_item_id, seg_bytes)
             if self._silence_frames >= self._silence_frames_threshold:
                 self._speech_active = False
                 self._silence_frames = 0
+                self._utterance_barge_in_emitted = False
                 item_id = self._current_item_id or f"mod-item-{uuid4().hex[:12]}"
                 self._current_item_id = None
                 duration_ms = self._speech_frames * 20
@@ -251,10 +311,21 @@ class ModularVoicePipelineAdapter:
         cleaned = (text or "").strip()
         if not cleaned:
             return
+        replaced_resp = self._current_response_id
+        self._current_response_id = None
         if self._tts_task is not None and not self._tts_task.done():
             self._tts_task.cancel()
             with suppress(Exception, asyncio.CancelledError):
                 await self._tts_task
+        if replaced_resp is not None:
+            await self._event_queue.put(
+                SimpleNamespace(
+                    type="response.done",
+                    verified_caller_barge_in=False,
+                    interruption_source="provider_unconfirmed",
+                    response=SimpleNamespace(id=replaced_resp, status="cancelled", usage=None),
+                )
+            )
 
         resp_id = f"mod-resp-{uuid4().hex[:12]}"
         self._current_response_id = resp_id
@@ -263,13 +334,13 @@ class ModularVoicePipelineAdapter:
         )
 
         async def _stream_tts() -> None:
-            emitted_chunks = 0
+            emitted_pcm_bytes = 0
             try:
                 if hasattr(self._tts, "synthesize_pcm_chunks"):
                     async for chunk in self._tts.synthesize_pcm_chunks(cleaned, locale=self._locale):
                         if self._closed or self._current_response_id != resp_id:
                             return
-                        emitted_chunks += 1
+                        emitted_pcm_bytes += len(chunk)
                         await self._event_queue.put(
                             SimpleNamespace(
                                 type="response.output_audio.delta",
@@ -284,16 +355,24 @@ class ModularVoicePipelineAdapter:
                     for off in range(0, len(pcm), 1920):
                         if self._closed or self._current_response_id != resp_id:
                             return
-                        emitted_chunks += 1
+                        chunk = pcm[off:off + 1920]
+                        emitted_pcm_bytes += len(chunk)
                         await self._event_queue.put(
                             SimpleNamespace(
                                 type="response.output_audio.delta",
                                 response_id=resp_id,
-                                delta=base64.b64encode(pcm[off:off + 1920]).decode("ascii"),
+                                delta=base64.b64encode(chunk).decode("ascii"),
                             )
                         )
-                in_tokens = max(1, len(cleaned) // 4)
-                out_tokens = max(1, emitted_chunks * 8)
+                raw_tts_usage = getattr(self._tts, "last_usage", None)
+                if isinstance(raw_tts_usage, dict):
+                    tts_usage: dict[str, Any] = dict(raw_tts_usage)
+                else:
+                    # Transport-independent duration accounting (24 kHz 16-bit mono PCM = 48,000 bytes/sec)
+                    tts_usage = {
+                        "type": "duration",
+                        "seconds": round(max(emitted_pcm_bytes, 0) / 48000.0, 3),
+                    }
                 self._current_response_id = None
                 await self._event_queue.put(
                     SimpleNamespace(
@@ -301,20 +380,7 @@ class ModularVoicePipelineAdapter:
                         response=SimpleNamespace(
                             id=resp_id,
                             status="completed",
-                            usage={
-                                "input_tokens": in_tokens,
-                                "output_tokens": out_tokens,
-                                "input_token_details": {
-                                    "audio_tokens": 0,
-                                    "text_tokens": in_tokens,
-                                    "cached_tokens": 0,
-                                    "cached_tokens_details": {"audio_tokens": 0, "text_tokens": 0},
-                                },
-                                "output_token_details": {
-                                    "audio_tokens": out_tokens,
-                                    "text_tokens": 0,
-                                },
-                            },
+                            usage=tts_usage,
                         ),
                     )
                 )

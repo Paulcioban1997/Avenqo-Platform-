@@ -1071,14 +1071,292 @@ async def test_zero_spoken_asterisks_across_voice_and_central_tts() -> None:
     assert len(captured_tts_inputs) == 1
     assert "*" not in captured_tts_inputs[0]
 
-    # Verify RotatingRealtimeAdapter delegates native_s2s_enabled & staff identity cleanly
+    # Verify RotatingRealtimeAdapter delegates native_s2s_enabled & staff identity cleanly EVEN BEFORE open()
     s2s = OpenAISpeechToSpeechRealtimeAdapter(
         OpenAIAudioConfig(api_key="test", stt_model="gpt-4o-mini-transcribe", tts_voice="marin"),
     )
     rot = RotatingRealtimeAdapter(lambda: s2s, AsyncMock(), rotation_seconds=3000)
-    rot.adapter = s2s
     assert rot.native_s2s_enabled is True
     assert rot.supports_concurrent_filler is False
     rot.update_staff_identity(True, "Francis", "owner")
     assert s2s._is_authenticated_staff is True
+
+
+@pytest.mark.asyncio
+async def test_audit_pr133_all_copilot_threads_regression(tmp_path: Any) -> None:
+    """Comprehensive verification for PR #133 review threads (Gemini nullable, Astra gate, S2S real ToolAuthorizationPolicy, handover reset, Modular streaming/duration/long-audio/barge-in, retry metering)."""
+    from pydantic import Field
+    from backend.app.ai.llm.gemini_provider import _sanitize_schema_for_gemini
+    from backend.app.ai.tools.authorization import ToolAuthorizationPolicy
+    from backend.app.ai.tools.base import AITool, ToolArguments
+    from backend.app.ai.tools.contracts import ToolExecutionContext, ToolResult
+    from backend.app.ai.tools.executor import ToolExecutor
+    from backend.app.ai.tools.registry import ToolRegistry
+    from backend.app.assistants.registry import AssistantRegistry
+    from shared.ai_engine.contracts import TenantContext
+    from tests.backend.test_voice_universal_architecture import _create_test_db
+
+    # Thread 1: Gemini nullable union preserves integer/number/boolean types instead of turning them into string
+    raw_union_schema = {
+        "type": "object",
+        "properties": {
+            "limit": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+            "include_archived": {"oneOf": [{"type": "boolean"}, {"type": "null"}]},
+            "min_price": {"anyOf": [{"type": "null"}, {"type": "number"}]},
+        },
+    }
+    clean_schema = _sanitize_schema_for_gemini(raw_union_schema)
+    assert clean_schema["properties"]["limit"] == {"type": "integer", "nullable": True}
+    assert clean_schema["properties"]["include_archived"] == {"type": "boolean", "nullable": True}
+    assert clean_schema["properties"]["min_price"] == {"type": "number", "nullable": True}
+
+    # Thread 13: Astra eligibility gate excludes gpt-6.2-astra from rank() and fallbacks when latency_sensitive, low credits, or unknown credits
+    rate_card = LLMRateCard.from_models({"openai": ("gpt-6.2-sol", "gpt-6.2-astra")})
+    specs: dict[str | tuple[str, str], Any] = {
+        ("openai", m): rate_card.spec_for("openai", m) for m in ("gpt-6.2-sol", "gpt-6.2-astra")
+    }
+    router = SmartModelRouter(specs, ProviderHealthRegistry())
+    providers = [
+        OpenAIProvider("k", "gpt-6.2-sol", 0.2, 800),
+        OpenAIProvider("k", "gpt-6.2-astra", 0.2, 800),
+    ]
+    ctx_unknown_credits = LLMRoutingContext(
+        task_type=LLMTaskType.BUSINESS_REASONING,
+        complexity=LLMTaskComplexity.REASONING,
+        context_tokens=1000,
+        expected_output_tokens=400,
+        requires_tool_calling=True,
+        requires_reasoning=True,
+        latency_sensitive=False,
+        plan_code="professional",
+        remaining_credits=None,
+    )
+    ranked_unknown = router.rank(providers, ctx_unknown_credits)
+    assert [getattr(p, "_model", None) for p in ranked_unknown] == ["gpt-6.2-sol"]
+
+    ctx_low_credits = LLMRoutingContext(
+        task_type=LLMTaskType.BUSINESS_REASONING,
+        complexity=LLMTaskComplexity.REASONING,
+        context_tokens=1000,
+        expected_output_tokens=400,
+        requires_tool_calling=True,
+        requires_reasoning=True,
+        latency_sensitive=False,
+        plan_code="professional",
+        remaining_credits=150,
+    )
+    assert [getattr(p, "_model", None) for p in router.rank(providers, ctx_low_credits)] == ["gpt-6.2-sol"]
+
+    # Threads 9 & 10: Real ToolAuthorizationPolicy + ToolExecutor with selected_agent_id, authorized_tool_agents, and user_message confirmation
+    from backend.app.assistants.registry import build_default_assistant_registry
+    from backend.app.models import BillingAccount, VoiceModulePermission
+
+    session, company_a, user_a, *_ = _create_test_db(tmp_path)
+    session.add(
+        BillingAccount(
+            id=uuid4(),
+            company_id=company_a.id,
+            plan_code="professional",
+            status="active",
+        )
+    )
+    session.add(
+        VoiceModulePermission(
+            id=uuid4(),
+            company_id=company_a.id,
+            module_code="crm",
+            action_code="create_appointment",
+            granted=True,
+            revoked_at=None,
+            permission_epoch=1,
+        )
+    )
+    session.commit()
+
+    class _BookingArgs(ToolArguments):
+        client: str = Field(description="Client name")
+        confirmed: bool = Field(default=False, description="Confirmation flag")
+
+    class _RealBookingTool(AITool):
+        name = "create_appointment"
+        description = "Book VIP appointment"
+        input_schema = _BookingArgs
+        required_permissions = ("ai:use",)
+        module_code = "crm"
+        agent_ids = ("crm",)
+        read_only = False
+        mutates = True
+        mutation_capabilities = frozenset({"appointment.create"})
+        confirmation_policy = "explicit_user_confirmation"
+        requires_confirmation = True
+
+        async def run(self, context: ToolExecutionContext, arguments: _BookingArgs) -> ToolResult:
+            return ToolResult(
+                success=True,
+                data={"booked": True, "client": arguments.client, "agent": context.selected_agent_id},
+            )
+
+    from backend.app.ai.tools.idempotency import AIToolExecutionIdempotencyStore
+
+    reg = ToolRegistry()
+    reg.register(_RealBookingTool())
+    real_executor = ToolExecutor(
+        reg,
+        ToolAuthorizationPolicy(session, build_default_assistant_registry(reg)),
+        AIToolExecutionIdempotencyStore(session),
+    )
+    cid = company_a.id
+    uid = user_a.id
+    conv_id = uuid4()
+    authorized_map = {"create_appointment": "crm"}
+
+    # Without confirmation in user_message -> confirmation_required challenge created
+    unconfirmed_ctx = ToolExecutionContext(
+        tenant=TenantContext(company_id=cid, user_id=uid),
+        user_id=uid,
+        permissions=frozenset({"ai:use", "data:read"}),
+        request_id="req-s2s-unconf",
+        conversation_id=conv_id,
+        selected_agent_id="crm",
+        authorized_tool_agents=authorized_map,
+        user_message="Réserve un rendez-vous pour Martin",
+        voice_path=True,
+    )
+    res_unconf = await real_executor.execute("create_appointment", unconfirmed_ctx, {"client": "Martin"})
+    assert res_unconf.success is False
+    assert res_unconf.data.get("confirmation_required") is True or res_unconf.metadata.get("confirmation_required") is True
+
+    # With natural-language confirmation in user_message on same conversation_id -> consumes challenge & succeeds
+    confirmed_ctx = ToolExecutionContext(
+        tenant=TenantContext(company_id=cid, user_id=uid),
+        user_id=uid,
+        permissions=frozenset({"ai:use", "data:read"}),
+        request_id="req-s2s-conf",
+        conversation_id=conv_id,
+        selected_agent_id="crm",
+        authorized_tool_agents=authorized_map,
+        user_message="Oui je confirme",
+        voice_path=True,
+    )
+    res_conf = await real_executor.execute("create_appointment", confirmed_ctx, {"client": "Martin"})
+    assert res_conf.success is True
+    assert res_conf.data == {"booked": True, "client": "Martin", "agent": "crm"}
+
+    # Thread 7 & 11: S2S reconnect drains stale EOF and handover reset purges provider conversation items
+    ws_events: asyncio.Queue[Any] = asyncio.Queue()
+    sent_payloads: list[dict[str, Any]] = []
+
+    class _HandoverConn:
+        async def send(self, payload: dict[str, Any]) -> None:
+            sent_payloads.append(payload)
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            ev = await ws_events.get()
+            if ev is None:
+                raise StopAsyncIteration
+            return ev
+
+    class _HandoverMgr:
+        async def __aenter__(self):
+            return _HandoverConn()
+
+        async def __aexit__(self, *_a):
+            await ws_events.put(None)
+
+    s2s_handover = OpenAISpeechToSpeechRealtimeAdapter(
+        OpenAIAudioConfig(api_key="test", stt_model="gpt-4o-mini-transcribe", tts_voice="marin"),
+        connection_factory=lambda _m: _HandoverMgr(),
+    )
+    await s2s_handover.open(locale="fr-CA")
+    await ws_events.put({"type": "conversation.item.created", "item": {"id": "secret-item-1"}})
+    await asyncio.sleep(0.03)
+    assert "secret-item-1" in s2s_handover._conversation_item_ids
+    s2s_handover.update_staff_identity(True, "Francis", "owner")
+    await asyncio.sleep(0.02)
+    # Trigger handover revocation -> must delete secret-item-1 from provider session
+    s2s_handover.update_staff_identity(False, None, None)
+    await asyncio.sleep(0.04)
+    deleted_ids = [p.get("item_id") for p in sent_payloads if p.get("type") == "conversation.item.delete"]
+    assert "secret-item-1" in deleted_ids
+
+    # Reconnect must drain stale EOF so next events() consumer receives session.updated
+    await s2s_handover.reconnect(fallback_model="gpt-realtime-2.1", locale="fr-CA")
+    first_ev = await asyncio.wait_for(s2s_handover.events().__anext__(), timeout=1.0)
+    assert getattr(first_ev, "type", None) == "session.updated"
+    await s2s_handover.close()
+
+    # Threads 2, 4, 14, 15, 16: Modular streaming TTS, duration-based STT/TTS usage, >15s utterance segmentation, and immediate barge-in
+    stream_Yields: list[int] = []
+
+    class _FakeStreamingResp:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_a):
+            return None
+
+        async def iter_bytes(self, chunk_size: int = 1920):
+            for _ in range(3):
+                stream_Yields.append(chunk_size)
+                yield b"\x10\x00" * (chunk_size // 2)
+
+    class _FakeStreamingSpeech:
+        with_streaming_response = SimpleNamespace(create=lambda **_kw: _FakeStreamingResp())
+
+    streaming_tts = OpenAITextToSpeechAdapter(
+        OpenAIAudioConfig(api_key="test", tts_model="gpt-4o-mini-tts", tts_voice="marin"),
+        client=cast(Any, SimpleNamespace(audio=SimpleNamespace(speech=_FakeStreamingSpeech()))),
+    )
+    chunks_out = [c async for c in streaming_tts.synthesize_pcm_chunks("Bonjour", locale="fr-CA", chunk_bytes=1920)]
+    assert len(chunks_out) == 3
+    assert all(len(c) == 1920 for c in chunks_out)
+
+    # Long >15s utterance (2 segments) + duration-based STT usage
+    stt_calls: list[int] = []
+
+    class _SegSTT:
+        provider_id = "openai"
+
+        async def transcribe(self, audio: bytes, *, locale: str, content_type: str) -> str:
+            stt_calls.append(len(audio))
+            return f"segment-{len(stt_calls)}"
+
+    mod = ModularVoicePipelineAdapter(
+        OpenAIAudioConfig(api_key="test", stt_model="gpt-4o-mini-transcribe", tts_model="gpt-4o-mini-tts", tts_voice="marin"),
+        stt_adapter=_SegSTT(),
+        tts_adapter=streaming_tts,
+        silence_frames_threshold=2,
+    )
+    await mod.open(locale="fr-CA")
+    _ = await mod._event_queue.get()  # session.updated
+
+    # Send >720,000 bytes (16 seconds at 24kHz PCM16 = 768,000 bytes) in loud 48,000-byte (1s) chunks
+    loud_1s = _pcm_24k(1200, frames=50)
+    for _ in range(16):
+        await mod.send_audio(loud_1s)
+    await mod.flush_speech()
+    ev_started = await asyncio.wait_for(mod._event_queue.get(), timeout=1.0)
+    assert ev_started.type == "input_audio_buffer.speech_started"
+    ev_stopped = await asyncio.wait_for(mod._event_queue.get(), timeout=1.0)
+    assert ev_stopped.type == "input_audio_buffer.speech_stopped"
+    ev_trans = await asyncio.wait_for(mod._event_queue.get(), timeout=2.0)
+    assert ev_trans.type == "conversation.item.input_audio_transcription.completed"
+    # Both segments must be coalesced without dropping the tail > 15s!
+    assert ev_trans.transcript == "segment-1 segment-2"
+    assert ev_trans.usage["type"] == "duration"
+    assert ev_trans.usage["seconds"] == 16.0
+
+    # Thread 4: Modular TTS usage is duration-based and invariant to chunk size
+    await mod.speak("Réponse complète.")
+    _ = await asyncio.wait_for(mod._event_queue.get(), timeout=1.0)  # response.created
+    for _ in range(3):
+        _ = await asyncio.wait_for(mod._event_queue.get(), timeout=1.0)  # deltas
+    ev_done = await asyncio.wait_for(mod._event_queue.get(), timeout=1.0)
+    assert ev_done.type == "response.done"
+    assert ev_done.response.usage == {"type": "duration", "seconds": round((1920 * 3) / 48000.0, 3)}
+    await mod.close()
+
 

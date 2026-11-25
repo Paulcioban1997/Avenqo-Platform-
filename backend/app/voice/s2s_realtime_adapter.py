@@ -101,7 +101,11 @@ class OpenAISpeechToSpeechRealtimeAdapter:
         self._system_speech_pending: int = 0
         self._current_response_authorized: bool = False
         self._current_response_is_system: bool = False
+        self._current_response_audio_chunks: int = 0
+        self._current_response_tool_calls: int = 0
         self._auth_gate_locked: bool = False
+        self._conversation_item_ids: list[str] = []
+        self._conversation_reset_epoch: int = 0
         self.dropped_unauthorized_audio_chunks: int = 0
         self.blocked_unauthorized_tool_calls: int = 0
 
@@ -121,9 +125,12 @@ class OpenAISpeechToSpeechRealtimeAdapter:
         staff_role: str | None = None,
     ) -> None:
         was_authenticated = self._is_authenticated_staff
+        old_identity = (self._is_authenticated_staff, self._staff_name, self._staff_role)
         self._is_authenticated_staff = bool(is_authenticated)
         self._staff_name = staff_name if is_authenticated else None
         self._staff_role = staff_role if is_authenticated else None
+        new_identity = (self._is_authenticated_staff, self._staff_name, self._staff_role)
+        identity_changed = old_identity != new_identity
         if is_authenticated:
             self._auth_gate_locked = False
         elif was_authenticated and not is_authenticated:
@@ -134,9 +141,37 @@ class OpenAISpeechToSpeechRealtimeAdapter:
         if self._connection is not None and not self._closed:
             try:
                 loop = asyncio.get_running_loop()
-                loop.create_task(self.refresh_session())
+                if identity_changed and was_authenticated:
+                    loop.create_task(self.reset_conversation_session())
+                else:
+                    loop.create_task(self.refresh_session())
             except RuntimeError:
                 pass
+
+    async def reset_conversation_session(self) -> None:
+        """Purge prior principal conversation context and tool outputs on staff handover or PIN revocation."""
+        self._conversation_reset_epoch += 1
+        self._authorized_turn_ids.clear()
+        self._authorized_response_turn_id = None
+        self._current_response_authorized = False
+        self._handled_function_calls.clear()
+        if self._connection is None or self._closed:
+            self._conversation_item_ids.clear()
+            return
+        with suppress(Exception):
+            await self._connection.send({"type": "response.cancel"})
+        with suppress(Exception):
+            await self._connection.send({"type": "input_audio_buffer.clear"})
+        items_to_delete = list(self._conversation_item_ids)
+        self._conversation_item_ids.clear()
+        for item_id in items_to_delete:
+            if item_id:
+                with suppress(Exception):
+                    await self._connection.send({"type": "conversation.item.delete", "item_id": item_id})
+        if hasattr(self._connection, "clear_conversation_history") and callable(self._connection.clear_conversation_history):
+            with suppress(Exception):
+                self._connection.clear_conversation_history()
+        await self.refresh_session()
 
     def _build_instructions(self, locale: str) -> str:
         cfg = self._voice_config
@@ -239,6 +274,9 @@ class OpenAISpeechToSpeechRealtimeAdapter:
             raise ExternalVoiceConfigurationRequired("OPENAI_API_KEY is required for gpt-realtime-2.1 S2S")
         self._locale = locale
         self._closed = False
+        while not self._event_queue.empty():
+            with suppress(asyncio.QueueEmpty):
+                self._event_queue.get_nowait()
         if self._connection_factory is not None:
             self._manager = self._connection_factory(self._model)
         else:
@@ -340,6 +378,9 @@ class OpenAISpeechToSpeechRealtimeAdapter:
 
     async def reconnect(self, fallback_model: str = "gpt-realtime-2.1", locale: str = "fr-CA") -> None:
         await self.close()
+        while not self._event_queue.empty():
+            with suppress(asyncio.QueueEmpty):
+                self._event_queue.get_nowait()
         self._model = fallback_model or self._model
         self.model_name = self._model
         await self.open(locale=locale)
@@ -429,48 +470,64 @@ class OpenAISpeechToSpeechRealtimeAdapter:
                             item_id=get_f("item_id") or f"s2s-item-{uuid4().hex[:10]}",
                         )
                     )
+                elif ev_type == "conversation.item.created":
+                    item = get_f("item")
+                    c_item_id = (
+                        item.get("id")
+                        if isinstance(item, dict)
+                        else getattr(item, "id", None)
+                    ) or get_f("item_id")
+                    if c_item_id:
+                        self._conversation_item_ids.append(str(c_item_id))
+                        if len(self._conversation_item_ids) > 500:
+                            del self._conversation_item_ids[:-500]
                 elif ev_type == "conversation.item.input_audio_transcription.completed":
                     item_id = str(get_f("item_id") or f"s2s-item-{uuid4().hex[:10]}")
+                    self._conversation_item_ids.append(item_id)
+                    if len(self._conversation_item_ids) > 500:
+                        del self._conversation_item_ids[:-500]
                     transcript = str(get_f("transcript") or "").strip()
                     self._active_turn_id = item_id
                     if not transcript:
                         continue
+                    normalized_transcript_event = SimpleNamespace(
+                        type="conversation.item.input_audio_transcription.completed",
+                        item_id=item_id,
+                        transcript=transcript,
+                        event_id=get_f("event_id") or f"evt-{item_id}",
+                        usage=get_f("usage"),
+                        security_intercept=None,
+                    )
                     if self._security_hook is not None:
                         sec = await self._security_hook(item_id, transcript)
                         if isinstance(sec, dict) and sec.get("handled"):
                             if sec.get("auth_required"):
                                 self._auth_gate_locked = True
                                 self._authorized_turn_ids.clear()
-                                await self.refresh_session()
+                                await self.reset_conversation_session()
                             elif sec.get("public"):
                                 self._auth_gate_locked = False
-                                await self.refresh_session()
+                                await self.reset_conversation_session()
                             await self.interrupt()
-                            await self._event_queue.put(
-                                SimpleNamespace(
-                                    type="conversation.item.input_audio_transcription.completed",
-                                    item_id=item_id,
-                                    transcript=transcript,
-                                    event_id=get_f("event_id") or f"evt-{item_id}",
-                                    usage=get_f("usage"),
-                                    security_intercept=sec,
-                                )
-                            )
+                            normalized_transcript_event.security_intercept = sec
+                            await self._event_queue.put(normalized_transcript_event)
                             continue
                     if self._auth_gate_locked:
                         # Caller is inside an active PIN/handover gate; forward to bridge for verbal-cancel check ONLY,
                         # NEVER trigger S2S response generation!
-                        await self._event_queue.put(raw_event)
+                        await self._event_queue.put(normalized_transcript_event)
                         continue
                     if len(self._authorized_turn_ids) >= 500:
                         self._authorized_turn_ids.clear()
                     self._authorized_turn_ids.add(item_id)
-                    await self._event_queue.put(raw_event)
+                    await self._event_queue.put(normalized_transcript_event)
                     await self._request_authorized_turn_response(item_id)
                 elif ev_type == "response.created":
                     resp = get_f("response")
                     resp_id = getattr(resp, "id", None) if resp is not None and not isinstance(resp, dict) else (resp.get("id") if isinstance(resp, dict) else None)
                     self._current_response_id = str(resp_id) if resp_id else f"s2s-resp-{uuid4().hex[:10]}"
+                    self._current_response_audio_chunks = 0
+                    self._current_response_tool_calls = 0
                     if self._system_speech_pending > 0:
                         self._system_speech_pending -= 1
                         self._current_response_authorized = True
@@ -495,6 +552,7 @@ class OpenAISpeechToSpeechRealtimeAdapter:
                             with suppress(Exception):
                                 await self._connection.send({"type": "response.cancel"})
                         continue
+                    self._current_response_audio_chunks += 1
                     await self._event_queue.put(
                         SimpleNamespace(
                             type="response.output_audio.delta",
@@ -510,6 +568,7 @@ class OpenAISpeechToSpeechRealtimeAdapter:
                         with suppress(Exception):
                             await self._assistant_transcript_hook(self._active_turn_id, out_text)
                 elif ev_type == "response.function_call_arguments.done":
+                    self._current_response_tool_calls += 1
                     await self._handle_function_call(
                         str(get_f("call_id") or ""),
                         str(get_f("name") or ""),
@@ -519,16 +578,23 @@ class OpenAISpeechToSpeechRealtimeAdapter:
                     item = get_f("item")
                     if item is not None:
                         if isinstance(item, dict):
+                            item_id_done = item.get("id")
                             item_type = item.get("type")
                             call_id = item.get("call_id")
                             fn_name = item.get("name")
                             fn_args = item.get("arguments")
                         else:
+                            item_id_done = getattr(item, "id", None)
                             item_type = getattr(item, "type", None)
                             call_id = getattr(item, "call_id", None)
                             fn_name = getattr(item, "name", None)
                             fn_args = getattr(item, "arguments", None)
+                        if item_id_done:
+                            self._conversation_item_ids.append(str(item_id_done))
+                            if len(self._conversation_item_ids) > 500:
+                                del self._conversation_item_ids[:-500]
                         if item_type == "function_call":
+                            self._current_response_tool_calls += 1
                             await self._handle_function_call(
                                 str(call_id or ""),
                                 str(fn_name or ""),
@@ -536,6 +602,8 @@ class OpenAISpeechToSpeechRealtimeAdapter:
                             )
                 elif ev_type == "response.done":
                     was_authorized = self._current_response_authorized
+                    audio_chunks = self._current_response_audio_chunks
+                    tool_calls = self._current_response_tool_calls
                     resp = get_f("response")
                     if isinstance(resp, dict):
                         resp_ns = SimpleNamespace(
@@ -550,6 +618,8 @@ class OpenAISpeechToSpeechRealtimeAdapter:
                     self._current_response_id = None
                     self._current_response_authorized = False
                     self._current_response_is_system = False
+                    self._current_response_audio_chunks = 0
+                    self._current_response_tool_calls = 0
                     self._verified_caller_speech = False
                     self._speech_frames_during_playback = 0
                     if not was_authorized:
@@ -558,6 +628,9 @@ class OpenAISpeechToSpeechRealtimeAdapter:
                         SimpleNamespace(
                             type="response.done",
                             response=resp_ns,
+                            audio_chunks_emitted=audio_chunks,
+                            function_call_only=(audio_chunks == 0 and tool_calls > 0),
+                            turn_id=self._active_turn_id,
                             verified_caller_barge_in=verified if status == "cancelled" else None,
                             interruption_source=(
                                 "verified_caller_speech"

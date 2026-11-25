@@ -85,6 +85,7 @@ def voice_pricing_catalog(rate_card: dict[str, dict[str, object]] | None = None)
         "gpt-4o-mini-tts": {
             "input_cost_per_million_usd": "0.6",
             "audio_output_cost_per_million_usd": "12",
+            "audio_input_cost_per_second_usd": "0.00025",
         },
         "gemini-3.8-live": {
             "input_cost_per_million_usd": "0.50",
@@ -273,29 +274,37 @@ def realtime_response_attempt(
     raw = _value(response, "usage")
     if raw is None:
         return None
-    input_details = _value(raw, "input_token_details")
-    output_details = _value(raw, "output_token_details")
-    cached_details = _value(input_details, "cached_tokens_details")
-    audio_input = _nonnegative_int(_value(input_details, "audio_tokens"))
-    cached_audio = _nonnegative_int(_value(cached_details, "audio_tokens"))
-    audio_output = _nonnegative_int(_value(output_details, "audio_tokens"))
-    text_input = _value(input_details, "text_tokens")
-    cached_text = _value(cached_details, "text_tokens")
-    text_output = _value(output_details, "text_tokens")
     response_id = _value(response, "id")
     status = str(_value(response, "status") or "completed")
-    usage = LLMUsage(
-        "openai", model,
-        input_tokens=_nonnegative_int(_value(raw, "input_tokens")),
-        cached_input_tokens=_nonnegative_int(_value(input_details, "cached_tokens")),
-        output_tokens=_nonnegative_int(_value(raw, "output_tokens")),
-        text_input_tokens=_nonnegative_int(text_input) if text_input is not None else None,
-        cached_text_input_tokens=_nonnegative_int(cached_text) if cached_text is not None else None,
-        text_output_tokens=_nonnegative_int(text_output) if text_output is not None else None,
-        audio_input_units=Decimal(audio_input),
-        cached_audio_input_units=Decimal(cached_audio),
-        audio_output_units=Decimal(audio_output),
-    )
+    if _value(raw, "type") == "duration":
+        seconds = Decimal(str(_value(raw, "seconds", 0) or 0))
+        usage = LLMUsage(
+            "openai",
+            model,
+            audio_input_seconds=max(seconds, Decimal("0")),
+        )
+    else:
+        input_details = _value(raw, "input_token_details")
+        output_details = _value(raw, "output_token_details")
+        cached_details = _value(input_details, "cached_tokens_details")
+        audio_input = _nonnegative_int(_value(input_details, "audio_tokens"))
+        cached_audio = _nonnegative_int(_value(cached_details, "audio_tokens"))
+        audio_output = _nonnegative_int(_value(output_details, "audio_tokens"))
+        text_input = _value(input_details, "text_tokens")
+        cached_text = _value(cached_details, "text_tokens")
+        text_output = _value(output_details, "text_tokens")
+        usage = LLMUsage(
+            "openai", model,
+            input_tokens=_nonnegative_int(_value(raw, "input_tokens")),
+            cached_input_tokens=_nonnegative_int(_value(input_details, "cached_tokens")),
+            output_tokens=_nonnegative_int(_value(raw, "output_tokens")),
+            text_input_tokens=_nonnegative_int(text_input) if text_input is not None else None,
+            cached_text_input_tokens=_nonnegative_int(cached_text) if cached_text is not None else None,
+            text_output_tokens=_nonnegative_int(text_output) if text_output is not None else None,
+            audio_input_units=Decimal(audio_input),
+            cached_audio_input_units=Decimal(cached_audio),
+            audio_output_units=Decimal(audio_output),
+        )
     return _attempt(
         catalog=catalog, model=model, operation="voice_realtime_tts", raw_usage=usage,
         attempt_number=attempt_number, request_id=request_id,
