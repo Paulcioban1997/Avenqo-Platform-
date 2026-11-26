@@ -340,6 +340,7 @@ def is_backchannel(text: str) -> bool:
 _GREETING_WORDS = frozenset({
     "allo", "bonjour", "bonsoir", "buna", "hello", "hi", "hola", "salut",
 })
+_SHORT_FAREWELLS = frozenset({"au revoir", "goodbye", "adios", "la revedere"})
 
 
 def is_substantive_utterance(transcript: str) -> bool:
@@ -419,6 +420,9 @@ def adjudicate_transcript(
         if active:
             return "replace" if allow_barge_in else "accept"
         return "accept"
+
+    if _normalize(transcript) in _SHORT_FAREWELLS:
+        return "replace" if active and allow_barge_in else "accept"
 
     if is_backchannel(transcript):
         return "ignore"
