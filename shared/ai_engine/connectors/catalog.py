@@ -23,6 +23,20 @@ VOICE = frozenset({C.CUSTOMERS, C.INCREMENTAL_SYNC})
 FULFILLMENT = frozenset({C.ORDERS, C.FULFILLMENTS, C.INVENTORY, C.INCREMENTAL_SYNC})
 
 
+_DOCUMENTATION_KEYS = {
+    "adobe_commerce": "adobe-commerce",
+    "wix_ecommerce": "wix-ecommerce",
+    "squarespace_commerce": "squarespace-commerce",
+    "amazon_sp_api": "amazon-seller-central",
+    "walmart_marketplace": "walmart-marketplace",
+    "tiktok_shop": "tiktok-shop",
+    "square_pos": "square",
+    "clover_pos": "clover",
+    "lightspeed_retail": "lightspeed-retail",
+    "stripe": "stripe-commerce",
+}
+
+
 def _definition(
     provider: str,
     display_name: str,
@@ -51,7 +65,7 @@ def _definition(
         description_key=f"connector.{provider}.description",
         icon_key=provider,
         configuration_requirements=configuration_requirements,
-        documentation_url=f"/docs/connectors/{provider}.md",
+        documentation_url=f"/docs/connectors/{_DOCUMENTATION_KEYS.get(provider, provider)}.md",
         supports_oauth=oauth,
         supports_webhooks=webhooks,
         supports_incremental_sync=incremental,
@@ -71,10 +85,10 @@ CANONICAL_22_DEFINITIONS: tuple[ConnectorDefinition, ...] = (
     _definition("shopify", "Shopify", K.ECOMMERCE, status=S.AVAILABLE, priority="P0", capabilities=COMMERCE | {C.DISCOUNTS, C.WEBHOOKS}, configuration_requirements=("shop_domain",), scopes=("read_orders", "read_customers", "read_products", "read_inventory", "read_fulfillments"), webhooks=True, sandbox=True),
     _definition("woocommerce", "WooCommerce", K.ECOMMERCE, status=S.AVAILABLE, auth_method=A.STORE_URL_PLUS_KEYS, priority="P0", capabilities=COMMERCE | {C.WEBHOOKS}, configuration_requirements=("store_url",), webhooks=True, external_registration=False),
     _definition("bigcommerce", "BigCommerce", K.ECOMMERCE, status=S.CONFIGURATION_REQUIRED, priority="P0", capabilities=COMMERCE | {C.WEBHOOKS}, configuration_requirements=("client_id", "client_secret"), webhooks=True, sandbox=True),
-    _definition("adobe_commerce", "Adobe Commerce (Magento)", K.ECOMMERCE, status=S.AVAILABLE, auth_method=A.STORE_URL_PLUS_KEYS, priority="P0", capabilities=COMMERCE, configuration_requirements=("store_url", "access_token")),
+    _definition("adobe_commerce", "Adobe Commerce (Magento)", K.ECOMMERCE, status=S.CONFIGURATION_REQUIRED, auth_method=A.STORE_URL_PLUS_KEYS, priority="P0", capabilities=COMMERCE, configuration_requirements=("store_url", "access_token")),
     _definition("wix_ecommerce", "Wix eCommerce", K.ECOMMERCE, status=S.CONFIGURATION_REQUIRED, priority="P0", capabilities=COMMERCE | {C.WEBHOOKS}, configuration_requirements=("client_id", "client_secret"), webhooks=True),
-    _definition("squarespace_commerce", "Squarespace Commerce", K.ECOMMERCE, status=S.AVAILABLE, priority="P1", capabilities=COMMERCE, configuration_requirements=("api_key",)),
-    _definition("prestashop", "PrestaShop", K.ECOMMERCE, status=S.AVAILABLE, auth_method=A.STORE_URL_PLUS_KEYS, priority="P1", capabilities=COMMERCE, configuration_requirements=("store_url", "api_key")),
+    _definition("squarespace_commerce", "Squarespace Commerce", K.ECOMMERCE, status=S.CONFIGURATION_REQUIRED, priority="P1", capabilities=COMMERCE, configuration_requirements=("api_key",)),
+    _definition("prestashop", "PrestaShop", K.ECOMMERCE, status=S.CONFIGURATION_REQUIRED, auth_method=A.STORE_URL_PLUS_KEYS, priority="P1", capabilities=COMMERCE, configuration_requirements=("store_url", "api_key")),
 
     # 8-12 Places de marché
     _definition("amazon_sp_api", "Amazon Seller Central (SP-API)", K.MARKETPLACE, auth_method=A.PARTNER_AUTHORIZATION, status=S.CONFIGURATION_REQUIRED, priority="P0", capabilities=MARKETPLACE, configuration_requirements=("lwa_client_id", "lwa_client_secret", "aws_role_arn"), review=True, sandbox=True),
@@ -103,7 +117,7 @@ CANONICAL_22_DEFINITIONS: tuple[ConnectorDefinition, ...] = (
     _definition("stripe", "Stripe Facturation & Paiements", K.BILLING, status=S.AVAILABLE, auth_method=A.API_KEY, priority="P0", capabilities=PAYMENTS | {C.WEBHOOKS}, configuration_requirements=("api_key",), webhooks=True, sandbox=True),
 
     # 22 Logistique & Expédition
-    _definition("shipstation", "ShipStation", K.FULFILLMENT, status=S.AVAILABLE, auth_method=A.API_KEY, priority="P1", capabilities=FULFILLMENT, configuration_requirements=("api_key", "api_secret")),
+    _definition("shipstation", "ShipStation", K.FULFILLMENT, status=S.CONFIGURATION_REQUIRED, auth_method=A.API_KEY, priority="P1", capabilities=FULFILLMENT, configuration_requirements=("api_key", "api_secret")),
 )
 
 # Alias map for backwards compatibility
