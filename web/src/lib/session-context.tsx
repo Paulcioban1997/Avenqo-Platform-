@@ -144,14 +144,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const selectSource = async (sourceType: string, sourceId: string | null) => {
     const version = revision.current;
     const base = sourceApi.current;
-    if (!base) return;
+    if (!base) throw new Error("Source selection is unavailable");
     await apiFetch(`${base}/active`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_type: sourceType, source_id: sourceId }) });
     const response = await apiFetch(`${base}/context`);
-    const context = await response.json();
-    if (version !== revision.current) return;
+    const context: SourceContext = await response.json();
+    if (version !== revision.current) throw new Error("Session changed during source selection");
     setSourceContext(context); setSourceError(null); setSourceRevision(value => value + 1);
     setActiveDataSources(namesForContext(context));
     window.dispatchEvent(new Event("avenqo:sources-changed"));
+    if (context.source_type !== sourceType || (sourceType !== "all" && (context.source_id !== sourceId || context.state !== "READY"))) {
+      throw new Error("Requested source is not active and ready");
+    }
   };
 
   useEffect(() => {
