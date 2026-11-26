@@ -547,7 +547,8 @@ def test_unknown_to_verified_staff_full_signed_dtmf_path(signed_telnyx_webhook, 
         socket.send_json({**frame, "media": {**frame["media"], "chunk": "2"}})
         result = env.send(env.event("call.gather.ended", digits=secret if correct else "102938", client_state=challenge))
         assert result.json()["authenticated"] is correct and secret not in result.text
-        env.client.portal.call(eventually, lambda: any(("réussie" if correct else "refusée") in text for text in adapter.spoken))
+        expected_prompt = "réussie" if correct else "Authentification refusée"
+        env.client.portal.call(eventually, lambda: any(expected_prompt in text for text in adapter.spoken))
         assert central.calls == [] and len(adapter.audio) == 1
         if correct:
             env.client.portal.call(asyncio.sleep, 0.3)
@@ -622,11 +623,12 @@ async def test_media_bridge_roundtrip_barge_in_dtmf_and_duplicate_frames():
     await until(lambda: any(event["event"] == "media" for event in socket.sent))
     assert calls == [("turn-test", "Summarize sales [REDACTED]")]
     await socket.incoming.put({"event": "dtmf", "stream_id": "stream-test", "dtmf": {"digit": "6"}})
-    await until(lambda: adapter.cleared_input == 1)
+    await until(lambda: any(event["event"] == "clear" for event in socket.sent))
     await adapter.incoming.put(delta)
     await socket.incoming.put({**frame, "media": {**frame["media"], "chunk": "2"}})
-    await until(lambda: bridge._last_chunk == 2)
-    assert len(adapter.audio) == 1 and bridge.input_paused
+    await until(lambda: len(adapter.audio) == 2)
+    # Outside a PIN challenge a keypad press interrupts playback and keeps listening.
+    assert not bridge.input_paused and adapter.cleared_input == 0
     assert socket.sent[-1] == {"event": "clear"}
     assert "654321" not in str(calls) + str(adapter.spoken) + str(socket.sent)
     await socket.incoming.put({"event": "stop", "stream_id": "stream-test"})

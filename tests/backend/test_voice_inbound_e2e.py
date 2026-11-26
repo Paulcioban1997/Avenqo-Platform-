@@ -413,7 +413,7 @@ async def test_inbound_public_turn_settles_company_credits_once(signed_telnyx_we
             usage.claim_credit_reservation(args[0].company_id, "professional", request_id, 1)
             return SimpleNamespace(status="success", answer="Oui, je vous écoute.", selected_agent="crm")
 
-    adapter = InboundLoopbackAdapter(["Allô bonjour"])
+    adapter = InboundLoopbackAdapter(["Comment fonctionne votre service de consultation ?"])
     _bind_mocked_realtime(env, monkeypatch, adapter, Central())
     call = _answer_inbound(env)
     event = start_event()
@@ -426,10 +426,12 @@ async def test_inbound_public_turn_settles_company_credits_once(signed_telnyx_we
     with env.client.websocket_connect(f"/api/v1/voice/telnyx/media/{call.id}") as socket:
         socket.send_json(event)
         socket.send_json(_pcmu_frame("stream-inbound-credits", 1))
-        for _ in range(10):
-            socket.receive_json()
-            if claimed_ids and adapter.spoken:
-                break
+        async def wait_for_billed_answer():
+            with anyio.fail_after(5):
+                while not claimed_ids or len(adapter.spoken) < 2:
+                    await anyio.sleep(0.01)
+
+        socket.portal.call(wait_for_billed_answer)
         try:
             socket.send_json({"event": "stop", "stream_id": "stream-inbound-credits"})
         except (anyio.BrokenResourceError, anyio.ClosedResourceError):

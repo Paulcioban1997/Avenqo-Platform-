@@ -1590,7 +1590,7 @@ class TelnyxMediaBridge:
             if result.get("auth_required"):
                 if self.begin_pin is None or self.poll_pin is None:
                     raise PermissionError("Keypad authentication unavailable")
-                await self.interrupt(pause_input=False)
+                await self.interrupt(pause_input=True, reason="pin_challenge")
                 epoch = self.epoch
                 self._pin_turn = item_id
                 self._pin_started = False
@@ -2154,7 +2154,7 @@ class TelnyxMediaBridge:
                         if intercept_result.get("auth_required"):
                             if self.begin_pin is None or self.poll_pin is None:
                                 raise PermissionError("Keypad authentication unavailable")
-                            await self.interrupt(pause_input=False, reason="s2s_pin_challenge")
+                            await self.interrupt(pause_input=True, reason="s2s_pin_challenge")
                             self._pin_turn = str(item_id)
                             self._pin_started = False
                             self._pin_deadline = asyncio.get_running_loop().time() + 120
@@ -2545,13 +2545,13 @@ class TelnyxMediaBridge:
                 await self.cancel_pin()
             loc = resolve_locale(self.locale).casefold()
             if loc.startswith("fr"):
-                refused_msg = "Nombre maximal de tentatives atteint. La saisie du NIP est abandonnée. Vous êtes en mode accueil public. Que souhaitez-vous savoir ?"
+                refused_msg = "Authentification refusée. Vous êtes en mode accueil public. Que souhaitez-vous savoir ?"
             elif loc.startswith("es"):
                 refused_msg = "Número máximo de intentos alcanzado. Se cancela la entrada de PIN. Está en modo de recepción pública. ¿Qué desea consultar?"
             elif loc.startswith("ro"):
-                refused_msg = "Numărul maxim de încercări a fost atins. Introducerea codului PIN este abandonată. Sunteți în modul public. Cu ce vă pot ajuta?"
+                refused_msg = "Autentificarea a fost refuzată. Sunteți în modul public. Cu ce vă pot ajuta?"
             else:
-                refused_msg = "Maximum attempts reached. PIN entry cancelled. You are in public reception mode. How can I help you?"
+                refused_msg = "Authentication was declined. You are in public reception mode. How can I help you?"
             await self._speak_system(
                 "pin-result:" + hashlib.sha256(str(item_id).encode()).hexdigest()[:24],
                 refused_msg,
