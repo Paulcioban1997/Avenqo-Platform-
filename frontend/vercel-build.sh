@@ -1,6 +1,8 @@
 ﻿#!/usr/bin/env bash
 set -e
 
+api_base_url="$(bash scripts/resolve-api-base.sh)"
+
 echo "=== Installing Flutter ==="
 
 git clone https://github.com/flutter/flutter.git \
@@ -22,6 +24,6 @@ flutter pub get
 echo "=== Build Avenqo Web ==="
 flutter build web \
   --release \
-  --dart-define=API_BASE_URL=https://api.avenqo.ca/api/v1
+  "--dart-define=API_BASE_URL=${api_base_url}"
 
 echo "=== Avenqo Flutter build completed ==="

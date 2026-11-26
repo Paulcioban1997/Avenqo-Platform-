@@ -217,6 +217,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Verify Flutter Web deployment isolation
+        working-directory: frontend
+        shell: bash
+        run: |
+          sandbox_url='https://avenqo-platform-sandbox.up.railway.app/api/v1'
+          production_url='https://api.avenqo.ca/api/v1'
+          preview="$(VERCEL_ENV=preview AVENQO_ENVIRONMENT=production API_BASE_URL="$production_url" bash scripts/resolve-api-base.sh)"
+          sandbox="$(VERCEL_ENV=production AVENQO_ENVIRONMENT=sandbox API_BASE_URL="$production_url" bash scripts/resolve-api-base.sh)"
+          sandbox_branch="$(VERCEL_ENV=production VERCEL_GIT_COMMIT_REF=integration/avenqo-sandbox-latest-20261113 bash scripts/resolve-api-base.sh)"
+          production="$(VERCEL_ENV=production bash scripts/resolve-api-base.sh)"
+          [[ "$preview" == "$sandbox_url" && "$sandbox" == "$sandbox_url" && "$sandbox_branch" == "$sandbox_url" && "$production" == "$production_url" ]]
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:

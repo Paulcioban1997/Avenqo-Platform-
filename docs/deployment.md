@@ -8,7 +8,7 @@ La [référence d'architecture](ARCHITECTURE.md) décrit les clients, les flux e
 | --- | --- |
 | FastAPI | Railway. L'image utilise `backend/Dockerfile`. `railway.json` déclare la commande de démarrage et `/api/v1/health`. L'URL attendue est `https://avenqo-platform-sandbox.up.railway.app`. |
 | Next.js | `web/` est la racine du SaaS Web. Le resolver utilise l'API Railway sandbox en Preview, en mode `AVENQO_ENVIRONMENT=sandbox` et sur les branches sandbox reconnues par Vercel. `render.yaml` décrit aussi un service Web sandbox sur la branche d'intégration. |
-| Flutter | Client natif et parcours Web existants. Compiler les builds de test avec `--dart-define=API_BASE_URL=https://avenqo-platform-sandbox.up.railway.app/api/v1`. Pour un client Web sur une autre origine, configurer CORS côté API avec l'origine exacte. |
+| Flutter | Client natif et parcours Web existants. `frontend/vercel-build.sh` utilise le resolver de cible pour les builds Flutter Web Vercel. Pour un build sandbox manuel, utiliser `--dart-define=API_BASE_URL=https://avenqo-platform-sandbox.up.railway.app/api/v1`. Pour un client Web sur une autre origine, configurer CORS côté API avec l'origine exacte. |
 | PostgreSQL et stockage | Base, volumes, sauvegardes et comptes fournisseurs propres à la sandbox. Vérifier l'identité de l'environnement et la branche réellement déployée avant de lancer les migrations ou les essais d'intégration. |
 
 La branche d'intégration du Blueprint est `integration/avenqo-sandbox-latest-20261113`. La configuration de la console de chaque fournisseur détermine le déclencheur réel du déploiement. Vérifier le SHA publié et l'identité de l'API. Une réponse de santé seule ne valide pas la version, la base ou les fournisseurs.
