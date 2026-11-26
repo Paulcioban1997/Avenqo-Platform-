@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
@@ -338,7 +338,8 @@ def test_b_shopify_selected_serves_shopify_only_no_superstore_leak(isolation_env
     assert res_woo.data.get("found") is False
 
 
-def test_c_woocommerce_selected_serves_woocommerce_only_no_shopify_or_superstore(isolation_env):
+@pytest.mark.parametrize("fresh", [True, False])
+def test_c_woocommerce_selected_serves_woocommerce_only_no_shopify_or_superstore(isolation_env, fresh):
     """Test C: WooCommerce selected -> KPI WooCommerce -> AI WooCommerce."""
     env = isolation_env
     tenant = TenantContext(env.company_a.id)
@@ -356,6 +357,10 @@ def test_c_woocommerce_selected_serves_woocommerce_only_no_shopify_or_superstore
     )
     assert sales["summary"]["revenue"] == 3400.0
 
+    # Model a recent or stale successful sync independently of the wall-clock date.
+    env.woo_conn.last_successful_sync = datetime.now(timezone.utc) - timedelta(hours=1 if fresh else 48)
+    env.session.commit()
+
     # Verify AI Commerce Tools: finds Wireless Headphones, NOT Silk Scarf
     tool = GetProductDetailTool(env.session)
     tool_ctx = ToolExecutionContext(
@@ -368,7 +373,13 @@ def test_c_woocommerce_selected_serves_woocommerce_only_no_shopify_or_superstore
     res_woo = asyncio.run(tool.run(tool_ctx, ProductDetailArgs(product_name="Headphones")))
     assert res_woo.data.get("found") is True
     assert res_woo.data["product"]["product_name"] == "Wireless Headphones"
-    assert res_woo.data["product"]["stock_quantity"] == 19
+    if fresh:
+        assert res_woo.data["product"]["stock_quantity"] == 19
+        assert res_woo.data["product"]["stock_confirmed"] is True
+    else:
+        assert res_woo.data["product"]["stock_quantity"] is None
+        assert res_woo.data["product"]["stock_confirmed"] is False
+        assert res_woo.data["product"]["historical_observed_units"] == 19
 
     res_shopify = asyncio.run(tool.run(tool_ctx, ProductDetailArgs(product_name="Silk Scarf")))
     assert res_shopify.data.get("found") is False
