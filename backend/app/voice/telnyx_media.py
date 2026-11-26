@@ -2485,6 +2485,7 @@ class TelnyxMediaBridge:
 
     async def _finish_pin(self, status: str) -> None:
         item_id = self._pin_turn or "pin-result"
+        self.input_paused = True
         self._pin_turn = None
         self._pin_mark = None
         self._pin_started = False
@@ -2543,15 +2544,16 @@ class TelnyxMediaBridge:
         else:
             if self.cancel_pin is not None:
                 await self.cancel_pin()
+            refusal = voice_auth_message(self.locale, 2)
             loc = resolve_locale(self.locale).casefold()
             if loc.startswith("fr"):
-                refused_msg = "Nombre maximal de tentatives atteint. La saisie du NIP est abandonnée. Vous êtes en mode accueil public. Que souhaitez-vous savoir ?"
+                refused_msg = f"{refusal} Vous êtes en mode accueil public. Que souhaitez-vous savoir ?"
             elif loc.startswith("es"):
-                refused_msg = "Número máximo de intentos alcanzado. Se cancela la entrada de PIN. Está en modo de recepción pública. ¿Qué desea consultar?"
+                refused_msg = f"{refusal} Está en modo de recepción pública. ¿Qué desea consultar?"
             elif loc.startswith("ro"):
-                refused_msg = "Numărul maxim de încercări a fost atins. Introducerea codului PIN este abandonată. Sunteți în modul public. Cu ce vă pot ajuta?"
+                refused_msg = f"{refusal} Sunteți în modul public. Cu ce vă pot ajuta?"
             else:
-                refused_msg = "Maximum attempts reached. PIN entry cancelled. You are in public reception mode. How can I help you?"
+                refused_msg = f"{refusal} You are in public reception mode. How can I help you?"
             await self._speak_system(
                 "pin-result:" + hashlib.sha256(str(item_id).encode()).hexdigest()[:24],
                 refused_msg,
@@ -2580,7 +2582,7 @@ class TelnyxMediaBridge:
                 await self.reset_pin_retry()
             loc = resolve_locale(self.locale).casefold()
             if loc.startswith("fr"):
-                reprompt = "L'authentification n'a pas été confirmée. Veuillez ressaisir votre code NIP sur le clavier, ou appuyer sur étoile pour revenir à l'accueil."
+                reprompt = "Aucun chiffre n'a été reçu. Veuillez saisir votre code NIP sur le clavier de votre téléphone, ou appuyez sur étoile pour annuler et revenir à l'accueil."
             elif loc.startswith("es"):
                 reprompt = "No se recibió ningún dígito. Ingrese su PIN en el teclado de su teléfono, o presione asterisco para cancelar y volver a la recepción."
             elif loc.startswith("ro"):
