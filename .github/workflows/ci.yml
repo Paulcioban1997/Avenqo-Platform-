@@ -2,9 +2,9 @@ name: CI
 
 'on':
   push:
-    branches: [main, promotion/sandbox]
+    branches: [main, promotion/sandbox, integration/avenqo-sandbox-latest-20261113]
   pull_request:
-    branches: [main, promotion/sandbox]
+    branches: [main, promotion/sandbox, integration/avenqo-sandbox-latest-20261113]
   workflow_dispatch:
 
 concurrency:
@@ -61,7 +61,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres -d availability_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -82,6 +82,24 @@ jobs:
           pip install -r backend/requirements.txt
           pip install "moto[s3]>=5.0.0" "pytest-timeout>=2.3,<3"
 
+      - name: Run fast regression gate (database, credits, connectors, source isolation)
+        timeout-minutes: 5
+        run: >-
+          python -m pytest
+          tests/backend/test_crm_suite.py::test_postgresql_concurrent_authorized_same_slot
+          tests/backend/test_ai_credit_economics.py
+          tests/backend/test_commerce_router.py
+          tests/backend/test_data_source_isolation.py
+          tests/backend/test_accounting_active_source.py
+          tests/ai_engine/test_commerce_connector_registry.py
+          -q --timeout=120 --timeout-method=thread
+        env:
+          PYTHONPATH: .
+          ENVIRONMENT: test
+          AUTH_JWT_SECRET: "ci-secret-test-key-32-chars-long-minimum"
+          DATABASE_URL: "sqlite:///:memory:"
+          AVENQO_TEST_POSTGRES_URL: "postgresql+psycopg2://postgres:test-only-password@localhost:5432/availability_test"
+
       - name: Run backend validation suite
         timeout-minutes: 15
         run: |
@@ -92,6 +110,19 @@ jobs:
           AUTH_JWT_SECRET: "ci-secret-test-key-32-chars-long-minimum"
           DATABASE_URL: "sqlite:///:memory:"
           AVENQO_TEST_POSTGRES_URL: "postgresql+psycopg2://postgres:test-only-password@localhost:5432/availability_test"
+
+      - name: Run Accounting active-source regression suite
+        timeout-minutes: 5
+        run: >-
+          python -m pytest
+          tests/backend/test_accounting_active_source.py
+          tests/backend/test_accounting_unified_classification_and_rbac.py
+          tests/backend/test_company_dataset_loader_formats.py
+          -q
+        env:
+          PYTHONPATH: .
+          ENVIRONMENT: test
+          DATABASE_URL: "sqlite:///:memory:"
 
       - name: Run Marketing dataset and quota regression suite
         timeout-minutes: 5
@@ -123,6 +154,8 @@ jobs:
           tests/backend/test_scheduler_http.py
           tests/backend/test_plan_limits.py
           tests/backend/test_telnyx_speak_contract.py
+          tests/backend/test_phase5_locales.py
+          tests/backend/test_multi_format_dataset_exports.py
           -q
         env:
           PYTHONPATH: .
@@ -185,6 +218,7 @@ jobs:
           DATABASE_URL: "sqlite:///:memory:"
 
       - name: Rehearse PostgreSQL production migration in a new isolated database
+        if: ${{ !cancelled() }}
         run: python -m pytest tests/backend/test_release_postgres_migrations.py -q
         env:
           PYTHONPATH: .
@@ -228,7 +262,7 @@ jobs:
           POSTGRES_DB: rotation_test_ci
         ports: [5432:5432]
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres -d rotation_test_ci"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10

@@ -33,6 +33,7 @@ from backend.app.database import get_db
 from backend.app.dependencies.central_ai import get_central_ai_service
 from backend.app.dependencies.ai_engine import get_prediction_service
 from backend.app.ai.tools.business.registry_factory import resolve_tenant_capabilities
+from backend.app.ai.tools.idempotency import ToolMutationState, tool_mutation_state
 from backend.app.models import (
     AIMessageRole,
     BillingAccount,
@@ -1008,6 +1009,7 @@ class TelnyxMediaBridge:
         self._responses = {}
         self._cancelled_responses: set[str] = set()
         self._current_turn_task: asyncio.Task | None = None
+        self._turn_mutation: ToolMutationState | None = None
         self._turn_metrics: dict[str, dict[str, Any]] = {}
         self._last_transcription_at: float | None = None
         self._last_speech_started_at: float | None = None
@@ -1157,6 +1159,17 @@ class TelnyxMediaBridge:
         """Return p50/p95 latency measurements across barge-in, first-audio, and Central AI stages."""
         return self.orchestrator.latency_summary()
 
+    def _supersede_turn(self) -> None:
+        task = self._current_turn_task
+        if task is None or task is asyncio.current_task() or task.done():
+            return
+        mutation = self._turn_mutation
+        if mutation is not None:
+            mutation.superseded = True
+            if mutation.in_progress:
+                return
+        task.cancel()
+
     async def interrupt(
         self,
         *,
@@ -1201,14 +1214,7 @@ class TelnyxMediaBridge:
         )
         session_key = str(self.stream_id or "default")
 
-        # Co-operatively abort any in-flight Central AI execution task (except current task)
-        curr_task = asyncio.current_task()
-        if (
-            self._current_turn_task is not None
-            and self._current_turn_task is not curr_task
-            and not self._current_turn_task.done()
-        ):
-            self._current_turn_task.cancel()
+        self._supersede_turn()
 
         old_epoch = self.epoch
         self.epoch += 1
@@ -1499,6 +1505,8 @@ class TelnyxMediaBridge:
                     logger.debug("Voice thinking filler prompt ignored: %s", ex)
 
             filler_task = asyncio.create_task(_play_thinking_filler())
+            self._turn_mutation = ToolMutationState()
+            mutation_token = tool_mutation_state.set(self._turn_mutation)
             try:
                 result = await asyncio.wait_for(
                     self.execute_turn(item_id, redact_voice_secrets(transcript)),
@@ -1552,6 +1560,8 @@ class TelnyxMediaBridge:
                     )
                 result = {"status": "success", "answer": error_answer}
             finally:
+                tool_mutation_state.reset(mutation_token)
+                self._turn_mutation = None
                 if filler_task is not None and not filler_task.done():
                     filler_task.cancel()
                 metric["tool_end_at"] = time.monotonic()
@@ -1643,8 +1653,8 @@ class TelnyxMediaBridge:
                     if self._pending_speech and self._pending_speech[-1][0] == item_id:
                         self._pending_speech.pop()
                     if result.get("auth_required") and not self._pin_started and self.begin_pin is not None:
-                        result_pin = await self.begin_pin(item_id)
                         self._pin_started = True
+                        result_pin = await self.begin_pin(item_id)
                         if not result_pin.get("success"):
                             await self._finish_pin("refused")
                     else:
@@ -1693,6 +1703,8 @@ class TelnyxMediaBridge:
             try:
                 await self._current_turn_task
             except asyncio.CancelledError:
+                if (worker := asyncio.current_task()) is not None and worker.cancelling():
+                    raise
                 logger.info("Voice turn %s task cancelled (stale calculation halted)", item_id)
             finally:
                 self._current_turn_task = None
@@ -2084,7 +2096,10 @@ class TelnyxMediaBridge:
                         self.call_correlation, str(item_id)[:64], effective_phase,
                     )
                     continue
-                if decision == "coalesce" and self._in_flight_transcript:
+                if (
+                    decision == "coalesce" and self._in_flight_transcript
+                    and not (self._turn_mutation and self._turn_mutation.in_progress)
+                ):
                     merged_transcript = f"{self._in_flight_transcript.rstrip()} {transcript.strip()}".strip()
                     self.telemetry["turns_coalesced"] += 1
                     logger.info(
@@ -2119,12 +2134,9 @@ class TelnyxMediaBridge:
                                 is_dtmf_pin_entry=bool(self.input_paused or self._pin_turn is not None),
                                 allow_interruptions=True,
                             )
-                        if self._current_turn_task is not None and not self._current_turn_task.done():
-                            self._current_turn_task.cancel()
                         await self.interrupt(reason="caller_speech_barge_in")
                     elif self._executing_turn and not already_interrupted_on_partial:
-                        if self._current_turn_task is not None and not self._current_turn_task.done():
-                            self._current_turn_task.cancel()
+                        self._supersede_turn()
                         self.epoch += 1
                         self.orchestrator.epoch = self.epoch
                         logger.info(
@@ -2410,7 +2422,8 @@ class TelnyxMediaBridge:
                 raise
 
     async def _send_inbound_audio(self, pcm: bytes) -> None:
-        if self.input_paused:
+        # The telephony provider alone collects digits during the keypad challenge.
+        if self.input_paused or self._pin_started:
             return
         try:
             await asyncio.wait_for(self.adapter.send_audio(pcm), timeout=self.inbound_audio_timeout)
@@ -2432,9 +2445,10 @@ class TelnyxMediaBridge:
                 return
             if kind == "dtmf":
                 dtmf_digit = str(event.get("digit") or (event.get("dtmf", {}) if isinstance(event.get("dtmf"), dict) else {}).get("digit") or "")
-                if dtmf_digit == "*" and self._pin_turn is not None:
-                    logger.info("Caller cancelled PIN challenge via DTMF '*' in media stream")
-                    await self._finish_pin("cancelled")
+                if self._pin_turn is not None:
+                    if dtmf_digit == "*":
+                        logger.info("Caller cancelled PIN challenge via DTMF '*' in media stream")
+                        await self._finish_pin("cancelled")
                     continue
                 await self.interrupt(pause_input=False)
                 continue
@@ -2456,8 +2470,8 @@ class TelnyxMediaBridge:
                                 self._set_phase("LISTENING")
                 if self._pin_mark and isinstance(marker, dict) and marker_name == self._pin_mark and not self._pin_started:
                     if self.begin_pin is not None and self._pin_turn is not None:
-                        result = await self.begin_pin(self._pin_turn)
                         self._pin_started = True
+                        result = await self.begin_pin(self._pin_turn)
                         self._pin_deadline = asyncio.get_running_loop().time() + 130
                         if not result.get("success"):
                             await self._finish_pin("refused")
@@ -2545,13 +2559,13 @@ class TelnyxMediaBridge:
                 await self.cancel_pin()
             loc = resolve_locale(self.locale).casefold()
             if loc.startswith("fr"):
-                refused_msg = "Nombre maximal de tentatives atteint. La saisie du NIP est abandonnée. Vous êtes en mode accueil public. Que souhaitez-vous savoir ?"
+                refused_msg = "Le NIP n'a pas été validé. Vous êtes en mode accueil public. Que souhaitez-vous savoir ?"
             elif loc.startswith("es"):
-                refused_msg = "Número máximo de intentos alcanzado. Se cancela la entrada de PIN. Está en modo de recepción pública. ¿Qué desea consultar?"
+                refused_msg = "No se pudo validar el PIN. Está en modo de recepción pública. ¿Qué desea consultar?"
             elif loc.startswith("ro"):
                 refused_msg = "Numărul maxim de încercări a fost atins. Introducerea codului PIN este abandonată. Sunteți în modul public. Cu ce vă pot ajuta?"
             else:
-                refused_msg = "Maximum attempts reached. PIN entry cancelled. You are in public reception mode. How can I help you?"
+                refused_msg = "The PIN could not be verified. You are in public reception mode. How can I help you?"
             await self._speak_system(
                 "pin-result:" + hashlib.sha256(str(item_id).encode()).hexdigest()[:24],
                 refused_msg,
@@ -2616,8 +2630,8 @@ class TelnyxMediaBridge:
                 finish_time = getattr(self, "_pin_prompt_finish_time", None)
                 safe_duration = getattr(self, "_pin_prompt_safe_duration", 4.0)
                 if self._output.empty() and finish_time is not None and (asyncio.get_running_loop().time() - finish_time >= safe_duration):
-                    result = await self.begin_pin(self._pin_turn)
                     self._pin_started = True
+                    result = await self.begin_pin(self._pin_turn)
                     if not result.get("success"):
                         await self._finish_pin("refused")
             if self._pin_started and self.poll_pin is not None:

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import {
   ReceiptText,
@@ -64,6 +64,7 @@ interface FinancialOverview {
   currency?: string;
   transactions_count?: number;
   confirmed_transactions_count?: number;
+  source_context?: { state: string | null; selection: string | null; name: string | null };
 }
 
 interface MarginsResponse {
@@ -110,6 +111,8 @@ type SourceFilter = "all" | "retail" | "crm" | "ocr" | "manual";
 type WorkspaceTab = "comparative" | "receivables" | "payables";
 
 const EXTERNAL_SOURCE_KEYS = ["source", "connector", "provider", "import_source", "bank", "origin", "source_module"];
+const INITIAL_ACCOUNTING_LIMIT = 150;
+const MAX_ACCOUNTING_LIMIT = 200;
 
 function externalSource(extra: Record<string, unknown> | undefined): string | null {
   if (!extra) return null;
@@ -218,8 +221,13 @@ export function AccountingView() {
     userPerms.includes("accounting:write");
 
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [loadedSourceKey, setLoadedSourceKey] = useState<string | null>(null);
+  const loadSequence = useRef(0);
+  const sourceKey = `${session?.identity?.company?.id ?? ""}:${session?.identity?.user?.id ?? ""}:${session?.sourceRevision ?? 0}`;
+  const sourceSelectionState = session?.sourceSelectionState;
   const [refreshing, setRefreshing] = useState(false);
-  const [invoiceLimit, setInvoiceLimit] = useState(150);
+  const [invoiceLimit, setInvoiceLimit] = useState(INITIAL_ACCOUNTING_LIMIT);
   const [overview, setOverview] = useState<FinancialOverview | null>(null);
   const [margins, setMargins] = useState<MarginsResponse | null>(null);
   const [invoices, setInvoices] = useState<EnrichedInvoiceItem[]>([]);
@@ -240,68 +248,62 @@ export function AccountingView() {
   const [highlightedTxId, setHighlightedTxId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
+    if (sourceSelectionState) return;
+    const sequence = ++loadSequence.current;
     setLoading(true);
+    setLoadError(false);
+    setSelectedInvoice(null);
+    setHighlightedTxId(null);
     try {
       const headers = getAuthHeaders();
-      const [ovRes, mgRes, invRes, txRes, anomRes, fcRes] = await Promise.all([
-        fetch("/api/v1/accounting/overview", { headers }).catch(() => null),
-        fetch("/api/v1/accounting/margins", { headers }).catch(() => null),
-        fetch(`/api/v1/accounting/invoices?limit=${invoiceLimit}`, { headers }).catch(() => null),
-        fetch(`/api/v1/accounting/transactions?limit=${invoiceLimit}`, { headers }).catch(() => null),
-        fetch("/api/v1/accounting/anomalies", { headers }).catch(() => null),
-        fetch("/api/v1/accounting/forecast/cashflow?horizon_days=30", { headers }).catch(() => null),
+      const responses = await Promise.all([
+        fetch("/api/v1/accounting/overview", { headers }),
+        fetch("/api/v1/accounting/margins", { headers }),
+        fetch(`/api/v1/accounting/invoices?limit=${invoiceLimit}`, { headers }),
+        fetch(`/api/v1/accounting/transactions?limit=${invoiceLimit}`, { headers }),
+        fetch("/api/v1/accounting/anomalies", { headers }),
+        fetch("/api/v1/accounting/forecast/cashflow?horizon_days=30", { headers }),
       ]);
-
-      if (ovRes && ovRes.ok) {
-        setOverview(await ovRes.json());
-      }
-      if (mgRes && mgRes.ok) {
-        setMargins(await mgRes.json());
-      }
-      if (invRes && invRes.ok) {
-        const invData = await invRes.json();
-        const rawList: EnrichedInvoiceItem[] = Array.isArray(invData)
-          ? invData
-          : Array.isArray(invData?.invoices)
-            ? invData.invoices
-            : [];
-        setInvoices(
-          rawList.map((inv) => ({
-            ...inv,
-            remaining_amount:
-              inv.remaining_amount ?? Math.max(0, Number(inv.total_amount || 0) - Number(inv.paid_amount || 0)),
-          }))
-        );
-      }
-      if (txRes && txRes.ok) {
-        const txData = await txRes.json();
-        if (Array.isArray(txData)) {
-          setTransactions(
-            txData.map((row: TransactionItem & { date?: string }) => ({
-              ...row,
-              transaction_date: row.transaction_date || row.date || "",
-              extra_data: row.extra_data && typeof row.extra_data === "object" ? row.extra_data : {},
-            }))
-          );
-        }
-      }
-      if (anomRes && anomRes.ok) {
-        const anomData = await anomRes.json();
-        setAnomalies(Array.isArray(anomData?.anomalies) ? anomData.anomalies : []);
-      }
-      if (fcRes && fcRes.ok) {
-        setForecast(await fcRes.json());
-      }
+      if (responses.some(response => !response.ok)) throw new Error("Accounting request failed");
+      const [ovData, mgData, invData, txData, anomData, fcData] =
+        await Promise.all(responses.map(response => response.json()));
+      if (sequence !== loadSequence.current) return;
+      const rawList: EnrichedInvoiceItem[] = Array.isArray(invData)
+        ? invData
+        : Array.isArray(invData?.invoices) ? invData.invoices : [];
+      setOverview(ovData);
+      setMargins(mgData);
+      setInvoices(rawList.map(inv => ({
+        ...inv,
+        remaining_amount: inv.remaining_amount ?? Math.max(0, Number(inv.total_amount || 0) - Number(inv.paid_amount || 0)),
+      })));
+      setTransactions(Array.isArray(txData) ? txData.map((row: TransactionItem & { date?: string }) => ({
+        ...row,
+        transaction_date: row.transaction_date || row.date || "",
+        extra_data: row.extra_data && typeof row.extra_data === "object" ? row.extra_data : {},
+      })) : []);
+      setAnomalies(Array.isArray(anomData?.anomalies) ? anomData.anomalies : []);
+      setForecast(fcData);
+      setLoadedSourceKey(sourceKey);
     } catch {
-      // Preserve existing safe state
+      if (sequence !== loadSequence.current) return;
+      setOverview(null);
+      setMargins(null);
+      setInvoices([]);
+      setTransactions([]);
+      setAnomalies([]);
+      setForecast(null);
+      setLoadError(true);
+      setLoadedSourceKey(sourceKey);
     } finally {
-      setLoading(false);
+      if (sequence === loadSequence.current) setLoading(false);
     }
-  }, [invoiceLimit]);
+  }, [invoiceLimit, sourceKey, sourceSelectionState]);
 
   useEffect(() => {
     void loadData();
-  }, [loadData, session?.sourceRevision, session?.identity?.company?.id]);
+    return () => { loadSequence.current += 1; };
+  }, [loadData]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -620,6 +622,33 @@ export function AccountingView() {
     );
   };
 
+  if (sourceSelectionState) {
+    const failed = sourceSelectionState === "unconfirmed";
+    return (
+      <div className="p-6 space-y-3" role={failed ? "alert" : "status"}>
+        <p>{failed
+          ? (isFr ? "Impossible de confirmer la source comptable." : "Unable to confirm the accounting source.")
+          : (isFr ? "Confirmation de la source comptable…" : "Confirming accounting source…")}</p>
+        {failed && <button type="button" onClick={() => void session?.reload()} className="underline">{isFr ? "Réessayer" : "Retry"}</button>}
+      </div>
+    );
+  }
+
+  if (loading || loadedSourceKey !== sourceKey || loadError) {
+    return (
+      <div className="p-6 space-y-3" role={loadError && !loading ? "alert" : "status"}>
+        <p>{loadError && !loading
+          ? (isFr ? "Impossible de charger les données comptables de la source active." : "Unable to load accounting data for the active source.")
+          : (isFr ? "Chargement de la comptabilité…" : "Loading accounting…")}</p>
+        {loadError && !loading && (
+          <button type="button" onClick={() => void loadData()} className="underline">
+            {isFr ? "Réessayer" : "Retry"}
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
       {/* Header */}
@@ -666,6 +695,15 @@ export function AccountingView() {
           </Link>
         </div>
       </div>
+
+      {overview?.source_context?.selection && (
+        <div role={overview.source_context.state === "READY" ? "status" : "alert"} className="rounded-xl border border-slate-200 dark:border-white/[0.08] p-3 text-xs">
+          <strong>{isFr ? "Source comptable : " : "Accounting source: "}</strong>
+          {overview.source_context.state === "READY"
+            ? (overview.source_context.name || (isFr ? "Sources actives" : "Active sources"))
+            : (isFr ? "Source indisponible ou sans données exploitables. Aucun élargissement automatique du périmètre comptable." : "Source unavailable or without usable data. Accounting scope is not automatically widened.")}
+        </div>
+      )}
 
       {/* Global Duplicate Warning Banner (F4) */}
       {duplicateInvoices.length > 0 && (
@@ -779,13 +817,13 @@ export function AccountingView() {
               ? `${filteredInvoices.length} facture(s) affichée(s) sur ${invoices.length} chargée(s) (fenêtre max ${invoiceLimit}) · Les cartes KPI globales ci-dessous sont exprimées en ${overviewCurrency}.`
               : `Showing ${filteredInvoices.length} of ${invoices.length} loaded invoice(s) (window max ${invoiceLimit}) · Global KPI cards below are reported in ${overviewCurrency}.`}
           </span>
-          {invoices.length >= invoiceLimit && (
+          {invoices.length >= invoiceLimit && invoiceLimit < MAX_ACCOUNTING_LIMIT && (
             <button
               type="button"
-              onClick={() => setInvoiceLimit((prev) => prev + 150)}
+              onClick={() => setInvoiceLimit(MAX_ACCOUNTING_LIMIT)}
               className="font-semibold text-[#0076FF] dark:text-[#00D4FF] hover:underline cursor-pointer"
             >
-              {isFr ? "Charger plus de factures (+150)" : "Load more invoices (+150)"}
+              {isFr ? `Charger plus de factures (+${MAX_ACCOUNTING_LIMIT - invoiceLimit})` : `Load more invoices (+${MAX_ACCOUNTING_LIMIT - invoiceLimit})`}
             </button>
           )}
         </div>

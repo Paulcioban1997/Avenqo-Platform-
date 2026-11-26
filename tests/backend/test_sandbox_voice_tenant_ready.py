@@ -14,11 +14,11 @@ EMPLOYEE_QUESTION = "Quels modules Avenqo sont accessibles pour mon entreprise ?
 CUSTOMER_QUESTION = "Quels produits avez-vous en vente et à quels prix ?"
 
 
-def test_exact_brand_menu_offers_employee_and_customer_paths():
+def test_configured_brand_pronunciation_and_both_ivr_paths():
     cfg = SimpleNamespace(
         business_name="Produits Ero",
         voice_display_name="Produits Ero",
-        custom_pronunciation=None,
+        custom_pronunciation="Produits, Ero",
         preferred_language="fr",
         call_policy={},
     )
@@ -31,7 +31,7 @@ def test_exact_brand_menu_offers_employee_and_customer_paths():
     assert cfg.voice_display_name == "Produits Ero"
 
 
-def test_legacy_underscore_name_uses_the_generic_pause():
+def test_legacy_underscore_name_renders_as_words():
     cfg = SimpleNamespace(
         business_name="Produits_Ero",
         voice_display_name=None,
@@ -45,7 +45,7 @@ def test_legacy_underscore_name_uses_the_generic_pause():
         },
     )
     greeting = voice_ivr_greeting(cfg)
-    assert "Produits, Ero" in greeting
+    assert "Produits Ero" in greeting
     assert "Produits_Ero" not in greeting
     assert "Zéro" not in greeting
     assert "composez le 1" in greeting and "composez le 2" in greeting
@@ -64,8 +64,8 @@ def test_employee_and_customer_questions_produce_spoken_answers():
         retail_enabled=True,
         locale="fr",
     )
-    assert catalog.startswith("Nous avons en vente")
-    assert "Savon" in catalog and "12.5" in catalog and "CAD" in catalog
+    assert "Savon" in catalog and "12.5" in catalog
+    assert "stock en temps réel est non confirmé" in catalog
     blocked = spoken_catalog_answer(
         [{"name": "Savon", "price": 12.5, "currency": "CAD"}],
         retail_enabled=False,

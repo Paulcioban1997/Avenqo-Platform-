@@ -12,8 +12,13 @@ def loader() -> CompanyDatasetLoader:
     return CompanyDatasetLoader(max_upload_bytes=1024 * 1024)
 
 
-def test_supported_upload_formats_are_explicit(loader: CompanyDatasetLoader) -> None:
-    assert SUPPORTED_EXTENSIONS == (".csv", ".xls", ".xlsx", ".pdf", ".json", ".txt", ".parquet")
+def test_supported_upload_formats_are_explicit() -> None:
+    assert SUPPORTED_EXTENSIONS == (".csv", ".tsv", ".xls", ".xlsx", ".pdf", ".json", ".txt", ".parquet")
+
+
+def test_tsv_uses_tab_separated_columns(loader: CompanyDatasetLoader) -> None:
+    result = loader.load("records.tsv", b"id\tname\n1\tPaul\n")
+    assert result.rows == ({"id": 1, "name": "Paul"},)
 
 
 def test_txt_table_and_plain_text_are_importable(loader: CompanyDatasetLoader) -> None:

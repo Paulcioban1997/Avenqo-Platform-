@@ -10,15 +10,12 @@ import re
 import unicodedata
 
 _PHRASES: dict[str, tuple[str, ...]] = {
-    "fr": ("oui confirme", "oui je confirme", "confirme", "oui", "oui sil vous plait", "oui s il vous plait", "oui c est bon", "c est bon", "parfait", "d accord", "absolument", "oui merci"),
-    "fr-CA": ("oui confirme", "oui je confirme", "confirme", "oui", "oui sil vous plait", "oui s il vous plait", "oui c est bon", "c est bon", "parfait", "d accord", "absolument", "oui merci"),
-    "en": ("yes confirm", "yes confirm it", "i confirm", "confirm", "yes", "yes please", "sure", "sounds good", "perfect", "proceed"),
-    "en-US": ("yes confirm", "yes confirm it", "i confirm", "confirm", "yes", "yes please", "sure", "sounds good", "perfect", "proceed"),
-    "en-CA": ("yes confirm", "yes confirm it", "i confirm", "confirm", "yes", "yes please", "sure", "sounds good", "perfect", "proceed"),
-    "es": ("si confirmalo", "sí confírmalo", "si confirmo", "confirmo", "si", "sí", "por favor", "perfecto"),
-    "pt": ("sim confirme", "sim confirmo", "confirmo", "sim", "por favor", "perfeito"),
-    "fr-FR": ("oui confirme", "oui je confirme", "confirme", "oui", "oui sil vous plait", "oui s il vous plait", "oui c est bon", "c est bon", "parfait", "d accord"),
-    "en-GB": ("yes confirm", "yes confirm it", "i confirm", "confirm", "yes", "yes please"),
+    "fr": ("oui confirme", "oui je confirme", "confirme"),
+    "en": ("yes confirm", "yes confirm it", "i confirm", "confirm"),
+    "es": ("si confirmalo", "sí confírmalo", "si confirmo", "confirmo"),
+    "pt": ("sim confirme", "sim confirmo", "confirmo"),
+    "fr-FR": ("oui confirme", "oui je confirme", "confirme"),
+    "en-GB": ("yes confirm", "yes confirm it", "i confirm", "confirm"),
     "ro": ("da confirmă", "da confirm", "confirm", "da", "da te rog", "sigur", "perfect"),
     "de": ("ja bestätigen", "ja ich bestätige", "bestätigen"),
     "it": ("sì conferma", "si confermo", "conferma"),
@@ -93,9 +90,6 @@ def is_natural_confirmation(locale: str, text: str) -> bool:
     norm = normalize_confirmation(text)
     if not norm:
         return False
-    # Universal single-word affirmations
-    if norm in {"oui", "yes", "si", "da", "ja", "ok", "confirm", "confirme"}:
-        return True
     base_locale = locale.split("-")[0].lower() if "-" in locale else locale.lower()
     phrases = _PHRASES.get(locale) or _PHRASES.get(base_locale) or ()
     norm_phrases = {normalize_confirmation(phrase) for phrase in phrases}
@@ -123,7 +117,7 @@ def is_explicit_booking_request(text: str) -> bool:
 
 
 def confirmation_required_message(locale: str) -> str:
-    return _REQUIRED.get(locale, _REQUIRED["en"])
+    return _REQUIRED.get(locale) or _REQUIRED.get(locale.split("-")[0].lower()) or _REQUIRED["en"]
 
 
 SUPPORTED_CONFIRMATION_LOCALES = frozenset(_PHRASES)

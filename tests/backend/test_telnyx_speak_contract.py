@@ -11,6 +11,7 @@ import httpx
 import pytest
 
 from backend.app.voice.providers import (
+    TelnyxCallEndedError,
     TelnyxClient,
     unavailable_speak_attempts,
     unavailable_speak_payload,
@@ -114,7 +115,7 @@ async def test_named_voice_rejection_does_not_switch_language(caplog) -> None:
 
 
 @pytest.mark.asyncio
-async def test_english_failure_is_raised_without_retry() -> None:
+async def test_ended_english_call_is_classified_without_retry() -> None:
     requests: list[dict] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -122,7 +123,7 @@ async def test_english_failure_is_raised_without_retry() -> None:
         return httpx.Response(422, json={"errors": [{"code": "90018", "title": "Call has already ended"}]})
 
     client = TelnyxClient(SimpleNamespace(telnyx_api_key=API_KEY), client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(TelnyxCallEndedError, match="90018"):
         await client.speak_unavailable("v3:call-3", command_id="cmd-3", locale="en")
     assert len(requests) == 1
 

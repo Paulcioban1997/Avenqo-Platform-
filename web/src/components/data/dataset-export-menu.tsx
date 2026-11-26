@@ -81,8 +81,8 @@ export interface DatasetExportMenuProps {
   datasetName: string;
   isFr?: boolean;
   compact?: boolean;
-  activeSearchQuery?: string;
-  previewLimit?: number;
+  previewSnapshot?: string | null;
+  previewRowIndices?: readonly number[];
   onExportError?: (msg: string) => void;
 }
 
@@ -252,8 +252,8 @@ export function DatasetExportMenu({
   datasetName,
   isFr = true,
   compact = false,
-  activeSearchQuery = "",
-  previewLimit = 50,
+  previewSnapshot = null,
+  previewRowIndices = [],
   onExportError,
 }: DatasetExportMenuProps) {
   const [open, setOpen] = useState(false);
@@ -300,6 +300,8 @@ export function DatasetExportMenu({
 
   const scopes = options?.scopes ?? FALLBACK_SCOPES;
   const formats = options?.formats ?? FALLBACK_FORMATS;
+  const hasFilteredPreview = Boolean(previewSnapshot && previewRowIndices.length > 0);
+  const emptyFilteredPreview = selectedScope === "filtered_preview" && !hasFilteredPreview;
 
   const handleSelectScope = (code: ExportScopeCode) => {
     setSelectedScope(code);
@@ -335,7 +337,9 @@ export function DatasetExportMenu({
     return isFr ? fmt.label_fr : fmt.label_en;
   };
 
-  const executeDownloadWithOffset = async (requestedOffset: number) => {
+  const executeDownloadWithOffset = async (offset: number) => {
+    if (emptyFilteredPreview) return;
+    const requestedOffset = selectedScope === "filtered_preview" ? 0 : offset;
     setIsDownloading(true);
     setLocalError(null);
     try {
@@ -348,10 +352,9 @@ export function DatasetExportMenu({
         params.set("envelope", includeEnvelope ? "true" : "false");
       }
       if (selectedScope === "filtered_preview") {
-        if (activeSearchQuery.trim()) {
-          params.set("search", activeSearchQuery.trim());
-        }
-        params.set("limit", String(Math.max(1, previewLimit || 50)));
+        params.set("preview_snapshot", previewSnapshot!);
+        for (const index of previewRowIndices) params.append("preview_row", String(index));
+        params.set("limit", String(previewRowIndices.length));
       }
 
       const resp = await fetch(
@@ -510,7 +513,7 @@ export function DatasetExportMenu({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {scopes.map((sc) => {
-                    const disabled = !sc.available || !sc.permitted;
+                    const disabled = !sc.available || !sc.permitted || (sc.code === "filtered_preview" && !hasFilteredPreview);
                     const active = selectedScope === sc.code;
                     const isReport = sc.code === "quality_report";
                     return (
@@ -679,7 +682,7 @@ export function DatasetExportMenu({
               </button>
               <button
                 type="button"
-                disabled={isDownloading}
+                disabled={isDownloading || emptyFilteredPreview}
                 onClick={handleDownload}
                 className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] disabled:opacity-60 text-white text-xs font-bold shadow-sm transition-colors cursor-pointer"
               >

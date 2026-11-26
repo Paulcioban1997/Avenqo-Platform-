@@ -414,6 +414,11 @@ def adjudicate_transcript(
             return "replace" if allow_barge_in else "accept"
         return "accept"
 
+    if _normalize(transcript) in {
+        "au revoir", "goodbye", "bye", "la revedere", "adios", "hasta luego",
+    }:
+        return "replace" if active and allow_barge_in else "accept"
+
     if is_backchannel(transcript):
         return "ignore"
 

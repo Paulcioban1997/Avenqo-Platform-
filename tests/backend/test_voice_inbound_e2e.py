@@ -268,8 +268,6 @@ async def test_inbound_telnyx_french_realtime_books_crm_appointment_then_hangup(
             captured_turns.append(transcript)
             captured_conversations.append(conversation_id)
             lowered = transcript.lower()
-            if "allô bonjour" in lowered or "allo bonjour" in lowered:
-                return SimpleNamespace(status="success", answer="Bonjour ! Comment puis-je vous aider aujourd'hui ?", selected_agent="crm")
             if "rendez-vous" in lowered and "confirmez" not in lowered:
                 return SimpleNamespace(status="success", answer="Avec plaisir. Quel jour et quelle heure vous conviendraient ?", selected_agent="crm")
             if "14 heures" in lowered:
@@ -331,8 +329,8 @@ async def test_inbound_telnyx_french_realtime_books_crm_appointment_then_hangup(
                 pass
             _drain_socket(socket)
 
-    assert captured_turns == FRENCH_BOOKING_TURNS
-    assert len(captured_conversations) == 5
+    assert captured_turns == FRENCH_BOOKING_TURNS[1:]
+    assert len(captured_conversations) == len(FRENCH_BOOKING_TURNS) - 1
     assert captured_conversations[0] is not None
     assert all(item == captured_conversations[0] for item in captured_conversations)
     assert len(adapter.spoken) >= 6
@@ -413,7 +411,7 @@ async def test_inbound_public_turn_settles_company_credits_once(signed_telnyx_we
             usage.claim_credit_reservation(args[0].company_id, "professional", request_id, 1)
             return SimpleNamespace(status="success", answer="Oui, je vous écoute.", selected_agent="crm")
 
-    adapter = InboundLoopbackAdapter(["Allô bonjour"])
+    adapter = InboundLoopbackAdapter(["Quels services proposez-vous pour mon rendez-vous ?"])
     _bind_mocked_realtime(env, monkeypatch, adapter, Central())
     call = _answer_inbound(env)
     event = start_event()
@@ -426,10 +424,7 @@ async def test_inbound_public_turn_settles_company_credits_once(signed_telnyx_we
     with env.client.websocket_connect(f"/api/v1/voice/telnyx/media/{call.id}") as socket:
         socket.send_json(event)
         socket.send_json(_pcmu_frame("stream-inbound-credits", 1))
-        for _ in range(10):
-            socket.receive_json()
-            if claimed_ids and adapter.spoken:
-                break
+        env.client.portal.call(eventually, lambda: bool(claimed_ids) and len(adapter.spoken) > 1)
         try:
             socket.send_json({"event": "stop", "stream_id": "stream-inbound-credits"})
         except (anyio.BrokenResourceError, anyio.ClosedResourceError):
