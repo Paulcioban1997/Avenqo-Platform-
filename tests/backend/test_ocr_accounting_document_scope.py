@@ -10,7 +10,91 @@ from backend.app.models.accounting import AccountingInvoice
 from backend.app.services.document_ai_service import DocumentAIService
 from backend.app.routers import accounting
 from shared.ai_engine.contracts import TenantContext
-from tests.backend.test_accounting_active_source import db_session, _company, _user
+"""Accounting must follow the same tenant-scoped active source as Data Hub / Retail."""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from uuid import uuid4
+
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from backend.app.models.accounting import AccountingInvoice, AccountingTransaction
+from backend.app.models.base import Base, DatasetStatus, UserRole
+from backend.app.models.company import Company
+from backend.app.models.dataset import Dataset
+from backend.app.models.mapping import Mapping
+from backend.app.models.user import User
+from backend.app.services.accounting_intelligence_service import AccountingIntelligenceService
+from backend.app.services.accounting_source_scope import resolve_accounting_dataset_scope
+from backend.app.services.retail_source_service import RetailSourceService
+from shared.ai_engine.contracts import TenantContext
+
+
+@pytest.fixture
+def db_session(tmp_path: Path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'accounting_source.db'}")
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    with factory() as session:
+        yield session
+
+
+def _company(session, slug: str) -> Company:
+    company = Company(
+        id=uuid4(),
+        name=f"Company {slug}",
+        slug=slug,
+        email=f"{slug}@example.com",
+        country="CA",
+        timezone="America/Toronto",
+        industry="Retail",
+        subscription_plan="professional",
+    )
+    session.add(company)
+    session.flush()
+    return company
+
+
+def _user(session, company: Company) -> User:
+    user = User(
+        id=uuid4(),
+        company_id=company.id,
+        email=f"owner-{company.slug}@example.com",
+        password_hash="x",
+        first_name="Owner",
+        last_name="Test",
+        role=UserRole.OWNER,
+        is_active=True,
+        email_verified_at=datetime.now(timezone.utc),
+    )
+    session.add(user)
+    session.flush()
+    return user
+
+
+def _dataset(session, company: Company, name: str) -> Dataset:
+    dataset = Dataset(
+        id=uuid4(),
+        company_id=company.id,
+        name=name,
+        type="csv",
+        source=name,
+        status=DatasetStatus.READY,
+        rows_count=10,
+        columns_count=3,
+        uploaded_at=datetime.now(timezone.utc),
+    )
+    dataset.mapping = Mapping(mapping_json={"accepted": {}}, confidence=1, approved=True)
+    session.add(dataset)
+    session.flush()
+    return dataset
+
+
+
 
 def _document(db, company, user, number="INV-1"):
     document = TenantDocument(id=uuid4(), company_id=company.id, uploaded_by_user_id=user.id,
