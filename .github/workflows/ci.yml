@@ -2,9 +2,9 @@ name: CI
 
 'on':
   push:
-    branches: [main, promotion/sandbox]
+    branches: [main, promotion/sandbox, integration/avenqo-sandbox-latest-20261113]
   pull_request:
-    branches: [main, promotion/sandbox]
+    branches: [main, promotion/sandbox, integration/avenqo-sandbox-latest-20261113]
   workflow_dispatch:
 
 concurrency:
@@ -92,6 +92,14 @@ jobs:
           AUTH_JWT_SECRET: "ci-secret-test-key-32-chars-long-minimum"
           DATABASE_URL: "sqlite:///:memory:"
           AVENQO_TEST_POSTGRES_URL: "postgresql+psycopg2://postgres:test-only-password@localhost:5432/availability_test"
+
+      - name: Run Accounting active-source regression suite
+        timeout-minutes: 5
+        run: python -m pytest tests/backend/test_accounting_active_source.py -q
+        env:
+          PYTHONPATH: .
+          ENVIRONMENT: test
+          DATABASE_URL: "sqlite:///:memory:"
 
       - name: Run Marketing dataset and quota regression suite
         timeout-minutes: 5
