@@ -144,8 +144,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                     setSourceRevision(value => value + 1);
                   }
                 }
-              } catch {
-                if (canConfirmSource()) setSourceContext(null);
+              } catch (error) {
+                if (canConfirmSource()) {
+                  setSourceContext(null);
+                  if (sourceNeedsConfirmation.current) setSourceError(asError(error));
+                }
               }
             } catch (error) {
               if (canConfirmSource()) setSourceError(asError(error));

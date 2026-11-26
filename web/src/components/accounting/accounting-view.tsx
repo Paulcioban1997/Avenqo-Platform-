@@ -111,6 +111,8 @@ type SourceFilter = "all" | "retail" | "crm" | "ocr" | "manual";
 type WorkspaceTab = "comparative" | "receivables" | "payables";
 
 const EXTERNAL_SOURCE_KEYS = ["source", "connector", "provider", "import_source", "bank", "origin", "source_module"];
+const INITIAL_ACCOUNTING_LIMIT = 150;
+const MAX_ACCOUNTING_LIMIT = 200;
 
 function externalSource(extra: Record<string, unknown> | undefined): string | null {
   if (!extra) return null;
@@ -225,7 +227,7 @@ export function AccountingView() {
   const sourceKey = `${session?.identity?.company?.id ?? ""}:${session?.identity?.user?.id ?? ""}:${session?.sourceRevision ?? 0}`;
   const sourceSelectionState = session?.sourceSelectionState;
   const [refreshing, setRefreshing] = useState(false);
-  const [invoiceLimit, setInvoiceLimit] = useState(150);
+  const [invoiceLimit, setInvoiceLimit] = useState(INITIAL_ACCOUNTING_LIMIT);
   const [overview, setOverview] = useState<FinancialOverview | null>(null);
   const [margins, setMargins] = useState<MarginsResponse | null>(null);
   const [invoices, setInvoices] = useState<EnrichedInvoiceItem[]>([]);
@@ -815,13 +817,13 @@ export function AccountingView() {
               ? `${filteredInvoices.length} facture(s) affichée(s) sur ${invoices.length} chargée(s) (fenêtre max ${invoiceLimit}) · Les cartes KPI globales ci-dessous sont exprimées en ${overviewCurrency}.`
               : `Showing ${filteredInvoices.length} of ${invoices.length} loaded invoice(s) (window max ${invoiceLimit}) · Global KPI cards below are reported in ${overviewCurrency}.`}
           </span>
-          {invoices.length >= invoiceLimit && (
+          {invoices.length >= invoiceLimit && invoiceLimit < MAX_ACCOUNTING_LIMIT && (
             <button
               type="button"
-              onClick={() => setInvoiceLimit((prev) => prev + 150)}
+              onClick={() => setInvoiceLimit(MAX_ACCOUNTING_LIMIT)}
               className="font-semibold text-[#0076FF] dark:text-[#00D4FF] hover:underline cursor-pointer"
             >
-              {isFr ? "Charger plus de factures (+150)" : "Load more invoices (+150)"}
+              {isFr ? `Charger plus de factures (+${MAX_ACCOUNTING_LIMIT - invoiceLimit})` : `Load more invoices (+${MAX_ACCOUNTING_LIMIT - invoiceLimit})`}
             </button>
           )}
         </div>

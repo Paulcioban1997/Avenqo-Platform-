@@ -275,7 +275,8 @@ def test_all_sources_excludes_disabled_and_unready_datasets(db_session, monkeypa
     assert context["name"] == "ready"
 
 
-def test_accounting_keeps_selected_dataset_when_its_artifact_disappears(db_session, tmp_path):
+@pytest.mark.parametrize("artifact_missing", [True, False])
+def test_accounting_keeps_selected_dataset_when_it_becomes_unavailable(db_session, tmp_path, artifact_missing):
     from backend.app.models.dataset_version import DatasetVersion
 
     company = _company(db_session, "missing-artifact")
@@ -293,7 +294,11 @@ def test_accounting_keeps_selected_dataset_when_its_artifact_disappears(db_sessi
     service.select_source(TenantContext(company.id), source_type="dataset", source_id=default.id)
     tenant = TenantContext(company.id, user_id=user.id)
     service.select_source(tenant, source_type="dataset", source_id=selected.id)
-    path.unlink()
+    if artifact_missing:
+        path.unlink()
+    else:
+        selected.status = DatasetStatus.REJECTED
+        db_session.commit()
 
     for _ in range(2):
         scope, context = resolve_accounting_dataset_scope(db_session, tenant)
