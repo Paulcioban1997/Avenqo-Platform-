@@ -16,6 +16,6 @@ it("renders server-cleaned rows with the preview limit and prints the document",
   expect(document.querySelectorAll("script")).toHaveLength(0);
   fireEvent.click(screen.getByRole("button", { name: "Print / PDF" }));
   expect(print).toHaveBeenCalledOnce();
-  fireEvent.click(screen.getByRole("button", { name: "Close", exact: true }));
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
   expect(close).toHaveBeenCalledOnce();
 });
