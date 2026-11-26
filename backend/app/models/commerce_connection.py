@@ -6,7 +6,7 @@ from datetime import datetime
 from enum import Enum
 from uuid import UUID, uuid4
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func, text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func, false
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -79,7 +79,7 @@ class CommerceConnection(Base, TimestampMixin):
         DateTime(timezone=True), nullable=True
     )
     disconnected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("0"))
+    is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
 
 
 class CommerceOAuthState(Base):
@@ -143,7 +143,7 @@ class NormalizedCommerceRecord(Base, TimestampMixin):
     )
     normalized_data: Mapped[dict] = mapped_column(JSON, nullable=False)
     deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("0"))
+    is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
 
 
 class CommerceRawSnapshot(Base):
