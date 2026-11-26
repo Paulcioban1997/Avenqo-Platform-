@@ -41,6 +41,9 @@ export function DocumentWorkspace({
   const fr = locale.startsWith("fr");
   const [rows, setRows] = useState<DocumentRow[]>([]);
   const [error, setError] = useState<string>("");
+  const [preview, setPreview] = useState<DocumentRow | null>(null);
+  const [proposed, setProposed] = useState<Record<string, boolean>>({});
+  const [proposingId, setProposingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [activating, setActivating] = useState(false);
   const [isInactive, setIsInactive] = useState(false);
@@ -138,6 +141,31 @@ export function DocumentWorkspace({
     } finally {
       setBusy(false);
     }
+  };
+
+  const downloadOriginal = async (row: DocumentRow) => {
+    try {
+      const response = await apiFetch(`${endpoint}/${row.id}/original`);
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = row.filename;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      setError(err instanceof ApiRequestError && err.publicMessage ? err.publicMessage : (fr ? "Original indisponible." : "Original unavailable."));
+    }
+  };
+
+  const prepareAccounting = async (id: string) => {
+    setProposingId(id);
+    setError("");
+    try {
+      await apiFetch(`${endpoint}/${id}/accounting-proposal`, { method: "POST" });
+      setProposed((current) => ({ ...current, [id]: true }));
+    } catch (err) {
+      setError(err instanceof ApiRequestError && err.publicMessage ? err.publicMessage : (fr ? "Préparation comptable impossible." : "Unable to prepare accounting proposal."));
+    } finally { setProposingId(null); }
   };
 
   const deleteDoc = async (id: string) => {
@@ -273,6 +301,17 @@ export function DocumentWorkspace({
         </div>
       </div>
 
+      {preview && <div role="dialog" aria-modal="true" aria-label={fr ? "Aperçu des données extraites" : "Extracted data preview"} className="fixed inset-0 z-50 overflow-auto bg-white p-8 text-slate-900">
+        <style>{`@media print { body * { visibility: hidden; } [role="dialog"], [role="dialog"] * { visibility: visible; } [role="dialog"] { position: absolute; inset: 0; overflow: visible; } .document-preview-actions { display: none; } }`}</style>
+        <div className="document-preview-actions flex gap-4 mb-6">
+          <button type="button" onClick={() => window.print()}>{fr ? "Imprimer / PDF" : "Print / PDF"}</button>
+          <button type="button" onClick={() => setPreview(null)}>{fr ? "Fermer" : "Close"}</button>
+        </div>
+        <h2 className="text-xl font-bold">{preview.filename}</h2>
+        <p>{fr ? "Texte extrait — vérifier avec le document original." : "Extracted text — verify against the original document."}</p>
+        <pre className="whitespace-pre-wrap my-6">{preview.extracted_text}</pre>
+      </div>}
+
       {/* DOCUMENT LIST */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -335,6 +374,22 @@ export function DocumentWorkspace({
                 </button>
               </div>
 
+              {kind === "ocr" && (
+                <div className="flex flex-wrap items-center gap-3 text-sm">
+                  <button type="button" onClick={() => setPreview(row)}>{fr ? "Aperçu / Imprimer" : "Preview / Print"}</button>
+                  <button type="button" onClick={() => void downloadOriginal(row)}>{fr ? "Télécharger l’original" : "Download original"}</button>
+                  <button type="button" disabled={proposingId === row.id || proposed[row.id]}
+                    onClick={() => void prepareAccounting(row.id)}
+                    className="rounded-xl bg-blue-600 px-4 py-2 text-white disabled:opacity-50">
+                    {proposed[row.id]
+                      ? (fr ? "Proposition préparée — à vérifier" : "Proposal prepared — review required")
+                      : (fr ? "Préparer en comptabilité" : "Prepare accounting proposal")}
+                  </button>
+                  <a href="/accounting#ocr-documents" className="text-blue-500 underline">
+                    {fr ? "Voir les documents comptables" : "View accounting documents"}
+                  </a>
+                </div>
+              )}
               {/* STRUCTURED ANALYSIS IF PRESENT */}
               {row.analysis && typeof row.analysis === "object" && Object.keys(row.analysis).length > 0 && (
                 <div className="p-3.5 rounded-xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40">

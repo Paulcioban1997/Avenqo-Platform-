@@ -1,6 +1,9 @@
 """OCR AI et Legal AI — téléversement réel, extraction réelle."""
 
 from uuid import UUID
+from pathlib import Path
+from fastapi.responses import FileResponse
+from backend.app.config.settings import get_settings
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
@@ -96,6 +99,29 @@ def get_ocr(
         raise HTTPException(404, str(exc)) from exc
 
 
+@ocr_router.get("/documents/{document_id}/original")
+def download_ocr_original(
+    document_id: UUID,
+    identity: CurrentIdentity = Depends(get_current_identity),
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+    service: DocumentAIService = Depends(_service),
+    _: None = Depends(require_active_subscription),
+) -> FileResponse:
+    _require_module(db, tenant, "ocr")
+    try:
+        document = service.get_document(identity.user, document_id)
+    except LookupError as exc:
+        raise HTTPException(404, "Document introuvable") from exc
+    if document.kind != "ocr" or not document.storage_path:
+        raise HTTPException(404, "Original indisponible")
+    root = Path(get_settings().artifact_root).resolve()
+    path = (root / document.storage_path).resolve()
+    if not path.is_relative_to(root / "tenant_documents" / str(identity.user.company_id) / "ocr") or not path.is_file():
+        raise HTTPException(404, "Original indisponible")
+    return FileResponse(path, filename=Path(document.filename).name, media_type="application/octet-stream")
+
+
 @ocr_router.delete("/documents/{document_id}", status_code=204)
 def delete_ocr(
     document_id: UUID,
@@ -122,6 +148,9 @@ def propose_accounting(
     _: None = Depends(require_active_subscription),
 ) -> dict:
     _require_module(db, tenant, "ocr")
+    from backend.app.core.permission_grants import effective_permissions
+    if "accounting:write" not in set(effective_permissions(identity.user)):
+        raise HTTPException(403, "Permission insuffisante")
     if not ModuleEntitlementService(db).can_use_module(tenant, "accounting"):
         raise HTTPException(403, {"code": "module_inactive", "module": "accounting"})
     try:

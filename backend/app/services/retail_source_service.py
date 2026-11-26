@@ -50,8 +50,9 @@ class RetailSource:
 
 
 class RetailSourceService:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, *, fresh_reads: bool = False) -> None:
         self._session = session
+        self._fresh_reads = fresh_reads
 
     def list_sources(
         self, tenant: TenantContext, *, preserve_selection: bool = False
@@ -59,6 +60,7 @@ class RetailSourceService:
         connections = tuple(
             self._session.scalars(
                 select(CommerceConnection)
+                .execution_options(populate_existing=self._fresh_reads)
                 .where(
                     CommerceConnection.company_id == tenant.company_id,
                     CommerceConnection.status
@@ -73,6 +75,7 @@ class RetailSourceService:
         datasets = tuple(
             self._session.scalars(
                 select(Dataset)
+                .execution_options(populate_existing=self._fresh_reads)
                 .where(
                     Dataset.company_id == tenant.company_id,
                     Dataset.status == DatasetStatus.READY,
@@ -94,7 +97,7 @@ class RetailSourceService:
         states = {
             state.source_key: state.enabled
             for state in self._session.scalars(
-                select(RetailSourceState).where(
+                select(RetailSourceState).execution_options(populate_existing=self._fresh_reads).where(
                     RetailSourceState.company_id == tenant.company_id
                 )
             ).all()
@@ -334,7 +337,7 @@ class RetailSourceService:
             # A missing artifact does not change the user's selection.
             return user_selection
         if tenant.user_id is not None:
-            inherited = self._session.scalar(select(RetailActiveSource).where(RetailActiveSource.company_id == tenant.company_id))
+            inherited = self._session.scalar(select(RetailActiveSource).execution_options(populate_existing=self._fresh_reads).where(RetailActiveSource.company_id == tenant.company_id))
             if inherited is None:
                 inherited = self.active_selection(TenantContext(tenant.company_id))
             if inherited is not None:
@@ -530,7 +533,7 @@ class RetailSourceService:
     def _user_selection(self, tenant: TenantContext):
         if tenant.user_id is None:
             return None
-        return self._session.get(UserSourceSelection, (tenant.company_id, tenant.user_id))
+        return self._session.get(UserSourceSelection, (tenant.company_id, tenant.user_id), populate_existing=self._fresh_reads)
 
     def _company_selection(self, tenant: TenantContext) -> RetailActiveSource | None:
         return self._session.scalar(
