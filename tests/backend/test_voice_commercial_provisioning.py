@@ -51,6 +51,7 @@ def setup(tmp_path):
  engine=create_engine(f"sqlite:///{tmp_path/'provisioning.db'}");Base.metadata.create_all(engine);db=Session(engine,expire_on_commit=False)
  settings=Settings();settings.voice_commercial_enabled=True;settings.voice_commercial_payments_enabled=True;settings.voice_telecom_purchases_enabled=True
  settings.telnyx_voice_connection_id='test-connection';settings.telnyx_media_stream_base_url='wss://voice.example.test/api/v1/voice/telnyx/media'
+ settings.voice_realtime_model='gpt-realtime-2.1'
  settings.voice_approved_realtime_models=['gpt-realtime-2.1'];settings.voice_certified_realtime_locales=['fr'];settings.openai_api_key='explicitly-nonsensitive-fixture';settings.telnyx_media_enabled=True;settings.telnyx_media_inbound_enabled=True
  settings.stripe_webhook_secret=secrets.token_urlsafe(32)
  notifier=LoggingAccountNotifier()
