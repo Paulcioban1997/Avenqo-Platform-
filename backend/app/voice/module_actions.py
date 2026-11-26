@@ -256,10 +256,15 @@ def company_call_language_session(db, config, call):
     active = to_bcp47(previous or primary)
     if active not in allowed:
         active = to_bcp47(primary)
-    return CallLanguageSession(
+    session = CallLanguageSession(
         tenant_id=config.company_id, call_session_id=call_id,
         primary_locale=primary, active_locale=active, allowed_locales=allowed,
     )
+    if isinstance(saved, dict) and saved.get("strict_lock"):
+        session.strict_lock = True
+    if (call.source_context or {}).get("ivr_stage") == "staff_authenticated":
+        session.strict_lock = True
+    return session
 
 
 __all__ = [

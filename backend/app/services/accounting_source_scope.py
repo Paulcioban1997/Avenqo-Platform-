@@ -36,6 +36,9 @@ def resolve_accounting_dataset_scope(
     service = RetailSourceService(session)
     context = service.context(tenant, preserve_selection=True)
     sources = context.get("sources") or ()
+    selected_ids = {
+        str(item) for item in (context.get("selected_source_ids") or []) if item
+    }
     payload: dict[str, Any] = {
         "state": context.get("state"),
         "selection": context.get("source_type"),
@@ -43,26 +46,13 @@ def resolve_accounting_dataset_scope(
         "name": None,
         "provider": None,
         "dataset_id": None,
+        "selected_source_ids": sorted(selected_ids),
     }
 
-    selected = None
     source_type = context.get("source_type")
     source_id = context.get("source_id")
-    if source_type and source_type != "all" and source_id is not None:
-        selected = next(
-            (
-                item
-                for item in sources
-                if item.source_type == source_type and item.source_id == source_id
-            ),
-            None,
-        )
-        if selected is not None:
-            payload["name"] = selected.display_name
-            payload["provider"] = selected.provider
-            payload["dataset_id"] = str(selected.dataset_id) if selected.dataset_id else None
-
     state = context.get("state")
+
     # Preserve legacy company-wide ledger only when no explicit selection exists.
     # An unavailable or empty explicit selection must never widen the query.
     if source_type is None:
@@ -71,27 +61,86 @@ def resolve_accounting_dataset_scope(
     if state != "READY":
         return frozenset(), payload
 
+    def _is_ready(item: Any) -> bool:
+        return bool(
+            getattr(item, "enabled", False)
+            and str(getattr(item, "status", "")).upper() == "READY"
+            and (
+                getattr(item, "dataset_id", None) is not None
+                or getattr(item, "source_type", None) == "connector"
+            )
+        )
+
     if source_type == "all":
-        ready = [
-            item for item in sources
-            if item.enabled and item.status.upper() == "READY"
-            and (item.dataset_id is not None or item.source_type == "connector")
-        ]
+        ready = [item for item in sources if _is_ready(item)]
+        if selected_ids:
+            ready = [
+                item for item in ready
+                if str(getattr(item, "source_id", getattr(item, "dataset_id", ""))) in selected_ids
+                or str(getattr(item, "dataset_id", "")) in selected_ids
+            ]
         if not ready:
             payload["state"] = "NO_SOURCES"
-    elif selected is not None and selected.status.upper() == "READY" and (
-        selected.dataset_id is not None or selected.source_type == "connector"
-    ):
-        ready = [selected]
+    elif source_type == "custom_set":
+        ready = [
+            item for item in sources
+            if _is_ready(item)
+            and (
+                not selected_ids
+                or str(getattr(item, "source_id", "")) in selected_ids
+                or str(getattr(item, "dataset_id", "")) in selected_ids
+            )
+        ]
+        if not ready:
+            payload["state"] = "SOURCE_UNAVAILABLE"
     else:
-        payload["state"] = "SOURCE_UNAVAILABLE"
-        ready = []
+        selected = next(
+            (
+                item
+                for item in sources
+                if getattr(item, "source_type", None) == source_type
+                and getattr(item, "source_id", None) == source_id
+            ),
+            None,
+        )
+        if selected is None and selected_ids:
+            selected = next(
+                (
+                    item
+                    for item in sources
+                    if str(getattr(item, "source_id", "")) in selected_ids
+                    or str(getattr(item, "dataset_id", "")) in selected_ids
+                ),
+                None,
+            )
+        if selected is not None:
+            payload["name"] = getattr(selected, "display_name", None)
+            payload["provider"] = getattr(selected, "provider", None)
+            payload["dataset_id"] = (
+                str(selected.dataset_id) if getattr(selected, "dataset_id", None) else None
+            )
+        if selected is not None and _is_ready(selected):
+            ready = [selected]
+        else:
+            payload["state"] = "SOURCE_UNAVAILABLE"
+            ready = []
 
-    payload["name"] = ", ".join(item.display_name for item in ready) or None
-    dataset_ids = frozenset(item.dataset_id for item in ready if item.dataset_id is not None)
+    payload["name"] = ", ".join(
+        getattr(item, "display_name", "") for item in ready if getattr(item, "display_name", None)
+    ) or payload.get("name")
+    dataset_ids = frozenset(
+        item.dataset_id for item in ready if getattr(item, "dataset_id", None) is not None
+    )
     connection_ids = tuple(sorted(
-        str(item.source_id) for item in ready if item.source_type == "connector"
+        str(item.source_id)
+        for item in ready
+        if getattr(item, "source_type", None) == "connector" and getattr(item, "source_id", None)
     ))
+    payload["selected_source_ids"] = [
+        str(getattr(item, "source_id", getattr(item, "dataset_id", "")))
+        for item in ready
+        if getattr(item, "source_id", None) is not None or getattr(item, "dataset_id", None) is not None
+    ]
     scope = AccountingConnectorScope(dataset_ids, connection_ids) if connection_ids else dataset_ids
     return scope, payload
 

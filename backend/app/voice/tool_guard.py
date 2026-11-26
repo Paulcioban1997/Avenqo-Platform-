@@ -104,6 +104,7 @@ class VoiceToolGuard:
                     raise VoiceToolDenied("executive_role_required: Executive role is required for this tool.")
                 if "data:read" not in perms:
                     raise VoiceToolDenied("Private company data requires an authenticated data reader")
+            self._assert_selected_source_policy(tenant, tool_name, perms, user_id=user_id)
             return
         canonical = VOICE_TOOL_ALIASES.get(tool_name, tool_name)
         if public_caller:
@@ -154,6 +155,60 @@ class VoiceToolGuard:
                 self._assert_membership_write(tenant.company_id, user_id)
             else:
                 raise VoiceToolDenied("The membership role cannot run this tool.")
+        self._assert_selected_source_policy(tenant, tool_name, perms, user_id=user_id)
+
+    def _assert_selected_source_policy(
+        self,
+        tenant: TenantContext,
+        tool_name: str,
+        permissions: frozenset[str],
+        *,
+        user_id: UUID | None,
+    ) -> None:
+        from backend.app.voice.selected_source_intelligence import (
+            PRIVATE_DATA_TOOLS,
+            assert_tool_allowed_for_selected_sources,
+            classify_voice_data_intent,
+            log_voice_source_access,
+            resolve_authorized_selected_sources,
+            staff_role_for_log,
+        )
+
+        if tool_name not in PRIVATE_DATA_TOOLS and tool_name not in VOICE_RETAIL_NATIVE_TOOLS:
+            mapping = action_for_tool(tool_name)
+            if mapping is None or mapping[0] not in {"retail", "accounting", "marketing", "cross_agent"}:
+                return
+
+        effective = TenantContext(tenant.company_id, user_id if user_id is not None else tenant.user_id)
+        resolution = resolve_authorized_selected_sources(
+            self._session,
+            effective,
+            require_data_read=True,
+        )
+        # Tool guard enforces selection/authorization presence. Transcript-aware
+        # excel-vs-calendar routing is applied in the media turn executor.
+        intent = classify_voice_data_intent(
+            "",
+            has_selected_dataset=bool(resolution.dataset_ids),
+        )
+        try:
+            assert_tool_allowed_for_selected_sources(
+                tool_name=tool_name,
+                resolution=resolution,
+                intent=intent,
+            )
+        finally:
+            log_voice_source_access(
+                company_id=tenant.company_id,
+                user_id=effective.user_id,
+                role=staff_role_for_log(self._session, tenant.company_id, effective.user_id),
+                selected_source_ids=resolution.selected_source_ids,
+                queried_source_ids=resolution.selected_source_ids,
+                intent=intent.intent,
+                tool=tool_name,
+                exclusions=resolution.excluded_source_ids,
+                state=resolution.state,
+            )
 
     def assert_policy(self, tenant: TenantContext, tool_name: str, permissions, *, user_id: UUID | None = None) -> None:
         from backend.app.ai.tools.exceptions import ToolAuthorizationError

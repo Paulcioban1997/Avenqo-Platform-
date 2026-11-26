@@ -540,17 +540,139 @@ class RetailSourceService:
             select(RetailActiveSource).where(RetailActiveSource.company_id == tenant.company_id)
         )
 
+    def explicit_selection(self, tenant: TenantContext) -> UserSourceSelection | RetailActiveSource | None:
+        """Return the persisted selection only — never invent or auto-create one."""
+        return self._user_selection(tenant) or self._company_selection(tenant)
+
+    def selected_ready_sources(
+        self,
+        tenant: TenantContext,
+        *,
+        allow_auto_default: bool = False,
+    ) -> tuple[RetailSource, ...]:
+        """Connected ∩ Currently Selected ∩ Enabled ∩ READY.
+
+        Fail-closed when no explicit selection exists unless ``allow_auto_default``
+        is set (legacy Data Hub paths). Voice must keep the default False so
+        private data is never auto-consulted from every connected source.
+        """
+        selection = self.explicit_selection(tenant)
+        if selection is None:
+            if not allow_auto_default:
+                return ()
+            selection = self.active_selection(tenant)
+            if selection is None:
+                return ()
+
+        sources = self.list_sources(tenant, preserve_selection=True)
+        selected_ids = self._selected_source_id_set(selection, sources)
+        if selected_ids is not None and not selected_ids:
+            return ()
+
+        ready: list[RetailSource] = []
+        for source in sources:
+            if selected_ids is not None and str(source.source_id) not in selected_ids:
+                continue
+            if not source.enabled:
+                continue
+            if source.status.upper() != "READY":
+                continue
+            if source.dataset_id is None and source.source_type != "connector":
+                continue
+            ready.append(source)
+        return tuple(ready)
+
+    @staticmethod
+    def _selected_source_id_set(
+        selection: UserSourceSelection | RetailActiveSource,
+        sources: tuple[RetailSource, ...],
+    ) -> set[str] | None:
+        """None means every enabled ready source is in scope (explicit ALL mode)."""
+        mode = (selection.source_type or "").strip().lower()
+        selection_mode = (
+            getattr(selection, "selection_mode", None)
+            or ("ALL" if mode in {"all", "all_sources"} else "CUSTOM_SET" if mode in {"custom_set", "custom"} else "SINGLE")
+        )
+        if str(selection_mode).upper() == "ALL" or mode in {"all", "all_sources"}:
+            return None
+        if str(selection_mode).upper() == "CUSTOM_SET" or mode in {"custom_set", "custom"}:
+            return {str(item) for item in (getattr(selection, "selected_source_ids", None) or []) if item}
+        if mode == "connector" and selection.connection_id is not None:
+            return {str(selection.connection_id)}
+        if mode == "dataset" and selection.dataset_id is not None:
+            return {str(selection.dataset_id)}
+        # SINGLE workspace mode (or classic single via connection/dataset fields)
+        single_id = selection.connection_id or selection.dataset_id
+        if single_id is None:
+            raw = getattr(selection, "selected_source_ids", None) or []
+            if raw:
+                single_id = raw[0]
+        if single_id is None:
+            return set()
+        return {str(single_id)}
+
     def context(self, tenant: TenantContext, *, preserve_selection: bool = False) -> dict:
         selection = None
         if preserve_selection:
-            selection = self._user_selection(tenant) or self._company_selection(tenant)
+            selection = self.explicit_selection(tenant)
         if selection is None:
             selection = self.active_selection(tenant)
         sources = self.list_sources(tenant, preserve_selection=preserve_selection)
         if selection is None:
             return {"state": "NO_SOURCES", "source_type": None, "source_id": None, "sources": sources}
-        if selection.source_type == "all":
-            return {"state": "READY" if any(source.enabled and source.status.upper() == "READY" for source in sources) else "NO_SOURCES", "source_type": "all", "source_id": None, "sources": sources}
+
+        mode = (selection.source_type or "").strip().lower()
+        selection_mode = getattr(selection, "selection_mode", None)
+        is_all = mode in {"all", "all_sources"} or str(selection_mode or "").upper() == "ALL"
+        is_multi = mode in {"custom_set", "custom"} or str(selection_mode or "").upper() == "CUSTOM_SET"
+        is_single_workspace = mode == "single" or (
+            str(selection_mode or "").upper() == "SINGLE" and mode not in {"connector", "dataset"}
+        )
+
+        if is_all or is_multi or is_single_workspace:
+            selected_ids = self._selected_source_id_set(selection, sources)
+            selected_ready = [
+                source for source in sources
+                if (selected_ids is None or str(source.source_id) in selected_ids)
+                and source.enabled
+                and source.status.upper() == "READY"
+                and (source.dataset_id is not None or source.source_type == "connector")
+            ]
+            if is_all:
+                normalized_type = "all"
+                source_id = None
+            elif is_multi:
+                normalized_type = "custom_set"
+                source_id = None
+            else:
+                # SINGLE workspace → expose the concrete connector/dataset type for downstream tools.
+                target = selected_ready[0] if selected_ready else next(
+                    (item for item in sources if selected_ids is not None and str(item.source_id) in selected_ids),
+                    None,
+                )
+                if target is None:
+                    return {
+                        "state": "SOURCE_UNAVAILABLE",
+                        "source_type": "single",
+                        "source_id": next(iter(selected_ids), None) if selected_ids else None,
+                        "sources": sources,
+                        "selected_source_ids": sorted(selected_ids or []),
+                    }
+                normalized_type = target.source_type
+                source_id = target.source_id
+            state = "READY" if selected_ready else ("NO_SOURCES" if not sources else "SOURCE_UNAVAILABLE")
+            return {
+                "state": state,
+                "source_type": normalized_type,
+                "source_id": source_id,
+                "sources": sources,
+                "selected_source_ids": (
+                    sorted(str(item.source_id) for item in selected_ready)
+                    if selected_ids is None
+                    else sorted(selected_ids or [])
+                ),
+            }
+
         source_id = selection.connection_id if selection.source_type == "connector" else selection.dataset_id
         source = next((item for item in sources if item.source_type == selection.source_type and item.source_id == source_id), None)
         readable = source is not None and source.status.upper() == "READY" and (
@@ -577,6 +699,7 @@ class RetailSourceService:
             "source_type": selection.source_type,
             "source_id": source_id,
             "sources": sources,
+            "selected_source_ids": [str(source_id)] if source_id is not None else [],
             "reauthorization_required": reauthorization_required,
             "reauthorization_provider": reauthorization_provider,
             "reauthorization_shop": reauthorization_shop,
@@ -812,4 +935,7 @@ class RetailSourceService:
             active.dataset_id = None
 
         self._session.commit()
+        from backend.app.core.cache import tenant_cache
+
+        tenant_cache.invalidate_tenant(tenant.company_id)
         return self.get_workspace_selection(tenant)
