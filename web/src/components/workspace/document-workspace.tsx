@@ -153,7 +153,7 @@ export function DocumentWorkspace({
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.publicMessage : (fr ? "Original indisponible." : "Original unavailable."));
+      setError(err instanceof ApiRequestError && err.publicMessage ? err.publicMessage : (fr ? "Original indisponible." : "Original unavailable."));
     }
   };
 
@@ -164,7 +164,7 @@ export function DocumentWorkspace({
       await apiFetch(`${endpoint}/${id}/accounting-proposal`, { method: "POST" });
       setProposed((current) => ({ ...current, [id]: true }));
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.publicMessage : (fr ? "Préparation comptable impossible." : "Unable to prepare accounting proposal."));
+      setError(err instanceof ApiRequestError && err.publicMessage ? err.publicMessage : (fr ? "Préparation comptable impossible." : "Unable to prepare accounting proposal."));
     } finally { setProposingId(null); }
   };
 

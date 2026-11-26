@@ -4,7 +4,7 @@ import { apiFetch, ApiRequestError } from "@/lib/api-request";
 import type { EnrichedInvoiceItem } from "@/components/accounting/invoice-detail-drawer";
 
 export function OcrAccountingInbox({ isFr, onSelect }: { isFr: boolean; onSelect: (invoice: EnrichedInvoiceItem) => void }) {
-  const [invoices, setInvoices] = useState<EnrichedInvoiceItem[]>([]);
+  const [invoices, setInvoices] = useState<Array<EnrichedInvoiceItem & { verification_status?: string }>>([]);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   useEffect(() => {
@@ -14,7 +14,7 @@ export function OcrAccountingInbox({ isFr, onSelect }: { isFr: boolean; onSelect
     apiFetch("/api/v1/accounting/invoices?document_scope=true&limit=200")
       .then(response => response.json())
       .then(rows => { if (active) setInvoices(Array.isArray(rows) ? rows : []); })
-      .catch(err => { if (active) setError(err instanceof ApiRequestError ? err.publicMessage : (isFr ? "Documents indisponibles." : "Documents unavailable.")); });
+      .catch(err => { if (active) setError(err instanceof ApiRequestError && err.publicMessage ? err.publicMessage : (isFr ? "Documents indisponibles." : "Documents unavailable.")); });
     return () => { active = false; };
   }, [revision, isFr]);
   return <section id="ocr-documents" className="rounded-2xl border border-slate-700 p-5 space-y-3">

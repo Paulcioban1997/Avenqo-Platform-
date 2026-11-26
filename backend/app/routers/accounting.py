@@ -452,7 +452,7 @@ def create_transaction(
 
 @router.get("/invoices")
 def list_invoices(
-    document_scope: bool = Query(default=False),
+    document_scope: bool = False,
     invoice_type: str | None = Query(default=None),
     status_filter: str | None = Query(default=None, alias="status"),
     verification_status: str | None = Query(default=None),

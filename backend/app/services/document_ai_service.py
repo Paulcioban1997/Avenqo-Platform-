@@ -344,6 +344,12 @@ class DocumentAIService:
         if existing is not None:
             return existing
 
+        duplicate = self._session.scalar(
+            select(AccountingInvoice.id).where(
+                AccountingInvoice.company_id == actor.company_id,
+                AccountingInvoice.invoice_number == invoice_number,
+            )
+        )
         now = datetime.now(timezone.utc)
         cell_note = (
             f" ({primary.total_amount.cell_ref})"
@@ -366,6 +372,7 @@ class DocumentAIService:
             document_id=document.id,
             source_module="ocr",
             file_sha256=document.sha256,
+            duplicate_warning=duplicate is not None,
             verification_status="to_verify",
             accounting_status="proposed",
         )
