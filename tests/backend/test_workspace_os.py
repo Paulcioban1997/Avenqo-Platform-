@@ -360,3 +360,4 @@ def test_onboarding_draft_and_progress(auth_environment):
     assert draft.json()["current_step"] == "modules"
     assert draft.json()["progress_percent"] >= 20
     assert any(item["key"] == "sector" and item["done"] for item in draft.json()["checklist"])
+

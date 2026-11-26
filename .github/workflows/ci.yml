@@ -2,7 +2,7 @@ name: CI
 
 'on':
   push:
-    branches: [main, promotion/sandbox, integration/avenqo-sandbox-latest-20261113]
+    branches: [main, promotion/sandbox, integration/avenqo-sandbox-latest-20261113, 'fix/sandbox-architecture-*']
   pull_request:
     branches: [main, promotion/sandbox, integration/avenqo-sandbox-latest-20261113]
   workflow_dispatch:
@@ -217,6 +217,24 @@ jobs:
           AUTH_JWT_SECRET: "ci-secret-test-key-32-chars-long-minimum"
           DATABASE_URL: "sqlite:///:memory:"
 
+      - name: Run Enterprise Intelligence, Voice, OCR, Accounting, Exports & Security suite (PRs #133-#137)
+        timeout-minutes: 10
+        run: >-
+          python -m pytest
+          tests/backend/test_voice_p0_issue_132_architectures_and_reliability.py
+          tests/backend/test_voice_universal_architecture.py
+          tests/backend/test_ocr_excel_invoice_extraction_and_grounding.py
+          tests/backend/test_accounting_unified_classification_and_rbac.py
+          tests/backend/test_accounting_active_source.py
+          tests/backend/test_multi_format_dataset_exports.py
+          tests/backend/test_security_audit_and_crowdstrike_optional.py
+          -q
+        env:
+          PYTHONPATH: .
+          ENVIRONMENT: test
+          AUTH_JWT_SECRET: "ci-secret-test-key-32-chars-long-minimum"
+          DATABASE_URL: "sqlite:///:memory:"
+
       - name: Rehearse PostgreSQL production migration in a new isolated database
         if: ${{ !cancelled() }}
         run: python -m pytest tests/backend/test_release_postgres_migrations.py -q
@@ -232,6 +250,18 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Verify Flutter Web deployment isolation
+        working-directory: frontend
+        shell: bash
+        run: |
+          sandbox_url='https://avenqo-platform-sandbox.up.railway.app/api/v1'
+          production_url='https://api.avenqo.ca/api/v1'
+          preview="$(VERCEL_ENV=preview AVENQO_ENVIRONMENT=production API_BASE_URL="$production_url" bash scripts/resolve-api-base.sh)"
+          sandbox="$(VERCEL_ENV=production AVENQO_ENVIRONMENT=sandbox API_BASE_URL="$production_url" bash scripts/resolve-api-base.sh)"
+          sandbox_branch="$(VERCEL_ENV=production VERCEL_GIT_COMMIT_REF=integration/avenqo-sandbox-latest-20261113 bash scripts/resolve-api-base.sh)"
+          production="$(VERCEL_ENV=production bash scripts/resolve-api-base.sh)"
+          [[ "$preview" == "$sandbox_url" && "$sandbox" == "$sandbox_url" && "$sandbox_branch" == "$sandbox_url" && "$production" == "$production_url" ]]
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -288,3 +318,4 @@ jobs:
           DATABASE_URL: 'sqlite:///:memory:'
           AUTH_JWT_SECRET: 'ci-test-only-fictional-auth-secret-long-enough'
           AVENQO_ROTATION_TEST_ADMIN_URL: 'postgresql+psycopg2://postgres:test-only-password@localhost:5432/rotation_test_ci'
+

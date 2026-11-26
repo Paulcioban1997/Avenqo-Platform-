@@ -256,3 +256,4 @@ async def test_signed_cost_receipt_and_duration_stop_do_not_bill_or_touch_other_
  assert await stop_expired(e.db,e.settings,client)==1
  client.hangup.assert_awaited_once_with('cost-control')
  assert call.ended_at is None  # Provider callback still needed, never fabricate success.
+

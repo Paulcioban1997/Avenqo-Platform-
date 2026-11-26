@@ -329,8 +329,8 @@ async def test_inbound_telnyx_french_realtime_books_crm_appointment_then_hangup(
                 pass
             _drain_socket(socket)
 
-    assert captured_turns == FRENCH_BOOKING_TURNS[1:]
-    assert len(captured_conversations) == len(FRENCH_BOOKING_TURNS) - 1
+    assert captured_turns == FRENCH_BOOKING_TURNS
+    assert len(captured_conversations) == len(FRENCH_BOOKING_TURNS)
     assert captured_conversations[0] is not None
     assert all(item == captured_conversations[0] for item in captured_conversations)
     assert len(adapter.spoken) >= 6

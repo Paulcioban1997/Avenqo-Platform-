@@ -98,43 +98,14 @@ mono-instance à faible trafic, à condition que les sauvegardes régulières
 (voir §10) soient en place. Ce n'est PAS un choix approprié pour un scale-out
 multi-instances — dans ce cas, migrer vers PostgreSQL AVANT le scale-out.
 
-## 5. Frontend (Flutter Web)
+## 5. Interfaces Avenqo
 
-L'URL de l'API backend est configurable au build, jamais codée en dur :
+Next.js (`web/`) est le SaaS Web principal sur `avenqo.ca`. Il sert le site public, la connexion, les modules et l'administration. Les requêtes sur `/api/v1` sont réécrites vers FastAPI. La configuration Next.js définit des redirections canoniques pour `www.avenqo.ca` et `app.avenqo.ca`. L'association effective des domaines est gérée séparément dans la console d'hébergement.
 
-```bash
-flutter build web --release \
-  --dart-define=API_BASE_URL=https://api.avenqo.ca/api/v1
-```
+Flutter (`frontend/`) fournit les clients natifs et le build du client Web existant. Chaque client utilise la même API FastAPI. Sur Flutter, la cible est configurée au build avec `--dart-define=API_BASE_URL=…/api/v1`. Vérifier le réglage CORS si le build Web utilise une origine distincte.
 
-Le résultat (`frontend/build/web`) est un ensemble de fichiers statiques —
-servir derrière un CDN/reverse proxy avec HTTPS obligatoire.
+Les environnements Preview et sandbox suivent le [guide de déploiement sandbox](deployment.md). Consulter la [référence d'architecture](ARCHITECTURE.md) pour la répartition des parcours.
 
-## 5 bis. Site public Next.js (Vercel)
-
-Le site public est un projet Vercel distinct du projet Flutter :
-
-- dépôt GitHub : `Paulcioban1997/Avenqo-Platform-` ;
-- branche de production : `main` ;
-- répertoire racine Vercel : `web` ;
-- framework : Next.js ;
-- domaine de production : `avenqo.ca` (et `www.avenqo.ca`).
-
-Le projet Flutter conserve son propre répertoire racine et son domaine
-`app.avenqo.ca`. Une modification du dépôt doit être contrôlée sur les deux
-projets Vercel séparément : un statut Vercel vert pour l'application Flutter
-ne prouve pas que le site Next.js est déployé.
-
-Vérifications minimales après un déploiement du site public :
-
-```bash
-curl -I https://avenqo.ca/
-curl -I https://avenqo.ca/signup
-curl -I https://avenqo.ca/login
-```
-
-`/signup` peut rediriger définitivement vers `/register`, mais cette chaîne
-doit terminer sur une page d'inscription HTTP 200, jamais sur une 404.
 
 ## 6. Rate limiting — revue finale (remédiation)
 

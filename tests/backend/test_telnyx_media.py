@@ -3,12 +3,14 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import json
 import re
 from types import SimpleNamespace
 from uuid import uuid4
 from datetime import datetime, timedelta, timezone
 import jwt
 import httpx
+import anyio
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
@@ -547,8 +549,9 @@ def test_unknown_to_verified_staff_full_signed_dtmf_path(signed_telnyx_webhook, 
         socket.send_json({**frame, "media": {**frame["media"], "chunk": "2"}})
         result = env.send(env.event("call.gather.ended", digits=secret if correct else "102938", client_state=challenge))
         assert result.json()["authenticated"] is correct and secret not in result.text
-        expected_prompt = "réussie" if correct else "n'a pas été validé"
+        expected_prompt = "réussie" if correct else "Vous êtes en mode accueil public"
         env.client.portal.call(eventually, lambda: any(expected_prompt in text for text in adapter.spoken))
+        assert not any("Nombre maximal" in text for text in adapter.spoken)
         assert central.calls == [] and len(adapter.audio) == 1
         if correct:
             env.client.portal.call(asyncio.sleep, 0.3)
@@ -587,6 +590,24 @@ async def eventually(predicate):
     await asyncio.wait_for(wait(), timeout=3)
 
 
+def acknowledge_playback(socket, stream_id):
+    async def receive_playback():
+        heard_audio = False
+        with anyio.fail_after(5):
+            while True:
+                frame = await socket._send_rx.receive()
+                assert frame["type"] == "websocket.send"
+                event = json.loads(frame["text"])
+                if event.get("event") == "mark":
+                    assert heard_audio
+                    return event["mark"]
+                assert event.get("event") in {"clear", "media"}
+                heard_audio = heard_audio or event.get("event") == "media"
+
+    marker = socket.portal.call(receive_playback)
+    socket.send_json({"event": "mark", "stream_id": stream_id, "mark": marker})
+
+
 @pytest.mark.asyncio
 async def test_media_bridge_roundtrip_barge_in_dtmf_and_duplicate_frames():
     socket = FakeMediaSocket()
@@ -622,6 +643,7 @@ async def test_media_bridge_roundtrip_barge_in_dtmf_and_duplicate_frames():
     await adapter.incoming.put(delta)
     await until(lambda: any(event["event"] == "media" for event in socket.sent))
     assert calls == [("turn-test", "Summarize sales [REDACTED]")]
+    # Ordinary DTMF interrupts playback outside the separate secure PIN flow.
     await socket.incoming.put({"event": "dtmf", "stream_id": "stream-test", "dtmf": {"digit": "6"}})
     await eventually(lambda: socket.sent[-1] == {"event": "clear"})
     await adapter.incoming.put(delta)
@@ -1721,6 +1743,10 @@ async def test_multi_turn_conversation_and_interruption_barge_in():
         assert turn_answers[0] == ("turn-1", "Allô")
         await eventually(lambda: len(adapter.spoken) == 1)
         assert "Reponse a: Allô" in adapter.spoken[0]
+        # This unit test runs the turn executor without the provider event
+        # loop. Simulate consumption of the first response before turn two.
+        bridge._pending_speech.clear()
+        bridge.pending_epoch = None
 
         await eventually(lambda: bridge._current_turn_task is None)
 
@@ -2109,6 +2135,7 @@ async def test_public_caller_natural_multi_turn_crm_appointment_preserves_conver
             socket.send_json(start_payload)
 
             # Send audio frames for 5 turns and receive responses
+            acknowledge_playback(socket, "stream-public-multi")
             for i in range(1, 6):
                 socket.send_json({
                     "event": "media",
@@ -2119,18 +2146,15 @@ async def test_public_caller_natural_multi_turn_crm_appointment_preserves_conver
                         "payload": base64.b64encode(b"\xff" * 160).decode(),
                     },
                 })
-                # Receive outbound audio response frame (handling any barge-in buffer clear)
-                resp = socket.receive_json()
-                if resp.get("event") == "clear":
-                    resp = socket.receive_json()
-                assert resp.get("event") == "media"
+                acknowledge_playback(socket, "stream-public-multi")
 
             socket.send_json({"event": "stop", "stream_id": "stream-public-multi"})
             from tests.backend.test_voice_inbound_e2e import _drain_socket
             _drain_socket(socket)
 
-    # The local greeting is audible; only business turns reach Central AI.
+    # A caller greeting is a real turn, separate from the initial company greeting.
     assert captured_turns == [
+        "Bonjour",
         "Je voudrais prendre un rendez-vous",
         "Demain vers 14 heures",
         "Oui, ça me convient",
@@ -2141,14 +2165,15 @@ async def test_public_caller_natural_multi_turn_crm_appointment_preserves_conver
     assert first_conv_id is not None
     assert all(c_id == first_conv_id for c_id in captured_conversations)
 
-    # One audible greeting and one response for each business turn.
+    # One initial greeting and one response for every caller turn.
     assert len(adapter.spoken) == len(captured_turns) + 1
     assert "Voice Test Shop" in adapter.spoken[0]
     assert "Comment puis-je vous aider" in adapter.spoken[0]
-    assert "rendez-vous" in adapter.spoken[1]
-    assert "14h00" in adapter.spoken[2]
-    assert "confirmé" in adapter.spoken[3]
-    assert "ouverts" in adapter.spoken[4]
+    assert "Bonjour" in adapter.spoken[1]
+    assert "rendez-vous" in adapter.spoken[2]
+    assert "14h00" in adapter.spoken[3]
+    assert "confirmé" in adapter.spoken[4]
+    assert "ouverts" in adapter.spoken[5]
 
     # Verify that the conversation was created in DB and associated with the call
     env.db.expire_all()
@@ -2382,6 +2407,7 @@ async def test_public_caller_natural_10_turn_canadian_french_conversation(author
             socket.send_json(start_payload)
 
             # Send audio frames for 10 turns and receive responses
+            acknowledge_playback(socket, "stream-public-10turn")
             for i in range(1, 11):
                 socket.send_json({
                     "event": "media",
@@ -2393,6 +2419,7 @@ async def test_public_caller_natural_10_turn_canadian_french_conversation(author
                     },
                 })
                 client.portal.call(eventually, lambda: len(adapter.spoken) >= i + 1)
+                acknowledge_playback(socket, "stream-public-10turn")
 
             socket.send_json({"event": "stop", "stream_id": "stream-public-10turn"})
             from tests.backend.test_voice_inbound_e2e import _drain_socket
@@ -2418,3 +2445,45 @@ async def test_public_caller_natural_10_turn_canadian_french_conversation(author
 
 
 
+
+
+
+@pytest.mark.asyncio
+async def test_pin_collection_digits_do_not_interrupt_or_forward_audio():
+    socket = FakeMediaSocket()
+    adapter = FakeAudioAdapter()
+
+    async def noop(*_args):
+        return None
+
+    async def execute(*_args):
+        raise AssertionError("PIN collection must not dispatch a business turn")
+
+    bridge = TelnyxMediaBridge(
+        socket, adapter, locale="en", validate_start=noop,
+        authorize=noop, execute_turn=execute,
+    )
+    await socket.incoming.put(start_event())
+    running = asyncio.create_task(bridge.run())
+    try:
+        await until(lambda: adapter.opened)
+        bridge._pin_turn = "secure-pin-turn"
+        bridge._pin_started = True
+        epoch = bridge.epoch
+        await socket.incoming.put({
+            "event": "dtmf", "stream_id": "stream-test", "dtmf": {"digit": "6"},
+        })
+        await socket.incoming.put({
+            "event": "media", "stream_id": "stream-test",
+            "media": {"track": "inbound", "chunk": "1",
+                      "payload": base64.b64encode(b"\xff" * 160).decode()},
+        })
+        await eventually(lambda: bridge._last_chunk == 1)
+        assert bridge._pin_turn == "secure-pin-turn"
+        assert bridge.epoch == epoch
+        assert adapter.audio == []
+        assert not any(event["event"] == "clear" for event in socket.sent)
+    finally:
+        await socket.incoming.put({"event": "stop", "stream_id": "stream-test"})
+        await asyncio.wait_for(running, timeout=2)
+    assert adapter.closed

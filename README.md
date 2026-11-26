@@ -2,17 +2,17 @@
 
 Avenqo is the modular enterprise AI SaaS platform developed by PMC Solutions AI. Companies activate only the modules they need, while the shared AI Engine handles tenant-isolated data and model workflows.
 
-## Vision
+## Architecture
 
-RetailSenseAI is the first native Avenqo module. CRM and accounting contracts are present but are not active products yet.
+**Next.js (`web/`) is the primary Avenqo SaaS web application.** It serves the public site, authentication, the signed-in workspace, business modules and administration. Flutter (`frontend/`) serves mobile and desktop and retains the existing Flutter web client.
 
-RetailSenseAI is not a separate platform. Users sign in to Avenqo, activate the `retail` module, and use the shared AI Engine. The former standalone project is not a production dependency of this repository.
+Both clients call the FastAPI `/api/v1` contract. FastAPI owns permissions, subscription and module access, the AI credit ledger, financial calculations and tenant isolation. Retail, CRM and Accounting have implemented API paths and clients. See the [architecture reference](docs/ARCHITECTURE.md) for module availability, provider requirements and the scope of validation.
 
 ## Technology
 
 - FastAPI and SQLAlchemy backend
 - Flutter application for web, mobile, and desktop
-- Next.js public website and authentication entry points
+- Next.js SaaS web application, including the public website and authentication
 - Stripe billing integration
 - Shared Python AI engine
 
@@ -20,7 +20,7 @@ RetailSenseAI is not a separate platform. Users sign in to Avenqo, activate the 
 
 - backend/: application core and service orchestration
 - frontend/: application Flutter/Dart unique pour Web, mobile et desktop
-- web/: public Next.js website and authentication proxy
+- web/: primary Next.js SaaS client and authentication proxy
 - modules/: reusable AI product modules
 - shared/: shared AI engine
 - payments/: billing and subscription preparation
@@ -57,6 +57,18 @@ See [docs/authentication.md](docs/authentication.md) and [docs/roadmap.md](docs/
 ## Phase 3 - Stripe
 
 The billing layer supports Stripe Checkout, plan changes, end-of-period cancellation, Stripe Customer Portal, signed idempotent webhooks, and tenant-isolated invoice history. See [docs/billing.md](docs/billing.md).
+
+## Client Web Next.js
+
+Start FastAPI using the backend instructions below, then run the primary web client.
+
+```powershell
+cd web
+npm ci
+npm run dev
+```
+
+The local API defaults to `http://127.0.0.1:8000`. For Preview, the designated sandbox branches and Render sandbox builds, see the [deployment guide](docs/deployment.md).
 
 ## Client Flutter multiplateforme
 

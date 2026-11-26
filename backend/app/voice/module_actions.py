@@ -238,22 +238,26 @@ def company_call_language_session(db, config, call):
         raise PermissionError("Voice call belongs to another tenant")
     primary = voice_agent_language(db, config)
     profile = get_stored_profile(db, config.company_id)
-    configured_locales = [primary, *(profile.secondary_locales or [])] if profile else [primary]
+    if profile is not None:
+        configured_locales = [primary, *(profile.secondary_locales or [])]
+    else:
+        configured_locales = [primary, "fr-CA", "en-US", "ro-RO", "es-ES"]
     allowed = tuple(dict.fromkeys(to_bcp47(code) for code in configured_locales))
-    saved = (call.source_context or {}).get("call_language_session")
+    call_id = str(call.id)
+    saved = (call.source_context or {}).get("call_language_session") or {}
     previous = None
     if (
         isinstance(saved, dict)
         and saved.get("tenant_id") == str(config.company_id)
-        and saved.get("call_session_id") == str(call.id)
+        and saved.get("call_session_id") == call_id
         and isinstance(saved.get("active_locale"), str)
     ):
-        previous = saved["active_locale"]
+        previous = saved.get("active_locale")
     active = to_bcp47(previous or primary)
     if active not in allowed:
         active = to_bcp47(primary)
     return CallLanguageSession(
-        tenant_id=config.company_id, call_session_id=str(call.id),
+        tenant_id=config.company_id, call_session_id=call_id,
         primary_locale=primary, active_locale=active, allowed_locales=allowed,
     )
 
@@ -276,3 +280,4 @@ __all__ = [
     "tools_for_grants",
     "voice_agent_language",
 ]
+

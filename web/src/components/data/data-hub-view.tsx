@@ -173,7 +173,7 @@ export function DataHubView() {
   // Poll processing datasets
   useEffect(() => {
     const processing = datasets.filter(
-      (d) => getStatusCategory(d.status) === "processing"
+      (d: Dataset) => getStatusCategory(d.status) === "processing"
     );
     if (processing.length === 0) return;
     const id = setInterval(fetchDatasets, 4000);
@@ -709,6 +709,7 @@ export function DataHubView() {
     </div>
   );
 }
+
 
 
 

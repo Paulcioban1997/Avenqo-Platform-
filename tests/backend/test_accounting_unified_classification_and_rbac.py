@@ -48,6 +48,7 @@ from backend.app.models.user import User
 from backend.app.models.workspace import TenantDocument
 from backend.app.routers.accounting import router as accounting_router
 from backend.app.services.module_entitlement_service import ModuleEntitlementService
+from backend.app.services.retail_source_service import RetailSourceService
 from backend.app.voice.caller_scope import PUBLIC_VOICE_CALLER_PERMISSIONS
 from shared.ai_engine.contracts import TenantContext
 
@@ -600,6 +601,9 @@ def test_6_and_7_shopify_idempotency_and_ecommerce_reconciliation(accounting_env
     )
     company = tenant_a["company"]
     owner = tenant_a["owner"]
+    RetailSourceService(session).select_source(
+        TenantContext(company_id=company.id, user_id=owner.id), source_type="all"
+    )
 
     conn = CommerceConnection(
         company_id=company.id,
@@ -690,6 +694,7 @@ def test_6_and_7_shopify_idempotency_and_ecommerce_reconciliation(accounting_env
 
     # Vérifier la séparation stricte des écritures et l'absence de double comptage du CA
     overview = client.get("/api/v1/accounting/overview", headers=_headers(owner)).json()
+    assert overview["source_context"]["selection"] == "all"
     assert overview["gross_revenue"] == 200.0  # jamais doublé par `order` (229.95) ni par `payment_collected` (229.95)
     assert overview["refunds_and_credit_notes_total"] == 50.0
     assert overview["total_revenue"] == 150.0
@@ -1099,6 +1104,9 @@ def test_12_audit_pr135_all_23_copilot_threads_and_universal_accounting(accounti
     company = tenant["company"]
     owner = tenant["owner"]
     clerk = tenant["billing_clerk"]
+    RetailSourceService(session).select_source(
+        TenantContext(company_id=company.id, user_id=owner.id), source_type="all"
+    )
 
     # Thread 2: Clerk with accounting:read cannot bypass payroll restriction via /transactions?category=payroll or /expenses/monthly
     session.add(
@@ -1316,6 +1324,8 @@ def test_12_audit_pr135_all_23_copilot_threads_and_universal_accounting(accounti
     ).json()
     assert s_retry["created_invoices"] == 0
 
+    overview = client.get("/api/v1/accounting/overview", headers=_headers(owner)).json()
+    assert overview["source_context"]["selection"] == "all"
     invs_all = client.get("/api/v1/accounting/invoices?source_module=retail", headers=_headers(owner)).json()
     s1_inv = next(i for i in invs_all if i["total_amount"] == 115.0)
     s2_inv = next(i for i in invs_all if i["total_amount"] == 230.0)
@@ -1326,9 +1336,6 @@ def test_12_audit_pr135_all_23_copilot_threads_and_universal_accounting(accounti
     assert s2_inv["is_confirmed"] is True
     assert s2_inv["paid_amount"] == 230.0
     assert s2_inv["issue_date"].startswith("2026-09-10")
-
-    from backend.app.services.retail_source_service import RetailSourceService
-    from shared.ai_engine.contracts import TenantContext
 
     source_service = RetailSourceService(session)
     accounting_user = TenantContext(company.id, user_id=owner.id)

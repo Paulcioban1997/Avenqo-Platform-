@@ -5,14 +5,6 @@ function stripApiSuffix(value: string): string {
   return value.replace(/\/$/, "").replace(/\/api\/v1$/i, "");
 }
 
-function isLocalhostOrigin(value: string): boolean {
-  return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(stripApiSuffix(value));
-}
-
-function isProductionApiOrigin(value: string): boolean {
-  return stripApiSuffix(value) === PRODUCTION_API_ORIGIN;
-}
-
 export function resolveAvenqoApiOrigin(
   env: Record<string, string | undefined> = process.env as Record<string, string | undefined>,
 ): string {
@@ -32,19 +24,18 @@ export function resolveAvenqoApiOrigin(
     ""
   ).toLowerCase();
 
-  // Vercel's deployment target is authoritative. Shared application variables
-  // may be inherited from Production and must never route Preview logins there.
-  if (vercelEnv === "preview") {
+  // Preview and named Sandbox deployments share the same API origin for
+  // Next.js rewrites, session refresh, authentication and OAuth relay.
+  if (
+    vercelEnv === "preview"
+    || appEnv === "sandbox"
+    || gitRef === "promotion/sandbox"
+    || gitRef === "integration/avenqo-sandbox-latest-20261113"
+  ) {
     return SANDBOX_API_ORIGIN;
   }
   if (vercelEnv === "production" || appEnv === "production") {
     return PRODUCTION_API_ORIGIN;
-  }
-  if (vercelEnv === "preview" || gitRef === "promotion/sandbox" || appEnv === "sandbox") {
-    if (explicit && !isLocalhostOrigin(explicit) && !isProductionApiOrigin(explicit)) {
-      return explicit;
-    }
-    return SANDBOX_API_ORIGIN;
   }
   return explicit || "http://127.0.0.1:8000";
 }

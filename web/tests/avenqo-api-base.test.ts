@@ -57,3 +57,17 @@ it("does not allow a stale branch URL to redirect Preview credentials", () => {
     AVENQO_API_BASE_URL: "https://old-branch.invalid"})).toBe(
       "https://avenqo-platform-sandbox.up.railway.app");
 });
+
+it.each([
+  { AVENQO_ENVIRONMENT: "sandbox", VERCEL_ENV: "production" },
+  { VERCEL_GIT_COMMIT_REF: "promotion/sandbox", ENVIRONMENT: "production" },
+  {
+    VERCEL_GIT_COMMIT_REF: "integration/avenqo-sandbox-latest-20261113",
+    VERCEL_ENV: "production",
+  },
+])("keeps designated Sandbox deployments on the canonical API (%j)", (target) => {
+  expect(resolveAvenqoApiBase({
+    ...target,
+    AVENQO_API_BASE_URL: "https://unrelated-branch.invalid/api/v1",
+  })).toBe("https://avenqo-platform-sandbox.up.railway.app/api/v1");
+});
