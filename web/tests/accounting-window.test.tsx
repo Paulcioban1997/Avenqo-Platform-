@@ -11,6 +11,7 @@ it("loads the remaining invoice window without exceeding either endpoint's limit
     const url = new URL(path, "https://avenqo.test");
     const limit = Number(url.searchParams.get("limit"));
     if (limit > 200) return new Response(null, { status: 422 });
+    if (url.searchParams.get("document_scope") === "true") return Response.json([]);
     if (url.pathname.endsWith("/invoices")) {
       return Response.json(Array.from({ length: limit }, (_, index) => ({
         id: String(index),
@@ -29,7 +30,8 @@ it("loads the remaining invoice window without exceeding either endpoint's limit
     fireEvent.click(await screen.findByRole("button", { name: "Load more invoices (+50)" }));
     await waitFor(() => expect(screen.getByText(/200 loaded invoice/)).toBeVisible());
     expect(screen.queryByRole("button", { name: /load more invoices/i })).not.toBeInTheDocument();
-    expect(requests.filter(path => /\/(invoices|transactions)\?/.test(path))).toEqual([
+    expect(requests).toContain("/api/v1/accounting/invoices?document_scope=true&limit=200");
+    expect(requests.filter(path => /\/(invoices|transactions)\?/.test(path) && !path.includes("document_scope=true"))).toEqual([
       "/api/v1/accounting/invoices?limit=150",
       "/api/v1/accounting/transactions?limit=150",
       "/api/v1/accounting/invoices?limit=200",

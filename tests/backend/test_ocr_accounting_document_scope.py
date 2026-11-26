@@ -12,7 +12,6 @@ from backend.app.routers import accounting
 from shared.ai_engine.contracts import TenantContext
 """Accounting must follow the same tenant-scoped active source as Data Hub / Retail."""
 
-from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
