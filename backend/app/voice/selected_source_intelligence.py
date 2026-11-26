@@ -298,7 +298,19 @@ def assert_tool_allowed_for_selected_sources(
     if not private:
         return
 
-    if resolution.state in {"NO_SELECTION", "UNAUTHORIZED"} or not resolution.selected_source_ids:
+    if resolution.state == "UNAUTHORIZED":
+        raise VoiceToolDenied(
+            "No currently selected and authorized data source is available for private Voice tools."
+        )
+    if resolution.state == "NO_SELECTION" or not resolution.selected_source_ids:
+        # Fail closed only when connected sources exist but none are currently selected.
+        # Tenants with zero connected sources keep legacy permission/module gating.
+        if resolution.excluded_source_ids:
+            raise VoiceToolDenied(
+                "No currently selected and authorized data source is available for private Voice tools."
+            )
+        return
+    if resolution.state == "SOURCE_UNAVAILABLE":
         raise VoiceToolDenied(
             "No currently selected and authorized data source is available for private Voice tools."
         )

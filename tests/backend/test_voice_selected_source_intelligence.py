@@ -229,6 +229,20 @@ def test_no_selection_blocks_private_data(db_session: Session):
         )
 
 
+def test_no_connected_sources_defers_to_module_permissions(db_session: Session):
+    company = _company(db_session, "empty-sources")
+    user = _user(db_session, company)
+    tenant = TenantContext(company.id, user_id=user.id)
+    resolution = resolve_authorized_selected_sources(db_session, tenant, require_data_read=True)
+    assert resolution.state == "NO_SELECTION"
+    assert resolution.excluded_source_ids == []
+    assert_tool_allowed_for_selected_sources(
+        tool_name="get_sales_summary",
+        resolution=resolution,
+        intent=classify_voice_data_intent("ventes", has_selected_dataset=False),
+    )
+
+
 def test_selection_change_and_cache_refresh(db_session: Session):
     company = _company(db_session, "change")
     user = _user(db_session, company)
@@ -380,6 +394,7 @@ def test_coaching_requires_selected_authorized_data(db_session: Session):
         db_session, TenantContext(company.id, user_id=user.id), require_data_read=True
     )
     assert resolution.state == "NO_SELECTION"
+    assert resolution.excluded_source_ids
     with pytest.raises(VoiceToolDenied):
         assert_tool_allowed_for_selected_sources(
             tool_name="get_coaching_advice",
