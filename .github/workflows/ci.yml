@@ -2,9 +2,9 @@ name: CI
 
 'on':
   push:
-    branches: [main, promotion/sandbox]
+    branches: [main, promotion/sandbox, integration/avenqo-sandbox-latest-20261113]
   pull_request:
-    branches: [main, promotion/sandbox]
+    branches: [main, promotion/sandbox, integration/avenqo-sandbox-latest-20261113]
   workflow_dispatch:
 
 concurrency:

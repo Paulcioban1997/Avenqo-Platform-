@@ -622,11 +622,12 @@ async def test_media_bridge_roundtrip_barge_in_dtmf_and_duplicate_frames():
     await until(lambda: any(event["event"] == "media" for event in socket.sent))
     assert calls == [("turn-test", "Summarize sales [REDACTED]")]
     await socket.incoming.put({"event": "dtmf", "stream_id": "stream-test", "dtmf": {"digit": "6"}})
-    await until(lambda: adapter.cleared_input == 1)
+    await until(lambda: any(event["event"] == "clear" for event in socket.sent))
     await adapter.incoming.put(delta)
     await socket.incoming.put({**frame, "media": {**frame["media"], "chunk": "2"}})
-    await until(lambda: bridge._last_chunk == 2)
-    assert len(adapter.audio) == 1 and bridge.input_paused
+    await until(lambda: len(adapter.audio) == 2)
+    # Outside a PIN challenge a keypad press interrupts playback and keeps listening.
+    assert not bridge.input_paused and adapter.cleared_input == 0
     assert socket.sent[-1] == {"event": "clear"}
     assert "654321" not in str(calls) + str(adapter.spoken) + str(socket.sent)
     await socket.incoming.put({"event": "stop", "stream_id": "stream-test"})
