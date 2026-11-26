@@ -1111,11 +1111,13 @@ it("does not present historical dashboard revenue as live sales", async () => {
     });
     return Response.json({});
   }));
-  render(<LocaleProvider><SessionProvider><DashboardView /></SessionProvider></LocaleProvider>);
+  await act(async () => {
+    render(<LocaleProvider><SessionProvider><DashboardView /></SessionProvider></LocaleProvider>);
+  });
   expect(await screen.findByText(/5[\s,\u202f]009/)).toBeVisible();
   expect(screen.queryByText("Live")).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: /2017-12/ }));
-  const readout = screen.getByRole("status");
+  fireEvent.click(await screen.findByRole("button", { name: /2017-12/ }));
+  const readout = await screen.findByRole("status");
   expect(readout).toHaveTextContent("2017-12");
   expect(readout).toHaveTextContent(/2[\s\u00a0\u202f]297[\s\u00a0\u202f]200,86/);
   expect(readout).toHaveTextContent(/5[\s\u00a0\u202f]009/);

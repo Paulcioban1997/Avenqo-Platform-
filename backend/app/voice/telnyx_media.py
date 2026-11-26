@@ -2123,8 +2123,8 @@ class TelnyxMediaBridge:
                             self._current_turn_task.cancel()
                         await self.interrupt(reason="caller_speech_barge_in")
                     elif self._executing_turn and not already_interrupted_on_partial:
-                        if self._current_turn_task is not None and not self._current_turn_task.done():
-                            self._current_turn_task.cancel()
+                        # Discard the old answer by epoch. A business action
+                        # already in progress still needs to finish and settle.
                         self.epoch += 1
                         self.orchestrator.epoch = self.epoch
                         logger.info(
@@ -2410,7 +2410,7 @@ class TelnyxMediaBridge:
                 raise
 
     async def _send_inbound_audio(self, pcm: bytes) -> None:
-        if self.input_paused:
+        if self.input_paused or self._pin_started:
             return
         try:
             await asyncio.wait_for(self.adapter.send_audio(pcm), timeout=self.inbound_audio_timeout)
@@ -2436,7 +2436,7 @@ class TelnyxMediaBridge:
                     logger.info("Caller cancelled PIN challenge via DTMF '*' in media stream")
                     await self._finish_pin("cancelled")
                     continue
-                await self.interrupt(pause_input=False)
+                await self.interrupt(pause_input=self._pin_turn is not None)
                 continue
             if kind == "mark":
                 marker = event.get("mark")
@@ -2476,7 +2476,7 @@ class TelnyxMediaBridge:
                 raise InvalidMediaFrame("Invalid media chunk")
             number = int(chunk)
             self._last_chunk = max(self._last_chunk, number)
-            if not self.input_paused:
+            if not self.input_paused and not self._pin_started:
                 self.telemetry["inbound_frames"] += 1
                 self.telemetry["inbound_audio_ms"] += 20
                 pcm_frames = self.reorder_buffer.push(number, self.codec.inbound_pcm(media.get("payload")))
@@ -2580,7 +2580,7 @@ class TelnyxMediaBridge:
                 await self.reset_pin_retry()
             loc = resolve_locale(self.locale).casefold()
             if loc.startswith("fr"):
-                reprompt = "Aucun chiffre n'a été reçu. Veuillez saisir votre code NIP sur le clavier de votre téléphone, ou appuyez sur étoile pour annuler et revenir à l'accueil."
+                reprompt = "L'authentification n'a pas été confirmée. Veuillez ressaisir votre code NIP sur le clavier, ou appuyer sur étoile pour revenir à l'accueil."
             elif loc.startswith("es"):
                 reprompt = "No se recibió ningún dígito. Ingrese su PIN en el teclado de su teléfono, o presione asterisco para cancelar y volver a la recepción."
             elif loc.startswith("ro"):

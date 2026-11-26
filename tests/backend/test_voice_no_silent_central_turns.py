@@ -61,7 +61,8 @@ async def test_slow_central_ai_has_audible_timeout_instead_of_silence():
     await bridge._execute("timeout-case", "question", 0)
     assert bridge.central_ai_timeouts == 1
     assert bridge.central_ai_replies_queued == 1
-    assert any("trop de temps" in t for t in adapter.spoken)
+    assert len(adapter.spoken) == 1
+    assert "attente" in adapter.spoken[0]
 
 
 @pytest.mark.asyncio

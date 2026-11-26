@@ -2,9 +2,9 @@ name: CI
 
 'on':
   push:
-    branches: [main, promotion/sandbox]
+    branches: [main, promotion/sandbox, integration/avenqo-sandbox-latest-20261113, 'fix/sandbox-architecture-*']
   pull_request:
-    branches: [main, promotion/sandbox]
+    branches: [main, promotion/sandbox, integration/avenqo-sandbox-latest-20261113]
   workflow_dispatch:
 
 concurrency:
@@ -61,7 +61,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres -d availability_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -184,6 +184,24 @@ jobs:
           AUTH_JWT_SECRET: "ci-secret-test-key-32-chars-long-minimum"
           DATABASE_URL: "sqlite:///:memory:"
 
+      - name: Run Enterprise Intelligence, Voice, OCR, Accounting, Exports & Security suite (PRs #133-#137)
+        timeout-minutes: 10
+        run: >-
+          python -m pytest
+          tests/backend/test_voice_p0_issue_132_architectures_and_reliability.py
+          tests/backend/test_voice_universal_architecture.py
+          tests/backend/test_ocr_excel_invoice_extraction_and_grounding.py
+          tests/backend/test_accounting_unified_classification_and_rbac.py
+          tests/backend/test_accounting_active_source.py
+          tests/backend/test_multi_format_dataset_exports.py
+          tests/backend/test_security_audit_and_crowdstrike_optional.py
+          -q
+        env:
+          PYTHONPATH: .
+          ENVIRONMENT: test
+          AUTH_JWT_SECRET: "ci-secret-test-key-32-chars-long-minimum"
+          DATABASE_URL: "sqlite:///:memory:"
+
       - name: Rehearse PostgreSQL production migration in a new isolated database
         run: python -m pytest tests/backend/test_release_postgres_migrations.py -q
         env:
@@ -228,7 +246,7 @@ jobs:
           POSTGRES_DB: rotation_test_ci
         ports: [5432:5432]
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres -d rotation_test_ci"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10

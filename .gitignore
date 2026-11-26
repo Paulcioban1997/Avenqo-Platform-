@@ -1,16 +1,4 @@
-.env
-.env.*
-!.env.example
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.venv/
-var/
-*.db
-
-node_modules/
-.next/
-
+# Flutter
 .dart_tool/
 build/
 **/ephemeral/
@@ -43,10 +31,12 @@ env/
 # Node / Next.js
 node_modules/
 .next/
+*.tsbuildinfo
 
 # Runtime company data
 data/companies/
 uploads/
+/var/
 
 # ML binary artifacts
 *.joblib
@@ -78,8 +68,7 @@ Thumbs.db
 
 # Local deployment & scratch
 .vercel/
-web/.vercel/
-scratch/
-artifacts/
+/scratch/
+/artifacts/
 .gemini/
 legal/archives/

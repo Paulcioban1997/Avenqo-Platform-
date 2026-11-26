@@ -547,7 +547,8 @@ def test_unknown_to_verified_staff_full_signed_dtmf_path(signed_telnyx_webhook, 
         socket.send_json({**frame, "media": {**frame["media"], "chunk": "2"}})
         result = env.send(env.event("call.gather.ended", digits=secret if correct else "102938", client_state=challenge))
         assert result.json()["authenticated"] is correct and secret not in result.text
-        env.client.portal.call(eventually, lambda: any(("réussie" if correct else "refusée") in text for text in adapter.spoken))
+        expected_prompt = "réussie" if correct else "Veuillez ressaisir votre code NIP"
+        env.client.portal.call(eventually, lambda: any(expected_prompt in text for text in adapter.spoken))
         assert central.calls == [] and len(adapter.audio) == 1
         if correct:
             env.client.portal.call(asyncio.sleep, 0.3)
@@ -621,6 +622,7 @@ async def test_media_bridge_roundtrip_barge_in_dtmf_and_duplicate_frames():
     await adapter.incoming.put(delta)
     await until(lambda: any(event["event"] == "media" for event in socket.sent))
     assert calls == [("turn-test", "Summarize sales [REDACTED]")]
+    bridge._pin_turn = "pin-test"
     await socket.incoming.put({"event": "dtmf", "stream_id": "stream-test", "dtmf": {"digit": "6"}})
     await until(lambda: adapter.cleared_input == 1)
     await adapter.incoming.put(delta)
@@ -716,12 +718,13 @@ async def test_barge_in_discards_stale_speech_without_cancelling_business_execut
     await adapter.incoming.put(SimpleNamespace(type="input_audio_buffer.speech_started"))
     await asyncio.sleep(0.05)
     assert bridge.epoch == 0
-    await adapter.incoming.put(SimpleNamespace(type="conversation.item.input_audio_transcription.completed", item_id="new-turn", transcript="New answer"))
+    replacement = "Wait, I have a new question"
+    await adapter.incoming.put(SimpleNamespace(type="conversation.item.input_audio_transcription.completed", item_id="new-turn", transcript=replacement))
     await until(lambda: bridge.epoch == 1)
     release.set()
     await until(lambda: bool(adapter.spoken))
     assert completed == ["slow-turn", "new-turn"]
-    assert adapter.spoken == ["New answer"]
+    assert adapter.spoken == [replacement]
     assert adapter.interruptions == 0
     assert not any(event.get("event") == "clear" for event in socket.sent)
     await socket.incoming.put({"event": "stop", "stream_id": "stream-test"})

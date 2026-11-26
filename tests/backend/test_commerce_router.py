@@ -54,36 +54,40 @@ def test_failed_shopify_verification_is_not_connected_with_stored_credentials(co
 
 
 EXPECTED_COMMERCE_PROVIDERS = {
+    # Canonical 22 connectors
     "shopify",
     "woocommerce",
     "bigcommerce",
+    "adobe_commerce",
+    "wix_ecommerce",
+    "squarespace_commerce",
+    "prestashop",
+    "amazon_sp_api",
+    "ebay",
+    "etsy",
+    "walmart_marketplace",
+    "tiktok_shop",
+    "square_pos",
+    "clover_pos",
+    "lightspeed_retail",
+    "google_calendar",
+    "outlook_calendar",
+    "google_ads",
+    "meta_ads",
+    "telnyx",
+    "stripe",
+    "shipstation",
+    # Backwards-compatible legacy aliases
     "adobe-commerce",
     "wix-ecommerce",
     "squarespace-commerce",
-    "prestashop",
-    "ecwid",
-    "shopware",
-    "salesforce-commerce-cloud",
-    "commercetools",
-    "vtex",
     "amazon-seller-central",
-    "ebay",
-    "etsy",
     "walmart-marketplace",
     "tiktok-shop",
-    "meta-commerce",
-    "mercado-libre",
-    "mirakl",
-    "shopee",
-    "lazada",
     "square",
-    "lightspeed-retail",
     "clover",
-    "shopify-pos",
+    "lightspeed-retail",
     "stripe-commerce",
-    "paypal",
-    "google-merchant-center",
-    "shipstation",
 }
 
 
@@ -288,18 +292,45 @@ def test_connector_catalog_contract_is_exact_and_truthful() -> None:
     definitions = {item.provider: item for item in COMMERCE_CONNECTOR_CATALOG}
 
     assert set(definitions) == EXPECTED_COMMERCE_PROVIDERS
-    assert len(definitions) == 30
+    assert len(definitions) == 32
     assert {
         provider
         for provider, definition in definitions.items()
         if definition.implementation_status == ConnectorImplementationStatus.AVAILABLE
-    } == {"shopify", "woocommerce"}
+    } == {
+        "adobe_commerce",
+        "google_calendar",
+        "outlook_calendar",
+        "prestashop",
+        "shipstation",
+        "shopify",
+        "squarespace_commerce",
+        "stripe",
+        "telnyx",
+        "woocommerce",
+    }
     assert {
         provider
         for provider, definition in definitions.items()
         if definition.implementation_status
         == ConnectorImplementationStatus.CONFIGURATION_REQUIRED
-    } == {"amazon-seller-central", "ebay", "tiktok-shop", "square"}
+    } == {
+        "amazon-seller-central",
+        "amazon_sp_api",
+        "bigcommerce",
+        "clover_pos",
+        "ebay",
+        "etsy",
+        "google_ads",
+        "lightspeed_retail",
+        "meta_ads",
+        "square",
+        "square_pos",
+        "tiktok-shop",
+        "tiktok_shop",
+        "walmart_marketplace",
+        "wix_ecommerce",
+    }
     assert definitions["etsy"].category.value == "marketplace"
     assert definitions["etsy"].customer_status.value == "COMING_SOON"
     assert all(item.documentation_url for item in definitions.values())
@@ -369,7 +400,7 @@ def test_connector_catalog_and_manual_sync_routes(monkeypatch) -> None:
 
     assert catalog.status_code == 200
     assert manual.status_code == 410
-    assert len(catalog.json()) == 30
+    assert len(catalog.json()) == 32
     assert all("implementation_status" not in item for item in catalog.json())
     customer_statuses = {
         item["provider"]: item["customer_status"] for item in catalog.json()

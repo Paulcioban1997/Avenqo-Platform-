@@ -31,7 +31,12 @@ def test_tenant_profile_overrides_stale_config_and_call_metadata(tmp_path):
             assert lock.process_utterance("Can we speak English please") == "ro-RO"
         upsert_profile(db, company.id, primary_locale="ro", secondary_locales=["en"])
         lock = company_call_language_session(db, config, call)
+        assert lock.active_locale == "ro-RO"
         assert lock.process_utterance("Can we speak English please") == "en-US"
+        call.source_context["call_language_session"] = lock.as_dict()
+        assert company_call_language_session(db, config, call).active_locale == "en-US"
+        call.source_context["call_language_session"]["call_session_id"] = str(uuid4())
+        assert company_call_language_session(db, config, call).active_locale == "ro-RO"
         call.company_id = uuid4()
         with pytest.raises(PermissionError):
             company_call_language_session(db, config, call)
