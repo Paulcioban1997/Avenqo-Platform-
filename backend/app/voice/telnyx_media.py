@@ -3135,6 +3135,38 @@ async def telnyx_media_socket(
         # Tool calls can arrive long after the browser changed the employee's source.
         current_call.source_context = refresh_voice_source_context(db, tenant_ctx, current_call.source_context)
         db.commit()
+        from backend.app.voice.selected_source_intelligence import (
+            assert_tool_allowed_for_selected_sources,
+            classify_voice_data_intent,
+            log_voice_source_access,
+            resolve_authorized_selected_sources,
+            staff_role_for_log,
+        )
+        observed_utterance = s2s_turn_transcripts.get(str(turn_id), "")
+        source_resolution = resolve_authorized_selected_sources(db, tenant_ctx, require_data_read=True)
+        turn_intent = classify_voice_data_intent(
+            observed_utterance,
+            has_selected_dataset=bool(source_resolution.dataset_ids),
+        )
+        try:
+            assert_tool_allowed_for_selected_sources(
+                tool_name=tool_name,
+                resolution=source_resolution,
+                intent=turn_intent,
+            )
+        except VoiceToolDenied as exc:
+            log_voice_source_access(
+                company_id=current_call.company_id,
+                user_id=uid_val,
+                role=staff_role_for_log(db, current_call.company_id, uid_val),
+                selected_source_ids=source_resolution.selected_source_ids,
+                queried_source_ids=source_resolution.selected_source_ids,
+                intent=turn_intent.intent,
+                tool=tool_name,
+                exclusions=source_resolution.excluded_source_ids,
+                state=source_resolution.state,
+            )
+            return {"success": False, "error": str(exc)}
         _allowed_names, authorized_owners = VoiceToolRegistryService(db, service._registry).allowed_tools(tenant_ctx, perms)
         tool_owner_agents = authorized_owners.get(tool_name) or ()
         selected_agent = sorted(tool_owner_agents)[0] if tool_owner_agents else "central_ai"
@@ -3144,7 +3176,6 @@ async def telnyx_media_socket(
             return {"success": False, "error": "tool_executor_unavailable"}
         from backend.app.ai.tools.contracts import ToolExecutionContext
         exec_uid = uid_val or current_call.authenticated_user_id or current_call.company_id
-        observed_utterance = s2s_turn_transcripts.get(str(turn_id), "")
         tool_ctx = ToolExecutionContext(
             tenant=TenantContext(company_id=current_call.company_id, user_id=exec_uid),
             user_id=exec_uid,
@@ -3585,7 +3616,10 @@ async def telnyx_media_socket(
             )
             db.commit()
             db.refresh(current_call)
-            if public_conversation is not None:
+            if (
+                public_conversation is not None
+                and not (current_call.source_context or {}).get("greeting_delivered")
+            ):
                 greeting_text = public_conversation.greeting()
                 ConversationService(db).add_message(
                     current_company.id,
@@ -3595,6 +3629,15 @@ async def telnyx_media_socket(
                     provider="openai",
                     model=settings.voice_realtime_model,
                 )
+                current_call.source_context = {
+                    **(current_call.source_context or {}),
+                    "greeting_delivered": True,
+                }
+                db.commit()
+
+        # After PIN/staff auth, freeze language unless an explicit switch is requested.
+        if (current_call.source_context or {}).get("ivr_stage") == "staff_authenticated":
+            call_lang_session.strict_lock = True
 
         # Verrouillage linguistique dynamique et anti-dérive par appel
         active_locale = call_lang_session.process_utterance(transcript)
@@ -3755,6 +3798,57 @@ async def telnyx_media_socket(
             ctx_obj.pop("pending_retail_clarification", None)
             current_call.source_context = ctx_obj
             db.commit()
+
+        # Selected Data Source Intelligence: dataset/file vs calendar routing + grounded file summary.
+        from backend.app.voice.selected_source_intelligence import (
+            classify_voice_data_intent,
+            describe_selected_dataset_grounding,
+            log_voice_source_access,
+            resolve_authorized_selected_sources,
+            staff_role_for_log,
+        )
+        selected_resolution = resolve_authorized_selected_sources(db, tenant, require_data_read=bool(principal_id))
+        data_intent = classify_voice_data_intent(
+            transcript,
+            has_selected_dataset=bool(selected_resolution.dataset_ids),
+        )
+        log_voice_source_access(
+            company_id=current_company.id,
+            user_id=getattr(current_user, "id", None),
+            role=staff_role_for_log(db, current_company.id, getattr(current_user, "id", None)),
+            selected_source_ids=selected_resolution.selected_source_ids,
+            queried_source_ids=selected_resolution.selected_source_ids,
+            intent=data_intent.intent,
+            tool=None,
+            exclusions=selected_resolution.excluded_source_ids,
+            state=selected_resolution.state,
+        )
+        current_call.source_context = {
+            **(current_call.source_context or {}),
+            "voice_data_intent": data_intent.intent,
+            "voice_data_intent_reason": data_intent.reason,
+            "selected_source_ids": selected_resolution.selected_source_ids,
+            "excluded_source_ids": selected_resolution.excluded_source_ids,
+        }
+        db.commit()
+        if data_intent.intent == "prompt_injection_all_sources":
+            deny = (
+                "Je ne peux consulter que les sources actuellement sélectionnées et autorisées. "
+                "Je ne lis jamais automatiquement toutes les données connectées."
+                if (call_locale or "").casefold().startswith("fr")
+                else "I can only use currently selected and authorized sources. I never automatically read all connected data."
+            )
+            return {"status": "success", "answer": _with_attention_ack(deny)}
+        if data_intent.intent == "dataset_file" and principal_id is not None:
+            file_ask = re.search(
+                r"\b(contenu|contient|contain|quoi|what|resume|summary|sommaire|colonnes|sheets|feuilles|fichier|excel|csv|dataset)\b",
+                transcript,
+                re.IGNORECASE,
+            )
+            if file_ask:
+                grounded = describe_selected_dataset_grounding(db, tenant, locale=call_locale or locale)
+                if grounded:
+                    return {"status": "success", "answer": _with_attention_ack(grounded)}
 
         if is_hangup_request(transcript):
             call_loc = resolve_locale(current_call.locale or locale)

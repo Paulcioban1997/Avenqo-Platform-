@@ -320,6 +320,9 @@ class CallLanguageSession:
     fallback_applied: bool = False
     fallback_reason: str | None = None
     unsupported_language_requested: str | None = None
+    # After PIN authentication, keep the locked locale unless the caller
+    # makes an explicit language-switch request (blocks unsolicited ES drift).
+    strict_lock: bool = False
 
     def __post_init__(self) -> None:
         self.primary_locale = to_bcp47(self.primary_locale)
@@ -425,6 +428,14 @@ class CallLanguageSession:
             )
             return self.active_locale
 
+        if self.strict_lock:
+            # Authenticated staff sessions stay on the locked locale without an
+            # explicit switch request (prevents FR→ES drift after PIN).
+            self.consecutive_evidence_count = 0
+            self.pending_candidate_locale = None
+            self.evidence = "strict_lock_hold"
+            return self.active_locale
+
         if detection.confidence and detection.confidence >= 0.90 and len(words) >= 4:
             if self.pending_candidate_locale == detected_bcp47:
                 self.consecutive_evidence_count += 1
@@ -464,4 +475,5 @@ class CallLanguageSession:
             "fallback_applied": self.fallback_applied,
             "fallback_reason": self.fallback_reason,
             "unsupported_language_requested": self.unsupported_language_requested,
+            "strict_lock": self.strict_lock,
         }

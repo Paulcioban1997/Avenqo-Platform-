@@ -74,28 +74,28 @@ def voice_action_key(config_id: UUID, call_id: UUID, tool_name: str, action_id: 
 
 
 def resolve_voice_source_context(db: Session, tenant: TenantContext) -> dict[str, Any]:
-    """Resolve selected sources from authenticated server identity, never call/browser fields."""
+    """Resolve Connected ∩ Selected ∩ Enabled ∩ READY sources for Voice.
+
+    Never auto-expands to every connected org source. Selection is discovered
+    dynamically from RetailSourceService persistence (Data Hub / Connections).
+    """
     if not hasattr(db, "scalars"):
         return {
             "state": "UNAVAILABLE",
             "selection": None,
             "sources": [],
+            "selected_source_ids": [],
+            "excluded_source_ids": [],
             "business_profile": None,
             "resolved_at": datetime.now(timezone.utc).isoformat(),
         }
-    context = RetailSourceService(db, fresh_reads=True).context(tenant)
-    if context["source_type"] == "all":
-        selected = [
-            source for source in context["sources"]
-            if source.enabled and source.status.upper() == "READY"
-        ]
-    else:
-        selected = [
-            source for source in context["sources"]
-            if source.source_type == context["source_type"]
-            and str(source.source_id) == str(context["source_id"])
-            and source.status.upper() == "READY"
-        ]
+
+    from backend.app.voice.selected_source_intelligence import (
+        log_voice_source_access,
+        resolve_authorized_selected_sources,
+    )
+
+    resolution = resolve_authorized_selected_sources(db, tenant)
     cfg = db.scalar(
         select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == tenant.company_id).execution_options(populate_existing=True)
     )
@@ -108,23 +108,27 @@ def resolve_voice_source_context(db: Session, tenant: TenantContext) -> dict[str
             "timezone": cfg.timezone_name,
         }
 
-    return {
-        "state": context["state"] if selected else "SOURCE_UNAVAILABLE" if context["source_type"] else context["state"],
-        "selection": context["source_type"],
-        "sources": [
-            {
-                "source_id": str(source.source_id),
-                "dataset_id": str(source.dataset_id) if source.dataset_id else None,
-                "source_type": source.source_type,
-                "provider": source.provider,
-                "name": source.display_name,
-                "last_updated_at": source.last_synchronized_at.isoformat() if source.last_synchronized_at else None,
-            }
-            for source in selected
-        ],
+    payload = {
+        "state": resolution.state,
+        "selection": resolution.selection_mode,
+        "sources": resolution.sources,
+        "selected_source_ids": resolution.selected_source_ids,
+        "excluded_source_ids": resolution.excluded_source_ids,
         "business_profile": business_info,
         "resolved_at": datetime.now(timezone.utc).isoformat(),
     }
+    log_voice_source_access(
+        company_id=tenant.company_id,
+        user_id=tenant.user_id,
+        role=None,
+        selected_source_ids=resolution.selected_source_ids,
+        queried_source_ids=resolution.selected_source_ids,
+        intent="source_resolve",
+        tool=None,
+        exclusions=resolution.excluded_source_ids,
+        state=resolution.state,
+    )
+    return payload
 
 
 def refresh_voice_source_context(
