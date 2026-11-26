@@ -71,7 +71,6 @@ def resolve_accounting_dataset_scope(
     if (
         selected is None
         or selected.dataset_id is None
-        or not selected.enabled
         or selected.status.upper() != "READY"
     ):
         return frozenset(), payload
