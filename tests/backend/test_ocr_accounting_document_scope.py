@@ -146,3 +146,29 @@ def test_ocr_inbox_is_tenant_scoped_and_separate_from_selected_dataset(db_sessio
     assert accounting.list_invoices(document_scope=False, **args) == []
     rows = accounting.list_invoices(document_scope=True, **args)
     assert [row["invoice_number"] for row in rows] == ["OCR-A"]
+
+def test_original_download_preserves_bytes_and_rejects_paths_outside_tenant(db_session, monkeypatch, tmp_path):
+    from backend.app.routers import documents
+    from fastapi import HTTPException
+    company = _company(db_session, "original-a")
+    actor = _user(db_session, company)
+    document = _document(db_session, company, actor)
+    original = b"%PDF-1.4 original logo bytes"
+    relative = f"tenant_documents/{company.id}/ocr/invoice.pdf"
+    target = tmp_path / relative
+    target.parent.mkdir(parents=True)
+    target.write_bytes(original)
+    document.storage_path = relative
+    document.filename = "invoice.pdf"
+    db_session.commit()
+    monkeypatch.setattr(documents, "_require_module", lambda *_: None)
+    monkeypatch.setattr(documents, "get_settings", lambda: SimpleNamespace(artifact_root=tmp_path))
+    kwargs = dict(document_id=document.id, identity=SimpleNamespace(user=actor), tenant=TenantContext(company_id=company.id),
+                  db=db_session, service=DocumentAIService(db_session), _=None)
+    response = documents.download_ocr_original(**kwargs)
+    assert Path(response.path).read_bytes() == original
+    document.storage_path = "../outside.pdf"
+    db_session.commit()
+    with pytest.raises(HTTPException) as error:
+        documents.download_ocr_original(**kwargs)
+    assert error.value.status_code == 404
