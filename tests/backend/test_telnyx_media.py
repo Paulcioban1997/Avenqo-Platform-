@@ -3,12 +3,14 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import json
 import re
 from types import SimpleNamespace
 from uuid import uuid4
 from datetime import datetime, timedelta, timezone
 import jwt
 import httpx
+import anyio
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
@@ -586,6 +588,24 @@ async def eventually(predicate):
         while not predicate():
             await asyncio.sleep(0.01)
     await asyncio.wait_for(wait(), timeout=3)
+
+
+def acknowledge_playback(socket, stream_id):
+    async def receive_playback():
+        heard_audio = False
+        with anyio.fail_after(5):
+            while True:
+                frame = await socket._send_rx.receive()
+                assert frame["type"] == "websocket.send"
+                event = json.loads(frame["text"])
+                if event.get("event") == "mark":
+                    assert heard_audio
+                    return event["mark"]
+                assert event.get("event") in {"clear", "media"}
+                heard_audio = heard_audio or event.get("event") == "media"
+
+    marker = socket.portal.call(receive_playback)
+    socket.send_json({"event": "mark", "stream_id": stream_id, "mark": marker})
 
 
 @pytest.mark.asyncio
@@ -1714,6 +1734,10 @@ async def test_multi_turn_conversation_and_interruption_barge_in():
         assert turn_answers[0] == ("turn-1", "Allô")
         await eventually(lambda: len(adapter.spoken) == 1)
         assert "Reponse a: Allô" in adapter.spoken[0]
+        # This unit test runs the turn executor without the provider event
+        # loop. Simulate consumption of the first response before turn two.
+        bridge._pending_speech.clear()
+        bridge.pending_epoch = None
 
         # TURN 2: Multi-turn continuation - user says "J'aimerais prendre un rendez-vous"
         await bridge._turns.put(("turn-2", "J'aimerais prendre un rendez-vous", bridge.epoch))
@@ -2100,6 +2124,7 @@ async def test_public_caller_natural_multi_turn_crm_appointment_preserves_conver
             socket.send_json(start_payload)
 
             # Send audio frames for 5 turns and receive responses
+            acknowledge_playback(socket, "stream-public-multi")
             for i in range(1, 6):
                 socket.send_json({
                     "event": "media",
@@ -2110,11 +2135,7 @@ async def test_public_caller_natural_multi_turn_crm_appointment_preserves_conver
                         "payload": base64.b64encode(b"\xff" * 160).decode(),
                     },
                 })
-                # Receive outbound audio response frame (handling any barge-in buffer clear)
-                resp = socket.receive_json()
-                if resp.get("event") == "clear":
-                    resp = socket.receive_json()
-                assert resp.get("event") == "media"
+                acknowledge_playback(socket, "stream-public-multi")
 
             socket.send_json({"event": "stop", "stream_id": "stream-public-multi"})
             from tests.backend.test_voice_inbound_e2e import _drain_socket
@@ -2375,6 +2396,7 @@ async def test_public_caller_natural_10_turn_canadian_french_conversation(author
             socket.send_json(start_payload)
 
             # Send audio frames for 10 turns and receive responses
+            acknowledge_playback(socket, "stream-public-10turn")
             for i in range(1, 11):
                 socket.send_json({
                     "event": "media",
@@ -2385,8 +2407,7 @@ async def test_public_caller_natural_10_turn_canadian_french_conversation(author
                         "payload": base64.b64encode(b"\xff" * 160).decode(),
                     },
                 })
-                resp = socket.receive_json()
-                assert resp.get("event") == "media"
+                acknowledge_playback(socket, "stream-public-10turn")
 
             socket.send_json({"event": "stop", "stream_id": "stream-public-10turn"})
             with pytest.raises(WebSocketDisconnect):

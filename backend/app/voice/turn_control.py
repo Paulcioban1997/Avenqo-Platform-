@@ -337,6 +337,11 @@ def is_backchannel(text: str) -> bool:
     return False
 
 
+_GREETING_WORDS = frozenset({
+    "allo", "bonjour", "bonsoir", "buna", "hello", "hi", "hola", "salut",
+})
+
+
 def is_substantive_utterance(transcript: str) -> bool:
     """True when utterance has enough content to represent a genuine new caller question."""
     if is_correction_or_objection(transcript) or is_attention_check(transcript):
@@ -344,8 +349,9 @@ def is_substantive_utterance(transcript: str) -> bool:
     words = _words(transcript)
     if len(words) >= 3:
         return True
-    # If 1-2 words, check for clear query intent keywords
-    return any(w in _QUERY_KEYWORDS for w in words)
+    if words and all(word in _GREETING_WORDS for word in words):
+        return True
+    return any(word in _QUERY_KEYWORDS for word in words)
 
 
 def is_explicit_interruption(text: str) -> bool:
