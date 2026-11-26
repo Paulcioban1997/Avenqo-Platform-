@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import {
   ReceiptText,
@@ -218,6 +218,10 @@ export function AccountingView() {
     userPerms.includes("accounting:write");
 
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [loadedSourceKey, setLoadedSourceKey] = useState<string | null>(null);
+  const loadSequence = useRef(0);
+  const sourceKey = `${session?.identity?.company?.id ?? ""}:${session?.identity?.user?.id ?? ""}:${session?.sourceRevision ?? 0}`;
   const [refreshing, setRefreshing] = useState(false);
   const [invoiceLimit, setInvoiceLimit] = useState(150);
   const [overview, setOverview] = useState<FinancialOverview | null>(null);
@@ -240,68 +244,61 @@ export function AccountingView() {
   const [highlightedTxId, setHighlightedTxId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
+    const sequence = ++loadSequence.current;
     setLoading(true);
+    setLoadError(false);
+    setSelectedInvoice(null);
+    setHighlightedTxId(null);
     try {
       const headers = getAuthHeaders();
-      const [ovRes, mgRes, invRes, txRes, anomRes, fcRes] = await Promise.all([
-        fetch("/api/v1/accounting/overview", { headers }).catch(() => null),
-        fetch("/api/v1/accounting/margins", { headers }).catch(() => null),
-        fetch(`/api/v1/accounting/invoices?limit=${invoiceLimit}`, { headers }).catch(() => null),
-        fetch(`/api/v1/accounting/transactions?limit=${invoiceLimit}`, { headers }).catch(() => null),
-        fetch("/api/v1/accounting/anomalies", { headers }).catch(() => null),
-        fetch("/api/v1/accounting/forecast/cashflow?horizon_days=30", { headers }).catch(() => null),
+      const responses = await Promise.all([
+        fetch("/api/v1/accounting/overview", { headers }),
+        fetch("/api/v1/accounting/margins", { headers }),
+        fetch(`/api/v1/accounting/invoices?limit=${invoiceLimit}`, { headers }),
+        fetch(`/api/v1/accounting/transactions?limit=${invoiceLimit}`, { headers }),
+        fetch("/api/v1/accounting/anomalies", { headers }),
+        fetch("/api/v1/accounting/forecast/cashflow?horizon_days=30", { headers }),
       ]);
-
-      if (ovRes && ovRes.ok) {
-        setOverview(await ovRes.json());
-      }
-      if (mgRes && mgRes.ok) {
-        setMargins(await mgRes.json());
-      }
-      if (invRes && invRes.ok) {
-        const invData = await invRes.json();
-        const rawList: EnrichedInvoiceItem[] = Array.isArray(invData)
-          ? invData
-          : Array.isArray(invData?.invoices)
-            ? invData.invoices
-            : [];
-        setInvoices(
-          rawList.map((inv) => ({
-            ...inv,
-            remaining_amount:
-              inv.remaining_amount ?? Math.max(0, Number(inv.total_amount || 0) - Number(inv.paid_amount || 0)),
-          }))
-        );
-      }
-      if (txRes && txRes.ok) {
-        const txData = await txRes.json();
-        if (Array.isArray(txData)) {
-          setTransactions(
-            txData.map((row: TransactionItem & { date?: string }) => ({
-              ...row,
-              transaction_date: row.transaction_date || row.date || "",
-              extra_data: row.extra_data && typeof row.extra_data === "object" ? row.extra_data : {},
-            }))
-          );
-        }
-      }
-      if (anomRes && anomRes.ok) {
-        const anomData = await anomRes.json();
-        setAnomalies(Array.isArray(anomData?.anomalies) ? anomData.anomalies : []);
-      }
-      if (fcRes && fcRes.ok) {
-        setForecast(await fcRes.json());
-      }
+      if (responses.some(response => !response.ok)) throw new Error("Accounting request failed");
+      const [ovData, mgData, invData, txData, anomData, fcData] =
+        await Promise.all(responses.map(response => response.json()));
+      if (sequence !== loadSequence.current) return;
+      const rawList: EnrichedInvoiceItem[] = Array.isArray(invData)
+        ? invData
+        : Array.isArray(invData?.invoices) ? invData.invoices : [];
+      setOverview(ovData);
+      setMargins(mgData);
+      setInvoices(rawList.map(inv => ({
+        ...inv,
+        remaining_amount: inv.remaining_amount ?? Math.max(0, Number(inv.total_amount || 0) - Number(inv.paid_amount || 0)),
+      })));
+      setTransactions(Array.isArray(txData) ? txData.map((row: TransactionItem & { date?: string }) => ({
+        ...row,
+        transaction_date: row.transaction_date || row.date || "",
+        extra_data: row.extra_data && typeof row.extra_data === "object" ? row.extra_data : {},
+      })) : []);
+      setAnomalies(Array.isArray(anomData?.anomalies) ? anomData.anomalies : []);
+      setForecast(fcData);
+      setLoadedSourceKey(sourceKey);
     } catch {
-      // Preserve existing safe state
+      if (sequence !== loadSequence.current) return;
+      setOverview(null);
+      setMargins(null);
+      setInvoices([]);
+      setTransactions([]);
+      setAnomalies([]);
+      setForecast(null);
+      setLoadError(true);
+      setLoadedSourceKey(sourceKey);
     } finally {
-      setLoading(false);
+      if (sequence === loadSequence.current) setLoading(false);
     }
-  }, [invoiceLimit]);
+  }, [invoiceLimit, sourceKey]);
 
   useEffect(() => {
     void loadData();
-  }, [loadData, session?.sourceRevision, session?.identity?.company?.id]);
+    return () => { loadSequence.current += 1; };
+  }, [loadData]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -619,6 +616,21 @@ export function AccountingView() {
       </HorizontalScroller>
     );
   };
+
+  if (loading || loadedSourceKey !== sourceKey || loadError) {
+    return (
+      <div className="p-6 space-y-3" role={loadError && !loading ? "alert" : "status"}>
+        <p>{loadError && !loading
+          ? (isFr ? "Impossible de charger les données comptables de la source active." : "Unable to load accounting data for the active source.")
+          : (isFr ? "Chargement de la comptabilité…" : "Loading accounting…")}</p>
+        {loadError && !loading && (
+          <button type="button" onClick={() => void loadData()} className="underline">
+            {isFr ? "Réessayer" : "Retry"}
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
