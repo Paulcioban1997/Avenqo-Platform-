@@ -37,7 +37,7 @@ export function GlobalSourceSelector({ wide = false }: { wide?: boolean }) {
   }, []);
   const context = session.sourceContext;
   const selected = context?.sources.find(source => source.source_type === context.source_type && source.source_id === context.source_id);
-  const ready = context?.sources.filter(source => source.status.toUpperCase() === "READY" && !!source.dataset_id) || [];
+  const ready = (context?.sources ?? session.sourceChoices ?? []).filter(source => source.status.toUpperCase() === "READY" && !!source.dataset_id);
   const state = session.loading || !context && !session.sourceError ? "LOADING" : session.sourceError ? "SOURCE_ERROR" : context?.state || "NO_SOURCES";
   const label = state === "LOADING" ? catalog.connectionsLoading : context?.source_type === "all" ? all : selected?.display_name ? `${selected.provider ? `${selected.provider} — ` : ""}${selected.display_name}` : (state === "NO_SOURCES" ? t.common.insufficientData : labels.unavailable);
   const SourceIcon = context?.source_type === "all" ? Globe : selected?.source_type === "connector" ? Store : selected?.source_type === "dataset" ? File : Database;
@@ -58,6 +58,11 @@ export function GlobalSourceSelector({ wide = false }: { wide?: boolean }) {
       <div className="px-2 py-2 text-xs font-semibold">{title}</div>
       {state !== "READY" && <p role="status" className="px-2 py-2 text-xs text-amber-700 dark:text-amber-400">{state === "LOADING" ? catalog.connectionsLoading : state === "NO_SOURCES" ? t.common.insufficientData : status}</p>}
       {failed && <p role="alert" className="px-2 py-2 text-xs text-red-600">{labels.unavailable}</p>}
+      {(session.sourceError || session.sourceSelectionState === "unconfirmed") && (
+        <button type="button" role="menuitem" disabled={busy || session.loading} onClick={() => void session.reload()} className="px-2 py-2 text-xs font-semibold underline">
+          {t.common.retry}
+        </button>
+      )}
       {[["dataset", labels.fileImportTitle], ["connector", labels.commerceSources]].map(([type, group]) => <div key={type}><div className="px-2 pt-3 text-xs text-gray-500">{group}</div>{ready.filter(source => source.source_type === type).map(source => <button type="button" role="menuitemradio" aria-checked={context?.source_id === source.source_id && context?.source_type === source.source_type} disabled={busy} key={source.source_id} onClick={() => void choose(source.source_type, source.source_id)} className="flex w-full items-center gap-2 rounded px-2 py-3 text-start text-sm hover:bg-gray-100 dark:hover:bg-white/10">
         {type === "dataset" ? <File size={16} className="shrink-0" /> : <Store size={16} className="shrink-0" />}<span className="min-w-0 flex-1 break-words">{source.provider && <span className="capitalize">{source.provider} — </span>}{source.display_name}</span>{context?.source_id === source.source_id && <Check size={16} className="shrink-0" />}
       </button>)}</div>)}

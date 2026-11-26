@@ -1,7 +1,9 @@
 # Google Ads
 
-- Readiness: `CONFIGURATION_REQUIRED`; customer status `COMING_SOON` (marketing).
+- Readiness: Configuration and a separately verified marketing integration are required.
+- Environment: use tenant-scoped Sandbox configuration and server-side credentials; never expose credentials to the browser.
+- Acceptance: verify authorization, tenant isolation, provider connectivity and actual module behavior before claiming operational readiness.
+
 - Auth method: `oauth2`.
-- Capabilities: `analytics, incremental_sync`.
 - Environment: `GOOGLE_ADS_DEVELOPER_TOKEN, GOOGLE_ADS_CLIENT_ID, GOOGLE_ADS_CLIENT_SECRET`.
-- Acceptance: configure tenant-scoped credentials, verify connection health check, execute incremental sync, and confirm strict `company_id` isolation across analytics and Central AI.
+

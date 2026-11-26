@@ -1,7 +1,9 @@
 # Google Calendar
 
-- Readiness: `AVAILABLE`; customer status `AVAILABLE` (crm).
+- Readiness: Dedicated CRM calendar integration; the commerce registry does not register a calendar adapter.
+- Environment: use tenant-scoped Sandbox configuration and server-side credentials; never expose credentials to the browser.
+- Acceptance: verify authorization, tenant isolation, provider connectivity and actual module behavior before claiming operational readiness.
+
 - Auth method: `oauth2`.
-- Capabilities: `customers, incremental_sync`.
 - Environment: `GOOGLE_CALENDAR_CLIENT_ID, GOOGLE_CALENDAR_CLIENT_SECRET, GOOGLE_CALENDAR_REDIRECT_URI`.
-- Acceptance: configure tenant-scoped credentials, verify connection health check, execute incremental sync, and confirm strict `company_id` isolation across analytics and Central AI.
+

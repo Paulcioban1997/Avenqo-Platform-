@@ -44,6 +44,7 @@ def _ready(client, factory, notifier, email, name, modules=(), plan=None):
 
 def test_registry_does_not_advertise_unbuilt_modules():
     assert BUSINESS_MODULES_BY_KEY["appointments"].availability == ModuleAvailability.COMING_SOON
+    # HR has a tenant-scoped API and a dedicated RBAC test suite.
     assert BUSINESS_MODULES_BY_KEY["hr"].availability == ModuleAvailability.AVAILABLE
     assert BUSINESS_MODULES_BY_KEY["ocr"].is_available
     assert BUSINESS_MODULES_BY_KEY["workflow"].is_available
@@ -359,3 +360,4 @@ def test_onboarding_draft_and_progress(auth_environment):
     assert draft.json()["current_step"] == "modules"
     assert draft.json()["progress_percent"] >= 20
     assert any(item["key"] == "sector" and item["done"] for item in draft.json()["checklist"])
+

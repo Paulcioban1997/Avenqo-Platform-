@@ -71,12 +71,25 @@ async def test_voice_yes_confirms_only_the_proposed_booking_details(tmp_path, ch
         first = await executor.execute("create_appointment", replace(context, user_message="Please review these details."), arguments)
         assert first.data["confirmation_required"] is True
         proposed = {**arguments, "start_time": "2030-01-07T15:00:00-05:00"} if changed_details else arguments
-        result = await executor.execute("create_appointment", replace(context, request_id=str(uuid4()), user_message="yes", locale="en-CA"), proposed)
+        if not voice_path:
+            generic_yes = await executor.execute(
+                "create_appointment",
+                replace(context, request_id=str(uuid4()), user_message="yes", locale="en-CA"),
+                arguments,
+            )
+            assert generic_yes.data["confirmation_required"] is True
+            run.assert_not_called()
+
+        result = await executor.execute(
+            "create_appointment",
+            replace(context, request_id=str(uuid4()), user_message="yes confirm", locale="en-CA"),
+            proposed,
+        )
         if changed_details:
             assert result.data.get("confirmation_required") is True
             run.assert_not_called()
             # After a new proposal, a generic yes must not approve an older slot.
-            stale = await executor.execute("create_appointment", replace(context, request_id=str(uuid4()), user_message="yes", locale="en-CA"), arguments)
+            stale = await executor.execute("create_appointment", replace(context, request_id=str(uuid4()), user_message="yes confirm", locale="en-CA"), arguments)
             assert stale.data.get("confirmation_required") is True
             run.assert_not_called()
         else:

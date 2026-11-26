@@ -603,6 +603,8 @@ def export_cleaned_dataset(
     offset: int = Query(default=0, ge=0),
     limit: int | None = Query(default=None, ge=1, le=50000),
     search: str | None = Query(default=None),
+    preview_row: list[int] | None = Query(default=None, max_length=500),
+    preview_snapshot: str | None = Query(default=None, pattern=r"^[0-9a-f]{64}$"),
     columns: str | None = Query(default=None, description="Comma-separated column names"),
     envelope: bool = Query(default=True),
     stream: bool = Query(default=False),
@@ -621,6 +623,8 @@ def export_cleaned_dataset(
             offset=offset,
             limit=limit,
             search=search,
+            preview_row_indices=preview_row,
+            preview_snapshot=preview_snapshot,
             columns=col_list,
             envelope=envelope,
             stream=stream,
@@ -662,8 +666,10 @@ def get_dataset_rows(
 ) -> dict:
     dataset = service.get(tenant, dataset_id)
     raw_rows = []
+    preview_snapshot = None
     try:
         raw_rows = list(service.get_cleaned_rows(tenant, dataset_id))
+        preview_snapshot = DatasetExportService.preview_snapshot(raw_rows)
     except Exception:
         try:
             raw_rows = list(service._reload_current_version_rows(dataset))
@@ -677,6 +683,7 @@ def get_dataset_rows(
         "total": total,
         "limit": limit,
         "offset": offset,
+        "preview_snapshot": preview_snapshot,
     }
 
 

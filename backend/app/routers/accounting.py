@@ -365,7 +365,7 @@ def list_transactions(
     dataset_ids, _source_context = resolve_accounting_dataset_scope(db, tenant)
     stmt = select(AccountingTransaction).where(
         AccountingTransaction.company_id == tenant.company_id,
-        apply_dataset_scope(AccountingTransaction.dataset_id, dataset_ids),
+        apply_dataset_scope(AccountingTransaction, dataset_ids),
     )
     if transaction_type:
         stmt = stmt.where(AccountingTransaction.transaction_type == transaction_type)
@@ -466,7 +466,7 @@ def list_invoices(
     dataset_ids, _source_context = resolve_accounting_dataset_scope(db, tenant)
     stmt = select(AccountingInvoice).where(
         AccountingInvoice.company_id == tenant.company_id,
-        apply_dataset_scope(AccountingInvoice.dataset_id, dataset_ids),
+        apply_dataset_scope(AccountingInvoice, dataset_ids),
     )
     if invoice_type:
         stmt = stmt.where(AccountingInvoice.invoice_type == invoice_type)

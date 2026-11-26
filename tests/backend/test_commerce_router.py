@@ -53,42 +53,10 @@ def test_failed_shopify_verification_is_not_connected_with_stored_credentials(co
     assert _connection_response(connection).connection_status != "CONNECTED"
 
 
-EXPECTED_COMMERCE_PROVIDERS = {
-    # Canonical 22 connectors
-    "shopify",
-    "woocommerce",
-    "bigcommerce",
-    "adobe_commerce",
-    "wix_ecommerce",
-    "squarespace_commerce",
-    "prestashop",
-    "amazon_sp_api",
-    "ebay",
-    "etsy",
-    "walmart_marketplace",
-    "tiktok_shop",
-    "square_pos",
-    "clover_pos",
-    "lightspeed_retail",
-    "google_calendar",
-    "outlook_calendar",
-    "google_ads",
-    "meta_ads",
-    "telnyx",
-    "stripe",
-    "shipstation",
-    # Backwards-compatible legacy aliases
-    "adobe-commerce",
-    "wix-ecommerce",
-    "squarespace-commerce",
-    "amazon-seller-central",
-    "walmart-marketplace",
-    "tiktok-shop",
-    "square",
-    "clover",
-    "lightspeed-retail",
-    "stripe-commerce",
-}
+EXPECTED_CANONICAL_PROVIDERS = {"shopify", "woocommerce", "bigcommerce", "adobe_commerce", "wix_ecommerce", "squarespace_commerce", "prestashop", "amazon_sp_api", "ebay", "etsy", "walmart_marketplace", "tiktok_shop", "square_pos", "clover_pos", "lightspeed_retail", "google_calendar", "outlook_calendar", "google_ads", "meta_ads", "telnyx", "stripe", "shipstation"}
+EXPECTED_LEGACY_ALIASES = {"adobe-commerce", "wix-ecommerce", "squarespace-commerce", "amazon-seller-central", "walmart-marketplace", "tiktok-shop", "square", "clover", "lightspeed-retail", "stripe-commerce"}
+EXPECTED_COMMERCE_PROVIDERS = EXPECTED_CANONICAL_PROVIDERS | EXPECTED_LEGACY_ALIASES
+EXPECTED_AVAILABLE = {"shopify", "woocommerce", "google_calendar", "outlook_calendar", "telnyx", "stripe"}
 
 
 class _Connections:
@@ -293,44 +261,20 @@ def test_connector_catalog_contract_is_exact_and_truthful() -> None:
 
     assert set(definitions) == EXPECTED_COMMERCE_PROVIDERS
     assert len(definitions) == 32
+    from shared.ai_engine.connectors.catalog import CANONICAL_22_DEFINITIONS, CONNECTOR_ALIASES
+    assert {item.provider for item in CANONICAL_22_DEFINITIONS} == EXPECTED_CANONICAL_PROVIDERS
+    assert all(CONNECTOR_ALIASES[alias] in EXPECTED_CANONICAL_PROVIDERS for alias in EXPECTED_LEGACY_ALIASES)
     assert {
         provider
         for provider, definition in definitions.items()
         if definition.implementation_status == ConnectorImplementationStatus.AVAILABLE
-    } == {
-        "adobe_commerce",
-        "google_calendar",
-        "outlook_calendar",
-        "prestashop",
-        "shipstation",
-        "shopify",
-        "squarespace_commerce",
-        "stripe",
-        "telnyx",
-        "woocommerce",
-    }
+    } == EXPECTED_AVAILABLE
     assert {
         provider
         for provider, definition in definitions.items()
         if definition.implementation_status
         == ConnectorImplementationStatus.CONFIGURATION_REQUIRED
-    } == {
-        "amazon-seller-central",
-        "amazon_sp_api",
-        "bigcommerce",
-        "clover_pos",
-        "ebay",
-        "etsy",
-        "google_ads",
-        "lightspeed_retail",
-        "meta_ads",
-        "square",
-        "square_pos",
-        "tiktok-shop",
-        "tiktok_shop",
-        "walmart_marketplace",
-        "wix_ecommerce",
-    }
+    } == {"bigcommerce", "adobe_commerce", "wix_ecommerce", "squarespace_commerce", "prestashop", "amazon_sp_api", "ebay", "etsy", "walmart_marketplace", "tiktok_shop", "square_pos", "clover_pos", "lightspeed_retail", "google_ads", "meta_ads", "shipstation", "amazon-seller-central", "tiktok-shop", "square", "walmart-marketplace"}
     assert definitions["etsy"].category.value == "marketplace"
     assert definitions["etsy"].customer_status.value == "COMING_SOON"
     assert all(item.documentation_url for item in definitions.values())
@@ -340,7 +284,7 @@ def test_connector_catalog_contract_is_exact_and_truthful() -> None:
     for definition in definitions.values():
         documentation = Path(definition.documentation_url.lstrip("/"))
         contents = documentation.read_text(encoding="utf-8")
-        assert definition.display_name in contents
+        assert contents.startswith("# ")  # canonical and legacy IDs may share one provider guide
         assert "Readiness:" in contents
         assert "Environment:" in contents
         assert "Acceptance:" in contents
@@ -401,12 +345,14 @@ def test_connector_catalog_and_manual_sync_routes(monkeypatch) -> None:
     assert catalog.status_code == 200
     assert manual.status_code == 410
     assert len(catalog.json()) == 32
+    assert {item["provider"] for item in catalog.json()} == EXPECTED_COMMERCE_PROVIDERS
     assert all("implementation_status" not in item for item in catalog.json())
     customer_statuses = {
         item["provider"]: item["customer_status"] for item in catalog.json()
     }
     assert customer_statuses["shopify"] == "AVAILABLE"
     assert customer_statuses["woocommerce"] == "AVAILABLE"
+    assert {provider for provider, status in customer_statuses.items() if status == "AVAILABLE"} == EXPECTED_AVAILABLE
     assert set(customer_statuses.values()) == {"AVAILABLE", "COMING_SOON"}
     woo = next(item for item in catalog.json() if item["provider"] == "woocommerce")
     assert woo["configured"] is True

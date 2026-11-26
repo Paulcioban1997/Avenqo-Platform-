@@ -1,7 +1,9 @@
 # Telnyx Voice AI
 
-- Readiness: `AVAILABLE`; customer status `AVAILABLE` (voice).
+- Readiness: Dedicated Voice module integration, not a commerce adapter. Telephony readiness is checked separately.
+- Environment: use tenant-scoped Sandbox configuration and server-side credentials; never expose credentials to the browser.
+- Acceptance: verify authorization, tenant isolation, provider connectivity and actual module behavior before claiming operational readiness.
+
 - Auth method: `custom`.
-- Capabilities: `customers, incremental_sync`.
 - Environment: `TELNYX_API_KEY, TELNYX_PUBLIC_KEY, TELNYX_CONNECTION_ID`.
-- Acceptance: configure tenant-scoped credentials, verify connection health check, execute incremental sync, and confirm strict `company_id` isolation across analytics and Central AI.
+

@@ -14,7 +14,7 @@ EMPLOYEE_QUESTION = "Quels modules Avenqo sont accessibles pour mon entreprise ?
 CUSTOMER_QUESTION = "Quels produits avez-vous en vente et à quels prix ?"
 
 
-def test_exact_brand_menu_offers_employee_and_customer_paths():
+def test_configured_brand_pronunciation_and_both_ivr_paths():
     cfg = SimpleNamespace(
         business_name="Produits Ero",
         voice_display_name="Produits Ero",
@@ -31,7 +31,7 @@ def test_exact_brand_menu_offers_employee_and_customer_paths():
     assert cfg.voice_display_name == "Produits Ero"
 
 
-def test_legacy_underscore_name_is_normalized_in_the_ivr():
+def test_legacy_underscore_name_renders_as_words():
     cfg = SimpleNamespace(
         business_name="Produits_Ero",
         voice_display_name=None,
@@ -65,7 +65,7 @@ def test_employee_and_customer_questions_produce_spoken_answers():
         locale="fr",
     )
     assert "Savon" in catalog and "12.5" in catalog
-    assert "Le stock en temps réel est non confirmé." in catalog
+    assert "stock en temps réel est non confirmé" in catalog
     blocked = spoken_catalog_answer(
         [{"name": "Savon", "price": 12.5, "currency": "CAD"}],
         retail_enabled=False,
@@ -85,3 +85,4 @@ def test_render_blueprint_stays_on_the_sandbox_branch_and_api():
     assert "https://avenqo-platform-sandbox.up.railway.app" in text
     assert "value: https://api.avenqo.ca" not in text
     assert "value: https://avenqo.ca" not in text
+

@@ -2,27 +2,39 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import and_, false, or_, true
 from sqlalchemy.orm import Session
 
 from backend.app.services.retail_source_service import RetailSourceService
 from shared.ai_engine.contracts import TenantContext
 
 
+@dataclass(frozen=True)
+class AccountingConnectorScope:
+    dataset_ids: frozenset[UUID]
+    connection_ids: tuple[str, ...]
+
+
+AccountingSourceFilter = frozenset[UUID] | AccountingConnectorScope | None
+
+
 def resolve_accounting_dataset_scope(
     session: Session,
     tenant: TenantContext,
-) -> tuple[frozenset[UUID] | None, dict[str, Any]]:
+) -> tuple[AccountingSourceFilter, dict[str, Any]]:
     """Retourne (filtre dataset_id, source_context serialisable).
 
     - ``None`` : aucune restriction de source (pas encore d'état / legacy company-wide).
     - ``frozenset()`` : source sélectionnée sans dataset lisible → aucun résultat.
-    - ``frozenset({...})`` : limiter les écritures/factures à ces dataset_id du tenant.
+    - ``frozenset({...})`` : limiter les écritures/factures aux datasets du tenant.
+    - ``AccountingConnectorScope`` : inclure les écritures issues des connecteurs sélectionnés.
     """
     service = RetailSourceService(session)
-    context = service.context(tenant)
+    context = service.context(tenant, preserve_selection=True)
     sources = context.get("sources") or ()
     payload: dict[str, Any] = {
         "state": context.get("state"),
@@ -51,39 +63,49 @@ def resolve_accounting_dataset_scope(
             payload["dataset_id"] = str(selected.dataset_id) if selected.dataset_id else None
 
     state = context.get("state")
-    # Pas de source active / pas encore de fichiers : conserver le grand livre
-    # company-wide (toujours borné par company_id JWT). Le filtre source ne
-    # s'applique que lorsqu'une sélection Data Hub / GlobalSourceSelector existe.
-    if state in {None, "NO_SOURCES", "LOADING"} or source_type is None:
-        return None, payload
+    # Preserve legacy company-wide ledger only when no explicit selection exists.
+    # An unavailable or empty explicit selection must never widen the query.
+    if source_type is None:
+        return (None if state in {None, "NO_SOURCES"} else frozenset()), payload
 
-    if source_type == "all":
-        enabled = service.enabled_dataset_ids(tenant)
-        if enabled is None:
-            # Aucun RetailSourceState : comportement company-wide historique.
-            return None, payload
-        ready_names = [
-            item.display_name
-            for item in sources
-            if item.enabled and item.status.upper() == "READY" and item.dataset_id is not None
-        ]
-        payload["name"] = ", ".join(ready_names) if ready_names else None
-        return frozenset(enabled), payload
-
-    if selected is None or selected.dataset_id is None:
+    if state != "READY":
         return frozenset(), payload
 
-    # Isolation stricte : la source active appartient déjà au company_id du JWT
-    # via RetailSourceService ; on ne renvoie que ce dataset.
-    return frozenset({selected.dataset_id}), payload
+    if source_type == "all":
+        ready = [
+            item for item in sources
+            if item.enabled and item.status.upper() == "READY"
+            and (item.dataset_id is not None or item.source_type == "connector")
+        ]
+        if not ready:
+            payload["state"] = "NO_SOURCES"
+    elif selected is not None and selected.status.upper() == "READY" and (
+        selected.dataset_id is not None or selected.source_type == "connector"
+    ):
+        ready = [selected]
+    else:
+        payload["state"] = "SOURCE_UNAVAILABLE"
+        ready = []
+
+    payload["name"] = ", ".join(item.display_name for item in ready) or None
+    dataset_ids = frozenset(item.dataset_id for item in ready if item.dataset_id is not None)
+    connection_ids = tuple(sorted(
+        str(item.source_id) for item in ready if item.source_type == "connector"
+    ))
+    scope = AccountingConnectorScope(dataset_ids, connection_ids) if connection_ids else dataset_ids
+    return scope, payload
 
 
-def apply_dataset_scope(column: Any, dataset_ids: frozenset[UUID] | None):
-    """Clause SQLAlchemy pour filtrer une colonne dataset_id nullable."""
-    from sqlalchemy import false, true
-
-    if dataset_ids is None:
+def apply_dataset_scope(model: Any, scope: AccountingSourceFilter):
+    """Filter an Accounting model by dataset or server-recorded retail connection."""
+    if scope is None:
         return true()
-    if not dataset_ids:
-        return false()
-    return column.in_(tuple(dataset_ids))
+    if isinstance(scope, AccountingConnectorScope):
+        return or_(
+            model.dataset_id.in_(tuple(scope.dataset_ids)),
+            and_(
+                model.source_module == "retail",
+                model.extra_data["connection_id"].as_string().in_(scope.connection_ids),
+            ),
+        )
+    return model.dataset_id.in_(tuple(scope)) if scope else false()

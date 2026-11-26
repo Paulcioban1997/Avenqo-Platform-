@@ -71,6 +71,9 @@ def test_natural_confirmation_is_exact_and_does_not_accept_ambiguous_text() -> N
     assert is_natural_confirmation("fr", "Oui, confirme.") is True
     assert is_natural_confirmation("en", "Yes, confirm it.") is True
     assert is_natural_confirmation("fr", "oui") is False
+    assert is_natural_confirmation("fr-CA", "Oui, je confirme.") is True
+    assert is_natural_confirmation("en-US", "yes") is False
+    assert is_natural_confirmation("en-CA", "confirme") is False
     assert is_natural_confirmation("en", "yesterday confirm it") is False
     assert is_natural_confirmation("es", "No, cancela") is False
     assert is_natural_confirmation("fr", "123") is False

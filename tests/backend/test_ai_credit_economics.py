@@ -37,7 +37,7 @@ def test_default_workloads_use_router_rate_card_and_request_rounding() -> None:
     } == {
         "simple_1000": (1_000, ("gemini",), Decimal("0.128000"), 1_000),
         "normal_1000": (1_000, ("openai",), Decimal("0.675000"), 3_000),
-        "complex_100": (100, ("openai",), Decimal("0.2100"), 700),
+        "complex_100": (100, ("anthropic",), Decimal("4.6500"), 15_500),
         "long_context": (1, ("gemini",), Decimal("0.0184"), 62),
         "tool_calling": (1, ("openai",), Decimal("0.00216"), 8),
         "fallback": (1, ("openai", "gemini"), Decimal("0.0007"), 3),
@@ -48,9 +48,9 @@ def test_heavy_professional_workload_is_a_reproducible_weighted_mix() -> None:
     result = simulate_workloads(_settings())["heavy_professional"]
 
     assert result.requests == 11_125
-    assert result.providers == ("gemini", "openai")
-    assert result.provider_cost_usd == Decimal("6.675000")
-    assert result.avenqo_credits == 29_350
+    assert result.providers == ("gemini", "openai", "anthropic")
+    assert result.provider_cost_usd == Decimal("28.875000")
+    assert result.avenqo_credits == 103_350
 
 
 def test_professional_pack_provider_margins_meet_floor() -> None:

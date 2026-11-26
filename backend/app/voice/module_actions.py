@@ -250,6 +250,7 @@ def company_call_language_session(db, config, call):
         isinstance(saved, dict)
         and saved.get("tenant_id") == str(config.company_id)
         and saved.get("call_session_id") == call_id
+        and isinstance(saved.get("active_locale"), str)
     ):
         previous = saved.get("active_locale")
     active = to_bcp47(previous or primary)
@@ -279,3 +280,4 @@ __all__ = [
     "tools_for_grants",
     "voice_agent_language",
 ]
+

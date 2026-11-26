@@ -177,6 +177,22 @@ def test_accounting_filters_to_selected_dataset_and_never_crosses_tenants(db_ses
     assert overview["receivables"]["unpaid_count"] == 1
     assert overview["receivables"]["total_due"] == 400.0
 
+    # Switch A -> B -> A while the overview cache is warm.
+    for dataset, expected_revenue, expected_due in (
+        (dataset_other, 5000.0, 2500.0),
+        (dataset_sales, 1000.0, 400.0),
+    ):
+        RetailSourceService(db_session).select_source(
+            tenant_a, source_type="dataset", source_id=dataset.id
+        )
+        scope, _ = resolve_accounting_dataset_scope(db_session, tenant_a)
+        assert scope == frozenset({dataset.id})
+        result = AccountingIntelligenceService(db_session).get_financial_overview(
+            company_a.id, dataset_ids=scope
+        )
+        assert result["total_revenue"] == expected_revenue
+        assert result["receivables"]["total_due"] == expected_due
+
     # Tenant B remains isolated even if we mistakenly ask with company A ids.
     overview_b = AccountingIntelligenceService(db_session).get_financial_overview(
         company_b.id, dataset_ids=frozenset({dataset_b.id})
@@ -216,3 +232,99 @@ def test_accounting_empty_when_selected_source_has_no_ledger_rows(db_session):
     assert overview["total_revenue"] == 0.0
     assert overview["total_expenses"] == 0.0
     assert overview["transactions_count"] == 0
+
+
+@pytest.mark.parametrize("source_type,state", [
+    ("dataset", "SOURCE_UNAVAILABLE"),
+    ("connector", "SOURCE_DISCONNECTED"),
+    ("all", "NO_SOURCES"),
+    ("dataset", "LOADING"),
+])
+def test_explicit_unavailable_source_never_widens_scope(db_session, monkeypatch, source_type, state):
+    tenant = TenantContext(company_id=uuid4())
+    monkeypatch.setattr(
+        RetailSourceService, "context",
+        lambda self, tenant, **_: {
+            "state": state, "source_type": source_type,
+            "source_id": uuid4() if source_type != "all" else None,
+            "sources": (),
+        },
+    )
+    scope, _ = resolve_accounting_dataset_scope(db_session, tenant)
+    assert scope == frozenset()
+
+
+def test_all_sources_excludes_disabled_and_unready_datasets(db_session, monkeypatch):
+    from types import SimpleNamespace
+
+    tenant = TenantContext(company_id=uuid4())
+    ready, disabled, unavailable = uuid4(), uuid4(), uuid4()
+    sources = [
+        SimpleNamespace(source_type="dataset", dataset_id=ready, enabled=True, status="READY", display_name="ready"),
+        SimpleNamespace(source_type="dataset", dataset_id=disabled, enabled=False, status="READY", display_name="disabled"),
+        SimpleNamespace(source_type="dataset", dataset_id=unavailable, enabled=True, status="UNAVAILABLE", display_name="unavailable"),
+    ]
+    monkeypatch.setattr(
+        RetailSourceService, "context",
+        lambda self, tenant, **_: {
+            "state": "READY", "source_type": "all", "source_id": None, "sources": sources,
+        },
+    )
+    scope, context = resolve_accounting_dataset_scope(db_session, tenant)
+    assert scope == frozenset({ready})
+    assert context["name"] == "ready"
+
+
+@pytest.mark.parametrize("artifact_missing", [True, False])
+def test_accounting_keeps_selected_dataset_when_it_becomes_unavailable(db_session, tmp_path, artifact_missing):
+    from backend.app.models.dataset_version import DatasetVersion
+
+    company = _company(db_session, "missing-artifact")
+    user = _user(db_session, company)
+    selected = _dataset(db_session, company, "selected.csv")
+    default = _dataset(db_session, company, "default.csv")
+    path = tmp_path / "selected.parquet"
+    path.touch()
+    selected.versions.append(
+        DatasetVersion(name="selected", artifact_path=str(path), is_current=True)
+    )
+    db_session.commit()
+
+    service = RetailSourceService(db_session)
+    service.select_source(TenantContext(company.id), source_type="dataset", source_id=default.id)
+    tenant = TenantContext(company.id, user_id=user.id)
+    service.select_source(tenant, source_type="dataset", source_id=selected.id)
+    if artifact_missing:
+        path.unlink()
+    else:
+        selected.status = DatasetStatus.REJECTED
+        db_session.commit()
+
+    for _ in range(2):
+        scope, context = resolve_accounting_dataset_scope(db_session, tenant)
+        assert scope == frozenset()
+        assert context["state"] == "SOURCE_UNAVAILABLE"
+        assert context["source_id"] == str(selected.id)
+    assert service.active_selection(tenant).dataset_id == selected.id
+
+
+@pytest.mark.parametrize("use_company_context", [True, False])
+def test_accounting_does_not_reselect_an_unavailable_company_default(
+    db_session, use_company_context
+):
+    company = _company(db_session, "unavailable-workspace-default")
+    user = _user(db_session, company)
+    selected = _dataset(db_session, company, "selected.csv")
+    _dataset(db_session, company, "fallback.csv")
+    service = RetailSourceService(db_session)
+    workspace = TenantContext(company.id)
+    service.select_source(workspace, source_type="dataset", source_id=selected.id)
+    selected.status = DatasetStatus.REJECTED
+    db_session.commit()
+
+    tenant = workspace if use_company_context else TenantContext(company.id, user_id=user.id)
+    for _ in range(2):
+        scope, context = resolve_accounting_dataset_scope(db_session, tenant)
+        assert scope == frozenset()
+        assert context["state"] == "SOURCE_UNAVAILABLE"
+        assert context["source_id"] == str(selected.id)

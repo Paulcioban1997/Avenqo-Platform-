@@ -53,7 +53,9 @@ class RetailSourceService:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def list_sources(self, tenant: TenantContext) -> tuple[RetailSource, ...]:
+    def list_sources(
+        self, tenant: TenantContext, *, preserve_selection: bool = False
+    ) -> tuple[RetailSource, ...]:
         connections = tuple(
             self._session.scalars(
                 select(CommerceConnection)
@@ -83,8 +85,12 @@ class RetailSourceService:
             for connection in connections
             if (dataset_id := self._connection_dataset_id(connection)) is not None
         }
-        active = self._user_selection(tenant) or self._resolve_active(TenantContext(tenant.company_id), connections, datasets)
-        activation_default = self._session.scalar(select(RetailActiveSource).where(RetailActiveSource.company_id == tenant.company_id))
+        active = self._user_selection(tenant)
+        if active is None and not preserve_selection:
+            active = self._resolve_active(TenantContext(tenant.company_id), connections, datasets)
+        activation_default = self._company_selection(tenant)
+        if active is None:
+            active = activation_default
         states = {
             state.source_key: state.enabled
             for state in self._session.scalars(
@@ -325,43 +331,7 @@ class RetailSourceService:
     def active_selection(self, tenant: TenantContext) -> UserSourceSelection | RetailActiveSource | None:
         user_selection = self._user_selection(tenant)
         if user_selection is not None:
-            if user_selection.source_type == "dataset" and user_selection.dataset_id is not None:
-                dataset = self._session.get(Dataset, user_selection.dataset_id)
-                if dataset is not None:
-                    version = next((v for v in dataset.versions if v.is_current), None)
-                    from pathlib import Path
-                    if version and version.artifact_path and not Path(version.artifact_path).is_file():
-                        connections = tuple(
-                            self._session.scalars(
-                                select(CommerceConnection)
-                                .where(
-                                    CommerceConnection.company_id == tenant.company_id,
-                                    CommerceConnection.status != CommerceConnectionStatus.DISCONNECTED.value,
-                                )
-                                .order_by(
-                                    CommerceConnection.last_successful_sync.desc(),
-                                    CommerceConnection.created_at.desc(),
-                                )
-                            ).all()
-                        )
-                        healthy_datasets = tuple(
-                            self._session.scalars(
-                                select(Dataset)
-                                .where(
-                                    Dataset.company_id == tenant.company_id,
-                                    Dataset.status == DatasetStatus.READY,
-                                    Dataset.id != user_selection.dataset_id,
-                                )
-                                .order_by(Dataset.uploaded_at.desc())
-                            ).all()
-                        )
-                        resolved = self._resolve_active(tenant, connections, healthy_datasets)
-                        if resolved is not None:
-                            user_selection.source_type = resolved.source_type
-                            user_selection.dataset_id = resolved.dataset_id
-                            user_selection.connection_id = resolved.connection_id
-                            self._session.commit()
-                            return user_selection
+            # A missing artifact does not change the user's selection.
             return user_selection
         if tenant.user_id is not None:
             inherited = self._session.scalar(select(RetailActiveSource).where(RetailActiveSource.company_id == tenant.company_id))
@@ -382,17 +352,6 @@ class RetailSourceService:
                     RetailActiveSource.company_id == tenant.company_id
                 )
             )
-        ready_connection = self._session.scalar(
-            select(CommerceConnection)
-            .where(
-                CommerceConnection.company_id == tenant.company_id,
-                CommerceConnection.status == CommerceConnectionStatus.READY.value,
-            )
-            .order_by(
-                CommerceConnection.last_successful_sync.desc(),
-                CommerceConnection.created_at.desc(),
-            )
-        )
         connections = tuple(
             self._session.scalars(
                 select(CommerceConnection)
@@ -417,11 +376,20 @@ class RetailSourceService:
                 .order_by(Dataset.uploaded_at.desc())
             ).all()
         )
-        total_valid_sources = int(ready_connection is not None) + len(datasets)
+        ready_connections = tuple(
+            item for item in connections if item.status == CommerceConnectionStatus.READY.value
+        )
+        connector_dataset_ids = {
+            dataset_id for item in connections
+            if (dataset_id := self._connection_dataset_id(item)) is not None
+        }
+        datasets = tuple(item for item in datasets if item.id not in connector_dataset_ids)
+        total_valid_sources = len(ready_connections) + len(datasets)
         if total_valid_sources == 0:
             return None
         if total_valid_sources == 1:
-            if ready_connection is not None:
+            if ready_connections:
+                ready_connection = ready_connections[0]
                 return self._store_selection(
                     tenant,
                     source_type="connector",
@@ -564,9 +532,18 @@ class RetailSourceService:
             return None
         return self._session.get(UserSourceSelection, (tenant.company_id, tenant.user_id))
 
-    def context(self, tenant: TenantContext) -> dict:
-        selection = self.active_selection(tenant)
-        sources = self.list_sources(tenant)
+    def _company_selection(self, tenant: TenantContext) -> RetailActiveSource | None:
+        return self._session.scalar(
+            select(RetailActiveSource).where(RetailActiveSource.company_id == tenant.company_id)
+        )
+
+    def context(self, tenant: TenantContext, *, preserve_selection: bool = False) -> dict:
+        selection = None
+        if preserve_selection:
+            selection = self._user_selection(tenant) or self._company_selection(tenant)
+        if selection is None:
+            selection = self.active_selection(tenant)
+        sources = self.list_sources(tenant, preserve_selection=preserve_selection)
         if selection is None:
             return {"state": "NO_SOURCES", "source_type": None, "source_id": None, "sources": sources}
         if selection.source_type == "all":

@@ -1104,6 +1104,8 @@ class FinancialIntegrationService:
         hr_summary = self.get_hr_payroll_summary(company_id, actor_user=actor_user, strict_raise=False)
 
         return {
+            "scope": "company_wide",
+            "scope_note": "Cross-module company totals, not filtered to the selected dataset. Do not combine with dataset-scoped ledger totals.",
             "retail": retail_summary,
             "crm": crm_summary,
             "ocr_documents": {

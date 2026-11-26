@@ -12,6 +12,7 @@ from collections.abc import Iterable, Iterator, Sequence
 import csv
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
+import hashlib
 from io import BytesIO, StringIO
 import json
 import mimetypes
@@ -391,6 +392,11 @@ class DatasetExportService:
             "formats": formats,
         }
 
+    @classmethod
+    def preview_snapshot(cls, rows: Sequence[dict[str, Any]]) -> str:
+        payload = json.dumps(rows[: cls.MAX_PREVIEW_LIMIT], sort_keys=True, default=str, ensure_ascii=False)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
     def export(
         self,
         tenant: TenantContext,
@@ -401,6 +407,8 @@ class DatasetExportService:
         offset: int = 0,
         limit: int | None = None,
         search: str | None = None,
+        preview_row_indices: Sequence[int] | None = None,
+        preview_snapshot: str | None = None,
         columns: Sequence[str] | None = None,
         envelope: bool = True,
         stream: bool = False,
@@ -418,6 +426,12 @@ class DatasetExportService:
             raise UnsupportedDatasetExport(f"Unsupported export format: {export_format}")
         if norm_scope not in SUPPORTED_EXPORT_SCOPES:
             raise UnsupportedDatasetExport(f"Unsupported export scope: {scope}")
+
+        if (preview_row_indices is not None or preview_snapshot is not None) and (
+            norm_scope != "filtered_preview" or fmt == "original"
+            or not preview_row_indices or not preview_snapshot or search is not None
+        ):
+            raise UnsupportedDatasetExport("Invalid visible preview selection.")
 
         # Enforce RBAC for original raw file or uncleaned raw rows
         can_manage = self._has_manage_permission(permissions, is_platform_admin=is_platform_admin)
@@ -462,7 +476,15 @@ class DatasetExportService:
             norm_scope,
             can_manage=can_manage,
         )
-        filtered_rows = self._apply_filters(all_rows, search=search, columns=columns)
+        source_rows = all_rows
+        if preview_row_indices is not None:
+            if preview_snapshot != self.preview_snapshot(all_rows):
+                raise DatasetNotReadyForExport("Aperçu modifié. Actualisez les lignes avant de les exporter.")
+            indices = sorted(set(preview_row_indices))
+            if indices[0] < 0 or indices[-1] >= min(len(all_rows), self.MAX_PREVIEW_LIMIT):
+                raise UnsupportedDatasetExport("Preview rows are outside the available range.")
+            source_rows = [all_rows[index] for index in indices]
+        filtered_rows = self._apply_filters(source_rows, search=search, columns=columns)
         total_available = len(filtered_rows)
 
         # Apply pagination & safety bounds

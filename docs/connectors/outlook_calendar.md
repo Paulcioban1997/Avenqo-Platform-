@@ -1,7 +1,9 @@
 # Outlook Calendar
 
-- Readiness: `AVAILABLE`; customer status `AVAILABLE` (crm).
+- Readiness: Catalog entry for calendar integration; availability of the dedicated module must be verified independently.
+- Environment: use tenant-scoped Sandbox configuration and server-side credentials; never expose credentials to the browser.
+- Acceptance: verify authorization, tenant isolation, provider connectivity and actual module behavior before claiming operational readiness.
+
 - Auth method: `oauth2`.
-- Capabilities: `customers, incremental_sync`.
 - Environment: `MICROSOFT_CLIENT_ID, MICROSOFT_CLIENT_SECRET, MICROSOFT_REDIRECT_URI`.
-- Acceptance: configure tenant-scoped credentials, verify connection health check, execute incremental sync, and confirm strict `company_id` isolation across analytics and Central AI.
+

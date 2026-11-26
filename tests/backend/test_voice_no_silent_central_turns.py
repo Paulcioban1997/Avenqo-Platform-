@@ -63,6 +63,7 @@ async def test_slow_central_ai_has_audible_timeout_instead_of_silence():
     assert bridge.central_ai_replies_queued == 1
     assert len(adapter.spoken) == 1
     assert "attente" in adapter.spoken[0]
+    assert "unreachable" not in adapter.spoken[0]
 
 
 @pytest.mark.asyncio
@@ -141,3 +142,4 @@ async def test_staff_pin_gate_still_never_bypassed_for_auth_required():
     with pytest.raises(PermissionError, match="Keypad authentication unavailable"):
         await bridge._execute("auth-case", "details privés", 0)
     assert adapter.spoken == []
+

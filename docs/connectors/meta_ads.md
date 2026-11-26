@@ -1,7 +1,9 @@
-# Meta Ads (Facebook & Instagram)
+# Meta Ads
 
-- Readiness: `CONFIGURATION_REQUIRED`; customer status `COMING_SOON` (marketing).
+- Readiness: Configuration and a separately verified marketing integration are required.
+- Environment: use tenant-scoped Sandbox configuration and server-side credentials; never expose credentials to the browser.
+- Acceptance: verify authorization, tenant isolation, provider connectivity and actual module behavior before claiming operational readiness.
+
 - Auth method: `oauth2`.
-- Capabilities: `analytics, incremental_sync`.
 - Environment: `META_ADS_APP_ID, META_ADS_APP_SECRET, META_ADS_ACCESS_TOKEN`.
-- Acceptance: configure tenant-scoped credentials, verify connection health check, execute incremental sync, and confirm strict `company_id` isolation across analytics and Central AI.
+

@@ -388,6 +388,7 @@ def test_lot3_consolidated_kpi_multi_currency_and_refunds(db_session: Session):
 async def test_lot4_central_ai_product_detail_provenance_and_scope(db_session: Session):
     """Test Lot 4 : GetProductDetailTool respecte source_scope et génère la provenance exacte."""
     company, _, _ = _setup_company_with_user(db_session, "AI Commerce Co")
+    observed_at = datetime.now(timezone.utc)
 
     conn1 = CommerceConnection(
         id=uuid4(),
@@ -396,7 +397,7 @@ async def test_lot4_central_ai_product_detail_provenance_and_scope(db_session: S
         external_account_id="shop-qc.myshopify.com",
         display_name="Shopify Québec",
         status=CommerceConnectionStatus.READY.value,
-        last_successful_sync=datetime.now(timezone.utc),
+        last_successful_sync=observed_at,
     )
     conn2 = CommerceConnection(
         id=uuid4(),
@@ -405,7 +406,7 @@ async def test_lot4_central_ai_product_detail_provenance_and_scope(db_session: S
         external_account_id="woo-france.com",
         display_name="WooCommerce France",
         status=CommerceConnectionStatus.READY.value,
-        last_successful_sync=datetime.now(timezone.utc),
+        last_successful_sync=observed_at,
     )
     db_session.add_all([conn1, conn2])
     db_session.flush()
@@ -419,6 +420,7 @@ async def test_lot4_central_ai_product_detail_provenance_and_scope(db_session: S
         entity_type="product",
         source_record_id="prod_101",
         deleted=False,
+        source_updated_at=observed_at,
         normalized_data={
             "product_name": "Siège Ergonomique Pro",
             "product_id": "prod_101",
@@ -437,6 +439,7 @@ async def test_lot4_central_ai_product_detail_provenance_and_scope(db_session: S
         entity_type="product",
         source_record_id="prod_202",
         deleted=False,
+        source_updated_at=observed_at,
         normalized_data={
             "product_name": "Siège Ergonomique Pro",
             "product_id": "prod_202",
@@ -478,6 +481,16 @@ async def test_lot4_central_ai_product_detail_provenance_and_scope(db_session: S
     assert res_scoped.data["found"] is True
     assert res_scoped.data["product"]["store_name"] == "Shopify Québec"
     assert res_scoped.data["product"]["inventory_level"] == 15.0
+
+
+    conn1.last_successful_sync = observed_at - timedelta(days=2)
+    db_session.commit()
+    stale = await tool.run(context, ProductDetailArgs(sku="SIEGE-ERG-01", source_scope=[str(conn1.id)]))
+    assert stale.success is True
+    assert stale.data["product"]["store_name"] == "Shopify Québec"
+    assert stale.data["product"]["inventory_level"] is None
+    assert stale.data["product"]["historical_observed_units"] == 15.0
+    assert stale.data["product"]["stock_confirmed"] is False
 
 
 @pytest.mark.asyncio
@@ -562,3 +575,4 @@ async def test_lot4_central_ai_inventory_summary_breakdown(db_session: Session):
     assert breakdown["Boutique B"]["total"] == 1
     assert breakdown["Boutique B"]["low_stock"] == 1
     assert "provenance" in res.data
+

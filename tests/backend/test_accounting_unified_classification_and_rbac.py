@@ -1337,6 +1337,22 @@ def test_12_audit_pr135_all_23_copilot_threads_and_universal_accounting(accounti
     assert s2_inv["paid_amount"] == 230.0
     assert s2_inv["issue_date"].startswith("2026-09-10")
 
+    from backend.app.services.retail_source_service import RetailSourceService
+    from shared.ai_engine.contracts import TenantContext
+
+    source_service = RetailSourceService(session)
+    accounting_user = TenantContext(company.id, user_id=owner.id)
+    for store, expected in ((store_1, 115.0), (store_2, 230.0), (store_1, 115.0)):
+        source_service.select_source(accounting_user, source_type="connector", source_id=store.id)
+        selected_invoices = client.get(
+            "/api/v1/accounting/invoices?source_module=retail", headers=_headers(owner)
+        ).json()
+        assert expected in {invoice["total_amount"] for invoice in selected_invoices}
+        other = 230.0 if expected == 115.0 else 115.0
+        assert other not in {invoice["total_amount"] for invoice in selected_invoices}
+    source_service.select_source(accounting_user, source_type="all")
+
     # Thread 13: Cash flow forecast excludes unpaid accrual invoices from current_balance
     cf = client.get("/api/v1/accounting/forecast/cashflow", headers=_headers(owner)).json()
     assert cf["is_projection"] is True
+

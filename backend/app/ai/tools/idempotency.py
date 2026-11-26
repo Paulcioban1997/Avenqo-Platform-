@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Awaitable, Callable
+from contextvars import ContextVar
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -23,6 +25,15 @@ def mutation_arguments_hash(arguments: dict[str, Any], confirmation_field: str =
     normalized.pop(confirmation_field, None)
     serialized = json.dumps(normalized, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+@dataclass
+class ToolMutationState:
+    in_progress: int = 0
+    superseded: bool = False
+
+
+tool_mutation_state: ContextVar[ToolMutationState | None] = ContextVar("tool_mutation_state", default=None)
 
 
 class AIToolExecutionIdempotencyStore:
@@ -113,6 +124,9 @@ class AIToolExecutionIdempotencyStore:
         arguments: dict[str, Any],
         run: Callable[[], Awaitable[ToolResult]],
     ) -> ToolResult:
+        mutation = tool_mutation_state.get()
+        if mutation is not None and mutation.superseded:
+            raise ToolExecutionError("A newer caller turn superseded this action.")
         serialized_arguments = json.dumps(arguments, sort_keys=True, separators=(",", ":"), default=str)
         arguments_hash = hashlib.sha256(serialized_arguments.encode("utf-8")).hexdigest()
         agent_id = context.authorized_tool_agents.get(
@@ -164,15 +178,21 @@ class AIToolExecutionIdempotencyStore:
             self._db.rollback()
             raise ToolExecutionError("This action is already in progress and will not be replayed.")
 
-        result = await run()
-        record = self._db.get(AIToolExecutionRecord, record.id)
-        if record is None:
-            raise ToolExecutionError("The action receipt was lost; replay is blocked.")
-        record.status = "completed"
-        record.result = _serialize_result(result)
-        record.completed_at = datetime.now(timezone.utc)
-        self._db.commit()
-        return result
+        if mutation is not None:
+            mutation.in_progress += 1
+        try:
+            result = await run()
+            record = self._db.get(AIToolExecutionRecord, record.id)
+            if record is None:
+                raise ToolExecutionError("The action receipt was lost; replay is blocked.")
+            record.status = "completed"
+            record.result = _serialize_result(result)
+            record.completed_at = datetime.now(timezone.utc)
+            self._db.commit()
+            return result
+        finally:
+            if mutation is not None:
+                mutation.in_progress -= 1
 
 
 def _serialize_result(result: ToolResult) -> dict[str, Any]:
