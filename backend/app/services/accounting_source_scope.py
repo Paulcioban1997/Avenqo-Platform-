@@ -22,7 +22,7 @@ def resolve_accounting_dataset_scope(
     - ``frozenset({...})`` : limiter les écritures/factures à ces dataset_id du tenant.
     """
     service = RetailSourceService(session)
-    context = service.context(tenant)
+    context = service.context(tenant, preserve_selection=True)
     sources = context.get("sources") or ()
     payload: dict[str, Any] = {
         "state": context.get("state"),

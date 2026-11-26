@@ -622,11 +622,12 @@ async def test_media_bridge_roundtrip_barge_in_dtmf_and_duplicate_frames():
     await until(lambda: any(event["event"] == "media" for event in socket.sent))
     assert calls == [("turn-test", "Summarize sales [REDACTED]")]
     await socket.incoming.put({"event": "dtmf", "stream_id": "stream-test", "dtmf": {"digit": "6"}})
-    await until(lambda: adapter.cleared_input == 1)
+    await eventually(lambda: socket.sent[-1] == {"event": "clear"})
     await adapter.incoming.put(delta)
     await socket.incoming.put({**frame, "media": {**frame["media"], "chunk": "2"}})
-    await until(lambda: bridge._last_chunk == 2)
-    assert len(adapter.audio) == 1 and bridge.input_paused
+    await eventually(lambda: len(adapter.audio) == 2)
+    assert not bridge.input_paused
+    assert adapter.cleared_input == 0
     assert socket.sent[-1] == {"event": "clear"}
     assert "654321" not in str(calls) + str(adapter.spoken) + str(socket.sent)
     await socket.incoming.put({"event": "stop", "stream_id": "stream-test"})
@@ -716,12 +717,13 @@ async def test_barge_in_discards_stale_speech_without_cancelling_business_execut
     await adapter.incoming.put(SimpleNamespace(type="input_audio_buffer.speech_started"))
     await asyncio.sleep(0.05)
     assert bridge.epoch == 0
-    await adapter.incoming.put(SimpleNamespace(type="conversation.item.input_audio_transcription.completed", item_id="new-turn", transcript="New answer"))
-    await until(lambda: bridge.epoch == 1)
+    correction = "Wait, I meant the new answer."
+    await adapter.incoming.put(SimpleNamespace(type="conversation.item.input_audio_transcription.completed", item_id="new-turn", transcript=correction))
+    await eventually(lambda: bridge.epoch == 1)
     release.set()
-    await until(lambda: bool(adapter.spoken))
+    await eventually(lambda: bool(adapter.spoken))
     assert completed == ["slow-turn", "new-turn"]
-    assert adapter.spoken == ["New answer"]
+    assert adapter.spoken == [correction]
     assert adapter.interruptions == 0
     assert not any(event.get("event") == "clear" for event in socket.sent)
     await socket.incoming.put({"event": "stop", "stream_id": "stream-test"})

@@ -53,7 +53,9 @@ class RetailSourceService:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def list_sources(self, tenant: TenantContext) -> tuple[RetailSource, ...]:
+    def list_sources(
+        self, tenant: TenantContext, *, preserve_selection: bool = False
+    ) -> tuple[RetailSource, ...]:
         connections = tuple(
             self._session.scalars(
                 select(CommerceConnection)
@@ -83,8 +85,12 @@ class RetailSourceService:
             for connection in connections
             if (dataset_id := self._connection_dataset_id(connection)) is not None
         }
-        active = self._user_selection(tenant) or self._resolve_active(TenantContext(tenant.company_id), connections, datasets)
-        activation_default = self._session.scalar(select(RetailActiveSource).where(RetailActiveSource.company_id == tenant.company_id))
+        active = self._user_selection(tenant)
+        if active is None and not preserve_selection:
+            active = self._resolve_active(TenantContext(tenant.company_id), connections, datasets)
+        activation_default = self._company_selection(tenant)
+        if active is None:
+            active = activation_default
         states = {
             state.source_key: state.enabled
             for state in self._session.scalars(
@@ -528,9 +534,18 @@ class RetailSourceService:
             return None
         return self._session.get(UserSourceSelection, (tenant.company_id, tenant.user_id))
 
-    def context(self, tenant: TenantContext) -> dict:
-        selection = self.active_selection(tenant)
-        sources = self.list_sources(tenant)
+    def _company_selection(self, tenant: TenantContext) -> RetailActiveSource | None:
+        return self._session.scalar(
+            select(RetailActiveSource).where(RetailActiveSource.company_id == tenant.company_id)
+        )
+
+    def context(self, tenant: TenantContext, *, preserve_selection: bool = False) -> dict:
+        selection = None
+        if preserve_selection:
+            selection = self._user_selection(tenant) or self._company_selection(tenant)
+        if selection is None:
+            selection = self.active_selection(tenant)
+        sources = self.list_sources(tenant, preserve_selection=preserve_selection)
         if selection is None:
             return {"state": "NO_SOURCES", "source_type": None, "source_id": None, "sources": sources}
         if selection.source_type == "all":

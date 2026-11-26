@@ -2123,8 +2123,7 @@ class TelnyxMediaBridge:
                             self._current_turn_task.cancel()
                         await self.interrupt(reason="caller_speech_barge_in")
                     elif self._executing_turn and not already_interrupted_on_partial:
-                        if self._current_turn_task is not None and not self._current_turn_task.done():
-                            self._current_turn_task.cancel()
+                        # Discard stale speech while allowing an authorized action in progress to settle.
                         self.epoch += 1
                         self.orchestrator.epoch = self.epoch
                         logger.info(

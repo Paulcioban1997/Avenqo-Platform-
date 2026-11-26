@@ -244,7 +244,7 @@ def test_explicit_unavailable_source_never_widens_scope(db_session, monkeypatch,
     tenant = TenantContext(company_id=uuid4())
     monkeypatch.setattr(
         RetailSourceService, "context",
-        lambda self, tenant: {
+        lambda self, tenant, **_: {
             "state": state, "source_type": source_type,
             "source_id": uuid4() if source_type != "all" else None,
             "sources": (),
@@ -266,7 +266,7 @@ def test_all_sources_excludes_disabled_and_unready_datasets(db_session, monkeypa
     ]
     monkeypatch.setattr(
         RetailSourceService, "context",
-        lambda self, tenant: {
+        lambda self, tenant, **_: {
             "state": "READY", "source_type": "all", "source_id": None, "sources": sources,
         },
     )
@@ -306,3 +306,25 @@ def test_accounting_keeps_selected_dataset_when_it_becomes_unavailable(db_sessio
         assert context["state"] == "SOURCE_UNAVAILABLE"
         assert context["source_id"] == str(selected.id)
     assert service.active_selection(tenant).dataset_id == selected.id
+
+
+@pytest.mark.parametrize("use_company_context", [True, False])
+def test_accounting_does_not_reselect_an_unavailable_company_default(
+    db_session, use_company_context
+):
+    company = _company(db_session, "unavailable-workspace-default")
+    user = _user(db_session, company)
+    selected = _dataset(db_session, company, "selected.csv")
+    _dataset(db_session, company, "fallback.csv")
+    service = RetailSourceService(db_session)
+    workspace = TenantContext(company.id)
+    service.select_source(workspace, source_type="dataset", source_id=selected.id)
+    selected.status = DatasetStatus.REJECTED
+    db_session.commit()
+
+    tenant = workspace if use_company_context else TenantContext(company.id, user_id=user.id)
+    for _ in range(2):
+        scope, context = resolve_accounting_dataset_scope(db_session, tenant)
+        assert scope == frozenset()
+        assert context["state"] == "SOURCE_UNAVAILABLE"
+        assert context["source_id"] == str(selected.id)
