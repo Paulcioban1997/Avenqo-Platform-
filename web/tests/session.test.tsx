@@ -102,9 +102,11 @@ it("clears visible tenant and ledger when the backend expires the session", asyn
 
 
 function SourceSnapshot() {
-  const { sourceContext, sourceSelectionState, activeDataSources, selectSource } = useSession();
+  const { sourceContext, sourceSelectionState, sourceChoices, sourceRevision, activeDataSources, selectSource } = useSession();
   return <>
     <output>{sourceSelectionState ?? sourceContext?.source_id ?? "initial"}:{activeDataSources.join(",")}</output>
+    <output data-testid="candidate-sources">{sourceChoices.map(source => source.source_id).join(",")}</output>
+    <output data-testid="source-revision">{sourceRevision}</output>
     <button onClick={() => void selectSource("dataset", "A").catch(() => {})}>Keep A</button>
     <button onClick={() => void selectSource("dataset", "B").catch(() => {})}>Select B</button>
   </>;
@@ -152,6 +154,7 @@ it("invalidates A immediately and serializes rapid A → B → A", async () => {
   await act(async () => { releaseB(); });
   await screen.findByText("A:Dataset A");
   expect(write.mock.calls.map(([id]) => id)).toEqual(["B", "A"]);
+  expect(screen.getByTestId("source-revision")).toHaveTextContent("3");
   expect(screen.queryByText("B:Dataset B")).not.toBeInTheDocument();
 });
 
@@ -162,5 +165,6 @@ it("keeps the snapshot invalid when PUT succeeds but context cannot be confirmed
   await screen.findByText("A:Dataset A");
   act(() => screen.getByText("Select B").click());
   await screen.findByText("unconfirmed:");
+  expect(screen.getByTestId("candidate-sources")).toHaveTextContent("A");
   expect(screen.queryByText(/Dataset [AB]/)).not.toBeInTheDocument();
 });

@@ -6,7 +6,7 @@ it("does not offer a filtered export when the visible preview has no rows", asyn
   const request = vi.fn(async () => new Response(null, { status: 404 }));
   vi.stubGlobal("fetch", request);
   try {
-    render(<DatasetExportMenu datasetId="dataset" datasetName="Ventes" previewLimit={0} activeSearchQuery="absent" />);
+    render(<DatasetExportMenu datasetId="dataset" datasetName="Ventes" previewSnapshot="fixture" previewRowIndices={[]} />);
     fireEvent.click(screen.getByRole("button", { name: /export|télécharg/i }));
     const unavailable = await screen.findByRole("button", { name: /aperçu filtré/i });
     expect(unavailable).toBeDisabled();

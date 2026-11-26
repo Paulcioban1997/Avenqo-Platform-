@@ -25,6 +25,7 @@ interface SessionState {
   reload: () => Promise<void>;
   sourceContext: SourceContext | null;
   sourceRevision: number;
+  sourceChoices: ContextSource[];
   sourceSelectionState: "pending" | "unconfirmed" | null;
   selectSource: (sourceType: string, sourceId: string | null) => Promise<void>;
 }
@@ -52,11 +53,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [activeDataSources, setActiveDataSources] = useState<string[]>([]);
   const [sourceError, setSourceError] = useState<ApiRequestError | null>(null);
   const [sourceContext, setSourceContext] = useState<SourceContext | null>(null);
+  const [sourceChoices, setSourceChoices] = useState<ContextSource[]>([]);
   const [sourceRevision, setSourceRevision] = useState(0);
   const [sourceSelectionState, setSourceSelectionState] = useState<SessionState["sourceSelectionState"]>(null);
   const sourceRequest = useRef(0);
   const sourceWrite = useRef(Promise.resolve());
   const sourceWritePending = useRef(false);
+  const sourceNeedsConfirmation = useRef(false);
   const pending = useRef<Promise<void> | null>(null);
   const creditPending = useRef<Promise<void> | null>(null);
   const creditVersion = useRef(-1);
@@ -100,6 +103,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (version !== revision.current) return;
         if (!data.user?.id || !data.company?.id || !data.company.name) throw new ApiRequestError("tenant_unresolved");
         if (tenantId.current !== data.company.id) {
+          setSourceChoices([]);
           setCredits(unknownCredits); setCreditBalance(null); setActiveDataSources([]); setSourceContext(null);
           tenantId.current = data.company.id;
         }
@@ -113,6 +117,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           (async () => {
             if (!sourceApi.current) {
               if (canConfirmSource()) {
+                setSourceChoices([]);
                 setActiveDataSources([]);
                 setSourceContext(null);
                 setSourceError(null);
@@ -131,8 +136,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 const context = await contextResponse.json();
                 if (canConfirmSource() && context && !Array.isArray(context) && Array.isArray(context.sources)) {
                   setSourceContext(context);
+                  setSourceChoices(context.sources);
                   setActiveDataSources(namesForContext(context));
                   setSourceSelectionState(null);
+                  if (sourceNeedsConfirmation.current) {
+                    sourceNeedsConfirmation.current = false;
+                    setSourceRevision(value => value + 1);
+                  }
                 }
               } catch {
                 if (canConfirmSource()) setSourceContext(null);
@@ -160,6 +170,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const request = ++sourceRequest.current;
     const isCurrent = () => version === revision.current && request === sourceRequest.current;
     sourceWritePending.current = true;
+    sourceNeedsConfirmation.current = true;
     setSourceSelectionState("pending");
     setSourceContext(null);
     setActiveDataSources([]);
@@ -182,8 +193,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           throw new Error("Requested source could not be confirmed");
         }
         setSourceContext(context);
+        setSourceChoices(context.sources);
         setActiveDataSources(namesForContext(context));
         setSourceSelectionState(null);
+        sourceNeedsConfirmation.current = false;
+        setSourceRevision(value => value + 1);
         window.dispatchEvent(new Event("avenqo:sources-changed"));
       } catch (error) {
         if (!isCurrent()) return;
@@ -204,9 +218,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!protectedPage) return;
-    const expired = () => { revision.current++; sourceWritePending.current = false; setSourceSelectionState(null); tenantId.current = null; setIdentity(null); setCredits(unknownCredits); setCreditBalance(null); setActiveDataSources([]); setSourceContext(null); setCreditError(null); setSourceError(null); setError(new ApiRequestError("session_expired")); setLoading(false); };
+    const expired = () => { revision.current++; sourceWritePending.current = false; sourceNeedsConfirmation.current = false; setSourceSelectionState(null); setSourceChoices([]); tenantId.current = null; setIdentity(null); setCredits(unknownCredits); setCreditBalance(null); setActiveDataSources([]); setSourceContext(null); setCreditError(null); setSourceError(null); setError(new ApiRequestError("session_expired")); setLoading(false); };
     const changed = () => {
-      revision.current++; sourceWritePending.current = false; setSourceSelectionState(null); tenantId.current = null;
+      revision.current++; sourceWritePending.current = false; sourceNeedsConfirmation.current = false; setSourceSelectionState(null); setSourceChoices([]); tenantId.current = null;
       setIdentity(null); setCredits(unknownCredits); setCreditBalance(null); setActiveDataSources([]); setCreditError(null); setSourceError(null); setError(null);
       setSourceContext(null); setSourceRevision(value => value + 1);
       const previous = pending.current;
@@ -224,7 +238,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return () => { channel?.close(); window.clearInterval(timer); window.removeEventListener("focus", creditUpdated); document.removeEventListener("visibilitychange", creditUpdated); window.removeEventListener("avenqo:session-expired", expired); window.removeEventListener("avenqo:ai-credits-updated", creditUpdated); };
   }, [protectedPage, reload, refreshCredits]);
 
-  return <SessionContext.Provider value={{ identity, error, loading, credits, creditBalance, creditError, activeDataSources, sourceError, reload, sourceContext, sourceRevision, sourceSelectionState, selectSource }}>{children}</SessionContext.Provider>;
+  return <SessionContext.Provider value={{ identity, error, loading, credits, creditBalance, creditError, activeDataSources, sourceError, reload, sourceContext, sourceRevision, sourceChoices, sourceSelectionState, selectSource }}>{children}</SessionContext.Provider>;
 }
 
 export function useSession() {

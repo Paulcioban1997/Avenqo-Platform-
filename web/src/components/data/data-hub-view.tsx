@@ -135,6 +135,7 @@ export function DataHubView() {
 
   // Dataset detail state
   const [rows, setRows] = useState<DatasetRow[]>([]);
+  const [previewSnapshot, setPreviewSnapshot] = useState<string | null>(null);
   const [columns, setColumns] = useState<string[]>([]);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -188,6 +189,7 @@ export function DataHubView() {
     setActivationError(null);
     setDetailFilterQuery("");
     setRows([]);
+    setPreviewSnapshot(null);
     setColumns([]);
     setPage(1);
     try {
@@ -205,6 +207,7 @@ export function DataHubView() {
       const data = await resp.json();
       const rowData: DatasetRow[] = Array.isArray(data) ? data : data.rows ?? [];
       setRows(rowData);
+      setPreviewSnapshot(typeof data.preview_snapshot === "string" ? data.preview_snapshot : null);
       if (rowData.length > 0) setColumns(Object.keys(rowData[0]));
     } catch (e) {
       setDetailError(e instanceof Error ? e.message : "Erreur de chargement des données.");
@@ -281,6 +284,7 @@ export function DataHubView() {
       });
       if (!resp.ok) throw new Error(`Erreur ${resp.status}`);
       setRows((r) => r.map((row, i) => (i === rowIdx ? updated : row)));
+      setPreviewSnapshot(null);
     } catch (e) {
       setDetailError(e instanceof Error ? e.message : "Erreur de modification.");
     } finally {
@@ -299,6 +303,7 @@ export function DataHubView() {
       });
       if (!resp.ok) throw new Error(`Erreur ${resp.status}`);
       setRows((r) => r.filter((_, i) => i !== rowIdx));
+      setPreviewSnapshot(null);
     } catch (e) {
       setDetailError(e instanceof Error ? e.message : "Erreur de suppression de ligne.");
     }
@@ -376,8 +381,9 @@ export function DataHubView() {
               datasetId={selectedDataset.id}
               datasetName={selectedDataset.name}
               isFr={isFr}
-              activeSearchQuery={detailFilterQuery}
-              previewLimit={visibleDetailRows.length}
+              key={`${selectedDataset.id}:${previewSnapshot}:${detailFilterQuery}`}
+              previewSnapshot={previewSnapshot}
+              previewRowIndices={visibleDetailRows.map(row => row.originalIndex)}
               onExportError={(msg) => setDetailError(msg)}
             />
             <button

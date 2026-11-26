@@ -580,3 +580,27 @@ def test_audit_pr136_copilot_threads_regression(export_env) -> None:
         assert "original_value" not in mod
         assert "raw_value" not in mod
 
+
+
+def test_filtered_export_preserves_visible_unicode_rows_and_rejects_stale_preview(export_env) -> None:
+    client, _, ctx, _ = export_env
+    dataset_id = _upload_csv_dataset(
+        client, "adresses.csv", "sku,street,amount\nA1,Straße,10\nA2,Strasse,20\n".encode()
+    )
+    endpoint = f"/api/v1/datasets/{dataset_id}"
+    page = client.get(f"{endpoint}/rows").json()
+    assert [row["street"] for row in page["rows"]] == ["Straße", "Strasse"]
+    query = {"scope": "filtered_preview", "preview_snapshot": page["preview_snapshot"], "preview_row": 1}
+    response = client.get(f"{endpoint}/export/csv", params=query)
+    assert response.status_code == 200
+    assert "Strasse" in response.text and "Straße" not in response.text
+    assert response.headers["X-Export-Row-Count"] == "1"
+
+    stale = client.get(f"{endpoint}/export/csv", params={**query, "preview_snapshot": "0" * 64})
+    assert stale.status_code == 409
+    empty = client.get(f"{endpoint}/export/csv", params={key: value for key, value in query.items() if key != "preview_row"})
+    assert empty.status_code == 400
+
+    ctx["state"]["tenant"] = ctx["tenants"]["company_b"]
+    ctx["state"]["identity"] = ctx["identities"]["owner_b"]
+    assert client.get(f"{endpoint}/export/csv", params=query).status_code == 404

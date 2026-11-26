@@ -37,7 +37,7 @@ export function GlobalSourceSelector({ wide = false }: { wide?: boolean }) {
   }, []);
   const context = session.sourceContext;
   const selected = context?.sources.find(source => source.source_type === context.source_type && source.source_id === context.source_id);
-  const ready = context?.sources.filter(source => source.status.toUpperCase() === "READY" && !!source.dataset_id) || [];
+  const ready = (context?.sources ?? session.sourceChoices ?? []).filter(source => source.status.toUpperCase() === "READY" && !!source.dataset_id);
   const state = session.loading || !context && !session.sourceError ? "LOADING" : session.sourceError ? "SOURCE_ERROR" : context?.state || "NO_SOURCES";
   const label = state === "LOADING" ? catalog.connectionsLoading : context?.source_type === "all" ? all : selected?.display_name ? `${selected.provider ? `${selected.provider} — ` : ""}${selected.display_name}` : (state === "NO_SOURCES" ? t.common.insufficientData : labels.unavailable);
   const SourceIcon = context?.source_type === "all" ? Globe : selected?.source_type === "connector" ? Store : selected?.source_type === "dataset" ? File : Database;

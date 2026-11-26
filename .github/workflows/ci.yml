@@ -149,6 +149,8 @@ jobs:
           tests/backend/test_scheduler_http.py
           tests/backend/test_plan_limits.py
           tests/backend/test_telnyx_speak_contract.py
+          tests/backend/test_phase5_locales.py
+          tests/backend/test_multi_format_dataset_exports.py
           -q
         env:
           PYTHONPATH: .
