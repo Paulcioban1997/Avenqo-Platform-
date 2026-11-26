@@ -1337,9 +1337,6 @@ def test_12_audit_pr135_all_23_copilot_threads_and_universal_accounting(accounti
     assert s2_inv["paid_amount"] == 230.0
     assert s2_inv["issue_date"].startswith("2026-09-10")
 
-    from backend.app.services.retail_source_service import RetailSourceService
-    from shared.ai_engine.contracts import TenantContext
-
     source_service = RetailSourceService(session)
     accounting_user = TenantContext(company.id, user_id=owner.id)
     for store, expected in ((store_1, 115.0), (store_2, 230.0), (store_1, 115.0)):
