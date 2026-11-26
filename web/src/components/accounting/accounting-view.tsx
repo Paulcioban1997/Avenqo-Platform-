@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
+import { OcrAccountingInbox } from "@/components/accounting/ocr-accounting-inbox";
 import {
   ReceiptText,
   AlertTriangle,
@@ -1363,6 +1364,8 @@ export function AccountingView() {
           </HorizontalScroller>
         )}
       </div>
+
+      <OcrAccountingInbox key={sourceKey} isFr={isFr} onSelect={setSelectedInvoice} />
 
       {/* Clickable Invoice Detail Drawer (F2) */}
       <InvoiceDetailDrawer
