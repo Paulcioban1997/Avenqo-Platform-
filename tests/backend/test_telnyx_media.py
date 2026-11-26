@@ -547,7 +547,8 @@ def test_unknown_to_verified_staff_full_signed_dtmf_path(signed_telnyx_webhook, 
         socket.send_json({**frame, "media": {**frame["media"], "chunk": "2"}})
         result = env.send(env.event("call.gather.ended", digits=secret if correct else "102938", client_state=challenge))
         assert result.json()["authenticated"] is correct and secret not in result.text
-        env.client.portal.call(eventually, lambda: any(("réussie" if correct else "refusée") in text for text in adapter.spoken))
+        expected_prompt = "réussie" if correct else "Authentification refusée"
+        env.client.portal.call(eventually, lambda: any(expected_prompt in text for text in adapter.spoken))
         assert central.calls == [] and len(adapter.audio) == 1
         if correct:
             env.client.portal.call(asyncio.sleep, 0.3)
