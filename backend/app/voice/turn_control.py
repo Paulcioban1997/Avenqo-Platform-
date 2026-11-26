@@ -337,6 +337,12 @@ def is_backchannel(text: str) -> bool:
     return False
 
 
+_GREETING_WORDS = frozenset({
+    "allo", "bonjour", "bonsoir", "buna", "hello", "hi", "hola", "salut",
+})
+_SHORT_FAREWELLS = frozenset({"au revoir", "goodbye", "adios", "la revedere"})
+
+
 def is_substantive_utterance(transcript: str) -> bool:
     """True when utterance has enough content to represent a genuine new caller question."""
     if is_correction_or_objection(transcript) or is_attention_check(transcript):
@@ -344,8 +350,9 @@ def is_substantive_utterance(transcript: str) -> bool:
     words = _words(transcript)
     if len(words) >= 3:
         return True
-    # If 1-2 words, check for clear query intent keywords
-    return any(w in _QUERY_KEYWORDS for w in words)
+    if words and all(word in _GREETING_WORDS for word in words):
+        return True
+    return any(word in _QUERY_KEYWORDS for word in words)
 
 
 def is_explicit_interruption(text: str) -> bool:
@@ -414,9 +421,7 @@ def adjudicate_transcript(
             return "replace" if allow_barge_in else "accept"
         return "accept"
 
-    if _normalize(transcript) in {
-        "au revoir", "goodbye", "bye", "la revedere", "adios", "hasta luego",
-    }:
+    if _normalize(transcript) in _SHORT_FAREWELLS:
         return "replace" if active and allow_barge_in else "accept"
 
     if is_backchannel(transcript):
@@ -545,3 +550,4 @@ class VoiceTurnOrchestrator:
                 "p95": compute_percentile(self.central_ai_latencies_ms, 95),
             },
         }
+

@@ -2450,7 +2450,7 @@ class TelnyxMediaBridge:
                         logger.info("Caller cancelled PIN challenge via DTMF '*' in media stream")
                         await self._finish_pin("cancelled")
                     continue
-                await self.interrupt(pause_input=False)
+                await self.interrupt(pause_input=self._pin_turn is not None)
                 continue
             if kind == "mark":
                 marker = event.get("mark")
@@ -2490,7 +2490,7 @@ class TelnyxMediaBridge:
                 raise InvalidMediaFrame("Invalid media chunk")
             number = int(chunk)
             self._last_chunk = max(self._last_chunk, number)
-            if not self.input_paused:
+            if not self.input_paused and not self._pin_started:
                 self.telemetry["inbound_frames"] += 1
                 self.telemetry["inbound_audio_ms"] += 20
                 pcm_frames = self.reorder_buffer.push(number, self.codec.inbound_pcm(media.get("payload")))
@@ -2499,6 +2499,7 @@ class TelnyxMediaBridge:
 
     async def _finish_pin(self, status: str) -> None:
         item_id = self._pin_turn or "pin-result"
+        self.input_paused = True
         self._pin_turn = None
         self._pin_mark = None
         self._pin_started = False
@@ -2557,15 +2558,16 @@ class TelnyxMediaBridge:
         else:
             if self.cancel_pin is not None:
                 await self.cancel_pin()
+            refusal = voice_auth_message(self.locale, 2)
             loc = resolve_locale(self.locale).casefold()
             if loc.startswith("fr"):
-                refused_msg = "Le NIP n'a pas été validé. Vous êtes en mode accueil public. Que souhaitez-vous savoir ?"
+                refused_msg = f"{refusal} Vous êtes en mode accueil public. Que souhaitez-vous savoir ?"
             elif loc.startswith("es"):
-                refused_msg = "No se pudo validar el PIN. Está en modo de recepción pública. ¿Qué desea consultar?"
+                refused_msg = f"{refusal} Está en modo de recepción pública. ¿Qué desea consultar?"
             elif loc.startswith("ro"):
-                refused_msg = "Numărul maxim de încercări a fost atins. Introducerea codului PIN este abandonată. Sunteți în modul public. Cu ce vă pot ajuta?"
+                refused_msg = f"{refusal} Sunteți în modul public. Cu ce vă pot ajuta?"
             else:
-                refused_msg = "The PIN could not be verified. You are in public reception mode. How can I help you?"
+                refused_msg = f"{refusal} You are in public reception mode. How can I help you?"
             await self._speak_system(
                 "pin-result:" + hashlib.sha256(str(item_id).encode()).hexdigest()[:24],
                 refused_msg,
@@ -4062,3 +4064,4 @@ async def telnyx_media_socket(
                 db.rollback()
                 if settings.environment == "sandbox":
                     logger.error("Sandbox media cleanup could not confirm provider hangup; call_id=%s", call_id)
+

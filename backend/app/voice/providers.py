@@ -153,9 +153,20 @@ class RetellVoiceProvider:
         )
 
 
-class TelnyxCallEndedError(RuntimeError):
+class TelnyxCallEndedError(httpx.HTTPStatusError, RuntimeError):
     """Raised when Telnyx returns HTTP 422 with code 90018 (Call has already ended)."""
-    pass
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        request: httpx.Request | None = None,
+        response: httpx.Response | None = None,
+    ) -> None:
+        if request is not None and response is not None:
+            httpx.HTTPStatusError.__init__(self, message, request=request, response=response)
+        else:
+            RuntimeError.__init__(self, message)
 
 
 class TelnyxClient:
@@ -437,7 +448,11 @@ class TelnyxClient:
                         title = str(err.get("title") or "").lower()
                         detail = str(err.get("detail") or "").lower()
                         if code == "90018" or "already ended" in title or "already ended" in detail:
-                            raise TelnyxCallEndedError("Telnyx call has already ended (code 90018)")
+                            raise TelnyxCallEndedError(
+                                "Telnyx call has already ended (code 90018)",
+                                request=response.request,
+                                response=response,
+                            )
                 except TelnyxCallEndedError:
                     raise
                 except Exception:

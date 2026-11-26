@@ -85,3 +85,4 @@ def test_render_blueprint_stays_on_the_sandbox_branch_and_api():
     assert "https://avenqo-platform-sandbox.up.railway.app" in text
     assert "value: https://api.avenqo.ca" not in text
     assert "value: https://avenqo.ca" not in text
+

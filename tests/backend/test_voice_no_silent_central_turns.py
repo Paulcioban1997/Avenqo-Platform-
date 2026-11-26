@@ -142,3 +142,4 @@ async def test_staff_pin_gate_still_never_bypassed_for_auth_required():
     with pytest.raises(PermissionError, match="Keypad authentication unavailable"):
         await bridge._execute("auth-case", "details privés", 0)
     assert adapter.spoken == []
+

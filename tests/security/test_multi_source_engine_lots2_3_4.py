@@ -575,3 +575,4 @@ async def test_lot4_central_ai_inventory_summary_breakdown(db_session: Session):
     assert breakdown["Boutique B"]["total"] == 1
     assert breakdown["Boutique B"]["low_stock"] == 1
     assert "provenance" in res.data
+
