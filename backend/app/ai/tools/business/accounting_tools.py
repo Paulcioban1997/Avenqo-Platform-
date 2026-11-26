@@ -376,7 +376,7 @@ class SearchInvoicesTool(AccountingAITool):
         dataset_ids, _source_context = resolve_accounting_dataset_scope(self._session, context.tenant)
         query = select(AccountingInvoice).where(
             AccountingInvoice.company_id == context.tenant.company_id,
-            apply_dataset_scope(AccountingInvoice.dataset_id, dataset_ids),
+            apply_dataset_scope(AccountingInvoice, dataset_ids),
         )
 
         if arguments.invoice_type:

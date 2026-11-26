@@ -260,9 +260,9 @@ def test_all_sources_excludes_disabled_and_unready_datasets(db_session, monkeypa
     tenant = TenantContext(company_id=uuid4())
     ready, disabled, unavailable = uuid4(), uuid4(), uuid4()
     sources = [
-        SimpleNamespace(dataset_id=ready, enabled=True, status="READY", display_name="ready"),
-        SimpleNamespace(dataset_id=disabled, enabled=False, status="READY", display_name="disabled"),
-        SimpleNamespace(dataset_id=unavailable, enabled=True, status="UNAVAILABLE", display_name="unavailable"),
+        SimpleNamespace(source_type="dataset", dataset_id=ready, enabled=True, status="READY", display_name="ready"),
+        SimpleNamespace(source_type="dataset", dataset_id=disabled, enabled=False, status="READY", display_name="disabled"),
+        SimpleNamespace(source_type="dataset", dataset_id=unavailable, enabled=True, status="UNAVAILABLE", display_name="unavailable"),
     ]
     monkeypatch.setattr(
         RetailSourceService, "context",

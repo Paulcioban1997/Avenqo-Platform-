@@ -352,17 +352,6 @@ class RetailSourceService:
                     RetailActiveSource.company_id == tenant.company_id
                 )
             )
-        ready_connection = self._session.scalar(
-            select(CommerceConnection)
-            .where(
-                CommerceConnection.company_id == tenant.company_id,
-                CommerceConnection.status == CommerceConnectionStatus.READY.value,
-            )
-            .order_by(
-                CommerceConnection.last_successful_sync.desc(),
-                CommerceConnection.created_at.desc(),
-            )
-        )
         connections = tuple(
             self._session.scalars(
                 select(CommerceConnection)
@@ -387,11 +376,20 @@ class RetailSourceService:
                 .order_by(Dataset.uploaded_at.desc())
             ).all()
         )
-        total_valid_sources = int(ready_connection is not None) + len(datasets)
+        ready_connections = tuple(
+            item for item in connections if item.status == CommerceConnectionStatus.READY.value
+        )
+        connector_dataset_ids = {
+            dataset_id for item in connections
+            if (dataset_id := self._connection_dataset_id(item)) is not None
+        }
+        datasets = tuple(item for item in datasets if item.id not in connector_dataset_ids)
+        total_valid_sources = len(ready_connections) + len(datasets)
         if total_valid_sources == 0:
             return None
         if total_valid_sources == 1:
-            if ready_connection is not None:
+            if ready_connections:
+                ready_connection = ready_connections[0]
                 return self._store_selection(
                     tenant,
                     source_type="connector",

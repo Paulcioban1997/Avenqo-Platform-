@@ -547,7 +547,8 @@ def test_unknown_to_verified_staff_full_signed_dtmf_path(signed_telnyx_webhook, 
         socket.send_json({**frame, "media": {**frame["media"], "chunk": "2"}})
         result = env.send(env.event("call.gather.ended", digits=secret if correct else "102938", client_state=challenge))
         assert result.json()["authenticated"] is correct and secret not in result.text
-        env.client.portal.call(eventually, lambda: any(("réussie" if correct else "refusée") in text for text in adapter.spoken))
+        expected_prompt = "réussie" if correct else "n'a pas été validé"
+        env.client.portal.call(eventually, lambda: any(expected_prompt in text for text in adapter.spoken))
         assert central.calls == [] and len(adapter.audio) == 1
         if correct:
             env.client.portal.call(asyncio.sleep, 0.3)
@@ -691,7 +692,10 @@ async def test_media_bridge_background_central_failure_speaks_safe_recovery_then
 
 
 @pytest.mark.asyncio
-async def test_barge_in_discards_stale_speech_without_cancelling_business_execution():
+@pytest.mark.parametrize("mutates", [False, True])
+async def test_barge_in_discards_stale_speech_and_preserves_only_authorized_mutations(mutates):
+    from backend.app.ai.tools.idempotency import tool_mutation_state
+
     socket = FakeMediaSocket(); adapter = FakeAudioAdapter()
     entered = asyncio.Event(); release = asyncio.Event(); completed = []
 
@@ -703,6 +707,9 @@ async def test_barge_in_discards_stale_speech_without_cancelling_business_execut
 
     async def execute(item_id, transcript):
         if item_id == "slow-turn":
+            state = tool_mutation_state.get()
+            assert state is not None
+            state.in_progress = int(mutates)
             entered.set()
             await release.wait()
         completed.append(item_id)
@@ -720,9 +727,11 @@ async def test_barge_in_discards_stale_speech_without_cancelling_business_execut
     correction = "Wait, I meant the new answer."
     await adapter.incoming.put(SimpleNamespace(type="conversation.item.input_audio_transcription.completed", item_id="new-turn", transcript=correction))
     await eventually(lambda: bridge.epoch == 1)
-    release.set()
+    if mutates:
+        assert completed == []
+        release.set()
     await eventually(lambda: bool(adapter.spoken))
-    assert completed == ["slow-turn", "new-turn"]
+    assert completed == (["slow-turn", "new-turn"] if mutates else ["new-turn"])
     assert adapter.spoken == [correction]
     assert adapter.interruptions == 0
     assert not any(event.get("event") == "clear" for event in socket.sent)
@@ -1713,6 +1722,8 @@ async def test_multi_turn_conversation_and_interruption_barge_in():
         await eventually(lambda: len(adapter.spoken) == 1)
         assert "Reponse a: Allô" in adapter.spoken[0]
 
+        await eventually(lambda: bridge._current_turn_task is None)
+
         # TURN 2: Multi-turn continuation - user says "J'aimerais prendre un rendez-vous"
         await bridge._turns.put(("turn-2", "J'aimerais prendre un rendez-vous", bridge.epoch))
         await eventually(lambda: len(turn_answers) == 2)
@@ -1909,13 +1920,13 @@ async def test_realistic_end_to_end_pcmu_frames_multi_turn_and_benign_cancel_err
     await adapter.incoming.put(SimpleNamespace(
         type="conversation.item.input_audio_transcription.completed",
         item_id="item-turn-1",
-        transcript="Allô bonjour"
+        transcript="Est-ce que vous êtes ouverts samedi ?"
     ))
 
     await eventually(lambda: len(turn_transcripts) == 1)
-    assert turn_transcripts[0] == "Allô bonjour"
+    assert turn_transcripts[0] == "Est-ce que vous êtes ouverts samedi ?"
     await eventually(lambda: len(adapter.spoken_texts) == 2)
-    assert "Reponse pour: Allô bonjour" in adapter.spoken_texts[1]
+    assert "Reponse pour: Est-ce que vous êtes ouverts samedi" in adapter.spoken_texts[1]
     assert bridge.telemetry["speech_detected"] is True
     assert bridge.telemetry["transcription_received"] is True
 
@@ -2118,28 +2129,26 @@ async def test_public_caller_natural_multi_turn_crm_appointment_preserves_conver
             from tests.backend.test_voice_inbound_e2e import _drain_socket
             _drain_socket(socket)
 
-    # Verify all 5 conversational turns were executed by Central AI
-    assert len(captured_turns) == 5
-    assert captured_turns[0] == "Bonjour"
-    assert captured_turns[1] == "Je voudrais prendre un rendez-vous"
-    assert captured_turns[2] == "Demain vers 14 heures"
-    assert captured_turns[3] == "Oui, ça me convient"
-    assert captured_turns[4] == "Quels sont vos horaires d'ouverture ?"
-
-    # Verify that conversation_id is persistent across all 5 turns
-    assert len(captured_conversations) == 5
+    # The local greeting is audible; only business turns reach Central AI.
+    assert captured_turns == [
+        "Je voudrais prendre un rendez-vous",
+        "Demain vers 14 heures",
+        "Oui, ça me convient",
+        "Quels sont vos horaires d'ouverture ?",
+    ]
+    assert len(captured_conversations) == len(captured_turns)
     first_conv_id = captured_conversations[0]
     assert first_conv_id is not None
     assert all(c_id == first_conv_id for c_id in captured_conversations)
 
-    # Verify spoken responses are natural and follow the dialogue context (initial greeting + 5 turns)
-    assert len(adapter.spoken) == 6
+    # One audible greeting and one response for each business turn.
+    assert len(adapter.spoken) == len(captured_turns) + 1
     assert "Voice Test Shop" in adapter.spoken[0]
-    assert "Comment puis-je vous aider" in adapter.spoken[1]
-    assert "rendez-vous" in adapter.spoken[2]
-    assert "14h00" in adapter.spoken[3]
-    assert "confirmé" in adapter.spoken[4]
-    assert "ouverts" in adapter.spoken[5]
+    assert "Comment puis-je vous aider" in adapter.spoken[0]
+    assert "rendez-vous" in adapter.spoken[1]
+    assert "14h00" in adapter.spoken[2]
+    assert "confirmé" in adapter.spoken[3]
+    assert "ouverts" in adapter.spoken[4]
 
     # Verify that the conversation was created in DB and associated with the call
     env.db.expire_all()
@@ -2260,7 +2269,7 @@ async def test_public_caller_natural_10_turn_canadian_french_conversation(author
     env.db.commit()
 
     ten_turn_phrases = [
-        "Allô bonjour !",
+        "Quel service recommandez-vous pour une première consultation ?",
         "J'aimerais prendre un rendez-vous pour un service s'il vous plaît.",
         "Est-ce que vous avez de la place demain après-midi ?",
         "Vers 14 heures, est-ce que c'est libre ?",
@@ -2321,7 +2330,7 @@ async def test_public_caller_natural_10_turn_canadian_french_conversation(author
             transcript = args[3]
             captured_turns.append(transcript)
             captured_conversations.append(conv_id)
-            if "allô bonjour" in transcript.lower():
+            if "première consultation" in transcript.lower():
                 ans = "Bonjour ! Comment puis-je vous aider aujourd'hui ?"
             elif "prendre un rendez-vous" in transcript.lower():
                 ans = "Avec plaisir ! Quel jour vous conviendrait le mieux ?"
@@ -2383,13 +2392,11 @@ async def test_public_caller_natural_10_turn_canadian_french_conversation(author
                         "payload": base64.b64encode(b"\xff" * 160).decode(),
                     },
                 })
-                resp = socket.receive_json()
-                assert resp.get("event") == "media"
+                client.portal.call(eventually, lambda: len(adapter.spoken) >= i + 1)
 
             socket.send_json({"event": "stop", "stream_id": "stream-public-10turn"})
-            with pytest.raises(WebSocketDisconnect):
-                while True:
-                    socket.receive_json()
+            from tests.backend.test_voice_inbound_e2e import _drain_socket
+            _drain_socket(socket)
 
     # All ten inputs are questions; the last asks for the business address.
     assert captured_turns == ten_turn_phrases

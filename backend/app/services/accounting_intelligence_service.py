@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.core.cache import cached_for_tenant
 from backend.app.models.accounting import AccountingInvoice, AccountingTransaction
-from backend.app.services.accounting_source_scope import apply_dataset_scope
+from backend.app.services.accounting_source_scope import AccountingConnectorScope, AccountingSourceFilter
 from backend.app.models.audit_log import AuditLogEntry
 from backend.app.models.dataset import Dataset
 from backend.app.models.workspace import TenantDocument
@@ -56,18 +56,23 @@ class AccountingIntelligenceService:
         self._session = session
 
     @staticmethod
-    def _scoped(rows: list, dataset_ids: frozenset[UUID] | None):
+    def _scoped(rows: list, dataset_ids: AccountingSourceFilter):
         if dataset_ids is None:
             return rows
-        if not dataset_ids:
-            return []
-        return [row for row in rows if getattr(row, "dataset_id", None) in dataset_ids]
+        if isinstance(dataset_ids, AccountingConnectorScope):
+            return [
+                row for row in rows
+                if row.dataset_id in dataset_ids.dataset_ids
+                or (row.source_module == "retail"
+                    and (row.extra_data or {}).get("connection_id") in dataset_ids.connection_ids)
+            ]
+        return [row for row in rows if row.dataset_id in dataset_ids]
 
     @cached_for_tenant("accounting_overview", ttl_seconds=30)
     def get_financial_overview(
         self,
         company_id: UUID,
-        dataset_ids: frozenset[UUID] | None = None,
+        dataset_ids: AccountingSourceFilter = None,
     ) -> dict[str, Any]:
         """Vue d'ensemble financière consolidée du tenant (données réelles confirmées vs propositions en attente)."""
         all_txs = self._scoped(
@@ -194,7 +199,7 @@ class AccountingIntelligenceService:
     def get_monthly_expenses(
         self,
         company_id: UUID,
-        dataset_ids: frozenset[UUID] | None = None,
+        dataset_ids: AccountingSourceFilter = None,
         year: int | None = None,
         month: int | None = None,
         *,
@@ -318,7 +323,7 @@ class AccountingIntelligenceService:
         }
 
     @cached_for_tenant("accounting_margins", ttl_seconds=30)
-    def get_profit_margin(self, company_id: UUID, dataset_ids: frozenset[UUID] | None = None) -> dict[str, Any]:
+    def get_profit_margin(self, company_id: UUID, dataset_ids: AccountingSourceFilter = None) -> dict[str, Any]:
         """Calcul de marge brute et opérationnelle sur les écritures comptables confirmées."""
         txs = self._scoped(
             list(
@@ -402,7 +407,7 @@ class AccountingIntelligenceService:
     def get_unpaid_invoices(
         self,
         company_id: UUID,
-        dataset_ids: frozenset[UUID] | None = None,
+        dataset_ids: AccountingSourceFilter = None,
         invoice_type: str = "receivable",
         *,
         include_to_verify: bool = False,
@@ -469,7 +474,7 @@ class AccountingIntelligenceService:
     def get_expense_anomalies(
         self,
         company_id: UUID,
-        dataset_ids: frozenset[UUID] | None = None,
+        dataset_ids: AccountingSourceFilter = None,
         threshold_multiplier: float = 2.0,
         *,
         include_payroll: bool = True,
@@ -571,7 +576,7 @@ class AccountingIntelligenceService:
     def get_cash_flow_forecast(
         self,
         company_id: UUID,
-        dataset_ids: frozenset[UUID] | None = None,
+        dataset_ids: AccountingSourceFilter = None,
         horizon_days: int = 30,
     ) -> dict[str, Any]:
         """Prévision de trésorerie (Cash Flow Forecast) strictement identifiée comme projection IA."""
@@ -710,7 +715,7 @@ class AccountingIntelligenceService:
             "risk_assessment": "low" if projected_balance > 0 else "high_deficit_risk",
         }
 
-    def reconcile_sales_with_accounting(self, company_id: UUID, dataset_ids: frozenset[UUID] | None = None) -> dict[str, Any]:
+    def reconcile_sales_with_accounting(self, company_id: UUID, dataset_ids: AccountingSourceFilter = None) -> dict[str, Any]:
         """Compare les ventes e-commerce, paiements, taxes et remboursements avec les écritures confirmées."""
         return FinancialIntegrationService(self._session).reconcile_ecommerce_and_accounting(company_id)
 

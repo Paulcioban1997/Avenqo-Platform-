@@ -113,7 +113,12 @@ jobs:
 
       - name: Run Accounting active-source regression suite
         timeout-minutes: 5
-        run: python -m pytest tests/backend/test_accounting_active_source.py -q
+        run: >-
+          python -m pytest
+          tests/backend/test_accounting_active_source.py
+          tests/backend/test_accounting_unified_classification_and_rbac.py
+          tests/backend/test_company_dataset_loader_formats.py
+          -q
         env:
           PYTHONPATH: .
           ENVIRONMENT: test
@@ -213,6 +218,7 @@ jobs:
           DATABASE_URL: "sqlite:///:memory:"
 
       - name: Rehearse PostgreSQL production migration in a new isolated database
+        if: ${{ !cancelled() }}
         run: python -m pytest tests/backend/test_release_postgres_migrations.py -q
         env:
           PYTHONPATH: .
