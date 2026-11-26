@@ -260,8 +260,6 @@ class SmartModelRouter:
 
         if plan == "demo":
             cost_weight *= Decimal("2")
-        elif plan == "professional" and context.complexity == LLMTaskComplexity.HIGH:
-            cost_weight *= Decimal("10")
         if context.remaining_credits is not None and context.remaining_credits <= 10:
             cost_weight *= Decimal("10")
 
