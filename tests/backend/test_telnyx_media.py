@@ -643,7 +643,7 @@ async def test_media_bridge_roundtrip_barge_in_dtmf_and_duplicate_frames():
     await adapter.incoming.put(delta)
     await until(lambda: any(event["event"] == "media" for event in socket.sent))
     assert calls == [("turn-test", "Summarize sales [REDACTED]")]
-    bridge._pin_turn = "pin-test"
+    # Ordinary DTMF interrupts playback outside the separate secure PIN flow.
     await socket.incoming.put({"event": "dtmf", "stream_id": "stream-test", "dtmf": {"digit": "6"}})
     await eventually(lambda: socket.sent[-1] == {"event": "clear"})
     await adapter.incoming.put(delta)
@@ -2152,8 +2152,9 @@ async def test_public_caller_natural_multi_turn_crm_appointment_preserves_conver
             from tests.backend.test_voice_inbound_e2e import _drain_socket
             _drain_socket(socket)
 
-    # The local greeting is audible; only business turns reach Central AI.
+    # A caller greeting is a real turn, separate from the initial company greeting.
     assert captured_turns == [
+        "Bonjour",
         "Je voudrais prendre un rendez-vous",
         "Demain vers 14 heures",
         "Oui, ça me convient",
@@ -2164,14 +2165,15 @@ async def test_public_caller_natural_multi_turn_crm_appointment_preserves_conver
     assert first_conv_id is not None
     assert all(c_id == first_conv_id for c_id in captured_conversations)
 
-    # One audible greeting and one response for each business turn.
+    # One initial greeting and one response for every caller turn.
     assert len(adapter.spoken) == len(captured_turns) + 1
     assert "Voice Test Shop" in adapter.spoken[0]
     assert "Comment puis-je vous aider" in adapter.spoken[0]
-    assert "rendez-vous" in adapter.spoken[1]
-    assert "14h00" in adapter.spoken[2]
-    assert "confirmé" in adapter.spoken[3]
-    assert "ouverts" in adapter.spoken[4]
+    assert "Bonjour" in adapter.spoken[1]
+    assert "rendez-vous" in adapter.spoken[2]
+    assert "14h00" in adapter.spoken[3]
+    assert "confirmé" in adapter.spoken[4]
+    assert "ouverts" in adapter.spoken[5]
 
     # Verify that the conversation was created in DB and associated with the call
     env.db.expire_all()
@@ -2444,3 +2446,44 @@ async def test_public_caller_natural_10_turn_canadian_french_conversation(author
 
 
 
+
+
+@pytest.mark.asyncio
+async def test_pin_collection_digits_do_not_interrupt_or_forward_audio():
+    socket = FakeMediaSocket()
+    adapter = FakeAudioAdapter()
+
+    async def noop(*_args):
+        return None
+
+    async def execute(*_args):
+        raise AssertionError("PIN collection must not dispatch a business turn")
+
+    bridge = TelnyxMediaBridge(
+        socket, adapter, locale="en", validate_start=noop,
+        authorize=noop, execute_turn=execute,
+    )
+    await socket.incoming.put(start_event())
+    running = asyncio.create_task(bridge.run())
+    try:
+        await until(lambda: adapter.opened)
+        bridge._pin_turn = "secure-pin-turn"
+        bridge._pin_started = True
+        epoch = bridge.epoch
+        await socket.incoming.put({
+            "event": "dtmf", "stream_id": "stream-test", "dtmf": {"digit": "6"},
+        })
+        await socket.incoming.put({
+            "event": "media", "stream_id": "stream-test",
+            "media": {"track": "inbound", "chunk": "1",
+                      "payload": base64.b64encode(b"\xff" * 160).decode()},
+        })
+        await eventually(lambda: bridge._last_chunk == 1)
+        assert bridge._pin_turn == "secure-pin-turn"
+        assert bridge.epoch == epoch
+        assert adapter.audio == []
+        assert not any(event["event"] == "clear" for event in socket.sent)
+    finally:
+        await socket.incoming.put({"event": "stop", "stream_id": "stream-test"})
+        await asyncio.wait_for(running, timeout=2)
+    assert adapter.closed
