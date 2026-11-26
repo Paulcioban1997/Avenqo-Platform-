@@ -172,3 +172,26 @@ def test_original_download_preserves_bytes_and_rejects_paths_outside_tenant(db_s
     with pytest.raises(HTTPException) as error:
         documents.download_ocr_original(**kwargs)
     assert error.value.status_code == 404
+
+def test_voice_refresh_observes_browser_selection_from_another_database_session(db_session):
+    from backend.app.models import UserSourceSelection
+    from backend.app.voice.service import resolve_voice_source_context
+    company = _company(db_session, "voice-refresh")
+    user = _user(db_session, company)
+    first = _dataset(db_session, company, "first.csv")
+    second = _dataset(db_session, company, "second.csv")
+    db_session.commit()
+    tenant = TenantContext(company_id=company.id, user_id=user.id)
+    RetailSourceService(db_session).select_source(tenant, source_type="dataset", source_id=first.id)
+    db_session.commit()
+    # Hold the ORM object in the long-lived call session, reproducing identity-map caching.
+    selection = db_session.get(UserSourceSelection, (company.id, user.id))
+    assert selection.dataset_id == first.id
+    assert resolve_voice_source_context(db_session, tenant)["sources"][0]["dataset_id"] == str(first.id)
+    db_session.commit()
+    with sessionmaker(bind=db_session.get_bind(), expire_on_commit=False)() as browser_db:
+        RetailSourceService(browser_db).select_source(tenant, source_type="dataset", source_id=second.id)
+        browser_db.commit()
+    assert selection.dataset_id == first.id
+    refreshed = resolve_voice_source_context(db_session, tenant)
+    assert refreshed["sources"][0]["dataset_id"] == str(second.id)

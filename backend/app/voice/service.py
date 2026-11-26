@@ -80,9 +80,10 @@ def resolve_voice_source_context(db: Session, tenant: TenantContext) -> dict[str
             "state": "UNAVAILABLE",
             "selection": None,
             "sources": [],
+            "business_profile": None,
             "resolved_at": datetime.now(timezone.utc).isoformat(),
         }
-    context = RetailSourceService(db).context(tenant)
+    context = RetailSourceService(db, fresh_reads=True).context(tenant)
     if context["source_type"] == "all":
         selected = [
             source for source in context["sources"]
@@ -96,7 +97,7 @@ def resolve_voice_source_context(db: Session, tenant: TenantContext) -> dict[str
             and source.status.upper() == "READY"
         ]
     cfg = db.scalar(
-        select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == tenant.company_id)
+        select(VoiceBusinessConfig).where(VoiceBusinessConfig.company_id == tenant.company_id).execution_options(populate_existing=True)
     )
     business_info = None
     if cfg is not None:
