@@ -452,6 +452,7 @@ def create_transaction(
 
 @router.get("/invoices")
 def list_invoices(
+    document_scope: bool = Query(default=False),
     invoice_type: str | None = Query(default=None),
     status_filter: str | None = Query(default=None, alias="status"),
     verification_status: str | None = Query(default=None),
@@ -466,7 +467,11 @@ def list_invoices(
     dataset_ids, _source_context = resolve_accounting_dataset_scope(db, tenant)
     stmt = select(AccountingInvoice).where(
         AccountingInvoice.company_id == tenant.company_id,
-        apply_dataset_scope(AccountingInvoice, dataset_ids),
+        (
+            (AccountingInvoice.source_module == "ocr") & AccountingInvoice.document_id.is_not(None)
+            if document_scope
+            else apply_dataset_scope(AccountingInvoice, dataset_ids)
+        ),
     )
     if invoice_type:
         stmt = stmt.where(AccountingInvoice.invoice_type == invoice_type)

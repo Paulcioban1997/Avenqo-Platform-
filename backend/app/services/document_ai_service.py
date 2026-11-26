@@ -338,8 +338,7 @@ class DocumentAIService:
         existing = self._session.scalar(
             select(AccountingInvoice).where(
                 AccountingInvoice.company_id == actor.company_id,
-                AccountingInvoice.invoice_number == invoice_number,
-                AccountingInvoice.is_confirmed.is_(False),
+                AccountingInvoice.document_id == document.id,
             )
         )
         if existing is not None:
@@ -364,6 +363,11 @@ class DocumentAIService:
             status="unpaid",
             is_confirmed=False,
             notes=f"Proposition OCR document={document.id}{cell_note} — validation humaine requise.",
+            document_id=document.id,
+            source_module="ocr",
+            file_sha256=document.sha256,
+            verification_status="to_verify",
+            accounting_status="proposed",
         )
         self._session.add(row)
         self._session.commit()

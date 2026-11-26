@@ -619,6 +619,8 @@ export function ConnectionsView() {
       });
       if (!response.ok) throw new Error(connector.unavailable);
       const persisted = (await response.json()) as RetailSourceItem;
+      await session?.reload();
+      window.dispatchEvent(new Event("avenqo:sources-changed"));
       setRetailSources((items) => items.map((item) =>
         item.source_type === persisted.source_type && item.source_id === persisted.source_id
           ? persisted
@@ -635,17 +637,16 @@ export function ConnectionsView() {
     setActionLoading(true);
     setAlertError(null);
     try {
-      const response = await fetch("/api/v1/retail/sources/active", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-        body: JSON.stringify({ source_type: source.source_type, source_id: source.source_id }),
-      });
-      if (!response.ok) throw new Error(connector.unavailable);
-      const selected = (await response.json()) as RetailSourceItem;
-      setRetailSources((items) => items.map((item) => ({
-        ...item,
-        active: item.source_type === selected.source_type && item.source_id === selected.source_id,
-      })));
+      if (session) {
+        await session.selectSource(source.source_type, source.source_id);
+      } else {
+        await apiFetch("/api/v1/retail/sources/active", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+          body: JSON.stringify({ source_type: source.source_type, source_id: source.source_id }),
+        });
+      }
+      await loadData();
     } catch (error) {
       setAlertError(error instanceof Error ? error.message : connector.unavailable);
     } finally {
@@ -853,9 +854,7 @@ export function ConnectionsView() {
   // Download Dataset
   const handleDownloadDataset = async (dataset: DatasetItem, format: "original" | "csv" | "xlsx" | "json") => {
     try {
-      const endpoint = format === "original"
-        ? `/api/v1/datasets/${dataset.id}/export/csv`
-        : `/api/v1/datasets/${dataset.id}/export/${format}`;
+      const endpoint = `/api/v1/datasets/${dataset.id}/export/${format}`;
 
       const res = await fetch(endpoint, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error(connector.unavailable);
@@ -864,7 +863,7 @@ export function ConnectionsView() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${dataset.name.replace(/\.[^/.]+$/, "")}-${format}.${format === "original" ? "csv" : format}`;
+      a.download = format === "original" ? dataset.name : `${dataset.name.replace(/\.[^/.]+$/, "")}-${format}.${format}`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);

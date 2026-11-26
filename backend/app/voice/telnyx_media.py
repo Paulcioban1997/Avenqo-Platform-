@@ -67,7 +67,7 @@ from backend.app.voice.turn_control import (
 )
 from backend.app.voice.auth import VoiceCallerAuth, utc, normalized_phone
 from backend.app.voice.usage import VoiceUsageLedger, voice_pricing_catalog
-from backend.app.voice.service import resolve_voice_source_context
+from backend.app.voice.service import resolve_voice_source_context, refresh_voice_source_context
 from backend.app.voice.messages import voice_auth_message, voice_greeting
 from backend.app.voice.providers import TelnyxClient
 from shared.ai_engine.contracts import TenantContext
@@ -3622,8 +3622,7 @@ async def telnyx_media_socket(
         )
 
         current_call.source_context = {
-            **resolve_voice_source_context(db, tenant),
-            **(current_call.source_context or {}),
+            **refresh_voice_source_context(db, tenant, current_call.source_context),
             "call_language_session": call_lang_session.as_dict(),
         }
         db.commit()

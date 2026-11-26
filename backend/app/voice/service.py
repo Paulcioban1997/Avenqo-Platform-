@@ -126,6 +126,13 @@ def resolve_voice_source_context(db: Session, tenant: TenantContext) -> dict[str
     }
 
 
+def refresh_voice_source_context(
+    db: Session, tenant: TenantContext, existing: dict[str, Any] | None
+) -> dict[str, Any]:
+    """Keep call routing/auth metadata while replacing the previous source snapshot."""
+    return {**(existing or {}), **resolve_voice_source_context(db, tenant)}
+
+
 class VoiceOrchestrator:
     def __init__(
         self,
