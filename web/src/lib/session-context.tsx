@@ -25,6 +25,7 @@ interface SessionState {
   reload: () => Promise<void>;
   sourceContext: SourceContext | null;
   sourceRevision: number;
+  sourceSelectionState: "pending" | "unconfirmed" | null;
   selectSource: (sourceType: string, sourceId: string | null) => Promise<void>;
 }
 export interface ContextSource { source_type: string; source_id: string; dataset_id: string | null; display_name: string; provider: string | null; status: string; active: boolean; enabled: boolean; }
@@ -52,6 +53,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [sourceError, setSourceError] = useState<ApiRequestError | null>(null);
   const [sourceContext, setSourceContext] = useState<SourceContext | null>(null);
   const [sourceRevision, setSourceRevision] = useState(0);
+  const [sourceSelectionState, setSourceSelectionState] = useState<SessionState["sourceSelectionState"]>(null);
+  const sourceRequest = useRef(0);
+  const sourceWrite = useRef(Promise.resolve());
+  const sourceWritePending = useRef(false);
   const pending = useRef<Promise<void> | null>(null);
   const creditPending = useRef<Promise<void> | null>(null);
   const creditVersion = useRef(-1);
@@ -85,6 +90,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const reload = useCallback(() => {
     if (pending.current) return pending.current;
     const version = revision.current;
+    const sourceVersion = sourceRequest.current;
+    const canConfirmSource = () => version === revision.current && sourceVersion === sourceRequest.current && !sourceWritePending.current;
     pending.current = (async () => {
       setLoading(true);
       try {
@@ -105,7 +112,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           refreshCredits(),
           (async () => {
             if (!sourceApi.current) {
-              if (version === revision.current) {
+              if (canConfirmSource()) {
                 setActiveDataSources([]);
                 setSourceContext(null);
                 setSourceError(null);
@@ -115,19 +122,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             try {
               const response = await apiFetch(sourceApi.current);
               const sources: { display_name: string; enabled: boolean }[] = await response.json();
-              if (version === revision.current) {
+              if (canConfirmSource()) {
                 setActiveDataSources(sources.filter(source => source.enabled).map(source => source.display_name));
                 setSourceError(null);
               }
               try {
                 const contextResponse = await apiFetch(`${sourceApi.current}/context`);
                 const context = await contextResponse.json();
-                if (version === revision.current && context && !Array.isArray(context) && Array.isArray(context.sources)) { setSourceContext(context); setActiveDataSources(namesForContext(context)); }
+                if (canConfirmSource() && context && !Array.isArray(context) && Array.isArray(context.sources)) {
+                  setSourceContext(context);
+                  setActiveDataSources(namesForContext(context));
+                  setSourceSelectionState(null);
+                }
               } catch {
-                if (version === revision.current) setSourceContext(null);
+                if (canConfirmSource()) setSourceContext(null);
               }
             } catch (error) {
-              if (version === revision.current) setSourceError(asError(error));
+              if (canConfirmSource()) setSourceError(asError(error));
             }
           })(),
         ]);
@@ -141,20 +152,50 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return pending.current;
   }, [refreshCredits]);
 
-  const selectSource = async (sourceType: string, sourceId: string | null) => {
+  const selectSource = (sourceType: string, sourceId: string | null) => {
     const version = revision.current;
     const base = sourceApi.current;
-    if (!base) throw new Error("Source selection is unavailable");
-    await apiFetch(`${base}/active`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_type: sourceType, source_id: sourceId }) });
-    const response = await apiFetch(`${base}/context`);
-    const context: SourceContext = await response.json();
-    if (version !== revision.current) throw new Error("Session changed during source selection");
-    setSourceContext(context); setSourceError(null); setSourceRevision(value => value + 1);
-    setActiveDataSources(namesForContext(context));
-    window.dispatchEvent(new Event("avenqo:sources-changed"));
-    if (context.source_type !== sourceType || (sourceType !== "all" && (context.source_id !== sourceId || context.state !== "READY"))) {
-      throw new Error("Requested source is not active and ready");
-    }
+    if (!base) return Promise.reject(new Error("Source selection is unavailable"));
+
+    const request = ++sourceRequest.current;
+    const isCurrent = () => version === revision.current && request === sourceRequest.current;
+    sourceWritePending.current = true;
+    setSourceSelectionState("pending");
+    setSourceContext(null);
+    setActiveDataSources([]);
+    setSourceError(null);
+    setSourceRevision(value => value + 1);
+
+    const work = sourceWrite.current.then(async () => {
+      if (!isCurrent()) return;
+      try {
+        await apiFetch(`${base}/active`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ source_type: sourceType, source_id: sourceId }),
+        });
+        if (!isCurrent()) return;
+        const response = await apiFetch(`${base}/context`);
+        const context: SourceContext = await response.json();
+        if (!isCurrent()) return;
+        if (!Array.isArray(context?.sources) || context.source_type !== sourceType || context.source_id !== sourceId) {
+          throw new Error("Requested source could not be confirmed");
+        }
+        setSourceContext(context);
+        setActiveDataSources(namesForContext(context));
+        setSourceSelectionState(null);
+        window.dispatchEvent(new Event("avenqo:sources-changed"));
+      } catch (error) {
+        if (!isCurrent()) return;
+        setSourceSelectionState("unconfirmed");
+        setSourceError(asError(error));
+        throw error;
+      } finally {
+        if (isCurrent()) sourceWritePending.current = false;
+      }
+    });
+    sourceWrite.current = work.catch(() => {});
+    return work;
   };
 
   useEffect(() => {
@@ -163,9 +204,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!protectedPage) return;
-    const expired = () => { revision.current++; tenantId.current = null; setIdentity(null); setCredits(unknownCredits); setCreditBalance(null); setActiveDataSources([]); setSourceContext(null); setCreditError(null); setSourceError(null); setError(new ApiRequestError("session_expired")); setLoading(false); };
+    const expired = () => { revision.current++; sourceWritePending.current = false; setSourceSelectionState(null); tenantId.current = null; setIdentity(null); setCredits(unknownCredits); setCreditBalance(null); setActiveDataSources([]); setSourceContext(null); setCreditError(null); setSourceError(null); setError(new ApiRequestError("session_expired")); setLoading(false); };
     const changed = () => {
-      revision.current++; tenantId.current = null;
+      revision.current++; sourceWritePending.current = false; setSourceSelectionState(null); tenantId.current = null;
       setIdentity(null); setCredits(unknownCredits); setCreditBalance(null); setActiveDataSources([]); setCreditError(null); setSourceError(null); setError(null);
       setSourceContext(null); setSourceRevision(value => value + 1);
       const previous = pending.current;
@@ -183,7 +224,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return () => { channel?.close(); window.clearInterval(timer); window.removeEventListener("focus", creditUpdated); document.removeEventListener("visibilitychange", creditUpdated); window.removeEventListener("avenqo:session-expired", expired); window.removeEventListener("avenqo:ai-credits-updated", creditUpdated); };
   }, [protectedPage, reload, refreshCredits]);
 
-  return <SessionContext.Provider value={{ identity, error, loading, credits, creditBalance, creditError, activeDataSources, sourceError, reload, sourceContext, sourceRevision, selectSource }}>{children}</SessionContext.Provider>;
+  return <SessionContext.Provider value={{ identity, error, loading, credits, creditBalance, creditError, activeDataSources, sourceError, reload, sourceContext, sourceRevision, sourceSelectionState, selectSource }}>{children}</SessionContext.Provider>;
 }
 
 export function useSession() {

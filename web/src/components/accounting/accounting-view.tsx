@@ -64,6 +64,7 @@ interface FinancialOverview {
   currency?: string;
   transactions_count?: number;
   confirmed_transactions_count?: number;
+  source_context?: { state: string | null; selection: string | null; name: string | null };
 }
 
 interface MarginsResponse {
@@ -222,6 +223,7 @@ export function AccountingView() {
   const [loadedSourceKey, setLoadedSourceKey] = useState<string | null>(null);
   const loadSequence = useRef(0);
   const sourceKey = `${session?.identity?.company?.id ?? ""}:${session?.identity?.user?.id ?? ""}:${session?.sourceRevision ?? 0}`;
+  const sourceSelectionState = session?.sourceSelectionState;
   const [refreshing, setRefreshing] = useState(false);
   const [invoiceLimit, setInvoiceLimit] = useState(150);
   const [overview, setOverview] = useState<FinancialOverview | null>(null);
@@ -244,6 +246,7 @@ export function AccountingView() {
   const [highlightedTxId, setHighlightedTxId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
+    if (sourceSelectionState) return;
     const sequence = ++loadSequence.current;
     setLoading(true);
     setLoadError(false);
@@ -293,7 +296,7 @@ export function AccountingView() {
     } finally {
       if (sequence === loadSequence.current) setLoading(false);
     }
-  }, [invoiceLimit, sourceKey]);
+  }, [invoiceLimit, sourceKey, sourceSelectionState]);
 
   useEffect(() => {
     void loadData();
@@ -617,6 +620,18 @@ export function AccountingView() {
     );
   };
 
+  if (sourceSelectionState) {
+    const failed = sourceSelectionState === "unconfirmed";
+    return (
+      <div className="p-6 space-y-3" role={failed ? "alert" : "status"}>
+        <p>{failed
+          ? (isFr ? "Impossible de confirmer la source comptable." : "Unable to confirm the accounting source.")
+          : (isFr ? "Confirmation de la source comptable…" : "Confirming accounting source…")}</p>
+        {failed && <button type="button" onClick={() => void session?.reload()} className="underline">{isFr ? "Réessayer" : "Retry"}</button>}
+      </div>
+    );
+  }
+
   if (loading || loadedSourceKey !== sourceKey || loadError) {
     return (
       <div className="p-6 space-y-3" role={loadError && !loading ? "alert" : "status"}>
@@ -679,11 +694,11 @@ export function AccountingView() {
         </div>
       </div>
 
-      {session?.sourceContext?.source_type && (
-        <div role={session.sourceContext.state === "READY" ? "status" : "alert"} className="rounded-xl border border-slate-200 dark:border-white/[0.08] p-3 text-xs">
+      {overview?.source_context?.selection && (
+        <div role={overview.source_context.state === "READY" ? "status" : "alert"} className="rounded-xl border border-slate-200 dark:border-white/[0.08] p-3 text-xs">
           <strong>{isFr ? "Source comptable : " : "Accounting source: "}</strong>
-          {session.sourceContext.state === "READY"
-            ? (session.activeDataSources.join(", ") || (isFr ? "Sources actives" : "Active sources"))
+          {overview.source_context.state === "READY"
+            ? (overview.source_context.name || (isFr ? "Sources actives" : "Active sources"))
             : (isFr ? "Source indisponible ou sans données exploitables. Aucun élargissement automatique du périmètre comptable." : "Source unavailable or without usable data. Accounting scope is not automatically widened.")}
         </div>
       )}

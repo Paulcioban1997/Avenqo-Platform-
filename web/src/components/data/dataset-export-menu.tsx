@@ -253,7 +253,7 @@ export function DatasetExportMenu({
   isFr = true,
   compact = false,
   activeSearchQuery = "",
-  previewLimit = 50,
+  previewLimit = 0,
   onExportError,
 }: DatasetExportMenuProps) {
   const [open, setOpen] = useState(false);
@@ -300,6 +300,7 @@ export function DatasetExportMenu({
 
   const scopes = options?.scopes ?? FALLBACK_SCOPES;
   const formats = options?.formats ?? FALLBACK_FORMATS;
+  const emptyFilteredPreview = selectedScope === "filtered_preview" && previewLimit === 0;
 
   const handleSelectScope = (code: ExportScopeCode) => {
     setSelectedScope(code);
@@ -336,6 +337,7 @@ export function DatasetExportMenu({
   };
 
   const executeDownloadWithOffset = async (requestedOffset: number) => {
+    if (emptyFilteredPreview) return;
     setIsDownloading(true);
     setLocalError(null);
     try {
@@ -351,7 +353,7 @@ export function DatasetExportMenu({
         if (activeSearchQuery.trim()) {
           params.set("search", activeSearchQuery.trim());
         }
-        params.set("limit", String(Math.max(1, previewLimit || 50)));
+        params.set("limit", String(previewLimit));
       }
 
       const resp = await fetch(
@@ -510,7 +512,7 @@ export function DatasetExportMenu({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {scopes.map((sc) => {
-                    const disabled = !sc.available || !sc.permitted;
+                    const disabled = !sc.available || !sc.permitted || (sc.code === "filtered_preview" && previewLimit === 0);
                     const active = selectedScope === sc.code;
                     const isReport = sc.code === "quality_report";
                     return (
@@ -679,7 +681,7 @@ export function DatasetExportMenu({
               </button>
               <button
                 type="button"
-                disabled={isDownloading}
+                disabled={isDownloading || emptyFilteredPreview}
                 onClick={handleDownload}
                 className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-[#0076FF] hover:bg-[#005bd3] disabled:opacity-60 text-white text-xs font-bold shadow-sm transition-colors cursor-pointer"
               >

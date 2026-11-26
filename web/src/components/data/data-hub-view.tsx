@@ -345,8 +345,9 @@ export function DataHubView() {
             .data-hub-detail { position: absolute; left: 0; top: 0; width: 100%; padding: 16px !important; background: #fff !important; color: #0f172a !important; }
             .data-hub-no-print { display: none !important; }
             .data-hub-table-wrap { overflow: visible !important; max-height: none !important; }
-            .data-hub-table { width: 100% !important; border-collapse: collapse !important; font-size: 10px !important; }
-            .data-hub-table th, .data-hub-table td { border: 1px solid #cbd5e1 !important; padding: 4px 6px !important; color: #0f172a !important; }
+            .data-hub-table { width: 100% !important; table-layout: fixed !important; border-collapse: collapse !important; font-size: 10px !important; }
+            .data-hub-table th, .data-hub-table td { border: 1px solid #cbd5e1 !important; padding: 4px 6px !important; color: #0f172a !important; white-space: normal !important; overflow-wrap: anywhere !important; overflow: visible !important; text-overflow: clip !important; max-width: none !important; }
+            .data-hub-table thead { display: table-header-group; }
           }
         `}</style>
         <div className="data-hub-detail-header">
@@ -376,7 +377,7 @@ export function DataHubView() {
               datasetName={selectedDataset.name}
               isFr={isFr}
               activeSearchQuery={detailFilterQuery}
-              previewLimit={visibleDetailRows.length || 50}
+              previewLimit={visibleDetailRows.length}
               onExportError={(msg) => setDetailError(msg)}
             />
             <button

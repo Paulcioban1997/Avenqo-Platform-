@@ -66,6 +66,8 @@ def resolve_accounting_dataset_scope(
             if item.enabled and item.status.upper() == "READY" and item.dataset_id is not None
         ]
         payload["name"] = ", ".join(item.display_name for item in ready) or None
+        if not ready:
+            payload["state"] = "NO_SOURCES"
         return frozenset(item.dataset_id for item in ready if item.dataset_id is not None), payload
 
     if (
@@ -73,6 +75,7 @@ def resolve_accounting_dataset_scope(
         or selected.dataset_id is None
         or selected.status.upper() != "READY"
     ):
+        payload["state"] = "SOURCE_UNAVAILABLE"
         return frozenset(), payload
 
     return frozenset({selected.dataset_id}), payload

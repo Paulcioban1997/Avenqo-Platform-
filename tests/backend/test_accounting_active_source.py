@@ -273,3 +273,31 @@ def test_all_sources_excludes_disabled_and_unready_datasets(db_session, monkeypa
     scope, context = resolve_accounting_dataset_scope(db_session, tenant)
     assert scope == frozenset({ready})
     assert context["name"] == "ready"
+
+
+def test_accounting_keeps_selected_dataset_when_its_artifact_disappears(db_session, tmp_path):
+    from backend.app.models.dataset_version import DatasetVersion
+
+    company = _company(db_session, "missing-artifact")
+    user = _user(db_session, company)
+    selected = _dataset(db_session, company, "selected.csv")
+    default = _dataset(db_session, company, "default.csv")
+    path = tmp_path / "selected.parquet"
+    path.touch()
+    selected.versions.append(
+        DatasetVersion(name="selected", artifact_path=str(path), is_current=True)
+    )
+    db_session.commit()
+
+    service = RetailSourceService(db_session)
+    service.select_source(TenantContext(company.id), source_type="dataset", source_id=default.id)
+    tenant = TenantContext(company.id, user_id=user.id)
+    service.select_source(tenant, source_type="dataset", source_id=selected.id)
+    path.unlink()
+
+    for _ in range(2):
+        scope, context = resolve_accounting_dataset_scope(db_session, tenant)
+        assert scope == frozenset()
+        assert context["state"] == "SOURCE_UNAVAILABLE"
+        assert context["source_id"] == str(selected.id)
+    assert service.active_selection(tenant).dataset_id == selected.id
