@@ -679,6 +679,15 @@ export function AccountingView() {
         </div>
       </div>
 
+      {session?.sourceContext?.source_type && (
+        <div role={session.sourceContext.state === "READY" ? "status" : "alert"} className="rounded-xl border border-slate-200 dark:border-white/[0.08] p-3 text-xs">
+          <strong>{isFr ? "Source comptable : " : "Accounting source: "}</strong>
+          {session.sourceContext.state === "READY"
+            ? (session.activeDataSources.join(", ") || (isFr ? "Sources actives" : "Active sources"))
+            : (isFr ? "Source indisponible ou sans données exploitables. Aucun élargissement automatique du périmètre comptable." : "Source unavailable or without usable data. Accounting scope is not automatically widened.")}
+        </div>
+      )}
+
       {/* Global Duplicate Warning Banner (F4) */}
       {duplicateInvoices.length > 0 && (
         <div
