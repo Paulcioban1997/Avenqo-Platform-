@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass
 import base64
 import logging
@@ -245,33 +246,19 @@ class OpenAIRealtimeAudioAdapter:
         self._staff_name = staff_name
         self._staff_role = staff_role
 
-    async def open(self, *, locale: str = "fr-CA") -> None:
-        if not self._config.api_key or not self._model:
-            raise ExternalVoiceConfigurationRequired("OPENAI_API_KEY and VOICE_REALTIME_MODEL are required")
-        client = AsyncOpenAI(api_key=self._config.api_key, base_url=self._config.base_url)
-        try:
-            self._manager = client.realtime.connect(model=self._model)
-            self._connection = await self._manager.__aenter__()
-        except Exception as exc:
-            # Fallback transparent et vérifié : gpt-live-1 / gpt-live-1.1 -> gpt-realtime-2.1
-            if self._model in ("gpt-live-1", "gpt-live-1.1"):
-                logger.warning("Primary voice model %s unavailable (%s); falling back to gpt-realtime-2.1", self._model, exc)
-                self._model = "gpt-realtime-2.1"
-                self._manager = client.realtime.connect(model=self._model)
-                self._connection = await self._manager.__aenter__()
-            else:
-                raise
+    def _session_payload(self, locale: str) -> dict[str, Any]:
         is_preview = "preview" in (self._model or "").lower()
         noise = None if self._config.input_noise_reduction == "off" else {"type": self._config.input_noise_reduction}
+        instructions = (
+            f"You are a warm, highly natural, professional phone receptionist representing the business. "
+            f"Start in {locale_info(locale).english_name}. Speak with a {self._config.delivery_style} delivery, "
+            "natural conversational pacing, and friendly human intonation. Avoid mechanical, robotic, or monotonous reading. "
+            "Avenqo AI Central supplies the authorized response text. Speak it naturally in its original language. "
+            "When a new user utterance uses a different language, follow that language. Never translate to French by default."
+        )
         if is_preview:
-            session_payload: dict[str, Any] = {
-                "instructions": (
-                    f"You are a warm, highly natural, professional phone receptionist representing the business. "
-                    f"Start in {locale_info(locale).english_name}. Speak with a {self._config.delivery_style} delivery, "
-                    "natural conversational pacing, and friendly human intonation. Avoid mechanical, robotic, or monotonous reading. "
-                    "Avenqo AI Central supplies the authorized response text. Speak it naturally in its original language. "
-                    "When a new user utterance uses a different language, follow that language. Never translate to French by default."
-                ),
+            return {
+                "instructions": instructions,
                 "modalities": ["audio", "text"],
                 "voice": self._config.tts_voice,
                 "speed": self._config.speech_speed,
@@ -286,43 +273,80 @@ class OpenAIRealtimeAudioAdapter:
                 },
                 "tools": [],
             }
-        else:
-            session_payload = {
-                "type": "realtime",
-                "instructions": (
-                    f"You are a warm, highly natural, professional phone receptionist representing the business. "
-                    f"Start in {locale_info(locale).english_name}. Speak with a {self._config.delivery_style} delivery, "
-                    "natural conversational pacing, and friendly human intonation. Avoid mechanical, robotic, or monotonous reading. "
-                    "Avenqo AI Central supplies the authorized response text. Speak it naturally in its original language. "
-                    "When a new user utterance uses a different language, follow that language. Never translate to French by default."
-                ),
-                "output_modalities": ["audio"],
-                "audio": {
-                    "input": {
-                        "noise_reduction": noise,
-                        "format": {"type": "audio/pcm", "rate": 24000},
-                        "transcription": {"model": self._config.stt_model or "gpt-4o-mini-transcribe"},
-                        "turn_detection": {
-                            "type": "server_vad",
-                            "create_response": False,
-                            "interrupt_response": False,
-                            "prefix_padding_ms": 300,
-                            "silence_duration_ms": 500,
-                            "threshold": 0.5,
-                        },
-                    },
-                    "output": {
-                        "speed": self._config.speech_speed,
-                        "format": {"type": "audio/pcm", "rate": 24000},
-                        "voice": self._config.tts_voice or "marin",
+        return {
+            "type": "realtime",
+            "instructions": instructions,
+            "output_modalities": ["audio"],
+            "audio": {
+                "input": {
+                    "noise_reduction": noise,
+                    "format": {"type": "audio/pcm", "rate": 24000},
+                    "transcription": {"model": self._config.stt_model or "gpt-4o-mini-transcribe"},
+                    "turn_detection": {
+                        "type": "server_vad",
+                        "create_response": False,
+                        "interrupt_response": False,
+                        "prefix_padding_ms": 300,
+                        "silence_duration_ms": 500,
+                        "threshold": 0.5,
                     },
                 },
-                "tools": [],
-            }
+                "output": {
+                    "speed": self._config.speech_speed,
+                    "format": {"type": "audio/pcm", "rate": 24000},
+                    "voice": self._config.tts_voice or "marin",
+                },
+            },
+            "tools": [],
+        }
+
+    async def _connect_and_configure(self, client: Any, model: str, *, locale: str) -> None:
+        """Open a realtime socket and apply session.update for the given model."""
+        with suppress(Exception):
+            await self.close()
+        self._model = model
+        self._manager = client.realtime.connect(model=model)
+        self._connection = await self._manager.__aenter__()
         await self._connection.send(cast(Any, {
             "type": "session.update",
-            "session": session_payload,
+            "session": self._session_payload(locale),
         }))
+
+    async def open(self, *, locale: str = "fr-CA") -> None:
+        if not self._config.api_key or not self._model:
+            raise ExternalVoiceConfigurationRequired("OPENAI_API_KEY and VOICE_REALTIME_MODEL are required")
+        client = AsyncOpenAI(api_key=self._config.api_key, base_url=self._config.base_url)
+        requested = str(self._model)
+        # OpenAI may accept the websocket connect for experimental aliases, then
+        # close with invalid_model on the first session.update. Remap must cover
+        # that full handshake or post-PIN media never reaches auth TTS.
+        candidates = [requested]
+        if requested in {"gpt-live-1", "gpt-live-1.1"}:
+            candidates.append("gpt-realtime-2.1")
+        last_exc: Exception | None = None
+        for attempt, model in enumerate(candidates):
+            try:
+                await self._connect_and_configure(client, model, locale=locale)
+                if attempt > 0:
+                    logger.warning(
+                        "Primary voice model %s unavailable; falling back to %s",
+                        requested,
+                        model,
+                    )
+                return
+            except Exception as exc:
+                last_exc = exc
+                logger.warning(
+                    "realtime_model_open_failed model=%s error_code=%s attempt=%s/%s",
+                    model,
+                    type(exc).__name__,
+                    attempt + 1,
+                    len(candidates),
+                )
+                with suppress(Exception):
+                    await self.close()
+        assert last_exc is not None
+        raise last_exc
 
     async def send_audio(self, audio: bytes) -> None:
         if self._connection is None:

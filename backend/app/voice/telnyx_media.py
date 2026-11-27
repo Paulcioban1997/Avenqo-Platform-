@@ -2919,11 +2919,16 @@ def media_session_opening_line(
     public_greeting: str | None,
     locale: str,
     confirm_authentication: bool,
+    auth_confirmation_already_spoken: bool = False,
 ) -> str | None:
-    """Customer calls keep their greeting. Only a verified staff IVR hears the success line."""
+    """Customer calls keep their greeting. Only a verified staff IVR hears the success line.
+
+    When Call Control already spoke the PIN success confirmation before streaming
+    started, skip repeating it so the media session opens directly in employee mode.
+    """
     if public_mode:
         return public_greeting
-    if confirm_authentication:
+    if confirm_authentication and not auth_confirmation_already_spoken:
         return voice_auth_message(locale, 1)
     return None
 
@@ -4106,6 +4111,9 @@ async def telnyx_media_socket(
             public_greeting=public_conversation.greeting() if public_conversation is not None else None,
             locale=locale,
             confirm_authentication=(call.source_context or {}).get("ivr_stage") == "staff_authenticated",
+            auth_confirmation_already_spoken=bool(
+                (call.source_context or {}).get("auth_confirmation_spoken")
+            ),
         ),
         begin_pin=begin_pin, poll_pin=poll_pin,
         reset_pin_retry=reset_pin_retry,

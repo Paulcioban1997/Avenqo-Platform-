@@ -98,6 +98,14 @@ def test_staff_opening_line_confirms_authentication_and_public_greeting_stays():
     assert media_session_opening_line(
         public_mode=False, public_greeting=None, locale="fr", confirm_authentication=False,
     ) is None
+    # Call Control may already have spoken the PIN success line before streaming.
+    assert media_session_opening_line(
+        public_mode=False,
+        public_greeting=None,
+        locale="fr",
+        confirm_authentication=True,
+        auth_confirmation_already_spoken=True,
+    ) is None
 
 
 def test_explicit_private_only_media_remains_private(authorized_media_call):

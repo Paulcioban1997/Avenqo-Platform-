@@ -3050,10 +3050,47 @@ async def telnyx_webhook(
 
             auth_result = auth_controller.verify_gather(call, digits_str)
             if auth_result.get("authenticated"):
+                from backend.app.voice.messages import voice_auth_message
+                # Speak PIN success via Call Control BEFORE media streaming so
+                # confirmation is heard even if the realtime engine fails to open.
+                # Selected-source availability must never gate this transition.
+                confirm_text = voice_auth_message(
+                    call.locale or config.preferred_language or "fr",
+                    1,
+                )
+                confirm_cmd = str(UUID(hashlib.sha256(f"auth-confirm:{call.id}".encode()).hexdigest()[:32]))
+                auth_confirmation_spoken = False
+                try:
+                    await service.telnyx.speak(
+                        active_control_id,
+                        text_prompt=confirm_text,
+                        language=ivr_lang,
+                        command_id=confirm_cmd,
+                    )
+                    auth_confirmation_spoken = True
+                    # Allow Telnyx TTS to start before media stream takes the audio path.
+                    await asyncio.sleep(1.6)
+                except Exception as confirm_exc:
+                    if is_call_already_ended_error(confirm_exc):
+                        logger.info(
+                            "staff_auth_confirm_speak skipped; call %s already ended (Telnyx 90018)",
+                            call.id,
+                        )
+                        call.status = "completed"
+                        if not call.ended_at:
+                            call.ended_at = datetime.now(timezone.utc)
+                        db.commit()
+                        return {"received": True, "status": "CALL_ALREADY_ENDED"}
+                    logger.warning(
+                        "staff_auth_confirm_speak_failed call_id=%s error_code=%s; continuing to media",
+                        call.id,
+                        type(confirm_exc).__name__,
+                    )
                 call.source_context = {
                     **(call.source_context or {}),
                     "ivr_stage": "staff_authenticated",
                     "pin_gather_status": "authenticated",
+                    "auth_confirmation_spoken": auth_confirmation_spoken,
                 }
                 flag_modified(call, "source_context")
                 db.flush()
@@ -3063,7 +3100,13 @@ async def telnyx_webhook(
                 command_id = str(UUID(hashlib.sha256(f"media-staff:{call.id}".encode()).hexdigest()[:32]))
                 try:
                     await service.telnyx.start_media_stream(active_control_id, stream_url=stream_url, client_state=client_state, command_id=command_id)
-                    receipt.result = {**receipt.result, "routed": True, "authenticated": True, "caller_mode": "STAFF"}
+                    receipt.result = {
+                        **receipt.result,
+                        "routed": True,
+                        "authenticated": True,
+                        "caller_mode": "STAFF",
+                        "auth_confirmation_spoken": auth_confirmation_spoken,
+                    }
                     db.commit()
                     return {"received": True, "authenticated": True, "caller_mode": "STAFF"}
                 except Exception as exc:

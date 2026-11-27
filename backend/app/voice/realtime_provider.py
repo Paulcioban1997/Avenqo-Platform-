@@ -2669,14 +2669,22 @@ class VoiceRealtimeRouter:
             return adapter
 
         if requested == RealtimeProviderType.GEMINI_LIVE and gemini_enabled and self._gemini.is_available():
+            # After Gemini Live open failure, fall back to the certified OpenAI
+            # realtime model — never to experimental gpt-live-* aliases that can
+            # accept the websocket then die on session.update (invalid_model).
+            openai_fallback_model = (
+                str(getattr(self._settings, "voice_realtime_fallback_model", "") or "").strip()
+                or "gpt-realtime-2.1"
+            )
             logger.info(
-                "voice_realtime_route provider=gemini_live model=%s company_id=%s optional_override=True",
+                "voice_realtime_route provider=gemini_live model=%s company_id=%s optional_override=True openai_fallback=%s",
                 self._gemini.model_name,
                 getattr(config, "company_id", None),
+                openai_fallback_model,
             )
             return FallbackRealtimeAudioAdapter(
                 primary_factory=lambda: self._gemini.create_audio_adapter(config, audio_config),
-                fallback_factory=lambda: _make_fallback(active_model),
+                fallback_factory=lambda: _make_fallback(openai_fallback_model),
             )
 
         logger.info(
