@@ -495,7 +495,7 @@ async def test_google_calendar_token_revoked_updates_sync_status_to_error(tmp_pa
 
 
 def test_prompt_grounding_time_range_interpretation_and_qc_continuity():
-    """Vérifie que les règles d'interprétation horaire (10h-11h = début à 10h), de grounding et de continuité fr-CA sont présentes."""
+    """Vérifie interprétation horaire (10h-11h = début 10h), grounding CRM et continuité conversationnelle."""
     instruction = _localized_system_instruction(
         "Base system instruction",
         user_language="fr-CA",
@@ -507,7 +507,13 @@ def test_prompt_grounding_time_range_interpretation_and_qc_continuity():
     assert "10:00 - 11:00" in instruction
     assert "starts at 10:00" in instruction
     assert "Ground business hours and available services strictly in actual tenant CRM configuration" in instruction
-    assert "Conversation Continuity & Quebec French (fr-CA)" in instruction
+    # Continuity is language-agnostic (active conversation language + regional conventions),
+    # not a Quebec-only canned label — fr-CA still arrives via User language / Canonical locale.
+    assert "Conversation Continuity:" in instruction
+    assert "active conversation language" in instruction
+    assert "User language: French (Canada)" in instruction
+    assert "Canonical locale: fr (fr-CA)" in instruction
+    assert "Selected source evidence:" in instruction
 
 
 @pytest.mark.asyncio

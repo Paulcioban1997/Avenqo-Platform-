@@ -230,6 +230,12 @@ def test_no_selection_blocks_private_data(db_session: Session):
 
 
 def test_no_connected_sources_defers_to_module_permissions(db_session: Session):
+    """Fixture/contract path: zero connected sources may defer to module permissions.
+
+    This must NOT widen real-env access: as soon as any connected source exists
+    without an explicit selection, private tools fail closed (see
+    test_no_selection_blocks_private_data / test_connected_unselected_never_bypasses_empty_fixture).
+    """
     company = _company(db_session, "empty-sources")
     user = _user(db_session, company)
     tenant = TenantContext(company.id, user_id=user.id)
@@ -241,6 +247,35 @@ def test_no_connected_sources_defers_to_module_permissions(db_session: Session):
         resolution=resolution,
         intent=classify_voice_data_intent("ventes", has_selected_dataset=False),
     )
+
+
+def test_connected_unselected_never_bypasses_empty_fixture(db_session: Session):
+    """Real env: connected sources + no selection must deny, unlike empty-fixture deferral."""
+    company = _company(db_session, "real-env-noselect")
+    user = _user(db_session, company)
+    connected = _dataset(db_session, company, "connected-but-unselected.xlsx")
+    tenant = TenantContext(company.id, user_id=user.id)
+    resolution = resolve_authorized_selected_sources(db_session, tenant, require_data_read=True)
+    assert resolution.state == "NO_SELECTION"
+    assert str(connected.id) in resolution.excluded_source_ids
+    assert resolution.selected_source_ids == []
+    assert resolution.dataset_ids == frozenset()
+    with pytest.raises(VoiceToolDenied):
+        assert_tool_allowed_for_selected_sources(
+            tool_name="get_sales_summary",
+            resolution=resolution,
+            intent=classify_voice_data_intent("ventes du fichier", has_selected_dataset=False),
+        )
+    with pytest.raises(VoiceToolDenied):
+        assert_tool_allowed_for_selected_sources(
+            tool_name="get_coaching_advice",
+            resolution=resolution,
+            intent=classify_voice_data_intent("conseil coaching", has_selected_dataset=False),
+        )
+    from backend.app.ai.chat.retrieval_service import RetrievalService
+    assert RetrievalService(db_session).retrieve_context(company.id, "lis le fichier", user_id=user.id) == []
+    from backend.app.services.selected_document_evidence import inspect_selected_documents
+    assert inspect_selected_documents(db_session, tenant)["documents"] == []
 
 
 def test_selection_change_and_cache_refresh(db_session: Session):
