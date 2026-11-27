@@ -188,7 +188,7 @@ class CompanyIntelligenceService:
         self._session = session
 
     def get_profile(
-        self, company_id: UUID, *, product_limit: int | None = 50
+        self, company_id: UUID, *, product_limit: int | None = 50, selected_tenant: TenantContext | None = None
     ) -> CompanyIntelligenceProfile:
         """Build the tenant profile. Voice search can request the full eligible
         catalog; ordinary context construction stays bounded to a short preview.
@@ -228,9 +228,21 @@ class CompanyIntelligenceService:
             if not services:
                 status = "booking_not_selected"
         offerings = tuple({"id": str(s.id), "crm_service_id": str(s.id), "name": s.name, "duration_minutes": s.duration_minutes, "price": s.price, "currency": s.currency} for s in services)
-        connections = self._session.scalars(select(CommerceConnection).where(CommerceConnection.company_id == company_id)).all()
+        selected_scope = None
+        if selected_tenant is not None:
+            if selected_tenant.company_id != company_id:
+                raise CompanyOfferingUnavailable("Company context mismatch")
+            from backend.app.voice.selected_source_intelligence import resolve_authorized_selected_sources
+            selected_scope = resolve_authorized_selected_sources(self._session, selected_tenant, require_data_read=True)
+        connection_query = select(CommerceConnection).where(CommerceConnection.company_id == company_id)
+        if selected_scope is not None:
+            connection_query = connection_query.where(CommerceConnection.id.in_([UUID(value) for value in selected_scope.selected_source_ids]))
+        connections = self._session.scalars(connection_query).all()
         calendar = self._session.scalar(select(CRMCalendarConnection).where(CRMCalendarConnection.company_id == company_id))
-        datasets = self._session.scalars(select(Dataset).where(Dataset.company_id == company_id).order_by(Dataset.id)).all()
+        dataset_query = select(Dataset).where(Dataset.company_id == company_id)
+        if selected_scope is not None:
+            dataset_query = dataset_query.where(Dataset.id.in_(selected_scope.dataset_ids))
+        datasets = self._session.scalars(dataset_query.order_by(Dataset.id)).all()
         connected_calendar = bool(calendar and calendar.sync_status == "connected")
         resources = self._session.scalars(select(CRMEmployee).where(CRMEmployee.company_id == company_id,
             CRMEmployee.is_active.is_(True)).limit(100)).all() if "crm" in active else []
@@ -245,6 +257,8 @@ class CompanyIntelligenceService:
                     NormalizedCommerceRecord.entity_type.in_(["products", "product"]),
                     NormalizedCommerceRecord.deleted.is_(False),
                 ).order_by(NormalizedCommerceRecord.source_updated_at.desc().nullslast())
+                if selected_scope is not None:
+                    catalog_query = catalog_query.where(NormalizedCommerceRecord.connection_id.in_([c.id for c in connections]))
                 if product_limit is not None:
                     catalog_query = catalog_query.limit(max(0, product_limit))
                 records = self._session.scalars(catalog_query).all()
@@ -426,7 +440,7 @@ class CompanyIntelligenceService:
                 select(TenantDocument).where(
                     TenantDocument.company_id == company_id,
                 ).limit(20)
-            ).all()
+            ).all() if selected_scope is None else []
             for d in docs:
                 analysis = {}
                 if d.analysis_json:

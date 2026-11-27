@@ -128,6 +128,11 @@ def _resolve_tenant_document_or_dataset_bundle(
     except ValueError:
         return None, None, "Format UUID de document invalide"
 
+    from backend.app.voice.selected_source_intelligence import resolve_authorized_selected_sources
+    selected = resolve_authorized_selected_sources(session, context.tenant, require_data_read=True)
+    if context.voice_path and doc_uuid not in selected.dataset_ids:
+        return None, None, "Document is not in the current authorized selection."
+
     doc = session.scalar(
         select(TenantDocument).where(
             TenantDocument.id == doc_uuid,
@@ -160,6 +165,8 @@ def _resolve_tenant_document_or_dataset_bundle(
         )
     )
     if dataset is not None:
+        if doc_uuid not in selected.dataset_ids:
+            return None, None, "Dataset is not in the current authorized selection."
         current_version = next((v for v in dataset.versions if v.is_current), None)
         raw_path = _find_dataset_raw_file(dataset, current_version)
         if raw_path is None:
@@ -359,6 +366,10 @@ class SearchDocumentsTool(OCRAITool):
         all_records = list(self._session.scalars(query).all())
         records = self._auth.filter_accessible_documents(context.tenant, all_records, context.permissions)[:limit]
 
+        if context.voice_path:
+            # Standalone OCR documents are not implicitly selected in Data Hub.
+            records = []
+
         results = [
             {
                 "document_id": str(doc.id),
@@ -380,6 +391,9 @@ class SearchDocumentsTool(OCRAITool):
                 Dataset.status == DatasetStatus.READY,
                 Dataset.type.in_(["xlsx", "xlsm", "xls", "pdf"]),
             )
+            from backend.app.voice.selected_source_intelligence import resolve_authorized_selected_sources
+            selected = resolve_authorized_selected_sources(self._session, context.tenant, require_data_read=True)
+            ds_query = ds_query.where(Dataset.id.in_(selected.dataset_ids))
             if search_term:
                 ds_query = ds_query.where(Dataset.name.ilike(f"%{search_term}%"))
             for ds in self._session.scalars(ds_query.limit(5)).all():

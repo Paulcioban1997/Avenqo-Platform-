@@ -410,7 +410,7 @@ class CentralAIService:
                 module_id=effective_module_id,
                 locale_explicit=locale_explicit,
                 authorized_tool_agents=authorized_tool_agents,
-                retrieve_tenant_data=False if is_voice or is_public_voice_caller(permissions) else (agent is not None and agent.slug not in {"tenant_capabilities", "voice"}),
+                retrieve_tenant_data=("data:read" in permissions and not is_public_voice_caller(permissions)),
                 allow_existing_reservation=allow_existing_reservation,
                 attempt_sink=attempt_sink,
                 follow_latest_utterance_language=spoken_language_input or language_explicitly_requested,

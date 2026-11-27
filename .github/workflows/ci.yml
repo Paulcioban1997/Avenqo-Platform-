@@ -92,6 +92,7 @@ jobs:
           tests/backend/test_data_source_isolation.py
           tests/backend/test_ocr_accounting_document_scope.py
           tests/backend/test_voice_source_refresh.py
+          tests/backend/test_voice_selected_source_intelligence.py
           tests/backend/test_accounting_active_source.py
           tests/ai_engine/test_commerce_connector_registry.py
           -q --timeout=120 --timeout-method=thread
