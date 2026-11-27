@@ -205,7 +205,7 @@ def _source_payload(source: RetailSource) -> dict[str, Any]:
     }
 
 
-def classify_voice_data_intent(transcript: str, *, has_selected_dataset: bool) -> VoiceIntentDecision:
+def classify_voice_data_intent(transcript: str, *, has_selected_dataset: bool, previous_intent: str | None = None) -> VoiceIntentDecision:
     """Distinguish Excel/dataset questions from calendar/appointment intent.
 
     A bare date such as "21 novembre" inside a file/dataset question must NOT
@@ -220,9 +220,15 @@ def classify_voice_data_intent(transcript: str, *, has_selected_dataset: bool) -
             reason="prompt_injection_denied",
         )
 
-    has_file = bool(_DATASET_FILE_RE.search(norm))
+    has_file = bool(_DATASET_FILE_RE.search(norm)) or bool(
+        has_selected_dataset and re.search(r"\b(donnees|data)\b", norm)
+    )
     has_calendar = bool(_CALENDAR_RE.search(norm))
     has_date = bool(_DATE_ONLY_RE.search(norm))
+
+    if previous_intent == "dataset_file" and has_selected_dataset and not has_calendar:
+        if re.search(r"\b(quoi|exemple|exemples|precise|detail|details|dis.moi|montant|total|which|what|example|examples|amount)\b", norm):
+            has_file = True
 
     if has_file and not has_calendar:
         return VoiceIntentDecision(

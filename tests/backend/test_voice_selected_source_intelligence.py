@@ -230,6 +230,12 @@ def test_no_selection_blocks_private_data(db_session: Session):
 
 
 def test_no_connected_sources_defers_to_module_permissions(db_session: Session):
+    """Fixture/contract path: zero connected sources may defer to module permissions.
+
+    This must NOT widen real-env access: as soon as any connected source exists
+    without an explicit selection, private tools fail closed (see
+    test_no_selection_blocks_private_data / test_connected_unselected_never_bypasses_empty_fixture).
+    """
     company = _company(db_session, "empty-sources")
     user = _user(db_session, company)
     tenant = TenantContext(company.id, user_id=user.id)
@@ -241,6 +247,35 @@ def test_no_connected_sources_defers_to_module_permissions(db_session: Session):
         resolution=resolution,
         intent=classify_voice_data_intent("ventes", has_selected_dataset=False),
     )
+
+
+def test_connected_unselected_never_bypasses_empty_fixture(db_session: Session):
+    """Real env: connected sources + no selection must deny, unlike empty-fixture deferral."""
+    company = _company(db_session, "real-env-noselect")
+    user = _user(db_session, company)
+    connected = _dataset(db_session, company, "connected-but-unselected.xlsx")
+    tenant = TenantContext(company.id, user_id=user.id)
+    resolution = resolve_authorized_selected_sources(db_session, tenant, require_data_read=True)
+    assert resolution.state == "NO_SELECTION"
+    assert str(connected.id) in resolution.excluded_source_ids
+    assert resolution.selected_source_ids == []
+    assert resolution.dataset_ids == frozenset()
+    with pytest.raises(VoiceToolDenied):
+        assert_tool_allowed_for_selected_sources(
+            tool_name="get_sales_summary",
+            resolution=resolution,
+            intent=classify_voice_data_intent("ventes du fichier", has_selected_dataset=False),
+        )
+    with pytest.raises(VoiceToolDenied):
+        assert_tool_allowed_for_selected_sources(
+            tool_name="get_coaching_advice",
+            resolution=resolution,
+            intent=classify_voice_data_intent("conseil coaching", has_selected_dataset=False),
+        )
+    from backend.app.ai.chat.retrieval_service import RetrievalService
+    assert RetrievalService(db_session).retrieve_context(company.id, "lis le fichier", user_id=user.id) == []
+    from backend.app.services.selected_document_evidence import inspect_selected_documents
+    assert inspect_selected_documents(db_session, tenant)["documents"] == []
 
 
 def test_selection_change_and_cache_refresh(db_session: Session):
@@ -422,3 +457,92 @@ def test_accounting_custom_set_exposes_selected_dataset_invoices_scope(db_sessio
     assert other.id not in scope
     assert payload["state"] == "READY"
     assert str(excel.id) in payload["selected_source_ids"]
+
+
+@pytest.mark.parametrize("phrase", ["Ça parle de quoi ?", "Activité comme quoi par exemple ?", "Dis-moi le montant total", "Quelles données sont disponibles ?"])
+def test_file_followup_does_not_fall_back_to_calendar(phrase):
+    intent = classify_voice_data_intent(phrase, has_selected_dataset=True, previous_intent="dataset_file")
+    assert intent.intent == "dataset_file"
+    assert not intent.allow_calendar_tools
+    calendar = classify_voice_data_intent("Prends un rendez-vous demain", has_selected_dataset=True, previous_intent="dataset_file")
+    assert calendar.intent == "calendar_appointment"
+
+
+@pytest.mark.parametrize("header_offset", [0, 5, 12])
+def test_current_invoice_reading_is_shared_with_accounting_and_excludes_other_sources(db_session, tmp_path, header_offset):
+    from openpyxl import Workbook
+    from backend.app.models import DatasetVersion
+    from backend.app.services.selected_document_evidence import inspect_selected_documents
+    company = _company(db_session, "invoice-evidence")
+    user = _user(db_session, company)
+    tenant = TenantContext(company.id, user_id=user.id)
+    datasets = []
+    for filename, amount in (("selected.xlsx", 1250.5), ("unselected.xlsx", 99999)):
+        path = tmp_path / filename
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Invoice"
+        for _ in range(header_offset):
+            sheet.append([None, None])
+        sheet.append(["FACTURE", None])
+        sheet.append(["Description", "Montant"])
+        sheet.append(["Transport de conteneurs", amount])
+        sheet.append(["TOTAL", amount])
+        workbook.save(path)
+        dataset = _dataset(db_session, company, filename)
+        dataset.versions.append(DatasetVersion(name="v1", version_number=1, is_current=True, file_name=filename, artifact_path=str(path)))
+        datasets.append(dataset)
+    db_session.flush()
+    RetailSourceService(db_session).set_workspace_selection(TenantContext(company.id), mode="SINGLE", selected_source_ids=[datasets[0].id])
+    payload = inspect_selected_documents(db_session, tenant)
+    assert len(payload["documents"]) == 1
+    assert payload["documents"][0]["extraction"]["primary_invoice"]["total_amount"]["amount"] == "1250.50"
+    from backend.app.ai.chat.retrieval_service import RetrievalService
+    evidence = RetrievalService(db_session).retrieve_context(company.id, "Explain these records", user_id=user.id)
+    assert len(evidence) == 1
+    assert evidence[0].identifier == str(datasets[0].id)
+    assert "99999" not in evidence[0].content
+    assert payload["documents"][0]["extraction"]["primary_invoice"]["total_amount"]["cell_ref"].endswith(f"B{header_offset+4}")
+    assert payload["documents"][0]["content"]
+    RetailSourceService(db_session).set_workspace_selection(TenantContext(company.id), mode="SINGLE", selected_source_ids=[datasets[1].id])
+    changed = RetrievalService(db_session).retrieve_context(company.id, "And now?", user_id=user.id)
+    assert [item.identifier for item in changed] == [str(datasets[1].id)]
+    assert "1250.50" not in changed[0].content
+    assert RetrievalService(db_session).retrieve_context(company.id, "Read data") == []
+    # Revocation must prevent actual file reads, including through the Accounting reader.
+    user.is_active = False
+    db_session.flush()
+    assert inspect_selected_documents(db_session, tenant)["documents"] == []
+
+
+@pytest.mark.parametrize("filename,content", [
+    ("workshop.csv", "operation,hours\nCalibration,3\nInspection,2\n"),
+    ("clinic.csv", "service,count\nFollowup,7\nConsultation,4\n"),
+    ("notes.txt", "Maintenance report: pump inspection completed. Next review in 30 days."),
+])
+def test_generic_content_is_read_and_document_tool_rechecks_selection(db_session, tmp_path, filename, content):
+    from backend.app.models import DatasetVersion
+    from backend.app.ai.chat.retrieval_service import RetrievalService
+    from backend.app.ai.tools.business.document_tools import _resolve_tenant_document_or_dataset_bundle
+    from backend.app.ai.tools.contracts import ToolExecutionContext
+    from backend.app.ai.tools.business.document_tools import ContractAuthorizationService
+    company = _company(db_session, "generic")
+    user = _user(db_session, company)
+    tenant = TenantContext(company.id, user.id)
+    path = tmp_path / filename
+    path.write_text(content, encoding="utf-8")
+    dataset = _dataset(db_session, company, filename)
+    dataset.versions.append(DatasetVersion(name="v1", version_number=1, is_current=True, file_name=filename, artifact_path=str(path)))
+    other = _dataset(db_session, company, "excluded.csv")
+    db_session.flush()
+    RetailSourceService(db_session).set_workspace_selection(tenant, mode="SINGLE", selected_source_ids=[dataset.id])
+    retrieved = RetrievalService(db_session).retrieve_context(company.id, "What does this mean?", user_id=user.id)
+    assert retrieved and retrieved[0].metadata["status"] == "read"
+    assert content.splitlines()[-1].split(",")[0] in retrieved[0].content
+    assert "direct_statement" not in retrieved[0].content
+    context = ToolExecutionContext(tenant=tenant, user_id=user.id, permissions=frozenset({"ai:use", "data:read"}), request_id="test", voice_path=True)
+    bundle, _, error = _resolve_tenant_document_or_dataset_bundle(db_session, ContractAuthorizationService(db_session), context, str(other.id))
+    assert bundle is None and error
+    RetailSourceService(db_session).set_workspace_selection(tenant, mode="SINGLE", selected_source_ids=[other.id])
+    bundle, _, error = _resolve_tenant_document_or_dataset_bundle(db_session, ContractAuthorizationService(db_session), context, str(dataset.id))
+    assert bundle is None and error

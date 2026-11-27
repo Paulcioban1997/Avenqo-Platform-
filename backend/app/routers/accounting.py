@@ -68,6 +68,16 @@ router = APIRouter(
 )
 
 
+@router.get("/selected-documents")
+def selected_document_invoices(
+    tenant: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Read invoice evidence in selected files; no implicit ledger posting."""
+    from backend.app.services.selected_document_evidence import inspect_selected_documents
+    return inspect_selected_documents(db, tenant)
+
+
 # --- Pydantic Schemas ---
 
 

@@ -139,7 +139,7 @@ class CentralAIContextBuilder:
             from backend.app.models.company_membership import CompanyMembership
             from backend.app.services.company_intelligence_service import CompanyIntelligenceService
             from backend.app.voice.caller_scope import is_public_voice_caller
-            company_profile = CompanyIntelligenceService(session).get_profile(tenant.company_id).as_context(public=is_public_voice_caller(permissions) or "data:read" not in permissions)
+            company_profile = CompanyIntelligenceService(session).get_profile(tenant.company_id, selected_tenant=TenantContext(tenant.company_id, user_id)).as_context(public=is_public_voice_caller(permissions) or "data:read" not in permissions)
             if user_id is not None and not is_public_voice_caller(permissions):
                 from backend.app.core.permissions import is_executive_role, normalize_role
                 actor = session.get(User, user_id)

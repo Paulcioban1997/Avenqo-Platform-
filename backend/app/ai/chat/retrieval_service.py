@@ -1,27 +1,42 @@
+import json
 from uuid import UUID
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.ai.chat.exceptions import RetrievalError
 from backend.app.ai.chat.source_service import RetrievedSource
-from backend.app.models import Dataset, DatasetStatus
+from shared.ai_engine.contracts import TenantContext
+
+
+def _factual_evidence(value):
+    """Keep structured facts, excluding extractor-generated narrative templates."""
+    if isinstance(value, dict):
+        return {key: _factual_evidence(item) for key, item in value.items() if not key.startswith("direct_statement")}
+    if isinstance(value, list):
+        return [_factual_evidence(item) for item in value]
+    return value
 
 
 class RetrievalService:
-    """First RAG adapter: metadata only, always constrained to one tenant."""
+    """Fresh document evidence restricted to the authenticated user's selection."""
 
     def __init__(self, db: Session) -> None:
         self._db = db
 
-    def retrieve_context(self, tenant_id: UUID, query: str, limit: int = 5) -> list[RetrievedSource]:
+    def retrieve_context(self, tenant_id: UUID, query: str, limit: int = 5, *, user_id: UUID | None = None) -> list[RetrievedSource]:
+        if user_id is None:
+            return []
+        from backend.app.services.selected_document_evidence import inspect_selected_documents
+
         try:
-            items = self._db.scalars(
-                select(Dataset)
-                .where(Dataset.company_id == tenant_id, Dataset.status == DatasetStatus.READY)
-                .order_by(Dataset.uploaded_at.desc())
-                .limit(limit)
-            ).all()
+            payload = inspect_selected_documents(self._db, TenantContext(tenant_id, user_id))
         except Exception as exc:
-            raise RetrievalError("Impossible de récupérer le contexte de l'entreprise") from exc
-        return [RetrievedSource("dataset", str(item.id), item.name, f"Dataset: {item.name}; type: {item.type}; lignes: {item.rows_count}; colonnes: {item.columns_count}.", {"dataset_id": str(item.id), "type": item.type, "rows_count": item.rows_count, "columns_count": item.columns_count}) for item in items]
+            raise RetrievalError("Selected source evidence unavailable") from exc
+        return [
+            RetrievedSource(
+                "dataset", item["dataset_id"], item["name"],
+                json.dumps(_factual_evidence(item), ensure_ascii=False, default=str),
+                {"dataset_id": item["dataset_id"], "status": item["status"], "selected": True},
+            )
+            for item in payload["documents"][:max(0, limit)]
+        ]

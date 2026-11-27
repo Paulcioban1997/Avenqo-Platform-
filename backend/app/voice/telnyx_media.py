@@ -3147,6 +3147,7 @@ async def telnyx_media_socket(
         turn_intent = classify_voice_data_intent(
             observed_utterance,
             has_selected_dataset=bool(source_resolution.dataset_ids),
+            previous_intent=(current_call.source_context or {}).get("voice_data_intent"),
         )
         try:
             assert_tool_allowed_for_selected_sources(
@@ -3811,6 +3812,7 @@ async def telnyx_media_socket(
         data_intent = classify_voice_data_intent(
             transcript,
             has_selected_dataset=bool(selected_resolution.dataset_ids),
+            previous_intent=(current_call.source_context or {}).get("voice_data_intent"),
         )
         log_voice_source_access(
             company_id=current_company.id,
@@ -3839,16 +3841,8 @@ async def telnyx_media_socket(
                 else "I can only use currently selected and authorized sources. I never automatically read all connected data."
             )
             return {"status": "success", "answer": _with_attention_ack(deny)}
-        if data_intent.intent == "dataset_file" and principal_id is not None:
-            file_ask = re.search(
-                r"\b(contenu|contient|contain|quoi|what|resume|summary|sommaire|colonnes|sheets|feuilles|fichier|excel|csv|dataset)\b",
-                transcript,
-                re.IGNORECASE,
-            )
-            if file_ask:
-                grounded = describe_selected_dataset_grounding(db, tenant, locale=call_locale or locale)
-                if grounded:
-                    return {"status": "success", "answer": _with_attention_ack(grounded)}
+        # Business answers must reach the model with freshly scoped evidence.
+        # Do not return a template based on filename/date keywords here.
 
         if is_hangup_request(transcript):
             call_loc = resolve_locale(current_call.locale or locale)
@@ -3914,6 +3908,10 @@ async def telnyx_media_socket(
             return {"status": result.status, "answer": final_ans, "hangup": hangup_detected}
         except Exception as exc:
             logger.exception("Central AI execute error on voice turn, attempting safe fallback: %s", exc)
+            if principal_id is not None:
+                # Provider outages must remain failures; no canned business answer
+                # may impersonate a successful generated response after staff auth.
+                raise
             verified_role = (
                 resolve_verified_staff_role(
                     db, current_company.id, current_user.id, fallback_role=getattr(current_user, "role", None)
